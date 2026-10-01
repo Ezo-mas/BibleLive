@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebSocket Test</title>
+</head>
+<body>
+    <h1>WebSocket Connection Test</h1>
+    <div id="log"></div>
+    <button id="test">Test Connection</button>
+
+    <script>
+        const logDiv = document.getElementById('log');
+        const testBtn = document.getElementById('test');
+
+        function log(message) {
+            console.log(message);
+            logDiv.innerHTML += `<p>${new Date().toLocaleTimeString()}: ${message}</p>`;
+        }
+
+        testBtn.addEventListener('click', () => {
+            log('Testing WebSocket connection to operator endpoint...');
+
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = `${protocol}//${window.location.host}/ws/operator`;
+            log(`Connecting to: ${wsUrl}`);
+
+            const ws = new WebSocket(wsUrl);
+
+            ws.onopen = () => {
+                log('✓ WebSocket connected!');
+                ws.send(JSON.stringify({action: "approve", index: 0}));
+                log('→ Sent test approve message');
+            };
+
+            ws.onmessage = (event) => {
+                log(`← Received: ${event.data}`);
+                try {
+                    const data = JSON.parse(event.data);
+                    log(`Parsed message type: ${data.type: ${data.type}`);
+                } catch(e) {
+                    log(`Failed to parse JSON: ${e.message}`);
+                }
+            };
+
+            ws.onclose = () => {
+                log('✗ WebSocket disconnected');
+            };
+
+            ws.onerror = (error) => {
+                log(`✗ WebSocket error: ${error}`);
+            };
+        });
+    </script>
+</body>
+</html>
