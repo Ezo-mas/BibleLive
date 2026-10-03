@@ -88,7 +88,6 @@ PYTHONPATH="$PWD/backend" python3 -m audio.cli [options]
 
 Options:
   --bible-db PATH         Bible SQLite database (default: bible_data/biblelive.sqlite)
-  --kjv PATH              KJV JSON file (default: data/kjv2.json)
   --server URL            BibleLive server URL (default: http://localhost:8000)
   --model SIZE            Whisper model: tiny, base, small, medium, large-v2,
                           large-v3, distil-large-v3 (default: small)
@@ -198,7 +197,12 @@ BibleLive/                        # Monorepo root: tooling + shared assets
 pytest                    # runs backend/tests (configured in root pyproject.toml)
 pytest backend/tests -q   # explicit path
 make test                 # verbose via the Makefile
+make check                # lint + format-check + tests (one route)
 ```
+
+Tests that need a Bible database build one from the tracked `data/kjv2.json`,
+so a fresh checkout and CI work without a pre-imported `bible_data/` file.
+Audio tests require the optional extras: `pip install -e "./backend[audio]"`.
 
 ## Repository layout
 

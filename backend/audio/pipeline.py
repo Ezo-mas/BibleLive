@@ -25,14 +25,12 @@ class BibleLiveAudioProcessor:
     def __init__(
         self,
         bible_db_path: str = "bible_data/biblelive.sqlite",
-        kjv_path: str = "data/kjv.json",
         server_url: str = "http://localhost:8000",
         config: Optional[AudioPipelineConfig] = None,
     ):
         # Configuration
         self.config = config or AudioPipelineConfig()
         self.bible_db_path = bible_db_path
-        self.kjv_path = kjv_path
         self.server_url = server_url
 
         # Initialize components with bounded queues

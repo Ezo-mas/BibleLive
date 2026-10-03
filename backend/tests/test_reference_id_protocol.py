@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Test the reference ID-based approval protocol."""
 
 import json

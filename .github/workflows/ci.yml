@@ -16,7 +16,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: '3.11'
+          python-version: '3.9'
           
       - name: Install dependencies
         run: |
@@ -50,10 +50,12 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -e "./backend[dev]"
+          # Audio extras are installed so the audio-marked tests run too; the
+          # suite is the same one developers run with `make test`.
+          pip install -e "./backend[dev,audio]"
           
-      - name: Run unit tests
-        run: pytest backend/tests -v -m "not audio and not integration" --cov=core --cov-report=xml --cov-report=term
+      - name: Run tests
+        run: pytest backend/tests -v --cov=core --cov-report=xml --cov-report=term
         
       - name: Upload coverage
         uses: codecov/codecov-action@v3

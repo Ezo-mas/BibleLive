@@ -1,7 +1,7 @@
 """Pytest configuration and shared fixtures.
 
 Tests import project modules as ``core.*`` packages; the ``pythonpath`` ini
-option in ``pyproject.toml`` puts the project root on ``sys.path``.
+option in ``pyproject.toml`` puts the backend root on ``sys.path``.
 """
 
 import json
@@ -9,9 +9,16 @@ from pathlib import Path
 
 import pytest
 
+from core.config import config
+from core.import_bible import BibleImporter
 from core.server.models import DisplaySettings
 
-ROOT = Path(__file__).resolve().parent.parent
+BACKEND_ROOT = Path(__file__).resolve().parent.parent
+REPO_ROOT = BACKEND_ROOT.parent
+# The complete KJV text ships in the repo (data/kjv2.json); the imported SQLite
+# database does not (bible_data/ is gitignored). Fixtures that need a real
+# database build one from this source so a fresh checkout and CI both work.
+KJV_SOURCE = REPO_ROOT / "data" / "kjv2.json"
 
 
 @pytest.fixture
@@ -58,8 +65,6 @@ def bible_db(tmp_path: Path, sample_bible_data: list[dict]) -> Path:
     ``tmp_path`` so no fixture touches the real ``data/`` or ``bible_data/``
     directories.
     """
-    from core.import_bible import BibleImporter
-
     json_path = tmp_path / "bible.json"
     json_path.write_text(json.dumps(sample_bible_data), encoding="utf-8")
     db_path = tmp_path / "bible.sqlite"
@@ -76,29 +81,52 @@ def bible_db(tmp_path: Path, sample_bible_data: list[dict]) -> Path:
 
 
 @pytest.fixture(scope="session")
-def app():
-    """Build the FastAPI app once per test session via the app factory.
+def kjv_db(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """Full KJV database built from the tracked ``data/kjv2.json``.
+
+    Built once per session (~1s) and shared by the app fixture, so tests never
+    depend on a developer's pre-imported ``bible_data/biblelive.sqlite``.
+    """
+    if not KJV_SOURCE.is_file():
+        pytest.skip(f"KJV source not found at {KJV_SOURCE}")
+
+    db_path = tmp_path_factory.mktemp("kjv") / "kjv.sqlite"
+    importer = BibleImporter(str(db_path))
+    importer.connect()
+    try:
+        importer.create_schema()
+        importer.import_kjv_json(str(KJV_SOURCE))
+        importer.set_metadata("kjv", str(KJV_SOURCE))
+    finally:
+        importer.close()
+    return db_path
+
+
+@pytest.fixture(scope="session")
+def app(kjv_db: Path):
+    """Build the FastAPI app once per test session, backed by the test database.
 
     The factory lives in ``core.server.app``; the old module-level ``app``
-    global from ``core.biblelive_server`` no longer exists.
+    global from ``core.biblelive_server`` no longer exists. ``config.DB_PATH``
+    is pointed at the session database for the duration of the run and restored
+    afterwards.
     """
     from core.server.app import create_app
 
-    return create_app()
+    original_db_path = config.DB_PATH
+    config.DB_PATH = str(kjv_db)
+    application = create_app()
+    try:
+        yield application
+    finally:
+        application.state.app_state.bible_lookup.close()
+        config.DB_PATH = original_db_path
 
 
 @pytest.fixture(scope="session")
 def app_state(app):
     """Expose the app's ``AppState`` instance (for tests that reset it)."""
     return app.state.app_state
-
-
-@pytest.fixture
-def test_client(app):
-    """Provide a FastAPI TestClient for API testing."""
-    from fastapi.testclient import TestClient
-
-    return TestClient(app)
 
 
 @pytest.fixture(autouse=True)

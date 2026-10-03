@@ -1,4 +1,4 @@
-.PHONY: help install install-audio install-dev test test-unit test-integration test-cov lint format typecheck clean dev frontend-install frontend-dev frontend-build frontend-lint frontend-format frontend-test check check-frontend
+.PHONY: help install install-audio install-dev test test-integration lint format typecheck clean dev frontend-install frontend-dev frontend-build frontend-lint frontend-format frontend-test check check-frontend
 
 BACKEND := backend
 export PYTHONPATH := $(CURDIR)/$(BACKEND):$(PYTHONPATH)
@@ -19,9 +19,9 @@ help:
 	@echo ""
 	@echo "Testing:"
 	@echo "  make test             Run all backend tests"
-	@echo "  make test-unit        Run unit tests only"
 	@echo "  make test-integration Run integration tests only"
-	@echo "  make test-cov         Run tests with coverage report"
+	@echo "  make check            Lint + format-check + tests (one route)"
+	@echo "  make check-frontend   Frontend lint + tests"
 	@echo ""
 	@echo "Development:"
 	@echo "  make dev              Start development server (with reload)"
@@ -52,14 +52,8 @@ typecheck:
 test:
 	pytest $(BACKEND)/tests -v
 
-test-unit:
-	pytest $(BACKEND)/tests -v -m "unit"
-
 test-integration:
 	pytest $(BACKEND)/tests -v -m "integration"
-
-test-cov:
-	pytest $(BACKEND)/tests --cov=core --cov=audio --cov-report=html --cov-report=term
 
 frontend-install:
 	cd frontend && npm install
@@ -79,8 +73,9 @@ frontend-format:
 frontend-test:
 	cd frontend && npm test
 
-check: lint test
+check: lint
 	ruff format --check $(BACKEND)
+	pytest $(BACKEND)/tests -q
 
 check-frontend: frontend-lint frontend-test
 

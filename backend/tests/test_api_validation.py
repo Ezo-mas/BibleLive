@@ -1,9 +1,6 @@
-#!/usr/bin/env python3
-"""Test API schema validation and error handling"""
+"""Test API schema validation and error handling."""
 
 import json
-
-import pytest
 
 # NOTE: the ``client`` and ``app_state`` fixtures come from tests/conftest.py.
 # conftest's autouse ``reset_app_state`` fixture already resets AppState before
@@ -145,7 +142,3 @@ def test_api_response_models(client):
     assert "history_count" in data
     assert "display_connections" in data
     assert "operator_connections" in data
-
-
-if __name__ == "__main__":
-    pytest.main([__file__, "-v"])

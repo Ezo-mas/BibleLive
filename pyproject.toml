@@ -15,10 +15,8 @@ addopts = [
     "-ra",
 ]
 markers = [
-    "unit: Unit tests (fast, isolated)",
-    "integration: Integration tests (require database/server)",
-    "audio: Audio pipeline tests (require audio dependencies)",
-    "websocket: WebSocket tests (require running server)",
+    "integration: Tests that build a database or exercise a server",
+    "audio: Tests that require the optional audio extras (faster-whisper, webrtcvad)",
 ]
 filterwarnings = [
     "error",

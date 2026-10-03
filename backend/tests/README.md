@@ -7,14 +7,16 @@ This directory contains the backend test suite for BibleLive
 
 ```
 backend/tests/
-├── test_verse_parser.py            # Parser unit tests
+├── test_verse_parser.py            # Parser (English) tests
 ├── test_verse_parser_lt.py         # Lithuanian parsing
 ├── test_api_validation.py          # HTTP schema/validation tests
 ├── test_authentication.py          # Operator token auth
-├── test_websocket_approval.py      # WebSocket approval flows
+├── test_websocket_approval.py      # WebSocket + HTTP approval flows
 ├── test_reference_id_protocol.py   # reference_id protocol
 ├── test_reference_sender.py        # Audio reference delivery (dedup/retry)
-├── test_bible_integration.py      # Imported-database integration tests
+├── test_audio_logging.py           # Audio logging + capture accounting
+├── test_bible_integration.py       # Imported-database integration tests
+├── test_import_flat_format.py      # Flat e-Sword JSON import
 ├── test_working_references.py      # Reference validation against a real DB
 └── conftest.py                     # Shared pytest fixtures
 ```
@@ -29,8 +31,8 @@ pytest
 ### By category
 ```bash
 pytest backend/tests -q         # All backend tests
-pytest -m unit                  # By marker
-pytest -m "not audio and not integration"
+pytest -m integration           # Database/server tests only
+pytest -m "not audio"           # Skip tests needing the audio extras
 ```
 
 ### With coverage
@@ -45,21 +47,19 @@ pytest backend/tests/test_verse_parser.py -v
 
 ## Test Markers
 
-- `@pytest.mark.unit` - Fast, isolated tests
-- `@pytest.mark.integration` - Requires database or external resources
-- `@pytest.mark.audio` - Requires audio dependencies
-- `@pytest.mark.websocket` - Requires running server or mocked WebSocket
+- `@pytest.mark.integration` - Builds a database or exercises a server
+- `@pytest.mark.audio` - Requires the optional audio extras (`pip install -e "./backend[audio]"`)
+
+Unmarked tests are fast, isolated unit tests.
 
 ## Writing Tests
 
 ### Unit Test Example
 
 ```python
-import pytest
 from core.verse_parser import ReferenceParser
 
 
-@pytest.mark.unit
 def test_parse_simple_reference():
     parser = ReferenceParser()
     refs = parser.parse("John 3:16")
@@ -76,38 +76,28 @@ from core.bible_lookup import BibleLookup
 
 
 @pytest.mark.integration
-def test_bible_lookup(tmp_path):
-    db_path = tmp_path / "test.sqlite"
-    lookup = BibleLookup(str(db_path))
-    # Test with actual database operations
-```
-
-### WebSocket Test Example
-
-```python
-import pytest
-from fastapi.testclient import TestClient
-
-
-@pytest.mark.websocket
-def test_display_connection(test_client):
-    with test_client.websocket_connect("/ws/display") as ws:
-        data = ws.receive_json()
-        assert data["type"] == "state_snapshot"
+def test_bible_lookup(bible_db):
+    lookup = BibleLookup(str(bible_db))
+    assert lookup.is_loaded()
 ```
 
 ## Test Fixtures
 
 Common fixtures are defined in `conftest.py`:
 
-- `tmp_db_path` - Temporary database path
-- `test_client` - FastAPI TestClient instance
-- `sample_bible_data` - Minimal Bible data for testing
+- `sample_bible_data` - Minimal in-memory Bible data
+- `bible_db` - Temporary SQLite database built from `sample_bible_data`
+- `kjv_db` - Full KJV database built once per session from `data/kjv2.json`
+- `app` / `app_state` - FastAPI app (session-scoped) backed by `kjv_db`
+- `client` - FastAPI TestClient bound to the shared app
+
+The app fixtures build their own database, so tests do not depend on a
+pre-imported `bible_data/biblelive.sqlite` (which is gitignored).
 
 ## Isolation
 
 Tests should:
-- Use temporary databases (via `tmp_path` or `tmp_db_path`)
+- Use temporary databases (via `tmp_path` or the `bible_db`/`kjv_db` fixtures)
 - Not modify files in the repository
 - Not depend on external services (mock when needed)
 - Clean up resources in teardown

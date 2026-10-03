@@ -18,7 +18,6 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--bible-db", default="bible_data/biblelive.sqlite", help="Path to Bible SQLite database"
     )
-    parser.add_argument("--kjv", default="data/kjv.json", help="Path to KJV JSON file")
     parser.add_argument("--server", default="http://localhost:8000", help="BibleLive server URL")
     parser.add_argument(
         "--model",
@@ -78,7 +77,7 @@ def main() -> None:
         vad_aggressiveness=args.vad_aggressiveness,
     )
     processor = BibleLiveAudioProcessor(
-        bible_db_path=args.bible_db, kjv_path=args.kjv, server_url=args.server, config=config
+        bible_db_path=args.bible_db, server_url=args.server, config=config
     )
 
     try:

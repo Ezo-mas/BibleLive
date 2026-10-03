@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Test WebSocket endpoints and approval flows for BibleLive."""
 
 import json

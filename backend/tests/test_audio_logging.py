@@ -2,9 +2,14 @@
 
 import logging
 
+import pytest
+
 from audio.capture import AudioCapture
 from audio.logging_config import configure_logging, resolve_log_level
 from audio.stt import SpeechToText
+
+# Requires the optional audio extras (faster-whisper, webrtcvad, numpy).
+pytestmark = pytest.mark.audio
 
 
 def test_resolve_log_level_precedence(monkeypatch):
