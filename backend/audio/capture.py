@@ -21,6 +21,11 @@ class AudioCapture:
         self.capture_thread = None
         self.stderr_thread = None
 
+        # Carry-over buffer for ffmpeg chunks that don't align with the frame
+        # size requested by get_audio_frame(). Without this, any bytes past the
+        # end of a frame are silently discarded and the VAD/STT lose audio.
+        self._frame_buffer = bytearray()
+
         # Byte/second accounting so "is audio actually arriving?" is visible
         self.total_bytes_captured = 0
         self.total_chunks = 0
@@ -190,17 +195,20 @@ class AudioCapture:
         samples_per_frame = int(self.sample_rate * frame_duration_ms / 1000)
         bytes_per_frame = samples_per_frame * bytes_per_sample
 
-        # Collect enough data for a frame
-        frame_data = b""
-        while len(frame_data) < bytes_per_frame and self.is_running:
+        # Fill the carry-over buffer until we have at least one full frame.
+        # ffmpeg writes chunks of arbitrary size, so bytes past the end of a
+        # frame are kept here for the next call instead of being discarded
+        # (previously the excess was silently dropped, losing VAD/STT audio).
+        while len(self._frame_buffer) < bytes_per_frame and self.is_running:
             try:
-                data = self.audio_queue.get(timeout=0.1)
-                frame_data += data
+                self._frame_buffer.extend(self.audio_queue.get(timeout=0.1))
             except Empty:
                 if not self.is_running:
                     break
                 continue
 
-        if len(frame_data) >= bytes_per_frame:
-            return frame_data[:bytes_per_frame]
+        if len(self._frame_buffer) >= bytes_per_frame:
+            frame = bytes(self._frame_buffer[:bytes_per_frame])
+            del self._frame_buffer[:bytes_per_frame]
+            return frame
         return None
