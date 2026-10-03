@@ -4,6 +4,12 @@
 
 set -euo pipefail
 
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$REPO_ROOT"
+
+# Python packages live under backend/; make them importable as core.* / audio.*
+export PYTHONPATH="${REPO_ROOT}/backend${PYTHONPATH:+:${PYTHONPATH}}"
+
 # Configuration
 SERVER_HOST="${BIBLELIVE_HOST:-0.0.0.0}"
 SERVER_PORT="${BIBLELIVE_PORT:-8000}"
@@ -39,14 +45,14 @@ cleanup() {
 trap cleanup EXIT INT TERM
 
 # Check if required files exist
-if [ ! -f "core/biblelive_server.py" ]; then
-    echo "Error: core/biblelive_server.py not found"
+if [ ! -f "backend/core/server/app.py" ]; then
+    echo "Error: backend/core/server/app.py not found"
     echo "Please run this script from the BibleLive project root directory"
     exit 1
 fi
 
-if [ ! -f "audio/biblelive_audio_pipeline.py" ]; then
-    echo "Error: audio/biblelive_audio_pipeline.py not found"
+if [ ! -f "backend/audio/cli.py" ]; then
+    echo "Error: backend/audio/cli.py not found"
     exit 1
 fi
 
@@ -56,7 +62,7 @@ echo ""
 
 # Start the server in background
 echo "Starting BibleLive Server on ${SERVER_HOST}:${SERVER_PORT}..."
-python3 core/biblelive_server.py &
+python3 -m core.server &
 SERVER_PID=$!
 
 # Wait for server to be ready
@@ -86,7 +92,7 @@ echo ""
 
 # Start audio pipeline
 echo "Starting Audio Pipeline..."
-python3 audio/biblelive_audio_pipeline.py &
+python3 -m audio.cli &
 AUDIO_PID=$!
 
 echo ""

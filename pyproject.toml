@@ -1,48 +1,10 @@
-[build-system]
-requires = ["setuptools>=61.0"]
-build-backend = "setuptools.build_meta"
-
-[project]
-name = "biblelive"
-version = "0.1.0"
-description = "Real-time Bible reference detection and display system"
-readme = "README.md"
-requires-python = ">=3.9"
-license = {text = "MIT"}
-authors = [
-    {name = "BibleLive Team"}
-]
-dependencies = [
-    "fastapi>=0.100.0",
-    "uvicorn>=0.23.0",
-    "pydantic>=2.0.0",
-    "pydantic-settings>=2.0.0",
-    "requests>=2.28.0",
-]
-
-[project.optional-dependencies]
-audio = [
-    "faster-whisper>=0.9.0",
-    "webrtcvad>=2.0.10",
-    "numpy>=1.24.0",
-]
-dev = [
-    "pytest>=7.0.0",
-    "pytest-cov>=4.0.0",
-    "pytest-asyncio>=0.21.0",
-    "httpx>=0.24.0",
-    "ruff>=0.1.0",
-    "mypy>=1.0.0",
-    "types-requests>=2.28.0",
-]
-
-[tool.setuptools.packages.find]
-where = ["."]
-include = ["core*", "audio*"]
-
+# BibleLive monorepo tooling config (ruff, pytest, mypy).
+#
+# The installable Python package lives in backend/pyproject.toml; install it with
+#   pip install -e ./backend
 [tool.pytest.ini_options]
-testpaths = ["tests"]
-pythonpath = ["."]
+testpaths = ["backend/tests"]
+pythonpath = ["backend", "."]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
@@ -65,7 +27,7 @@ filterwarnings = [
 ]
 
 [tool.coverage.run]
-source = ["core", "audio"]
+source = ["backend/core", "backend/audio"]
 omit = [
     "*/tests/*",
     "*/test_*.py",
@@ -91,6 +53,7 @@ exclude_lines = [
 [tool.ruff]
 target-version = "py39"
 line-length = 100
+extend-exclude = ["frontend", "static", "data", "bible_data"]
 
 [tool.ruff.lint]
 select = [
@@ -112,13 +75,14 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["F401"]  # Allow unused imports in __init__.py
-"tests/*" = ["ARG", "S101"]  # Allow unused args and asserts in tests
+"backend/tests/*" = ["ARG", "S101"]  # Allow unused args and asserts in tests
 
 [tool.ruff.lint.isort]
 known-first-party = ["core", "audio"]
 
 [tool.mypy]
 python_version = "3.9"
+mypy_path = "backend"
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = false  # Start lenient, tighten later

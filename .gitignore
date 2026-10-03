@@ -27,6 +27,8 @@ ENV/
 # Generated databases (keep source JSON, not generated SQLite)
 bible_data/*.sqlite
 bible_data/*.db
+backend/bible_data/*.sqlite
+backend/bible_data/*.db
 
 # Test artifacts
 .pytest_cache/
@@ -56,3 +58,6 @@ static/frontend/
 # Temporary files
 *.tmp
 tmp/
+
+# Local tooling config (per-developer, not shared)
+.claude/

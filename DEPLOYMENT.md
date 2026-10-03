@@ -16,10 +16,10 @@ nano .env  # Configure production settings (see below)
 # 3. Install Python dependencies
 python3 -m venv venv
 source venv/bin/activate
-pip install -r requirements.txt
+pip install -e ./backend
 
 # 4. Import Bible database
-python -m core.import_bible --translation kjv --source data/kjv.json
+PYTHONPATH="$PWD/backend" python -m core.import_bible --translation kjv --source data/kjv2.json
 
 # 5. Build frontend
 cd frontend
@@ -28,7 +28,7 @@ npm run build
 cd ..
 
 # 6. Test the deployment
-python -m core.biblelive_server
+PYTHONPATH="$PWD/backend" python -m core.server
 # Visit http://localhost:8000/readyz
 
 # 7. Set up systemd service (see below)
@@ -233,7 +233,8 @@ Type=simple
 User=biblelive
 WorkingDirectory=/opt/biblelive
 EnvironmentFile=/opt/biblelive/.env
-ExecStart=/usr/bin/python3 -m audio.biblelive_audio_pipeline
+Environment=PYTHONPATH=/opt/biblelive/backend
+ExecStart=/usr/bin/python3 -m audio.cli
 Restart=always
 RestartSec=10
 
@@ -272,7 +273,8 @@ Group=biblelive
 WorkingDirectory=/opt/biblelive
 Environment="PATH=/opt/biblelive/venv/bin"
 EnvironmentFile=/opt/biblelive/.env
-ExecStart=/opt/biblelive/venv/bin/python -m core.biblelive_server
+Environment=PYTHONPATH=/opt/biblelive/backend
+ExecStart=/opt/biblelive/venv/bin/python -m core.server
 
 # Security hardening
 NoNewPrivileges=true
@@ -324,11 +326,12 @@ sudo chmod 0600 /opt/biblelive/.env
 
 # Set up Python environment
 sudo -u biblelive python3 -m venv /opt/biblelive/venv
-sudo -u biblelive /opt/biblelive/venv/bin/pip install -r /opt/biblelive/requirements.txt
+sudo -u biblelive /opt/biblelive/venv/bin/pip install -e /opt/biblelive/backend
 
 # Import Bible data
-sudo -u biblelive /opt/biblelive/venv/bin/python -m core.import_bible \
-    --translation kjv --source /opt/biblelive/data/kjv.json
+sudo -u biblelive env PYTHONPATH=/opt/biblelive/backend \
+  /opt/biblelive/venv/bin/python -m core.import_bible \
+    --translation kjv --source /opt/biblelive/data/kjv2.json
 
 # Build frontend
 cd /opt/biblelive/frontend
@@ -437,7 +440,7 @@ Common issues:
 - Port 8000 already in use: `sudo lsof -i :8000`
 - Database not found: Run import command
 - Frontend not built: `cd frontend && npm run build`
-- Missing dependencies: `pip install -r requirements.txt`
+- Missing dependencies: `pip install -e ./backend`
 
 ### WebSocket Connection Fails
 

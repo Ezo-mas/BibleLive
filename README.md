@@ -35,14 +35,25 @@ references before they go on screen.
 ## Installation
 
 ```bash
-# Core server + parser + dev/test tools
-pip install -r requirements.txt
+# Backend as an editable install (core server + parser + dev/test tools)
+pip install -e ./backend
 
 # Optional: audio pipeline extras (faster-whisper, webrtcvad, numpy)
-pip install -r requirements-audio.txt
+pip install -e "./backend[audio]"
+
+# Optional: plain requirements files instead of an install
+pip install -r backend/requirements.txt
+pip install -r backend/requirements-audio.txt
 
 # Optional: rebuild the frontend from source
 cd frontend && npm install && npm run build
+```
+
+Python packages live under `backend/` and are imported as `core.*` / `audio.*`.
+Commands that run from the repository root need `backend/` on the import path:
+
+```bash
+export PYTHONPATH="$PWD/backend"     # start.sh and the Makefile do this for you
 ```
 
 ## Usage
@@ -56,7 +67,10 @@ cd frontend && npm install && npm run build
 ### Run the server only
 
 ```bash
-python3 core/biblelive_server.py
+PYTHONPATH="$PWD/backend" python3 -m core.server
+
+# or, from anywhere in the repo:
+make dev
 ```
 
 Then open:
@@ -70,16 +84,43 @@ Then open:
 ### Run the audio pipeline only
 
 ```bash
-python3 audio/biblelive_audio_pipeline.py [options]
+PYTHONPATH="$PWD/backend" python3 -m audio.cli [options]
 
 Options:
   --bible-db PATH         Bible SQLite database (default: bible_data/biblelive.sqlite)
-  --kjv PATH              KJV JSON file (default: data/kjv.json)
+  --kjv PATH              KJV JSON file (default: data/kjv2.json)
   --server URL            BibleLive server URL (default: http://localhost:8000)
-  --model SIZE            Whisper model: tiny, base, small, medium, large-v2 (default: tiny)
-  --device DEV            Whisper device: cpu or cuda (default: cpu)
+  --model SIZE            Whisper model: tiny, base, small, medium, large-v2,
+                          large-v3, distil-large-v3 (default: small)
+  --device DEV            Whisper device: cpu or cuda (default: cuda)
+  --compute-type TYPE     Whisper compute type: float16, float32, int8,
+                          int8_float16 (default: int8; use float16 on RTX 20xx+)
+  --language LANG         Spoken language: en or lt (default: en)
   --vad-aggressiveness N  WebRTC VAD aggressiveness 0-3 (default: 2)
+  --log-level LEVEL       DEBUG, INFO, WARNING, ERROR (default: INFO, or
+                          $BIBLELIVE_AUDIO_LOG_LEVEL)
 ```
+
+#### Pipeline logging
+
+The CLI configures logging once at startup (library modules never touch the root
+logger), so audio capture, VAD, Whisper, parsing and reference delivery all
+report progress:
+
+```text
+INFO - audio.capture  - First audio input received from device (320 bytes, 16000Hz mono s16le)
+INFO - audio.capture  - Audio input active: 10s captured (1001 chunks, queue=1, dropped=0)
+INFO - audio.pipeline - Voice activity detected, capturing utterance...
+INFO - audio.pipeline - Utterance ended: 1.20s of speech (40 frames) queued for transcription
+INFO - audio.pipeline - Processing utterance (40 frames, 1.20s audio)...
+INFO - audio.stt      - Transcription (842ms): 'and he said read this today john three sixteen'
+INFO - audio.pipeline - Found 1 Bible reference(s):
+INFO - audio.pipeline -   - John 3:16 [high]
+INFO - audio.sender   - Sent to server (31ms): John 3:16
+```
+
+Use `--log-level DEBUG` (or `BIBLELIVE_AUDIO_LOG_LEVEL=DEBUG`) to also trace ffmpeg
+output, ignored short VAD blips, and skipped duplicates.
 
 ## HTTP API
 
@@ -105,7 +146,7 @@ Options:
 | Variable                  | Default                     | Description              |
 |---------------------------|-----------------------------|--------------------------|
 | `BIBLELIVE_DB_PATH`       | `bible_data/biblelive.sqlite` | Bible SQLite database  |
-| `BIBLELIVE_KJV_JSON_PATH` | `data/kjv.json`             | KJV JSON text file       |
+| `BIBLELIVE_KJV_JSON_PATH` | `data/kjv2.json`             | KJV JSON text file       |
 | `BIBLELIVE_HOST`          | `0.0.0.0`                   | Server bind host         |
 | `BIBLELIVE_PORT`          | `8000`                      | Server port              |
 | `BIBLELIVE_RELOAD`        | `true`                      | Uvicorn auto-reload (dev)|
@@ -113,39 +154,69 @@ Options:
 ## Project layout
 
 ```
-BibleLive/
-├── core/                     # FastAPI server, verse parser, Bible lookup
-│   ├── biblelive_server.py
-│   ├── verse_parser.py
-│   └── bible_lookup.py
-├── audio/                    # Audio pipeline (ffmpeg + VAD + Whisper STT)
-│   └── biblelive_audio_pipeline.py
-├── frontend/                 # Vite + React + TypeScript frontend
-│   ├── src/display/          # Audience screen
-│   ├── src/operator/         # Operator panel
-│   ├── src/shared/           # Types, reference formatting, WS hook
-│   └── legacy/               # Original self-contained HTML pages (reference)
-├── static/frontend/          # Built frontend bundle (served by the server)
-├── bible_data/               # Bible SQLite databases
-├── data/                     # KJV / LITV JSON text files
-├── scripts/                  # Demo scripts
-├── tests/                    # Pytest suite
-├── requirements.txt          # Core dependencies
-├── requirements-audio.txt    # Audio pipeline dependencies
-└── start.sh                  # Start server + audio pipeline
+BibleLive/                        # Monorepo root: tooling + shared assets
+├── backend/                      # Python backend (importable as core.*, audio.*)
+│   ├── core/                     # FastAPI server, verse parser, Bible lookup
+│   │   ├── server/               # Server package (models, auth, state, app factory)
+│   │   │   ├── app.py            # create_app() factory + main() entry point
+│   │   │   ├── models.py         # Pydantic request/response models
+│   │   │   ├── auth.py           # Operator token verification
+│   │   │   ├── connections.py    # WebSocket connection management
+│   │   │   └── state.py          # AppState (pending queue, display, history)
+│   │   ├── config.py             # Env-driven configuration
+│   │   ├── biblelive_server.py   # Compat shim -> core.server
+│   │   ├── verse_parser.py
+│   │   └── bible_lookup.py
+│   ├── audio/                    # Audio pipeline (ffmpeg + VAD + Whisper STT)
+│   │   ├── cli.py                # Entry point
+│   │   ├── pipeline.py           # BibleLiveAudioProcessor
+│   │   ├── capture.py, vad.py    # ffmpeg capture + WebRTC VAD
+│   │   ├── stt.py                # faster-whisper transcription
+│   │   ├── sender.py             # Reference delivery (dedup + retry/backoff)
+│   │   └── config.py, metrics.py
+│   ├── tests/                    # Pytest suite
+│   ├── scripts/                  # Demo and verification scripts
+│   ├── requirements.txt          # Core dependencies
+│   ├── requirements-audio.txt    # Audio pipeline dependencies
+│   └── pyproject.toml            # Installable package metadata
+├── frontend/                     # Vite + React + TypeScript frontend
+│   ├── src/display/              # Audience screen
+│   ├── src/operator/             # Operator panel
+│   ├── src/shared/               # Types, reference formatting, WS hook
+│   └── legacy/                   # Original self-contained HTML pages (reference)
+├── static/frontend/              # Built frontend bundle (served by the server)
+├── bible_data/                   # Bible SQLite databases
+├── data/                         # KJV / LITV JSON text files
+├── pyproject.toml                # Root tooling config (ruff, pytest, mypy)
+├── Makefile                      # Backend + frontend task runner
+└── start.sh                      # Start server + audio pipeline
 ```
 
 ## Testing
 
 ```bash
-pytest tests/
+pytest                    # runs backend/tests (configured in root pyproject.toml)
+pytest backend/tests -q   # explicit path
+make test                 # verbose via the Makefile
 ```
+
+## Repository layout
+
+This is a two-part monorepo:
+
+| Directory   | Contents                                                        |
+|-------------|-----------------------------------------------------------------|
+| `backend/`  | Python server, audio pipeline, tests, scripts, requirements      |
+| `frontend/` | React + TypeScript UI (Vite), built into `static/frontend/`     |
+
+The root `pyproject.toml` only holds tool configuration (ruff, pytest, mypy);
+`backend/pyproject.toml` holds the installable package metadata.
 
 ## Development workflow (frontend)
 
 ```bash
 # Terminal 1: backend
-python3 core/biblelive_server.py
+PYTHONPATH="$PWD/backend" python3 -m core.server
 
 # Terminal 2: frontend dev server (proxies /ws to the backend, hot reload)
 cd frontend && npm run dev

@@ -84,7 +84,8 @@ User=biblelive
 Group=biblelive
 WorkingDirectory=/opt/biblelive
 EnvironmentFile=/etc/biblelive/biblelive.env
-ExecStart=/opt/biblelive/venv/bin/python -m core.biblelive_server
+Environment=PYTHONPATH=/opt/biblelive/backend
+ExecStart=/opt/biblelive/venv/bin/python -m core.server
 
 # Security hardening
 PrivateTmp=yes
