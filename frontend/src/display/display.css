@@ -13,37 +13,99 @@ body {
 }
 
 .display-app {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 100vh;
-  padding: clamp(2rem, 5vw, 6rem);
+  position: relative;
+  width: 100%;
+  height: 100vh;
+  overflow: hidden;
+  /* --color-surface-canvas is near-black under the dark theme, which is what a
+     projector should show by default. */
   background: var(--color-surface-canvas);
   color: var(--color-text);
   font-family: var(--font-serif);
   text-align: center;
+  transition: background-color var(--transition-slow), color var(--transition-slow);
+}
+
+/* Measured box the verse font is fitted into. Everything else is positioned
+   relative to the viewport, so this takes the full available area. */
+.display-stage {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: clamp(1.5rem, 4vh, 5rem);
+  overflow: hidden;
 }
 
 /* Content Container */
 .display-content {
-  max-width: 90vw;
+  /* A projector is viewed from far away, so the passage should use the whole
+     panel. Sized in viewport units on purpose: a `ch` cap resolves against the
+     small inherited body font and would clamp the measure to a fraction of the
+     screen. The fit logic then grows the type into whatever width is left. */
+  max-width: min(94vw, 1600px);
   width: 100%;
+  /* Fill the stage height so the verse block is measured against the whole
+     viewport minus the reference line, not a shrink-to-fit box. */
+  height: 100%;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: clamp(2rem, 4vh, 4rem);
+  justify-content: center;
+  gap: clamp(1rem, 3vh, 3rem);
+  overflow: hidden;
 }
 
 /* Verse Text - Primary Focus */
-.display-verse {
-  font-size: clamp(2rem, 5vw, 5rem);
-  line-height: var(--leading-relaxed);
+.display-verses {
+  line-height: 1.35;
   font-weight: 400;
-  font-style: normal;
   color: var(--color-text);
-  max-width: 45ch; /* Optimal reading line length */
-  margin: 0 auto;
   letter-spacing: -0.01em;
+  /* Takes the leftover height (viewport minus reference and gaps), centers the
+     text inside it, and lets the fit logic detect overflow via the inner
+     wrapper's natural height. */
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  overflow: hidden;
+}
+
+/* The verse block is one grid, not one flex row per verse: a shared number
+   column keeps every verse starting at the same x. Per-verse flex rows auto-size
+   the number, so verse 1 and verse 10 pushed their text to different positions
+   and each first line landed wherever centering put it. */
+.display-verses-inner {
+  /* Natural height, so the fit logic can compare it to the space available. */
+  display: grid;
+  /* `auto` sizes the column to the widest number in this passage, so a two-verse
+     slide does not reserve space for a three-digit number. */
+  grid-template-columns: auto 1fr;
+  align-items: baseline;
+  column-gap: 0.4em;
+  row-gap: 0.6em;
+  /* Readability: lines start at a common left edge instead of each first line
+     being centered on its own. */
+  text-align: left;
+}
+
+/* The verse wrapper contributes its two children to the parent grid rather than
+   laying out a box of its own, which is what gives every verse the same number
+   column. */
+.display-verse {
+  display: contents;
+}
+
+.display-verse-number {
+  /* Right-aligned so 1 and 10 both sit against the text they label. */
+  text-align: right;
+  font-size: 0.55em;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  opacity: 0.8;
 }
 
 /* Reference - Elegant Label Below */
@@ -67,6 +129,16 @@ body {
   opacity: 0.6;
 }
 
+/* "+N more verses" note when a passage is longer than the chosen limit */
+.display-range-note {
+  font-family: var(--font-sans);
+  font-size: clamp(0.75rem, 1.2vw, 1rem);
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  opacity: 0.7;
+}
+
 /* Waiting State */
 .display-waiting {
   display: flex;
@@ -86,28 +158,6 @@ body {
   font-family: var(--font-sans);
   color: var(--color-text-muted);
   margin: 0;
-}
-
-/* Theme Badge (subtle, bottom-right corner) */
-.display-theme-badge {
-  position: fixed;
-  bottom: var(--space-4);
-  right: var(--space-4);
-  width: 32px;
-  height: 32px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--color-surface-muted);
-  border-radius: var(--radius-full);
-  font-size: 16px;
-  opacity: 0.3;
-  transition: opacity var(--transition-fast);
-  pointer-events: none;
-}
-
-.display-theme-badge:hover {
-  opacity: 0.6;
 }
 
 /* Animations */
@@ -161,65 +211,50 @@ body {
   }
 }
 
-/* Responsive Typography */
+/* Responsive Typography
+   Verse font size is set inline by the fit calculation, so only the
+   supporting text scales here. */
 @media (max-width: 1024px) {
-  .display-verse {
-    font-size: clamp(1.75rem, 4.5vw, 4rem);
-  }
-  
   .display-reference {
     font-size: clamp(1.125rem, 2.25vw, 2rem);
   }
 }
 
 @media (max-width: 640px) {
-  .display-app {
-    padding: clamp(1.5rem, 4vw, 3rem);
+  .display-stage {
+    padding: clamp(1rem, 3vh, 2rem);
   }
-  
-  .display-verse {
-    font-size: clamp(1.5rem, 4vw, 2.5rem);
+
+  .display-content {
     max-width: 100%;
   }
-  
+
   .display-reference {
     font-size: clamp(1rem, 2vw, 1.5rem);
-  }
-  
-  .display-theme-badge {
-    bottom: var(--space-2);
-    right: var(--space-2);
-    width: 24px;
-    height: 24px;
-    font-size: 12px;
   }
 }
 
 /* Widescreen / Projector Optimizations */
 @media (min-width: 1920px) {
-  .display-verse {
-    font-size: clamp(4rem, 4vw, 6rem);
-    max-width: 50ch;
+  .display-content {
+    max-width: min(94vw, 1900px);
   }
-  
+
   .display-reference {
     font-size: clamp(2rem, 2vw, 3rem);
   }
 }
 
-/* Ultra-wide displays (21:9, 32:9) */
+/* Ultra-wide displays (21:9, 32:9) keep a readable measure rather than
+   stretching one line across the full panel. */
 @media (min-aspect-ratio: 21/9) {
   .display-content {
-    max-width: 70vw;
+    max-width: 88vw;
   }
 }
 
 /* Print styles (for screenshot/recording) */
 @media print {
-  .display-theme-badge {
-    display: none;
-  }
-  
   .display-app {
     background: white;
     color: black;

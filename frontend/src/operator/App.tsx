@@ -1,6 +1,18 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useWebSocket } from '../shared/useWebSocket'
 import { formatReference } from '../shared/reference'
+import {
+  DEFAULT_VERSE_LIMIT,
+  DISPLAY_THEME_OPTIONS,
+  VERSE_LIMIT_OPTIONS,
+  coerceDisplayTheme,
+  coerceVerseLimit,
+  readStoredDisplayTheme,
+  readStoredVerseLimit,
+  writeStoredDisplayTheme,
+  writeStoredVerseLimit,
+} from '../shared/verseText'
+import type { DisplayTheme, VerseLimit } from '../shared/verseText'
 import type {
   BibleReference,
   OperatorAction,
@@ -84,6 +96,12 @@ function ReferenceCard({ reference, selected = false, onSelect }: ReferenceCardP
         {reference.text && (
           <p className="ref-card-text">{reference.text}</p>
         )}
+
+        {/* Verse count, so the operator knows what the display will be bounded to.
+            `verses` is absent when talking to an older server. */}
+        {(reference.verses?.length ?? 0) > 1 && (
+          <div className="ref-card-meta">{reference.verses.length} verses</div>
+        )}
       </div>
     </div>
   )
@@ -106,6 +124,16 @@ export default function App() {
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null)
   const [flash, setFlash] = useState<FlashTarget | null>(null)
   const [displayConnected, setDisplayConnected] = useState(false)
+  // The display is presentation-only, so this control lives here and the server
+  // pushes the value to every projector. localStorage keeps the last choice
+  // while the socket reconnects.
+  const [verseLimit, setVerseLimit] = useState<VerseLimit>(() =>
+    coerceVerseLimit(readStoredVerseLimit(window.localStorage)),
+  )
+  // Display background. Projectors run dark, so that is the default here too.
+  const [displayTheme, setDisplayTheme] = useState<DisplayTheme>(() =>
+    coerceDisplayTheme(readStoredDisplayTheme(window.localStorage)),
+  )
   const flashTimerRef = useRef<number | undefined>(undefined)
 
   // Brief "pressed" pulse on a button once the server confirms its action.
@@ -130,6 +158,10 @@ export default function App() {
         setShownCount(message.data.history_count)
         setDisplayHasContent(message.data.current_display !== null)
         setDisplayConnected(message.data.display_connections > 0)
+        if (message.data.display_settings) {
+          setVerseLimit(coerceVerseLimit(message.data.display_settings.verse_limit))
+          setDisplayTheme(coerceDisplayTheme(message.data.display_settings.theme))
+        }
         setSelectedIndex(null)
         break
       case 'pending_update':
@@ -150,6 +182,10 @@ export default function App() {
         break
       case 'connection_status':
         setDisplayConnected(message.data.display > 0)
+        break
+      case 'display_settings_confirmed':
+        setVerseLimit(coerceVerseLimit(message.data.verse_limit))
+        setDisplayTheme(coerceDisplayTheme(message.data.theme))
         break
       case 'error':
         console.error('Server error:', message.data.message)
@@ -207,6 +243,26 @@ export default function App() {
   const clearDisplay = () => {
     sendAction({ action: 'clear' })
   }
+
+  // Applied optimistically so the control feels immediate; the server echoes
+  // the accepted value back in display_settings_confirmed.
+  const setDisplayVerseLimit = useCallback(
+    (next: VerseLimit) => {
+      setVerseLimit(next)
+      writeStoredVerseLimit(next, window.localStorage)
+      sendAction({ action: 'set_verse_limit', verse_limit: next })
+    },
+    [sendAction],
+  )
+
+  const setDisplayBackground = useCallback(
+    (next: DisplayTheme) => {
+      setDisplayTheme(next)
+      writeStoredDisplayTheme(next, window.localStorage)
+      sendAction({ action: 'set_display_theme', theme: next })
+    },
+    [sendAction],
+  )
 
   const clearPendingQueue = () => {
     if (window.confirm('Clear all pending references?')) {
@@ -362,6 +418,73 @@ export default function App() {
                 ))}
               </div>
             )}
+          </div>
+
+          {/* Display settings - the display page itself is presentation-only */}
+          <div className="operator-display-settings">
+            <div className="operator-display-settings-header">
+              <span className="operator-display-settings-label">Verses shown</span>
+              <span className="operator-display-settings-hint">
+                Default {DEFAULT_VERSE_LIMIT}. Longer passages shrink to fit.
+              </span>
+            </div>
+            <div
+              className="operator-verse-options"
+              role="group"
+              aria-label="Verses shown on display"
+            >
+              {VERSE_LIMIT_OPTIONS.map((option) => (
+                <button
+                  key={option}
+                  type="button"
+                  className={`operator-verse-option ${
+                    verseLimit === option ? 'is-active' : ''
+                  }`}
+                  aria-pressed={verseLimit === option}
+                  disabled={status !== 'open'}
+                  onClick={() => setDisplayVerseLimit(option)}
+                >
+                  {option}
+                </button>
+              ))}
+              <button
+                type="button"
+                className={`operator-verse-option ${
+                  verseLimit === 'all' ? 'is-active' : ''
+                }`}
+                aria-pressed={verseLimit === 'all'}
+                disabled={status !== 'open'}
+                onClick={() => setDisplayVerseLimit('all')}
+              >
+                All
+              </button>
+            </div>
+            <div className="operator-display-settings-header">
+              <span className="operator-display-settings-label">Display background</span>
+              <span className="operator-display-settings-hint">
+                Dark is easier on the eyes in a lit room.
+              </span>
+            </div>
+            <div
+              className="operator-verse-options"
+              role="group"
+              aria-label="Display background theme"
+            >
+              {DISPLAY_THEME_OPTIONS.map((option) => (
+                <button
+                  key={option}
+                  type="button"
+                  className={`operator-verse-option ${
+                    displayTheme === option ? 'is-active' : ''
+                  }`}
+                  aria-pressed={displayTheme === option}
+                  disabled={status !== 'open'}
+                  onClick={() => setDisplayBackground(option)}
+                >
+                  {option === 'dark' ? 'Dark' : 'Light'}
+                </button>
+              ))}
+            </div>
           </div>
 
           {/* Actions */}

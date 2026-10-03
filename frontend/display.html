@@ -4,6 +4,23 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>BibleLive Display</title>
+    <script>
+      // Projectors run dark. Set the theme before first paint so a load or
+      // reload never flashes a white screen. The server pushes the operator's
+      // choice to the app once the WebSocket is open.
+      // Key: biblelive_display_theme (frontend/src/shared/verseText.ts)
+      ;(function () {
+        var theme = 'dark'
+        try {
+          var stored = window.localStorage.getItem('biblelive_display_theme')
+          if (stored === 'dark' || stored === 'light') theme = stored
+        } catch (e) {
+          // localStorage can be unavailable; the default still applies.
+        }
+        document.documentElement.setAttribute('data-theme', theme)
+        document.documentElement.style.colorScheme = theme
+      })()
+    </script>
   </head>
   <body>
     <div id="root"></div>

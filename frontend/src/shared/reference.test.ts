@@ -12,6 +12,7 @@ function ref(overrides: Partial<BibleReference>): BibleReference {
     confidence: 'high',
     inferred: false,
     text: '',
+    verses: [],
     created_at: '2026-01-01T00:00:00Z',
     ...overrides,
   }

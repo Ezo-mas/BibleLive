@@ -25,7 +25,7 @@ frontend/
 
 `npm run build` emits the production bundle to **`../static/frontend/`**,
 which the FastAPI backend serves under the `/static` endpoint. The pages
-themselves are served at `/display` and `/operator` by `core/biblelive_server.py`,
+themselves are served at `/display` and `/operator` by `core/server/`,
 with asset URLs prefixed by `/static/frontend/` (see `base` in `vite.config.ts`).
 `static/frontend` is generated output — do not edit it by hand.
 
@@ -43,7 +43,7 @@ npm run typecheck # strict TypeScript check (build itself does not type-check)
 1. Start the backend (it must be running for WebSockets to work):
 
    ```bash
-   ./start.sh            # or: python3 core/biblelive_server.py
+   ./start.sh            # or: make dev (from the repo root)
    ```
 
 2. In another terminal, from `frontend/`:
