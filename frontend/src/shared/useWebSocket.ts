@@ -18,17 +18,17 @@ interface UseWebSocketResult {
  * `onMessage` receives each parsed JSON message. The handler may change
  * between renders without reconnecting the socket. Reconnection retries up
  * to `maxReconnectAttempts` times, waiting 3s * attempt between tries.
- * 
+ *
  * `onClose` is called with the CloseEvent when the connection closes, useful
  * for handling authentication failures (code 1008).
  */
 export function useWebSocket<T>(
   path: string,
   onMessage: (message: T) => void,
-  options: UseWebSocketOptions = {},
+  options: UseWebSocketOptions = {}
 ): UseWebSocketResult {
   const { maxReconnectAttempts = 10, onClose } = options
-  
+
   const [status, setStatus] = useState<WsStatus>('connecting')
   const wsRef = useRef<WebSocket | null>(null)
   const handlerRef = useRef(onMessage)
@@ -54,7 +54,7 @@ export function useWebSocket<T>(
         setStatus('open')
       }
 
-      ws.onmessage = (event) => {
+      ws.onmessage = event => {
         try {
           handlerRef.current(JSON.parse(event.data) as T)
         } catch (e) {
@@ -62,29 +62,26 @@ export function useWebSocket<T>(
         }
       }
 
-      ws.onclose = (event) => {
+      ws.onclose = event => {
         setStatus('closed')
-        
+
         // Call custom close handler if provided
         if (closeHandlerRef.current) {
           closeHandlerRef.current(event)
         }
-        
+
         if (unmountedRef.current) return
-        
+
         // Don't reconnect on auth failures (code 1008)
         if (event.code === 1008) return
-        
+
         if (attemptsRef.current < maxReconnectAttempts) {
           attemptsRef.current += 1
-          reconnectTimerRef.current = window.setTimeout(
-            connect,
-            3000 * attemptsRef.current,
-          )
+          reconnectTimerRef.current = window.setTimeout(connect, 3000 * attemptsRef.current)
         }
       }
 
-      ws.onerror = (e) => {
+      ws.onerror = e => {
         console.error('WebSocket error:', e)
       }
     }

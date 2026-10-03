@@ -30,12 +30,12 @@ export default function App() {
   // pushes it here. localStorage is only a pre-socket fallback for the first
   // render, so a reconnect does not flash a stale verse count.
   const [verseLimit, setVerseLimit] = useState<VerseLimit>(() =>
-    coerceVerseLimit(readStoredVerseLimit(window.localStorage)),
+    coerceVerseLimit(readStoredVerseLimit(window.localStorage))
   )
   // Dark by default: a white projector washes out in a lit room. The operator
   // owns the choice and the server pushes it here like the verse limit.
-  const [theme, setTheme] = useState<DisplayTheme>(
-    () => document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark',
+  const [theme, setTheme] = useState<DisplayTheme>(() =>
+    document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark'
   )
   const [fontSize, setFontSize] = useState(MAX_FONT_SIZE)
   const swapTimerRef = useRef<number | undefined>(undefined)
@@ -71,10 +71,7 @@ export default function App() {
     }
   }
 
-  const { status: wsStatus } = useWebSocket<DisplayMessage>(
-    '/ws/display',
-    handleMessage,
-  )
+  const { status: wsStatus } = useWebSocket<DisplayMessage>('/ws/display', handleMessage)
 
   // Reflect connection changes in the status line. A reference that is
   // already on screen keeps the status line empty across reconnects.
@@ -89,10 +86,7 @@ export default function App() {
   }, [wsStatus, reference])
 
   // Cancel a pending swap when the page goes away.
-  useEffect(
-    () => () => window.clearTimeout(swapTimerRef.current),
-    [],
-  )
+  useEffect(() => () => window.clearTimeout(swapTimerRef.current), [])
 
   // The theme lives on <html> so the design tokens resolve for the whole page.
   useEffect(() => {
@@ -110,7 +104,7 @@ export default function App() {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key !== 't' && event.key !== 'T') return
       if (event.metaKey || event.ctrlKey || event.altKey) return
-      setTheme((current) => (current === 'dark' ? 'light' : 'dark'))
+      setTheme(current => (current === 'dark' ? 'light' : 'dark'))
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
@@ -146,10 +140,10 @@ export default function App() {
         estimate,
         apply,
         () => inner?.offsetHeight ?? 0,
-        block.clientHeight,
+        block.clientHeight
       )
       apply(fitted)
-      setFontSize((current) => (current === fitted ? current : fitted))
+      setFontSize(current => (current === fitted ? current : fitted))
     }
 
     compute()
@@ -174,7 +168,7 @@ export default function App() {
               data-testid="display-verses"
             >
               <div className="display-verses-inner">
-                {visibleVerses.map((verse) => (
+                {visibleVerses.map(verse => (
                   <p className="display-verse" key={verse.verse}>
                     <span className="display-verse-number" aria-hidden="true">
                       {verse.verse}
@@ -198,7 +192,14 @@ export default function App() {
         ) : (
           <div className="display-waiting">
             <div className="display-waiting-icon" aria-hidden="true">
-              <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+              <svg
+                width="64"
+                height="64"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.5"
+              >
                 <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
                 <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
               </svg>

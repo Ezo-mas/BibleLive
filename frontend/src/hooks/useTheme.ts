@@ -46,10 +46,10 @@ function applyTheme(resolved: ResolvedTheme): void {
 
 /**
  * Theme management hook with light/dark/system support
- * 
+ *
  * Persists user preference in localStorage and respects system settings.
  * Updates on system theme change when theme is set to 'system'.
- * 
+ *
  * @returns {Object} Theme state and setter
  * @property {Theme} theme - Current theme setting ('light' | 'dark' | 'system')
  * @property {ResolvedTheme} resolvedTheme - Actual theme applied ('light' | 'dark')
@@ -77,7 +77,7 @@ export function useTheme() {
     if (theme !== 'system') return
 
     const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)')
-    
+
     const handleChange = () => {
       const resolved = getSystemTheme()
       setResolvedTheme(resolved)

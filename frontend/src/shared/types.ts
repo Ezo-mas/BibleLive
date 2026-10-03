@@ -39,16 +39,19 @@ export type DisplayMessage =
 
 /** Messages the server sends to operator clients (ws /ws/operator). */
 export type OperatorMessage =
-  | { type: 'state_snapshot'; data: { 
-      current_display: BibleReference | null
-      pending: BibleReference[]
-      history: BibleReference[]
-      pending_count: number
-      history_count: number
-      display_connections: number
-      operator_connections: number
-      display_settings?: DisplaySettings
-    }}
+  | {
+      type: 'state_snapshot'
+      data: {
+        current_display: BibleReference | null
+        pending: BibleReference[]
+        history: BibleReference[]
+        pending_count: number
+        history_count: number
+        display_connections: number
+        operator_connections: number
+        display_settings?: DisplaySettings
+      }
+    }
   | { type: 'pending_update'; data: { pending: BibleReference[]; count: number } }
   | { type: 'approval_confirmed'; data: { reference: BibleReference } }
   | { type: 'clear_confirmed'; data: Record<string, never> }
@@ -82,11 +85,7 @@ export interface SetDisplayThemeAction {
 }
 
 export type OperatorAction =
-  | ApproveAction
-  | ClearAction
-  | ClearPendingAction
-  | SetVerseLimitAction
-  | SetDisplayThemeAction
+  ApproveAction | ClearAction | ClearPendingAction | SetVerseLimitAction | SetDisplayThemeAction
 
 /** Snapshot of server state returned by GET /api/state. */
 export interface AppStateSnapshot {

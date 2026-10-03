@@ -13,11 +13,7 @@ import {
   writeStoredVerseLimit,
 } from '../shared/verseText'
 import type { DisplayTheme, VerseLimit } from '../shared/verseText'
-import type {
-  BibleReference,
-  OperatorAction,
-  OperatorMessage,
-} from '../shared/types'
+import type { BibleReference, OperatorAction, OperatorMessage } from '../shared/types'
 import {
   Button,
   StatusBadge,
@@ -50,11 +46,13 @@ interface ReferenceCardProps {
 
 function ReferenceCard({ reference, selected = false, onSelect }: ReferenceCardProps) {
   const selectable = onSelect !== undefined
-  
-  const confidenceVariant = 
-    reference.confidence === 'high' ? 'success' :
-    reference.confidence === 'medium' ? 'warning' :
-    'danger'
+
+  const confidenceVariant =
+    reference.confidence === 'high'
+      ? 'success'
+      : reference.confidence === 'medium'
+        ? 'warning'
+        : 'danger'
 
   return (
     <div
@@ -65,7 +63,7 @@ function ReferenceCard({ reference, selected = false, onSelect }: ReferenceCardP
       onClick={onSelect}
       onKeyDown={
         selectable
-          ? (e) => {
+          ? e => {
               if (e.key === 'Enter' || e.key === ' ') {
                 e.preventDefault()
                 onSelect?.()
@@ -79,23 +77,17 @@ function ReferenceCard({ reference, selected = false, onSelect }: ReferenceCardP
           <CheckIcon />
         </div>
       )}
-      
+
       <div className="ref-card-content">
         <div className="ref-card-header">
           <h3 className="ref-card-title">{formatReference(reference)}</h3>
           <div className="ref-card-badges">
-            <StatusBadge variant={confidenceVariant}>
-              {reference.confidence}
-            </StatusBadge>
-            {reference.inferred && (
-              <StatusBadge variant="info">Context</StatusBadge>
-            )}
+            <StatusBadge variant={confidenceVariant}>{reference.confidence}</StatusBadge>
+            {reference.inferred && <StatusBadge variant="info">Context</StatusBadge>}
           </div>
         </div>
-        
-        {reference.text && (
-          <p className="ref-card-text">{reference.text}</p>
-        )}
+
+        {reference.text && <p className="ref-card-text">{reference.text}</p>}
 
         {/* Verse count, so the operator knows what the display will be bounded to.
             `verses` is absent when talking to an older server. */}
@@ -114,7 +106,7 @@ export default function App() {
   })
   const [tokenInput, setTokenInput] = useState('')
   const [authError, setAuthError] = useState(false)
-  
+
   const [pending, setPending] = useState<BibleReference[]>([])
   const [history, setHistory] = useState<BibleReference[]>([])
   const [pendingCount, setPendingCount] = useState(0)
@@ -128,11 +120,11 @@ export default function App() {
   // pushes the value to every projector. localStorage keeps the last choice
   // while the socket reconnects.
   const [verseLimit, setVerseLimit] = useState<VerseLimit>(() =>
-    coerceVerseLimit(readStoredVerseLimit(window.localStorage)),
+    coerceVerseLimit(readStoredVerseLimit(window.localStorage))
   )
   // Display background. Projectors run dark, so that is the default here too.
   const [displayTheme, setDisplayTheme] = useState<DisplayTheme>(() =>
-    coerceDisplayTheme(readStoredDisplayTheme(window.localStorage)),
+    coerceDisplayTheme(readStoredDisplayTheme(window.localStorage))
   )
   const flashTimerRef = useRef<number | undefined>(undefined)
 
@@ -143,10 +135,7 @@ export default function App() {
     flashTimerRef.current = window.setTimeout(() => setFlash(null), FLASH_MS)
   }
 
-  useEffect(
-    () => () => window.clearTimeout(flashTimerRef.current),
-    [],
-  )
+  useEffect(() => () => window.clearTimeout(flashTimerRef.current), [])
 
   const handleMessage = (message: OperatorMessage) => {
     switch (message.type) {
@@ -197,7 +186,7 @@ export default function App() {
     token ? `/ws/operator?token=${encodeURIComponent(token)}` : '/ws/operator',
     handleMessage,
     {
-      onClose: (event) => {
+      onClose: event => {
         // WebSocket close code 1008 = policy violation (auth failure)
         if (event.code === 1008) {
           setAuthError(true)
@@ -205,7 +194,7 @@ export default function App() {
           localStorage.removeItem(TOKEN_STORAGE_KEY)
           setToken(null)
         }
-      }
+      },
     }
   )
 
@@ -252,7 +241,7 @@ export default function App() {
       writeStoredVerseLimit(next, window.localStorage)
       sendAction({ action: 'set_verse_limit', verse_limit: next })
     },
-    [sendAction],
+    [sendAction]
   )
 
   const setDisplayBackground = useCallback(
@@ -261,7 +250,7 @@ export default function App() {
       writeStoredDisplayTheme(next, window.localStorage)
       sendAction({ action: 'set_display_theme', theme: next })
     },
-    [sendAction],
+    [sendAction]
   )
 
   const clearPendingQueue = () => {
@@ -281,7 +270,7 @@ export default function App() {
       switch (e.key) {
         case 'ArrowDown':
           e.preventDefault()
-          setSelectedIndex((prev) => {
+          setSelectedIndex(prev => {
             if (pending.length === 0) return null
             if (prev === null) return 0
             return Math.min(prev + 1, pending.length - 1)
@@ -289,7 +278,7 @@ export default function App() {
           break
         case 'ArrowUp':
           e.preventDefault()
-          setSelectedIndex((prev) => {
+          setSelectedIndex(prev => {
             if (pending.length === 0) return null
             if (prev === null) return 0
             return Math.max(prev - 1, 0)
@@ -317,11 +306,7 @@ export default function App() {
   const canClearPending = pending.length > 0 && status === 'open'
 
   const wsState: ConnectionState =
-    status === 'open'
-      ? 'connected'
-      : status === 'connecting'
-      ? 'connecting'
-      : 'disconnected'
+    status === 'open' ? 'connected' : status === 'connecting' ? 'connecting' : 'disconnected'
 
   // Show token prompt if auth error or no token when needed
   if (authError || (status === 'closed' && !token)) {
@@ -343,7 +328,7 @@ export default function App() {
                 id="token-input"
                 type="password"
                 value={tokenInput}
-                onChange={(e) => setTokenInput(e.target.value)}
+                onChange={e => setTokenInput(e.target.value)}
                 placeholder="Enter your operator token"
                 className="operator-auth-input"
                 autoFocus
@@ -366,7 +351,7 @@ export default function App() {
           <h1 className="operator-title">BibleLive</h1>
           <span className="operator-subtitle">Operator Console</span>
         </div>
-        
+
         <div className="operator-header-right">
           <div className="operator-status-group">
             <ConnectionIndicator state={wsState} />
@@ -378,11 +363,7 @@ export default function App() {
             )}
           </div>
           {token && (
-            <button
-              onClick={handleLogout}
-              className="operator-logout-button"
-              title="Logout"
-            >
+            <button onClick={handleLogout} className="operator-logout-button" title="Logout">
               Logout
             </button>
           )}
@@ -398,7 +379,7 @@ export default function App() {
             <h2 className="operator-section-title">Pending References</h2>
             <span className="operator-section-count">{pendingCount}</span>
           </div>
-          
+
           <div className="operator-section-content">
             {pending.length === 0 ? (
               <EmptyState
@@ -433,13 +414,11 @@ export default function App() {
               role="group"
               aria-label="Verses shown on display"
             >
-              {VERSE_LIMIT_OPTIONS.map((option) => (
+              {VERSE_LIMIT_OPTIONS.map(option => (
                 <button
                   key={option}
                   type="button"
-                  className={`operator-verse-option ${
-                    verseLimit === option ? 'is-active' : ''
-                  }`}
+                  className={`operator-verse-option ${verseLimit === option ? 'is-active' : ''}`}
                   aria-pressed={verseLimit === option}
                   disabled={status !== 'open'}
                   onClick={() => setDisplayVerseLimit(option)}
@@ -449,9 +428,7 @@ export default function App() {
               ))}
               <button
                 type="button"
-                className={`operator-verse-option ${
-                  verseLimit === 'all' ? 'is-active' : ''
-                }`}
+                className={`operator-verse-option ${verseLimit === 'all' ? 'is-active' : ''}`}
                 aria-pressed={verseLimit === 'all'}
                 disabled={status !== 'open'}
                 onClick={() => setDisplayVerseLimit('all')}
@@ -470,13 +447,11 @@ export default function App() {
               role="group"
               aria-label="Display background theme"
             >
-              {DISPLAY_THEME_OPTIONS.map((option) => (
+              {DISPLAY_THEME_OPTIONS.map(option => (
                 <button
                   key={option}
                   type="button"
-                  className={`operator-verse-option ${
-                    displayTheme === option ? 'is-active' : ''
-                  }`}
+                  className={`operator-verse-option ${displayTheme === option ? 'is-active' : ''}`}
                   aria-pressed={displayTheme === option}
                   disabled={status !== 'open'}
                   onClick={() => setDisplayBackground(option)}
@@ -500,7 +475,7 @@ export default function App() {
             >
               Approve and Show
             </Button>
-            
+
             <div className="operator-actions-secondary">
               <Button
                 variant="danger"
@@ -512,7 +487,7 @@ export default function App() {
               >
                 Clear Display
               </Button>
-              
+
               <Button
                 variant="secondary"
                 size="md"
@@ -554,7 +529,7 @@ export default function App() {
               <h2 className="operator-section-title">Recent History</h2>
               <span className="operator-section-count">{historyCount}</span>
             </div>
-            
+
             <div className="operator-section-content">
               {history.length === 0 ? (
                 <EmptyState
@@ -564,7 +539,7 @@ export default function App() {
                 />
               ) : (
                 <div className="ref-card-list">
-                  {history.map((reference) => (
+                  {history.map(reference => (
                     <ReferenceCard key={reference.id} reference={reference} />
                   ))}
                 </div>
@@ -584,4 +559,3 @@ export default function App() {
     </div>
   )
 }
-

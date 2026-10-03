@@ -21,19 +21,17 @@ export function Button({
   children,
   ...props
 }: ButtonProps) {
-  const classes = [
-    'btn',
-    `btn-${variant}`,
-    `btn-${size}`,
-    fullWidth && 'btn-full-width',
-    className,
-  ]
+  const classes = ['btn', `btn-${variant}`, `btn-${size}`, fullWidth && 'btn-full-width', className]
     .filter(Boolean)
     .join(' ')
 
   return (
     <button className={classes} {...props}>
-      {icon && <span className="btn-icon" aria-hidden="true">{icon}</span>}
+      {icon && (
+        <span className="btn-icon" aria-hidden="true">
+          {icon}
+        </span>
+      )}
       <span className="btn-content">{children}</span>
     </button>
   )

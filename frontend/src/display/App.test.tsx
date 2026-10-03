@@ -64,12 +64,9 @@ beforeEach(() => {
 
   // A constructor returning an object replaces `this`, so the test can drive the
   // instance the app actually holds.
-  vi.stubGlobal(
-    'WebSocket',
-    function MockWebSocket() {
-      return createMockSocket()
-    },
-  )
+  vi.stubGlobal('WebSocket', function MockWebSocket() {
+    return createMockSocket()
+  })
 
   // jsdom has no ResizeObserver; the fit effect only needs it to exist.
   vi.stubGlobal(
@@ -78,7 +75,7 @@ beforeEach(() => {
       observe = vi.fn()
       disconnect = vi.fn()
       unobserve = vi.fn()
-    },
+    }
   )
 })
 
@@ -98,9 +95,7 @@ describe('display theme', () => {
 
     push({ type: 'display_settings', data: { verse_limit: 3, theme: 'light' } })
 
-    await waitFor(() =>
-      expect(document.documentElement.getAttribute('data-theme')).toBe('light'),
-    )
+    await waitFor(() => expect(document.documentElement.getAttribute('data-theme')).toBe('light'))
     expect(window.localStorage.getItem(DISPLAY_THEME_STORAGE_KEY)).toBe('light')
   })
 
@@ -112,9 +107,7 @@ describe('display theme', () => {
       data: { verse_limit: 3, theme: 'sepia' as never },
     })
 
-    await waitFor(() =>
-      expect(document.documentElement.getAttribute('data-theme')).toBe('dark'),
-    )
+    await waitFor(() => expect(document.documentElement.getAttribute('data-theme')).toBe('dark'))
   })
 
   it('toggles on T for the operator at the projector', async () => {
@@ -124,16 +117,12 @@ describe('display theme', () => {
     act(() => {
       window.dispatchEvent(new KeyboardEvent('keydown', { key: 't' }))
     })
-    await waitFor(() =>
-      expect(document.documentElement.getAttribute('data-theme')).toBe('light'),
-    )
+    await waitFor(() => expect(document.documentElement.getAttribute('data-theme')).toBe('light'))
 
     act(() => {
       window.dispatchEvent(new KeyboardEvent('keydown', { key: 'T' }))
     })
-    await waitFor(() =>
-      expect(document.documentElement.getAttribute('data-theme')).toBe('dark'),
-    )
+    await waitFor(() => expect(document.documentElement.getAttribute('data-theme')).toBe('dark'))
   })
 })
 

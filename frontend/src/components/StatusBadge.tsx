@@ -10,9 +10,7 @@ export interface StatusBadgeProps {
 }
 
 export function StatusBadge({ variant, children, className = '' }: StatusBadgeProps) {
-  const classes = ['status-badge', `status-badge-${variant}`, className]
-    .filter(Boolean)
-    .join(' ')
+  const classes = ['status-badge', `status-badge-${variant}`, className].filter(Boolean).join(' ')
 
   return <span className={classes}>{children}</span>
 }

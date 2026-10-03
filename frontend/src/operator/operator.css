@@ -96,7 +96,6 @@
   border-color: var(--color-text-secondary);
 }
 
-
 /* Operator Console - Redesigned with Design System */
 
 .operator-app {
@@ -168,7 +167,8 @@
 }
 
 @keyframes pulse {
-  0%, 100% {
+  0%,
+  100% {
     opacity: 1;
   }
   50% {
@@ -575,4 +575,3 @@
     grid-template-columns: repeat(3, 1fr);
   }
 }
-

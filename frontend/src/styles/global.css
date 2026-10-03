@@ -21,7 +21,9 @@ body {
   line-height: var(--leading-normal);
   color: var(--color-text);
   background-color: var(--color-canvas);
-  transition: background-color var(--transition-base), color var(--transition-base);
+  transition:
+    background-color var(--transition-base),
+    color var(--transition-base);
 }
 
 /* Respect reduced motion preferences */
@@ -49,7 +51,12 @@ body {
 }
 
 /* Typography */
-h1, h2, h3, h4, h5, h6 {
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
   font-weight: 600;
   line-height: var(--leading-tight);
   color: var(--color-text);

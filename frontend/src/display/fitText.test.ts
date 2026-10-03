@@ -89,19 +89,24 @@ function makeFitter(available: number, heightPerPx: number) {
     run: (estimate: number) =>
       fitFontSizeByMeasurement(
         estimate,
-        (size) => {
+        size => {
           current = size
           applied.push(size)
         },
         () => current * heightPerPx,
-        available,
+        available
       ),
   }
 }
 
 describe('fitFontSizeByMeasurement', () => {
   it('keeps the estimate when nothing is laid out', () => {
-    const size = fitFontSizeByMeasurement(40, () => {}, () => 0, 0)
+    const size = fitFontSizeByMeasurement(
+      40,
+      () => {},
+      () => 0,
+      0
+    )
     expect(size).toBe(40)
   })
 
@@ -146,11 +151,11 @@ describe('fitFontSizeByMeasurement', () => {
     let current = 0
     const size = fitFontSizeByMeasurement(
       30,
-      (next) => {
+      next => {
         current = next
       },
       () => (current <= 30 ? 200 : 260),
-      240,
+      240
     )
     expect(size).toBe(30)
   })

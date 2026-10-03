@@ -47,12 +47,12 @@ describe('selectVerses', () => {
 
   it('defaults to 3 verses', () => {
     expect(DEFAULT_VERSE_LIMIT).toBe(3)
-    expect(selectVerses(ref({ verses: verses(8) })).map((v) => v.verse)).toEqual([1, 2, 3])
+    expect(selectVerses(ref({ verses: verses(8) })).map(v => v.verse)).toEqual([1, 2, 3])
   })
 
   it('shows 5 verses when requested', () => {
     const shown = selectVerses(ref({ verses: verses(8) }), 5)
-    expect(shown.map((v) => v.verse)).toEqual([1, 2, 3, 4, 5])
+    expect(shown.map(v => v.verse)).toEqual([1, 2, 3, 4, 5])
   })
 
   it('shows every verse for "all"', () => {
@@ -74,7 +74,7 @@ describe('selectVerses', () => {
 
   it('prefers per-verse text over the joined text', () => {
     const shown = selectVerses(ref({ verses: verses(2), text: 'joined' }), 'all')
-    expect(shown.map((v) => v.text)).toEqual(['Verse 1', 'Verse 2'])
+    expect(shown.map(v => v.text)).toEqual(['Verse 1', 'Verse 2'])
   })
 })
 

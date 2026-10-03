@@ -23,7 +23,9 @@ body {
   color: var(--color-text);
   font-family: var(--font-serif);
   text-align: center;
-  transition: background-color var(--transition-slow), color var(--transition-slow);
+  transition:
+    background-color var(--transition-slow),
+    color var(--transition-slow);
 }
 
 /* Measured box the verse font is fitted into. Everything else is positioned
@@ -197,15 +199,15 @@ body {
   .display-fade-out {
     animation: none;
   }
-  
+
   .display-content {
     transition: opacity 0.15s ease;
   }
-  
+
   .display-fade-out {
     opacity: 0;
   }
-  
+
   .display-fade-in {
     opacity: 1;
   }
