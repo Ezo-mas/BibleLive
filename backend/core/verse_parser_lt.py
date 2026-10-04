@@ -31,9 +31,9 @@ from __future__ import annotations
 import re
 import unicodedata
 from functools import lru_cache
-from typing import Union
+from typing import cast
 
-Token = Union[int, str]
+Token = int | str
 
 
 def fold(text: str) -> str:
@@ -408,8 +408,9 @@ def tokenize(text: str) -> list[Token]:
     words: list[Token] = []
     for t in raw:
         if t[0].isdigit():
-            m = re.match(r"\d+", t)
-            words.append(int(m.group()) if m else 0)
+            # t starts with a digit, so the \d+ match always succeeds; cast
+            # keeps the impossible None branch (and a silent 0) out of the path.
+            words.append(int(cast(re.Match[str], re.match(r"\d+", t)).group()))
         else:
             words.append(_NORMALIZE.get(t, t))
     out: list[Token] = []

@@ -30,15 +30,16 @@ from __future__ import annotations
 
 import difflib
 import re
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Callable, Union, cast
+from typing import cast
 
 if __package__:
     from . import verse_parser_lt as _lt
 else:
     import verse_parser_lt as _lt  # type: ignore[no-redef]
 
-Token = Union[int, str]
+Token = int | str
 
 # --------------------------------------------------------------------------
 # Book data: (canonical name, chapter count, name variants as spoken/written)
@@ -240,9 +241,9 @@ def tokenize(text: str) -> list[Token]:
     while i < len(raw):
         t = raw[i]
         if t[0].isdigit():
-            m = re.match(r"\d+", t)
-            # The regex \d+ guarantees a match here
-            out.append(int(m.group()) if m else 0)
+            # t starts with a digit, so the \d+ match always succeeds; cast
+            # keeps the impossible None branch (and a silent 0) out of the path.
+            out.append(int(cast(re.Match[str], re.match(r"\d+", t)).group()))
             i += 1
             continue
         r = _read_number(raw, i) if t.isalpha() else None
@@ -414,8 +415,8 @@ class ReferenceParser:
 
     def _verse_and_range(self, toks: list[Token], k: int) -> tuple[int, int | None, int]:
         """toks[k] is a verse number; optionally followed by 'through 30' / 'and 29'."""
-        v1 = toks[k]
-        assert isinstance(v1, int)  # callers only pass a number token here
+        # Callers only pass a number token here (every call site checks _is_num).
+        v1 = cast(int, toks[k])
         k += 1
         v2: int | None = None
         nxt = toks[k + 1] if k + 1 < len(toks) else None
@@ -480,8 +481,7 @@ class ReferenceParser:
 
         if not self._is_num(toks, k):
             return None
-        chapter = toks[k]
-        assert isinstance(chapter, int)  # just checked it is a number token
+        chapter = cast(int, toks[k])
         k += 1
         kind, kk = self._connector(toks, k)
 
@@ -514,8 +514,7 @@ class ReferenceParser:
             if 1 <= v1 <= MAX_VERSE:
                 return Reference(ctx.book, ctx.chapter, v1, v2, "low", inferred=True, end=end)
         if t in self._chapter_words and self._is_num(toks, i + 1):
-            chapter = toks[i + 1]
-            assert isinstance(chapter, int)  # just checked it is a number token
+            chapter = cast(int, toks[i + 1])
             kind, kk = self._connector(toks, i + 2, allow_bare=False)
             if kind and self._is_num(toks, kk) and 1 <= chapter <= self._chapters[ctx.book]:
                 v1, v2, end = self._verse_and_range(toks, kk)

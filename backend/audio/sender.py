@@ -30,6 +30,8 @@ class ReferenceSender:
 
     def _retry_delay(self, attempt: int) -> float:
         """Exponential backoff with jitter, capped at api_retry_max_delay."""
+        # mypy types min(float, float) as Any (reproduced with a minimal case
+        # against mypy 2.4), so wrap the result to honor the declared return type.
         return float(
             min(
                 self.config.api_retry_base_delay * (2**attempt) + random.uniform(0, 0.1),
