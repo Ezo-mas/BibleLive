@@ -2,7 +2,6 @@
 
 import logging
 import secrets
-from typing import Optional
 
 from fastapi import Header, HTTPException
 
@@ -11,7 +10,7 @@ from ..config import config
 logger = logging.getLogger(__name__)
 
 
-async def verify_operator_token(authorization: Optional[str] = Header(None)) -> None:
+async def verify_operator_token(authorization: str | None = Header(None)) -> None:
     """Verify operator authentication token.
 
     Raises:

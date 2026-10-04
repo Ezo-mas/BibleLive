@@ -8,8 +8,8 @@ For importing Bible data, use: python -m core.import_bible
 import logging
 import re
 import sqlite3
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -61,8 +61,8 @@ class BibleLookup:
         """
         self.db_path = Path(db_path)
         self.readonly = readonly
-        self.conn: Optional[sqlite3.Connection] = None
-        self._validation_cache: dict[tuple[str, int, Optional[int]], bool] = {}
+        self.conn: sqlite3.Connection | None = None
+        self._validation_cache: dict[tuple[str, int, int | None], bool] = {}
         self._connect_database()
 
         # Log database metadata if available
@@ -177,7 +177,7 @@ class BibleLookup:
             logger.error(f"Failed to load KJV from JSON: {e}")
             raise
 
-    def validate_reference(self, book: str, chapter: int, verse: Optional[int] = None) -> bool:
+    def validate_reference(self, book: str, chapter: int, verse: int | None = None) -> bool:
         """
         Validate that a book:chapter[:verse] reference exists in the Bible.
         Returns True if valid, False otherwise.
@@ -234,7 +234,7 @@ class BibleLookup:
         return validate_reference_obj
 
     def get_verse_range(
-        self, book: str, chapter: int, verse_start: int, verse_end: Optional[int] = None
+        self, book: str, chapter: int, verse_start: int, verse_end: int | None = None
     ) -> list[tuple[int, str]]:
         """Get individual verses as ``(verse_number, text)`` pairs.
 
@@ -284,7 +284,7 @@ class BibleLookup:
             return []
 
     def get_verse_text(
-        self, book: str, chapter: int, verse_start: int, verse_end: Optional[int] = None
+        self, book: str, chapter: int, verse_start: int, verse_end: int | None = None
     ) -> str:
         """Get the text for a verse or range of verses.
 

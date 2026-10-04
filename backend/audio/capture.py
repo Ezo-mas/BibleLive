@@ -5,7 +5,6 @@ import subprocess
 import sys
 import threading
 from queue import Empty, Full, Queue
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -17,9 +16,9 @@ class AudioCapture:
         self.sample_rate = sample_rate
         self.audio_queue: Queue[bytes] = Queue(maxsize=queue_maxsize)
         self.is_running = False
-        self.ffmpeg_process: Optional[subprocess.Popen[bytes]] = None
-        self.capture_thread: Optional[threading.Thread] = None
-        self.stderr_thread: Optional[threading.Thread] = None
+        self.ffmpeg_process: subprocess.Popen[bytes] | None = None
+        self.capture_thread: threading.Thread | None = None
+        self.stderr_thread: threading.Thread | None = None
 
         # Carry-over buffer for ffmpeg chunks that don't align with the frame
         # size requested by get_audio_frame(). Without this, any bytes past the
@@ -37,7 +36,7 @@ class AudioCapture:
         """Total audio seconds received from the input device."""
         return self.total_bytes_captured / 2 / self.sample_rate
 
-    def start_capture(self, device_index: Optional[int] = None):
+    def start_capture(self, device_index: int | None = None):
         """Start capturing audio from microphone"""
         self.is_running = True
 
@@ -193,7 +192,7 @@ class AudioCapture:
 
         logger.info("Audio capture stopped")
 
-    def get_audio_frame(self, frame_duration_ms: int = 30) -> Optional[bytes]:
+    def get_audio_frame(self, frame_duration_ms: int = 30) -> bytes | None:
         """Get audio frame of specified duration"""
         # Calculate bytes needed for frame duration
         bytes_per_sample = 2  # 16-bit

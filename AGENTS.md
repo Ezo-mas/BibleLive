@@ -78,7 +78,7 @@ data/              Source JSON files for Bible imports (kjv.json, ltkb.json)
 # Backend (from repo root; Makefile exports PYTHONPATH=backend)
 make install-dev      # pip install -e "./backend[dev,audio]"
 make test             # pytest backend/tests -v
-make lint / format    # ruff check / ruff format (line-length 100, target py39)
+make lint / format    # ruff check / ruff format (line-length 100, target py311)
 make typecheck        # mypy core audio
 make dev              # uvicorn --factory core.server.app:create_app --reload, port 8000
 make check            # lint + format-check + tests in one go

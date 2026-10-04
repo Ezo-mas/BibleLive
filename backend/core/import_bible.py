@@ -15,9 +15,8 @@ import json
 import logging
 import sqlite3
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Optional
 
 from .bible_lookup import clean_verse_text
 
@@ -106,7 +105,7 @@ class BibleImporter:
 
     def __init__(self, db_path: str):
         self.db_path = Path(db_path)
-        self.conn: Optional[sqlite3.Connection] = None
+        self.conn: sqlite3.Connection | None = None
 
     def create_schema(self) -> None:
         """Create database schema with metadata table."""
@@ -203,7 +202,7 @@ class BibleImporter:
         metadata = {
             "translation": translation,
             "source_file": Path(source_file).name,
-            "import_timestamp": datetime.now(timezone.utc).isoformat(),
+            "import_timestamp": datetime.now(UTC).isoformat(),
             "version": version,
         }
 

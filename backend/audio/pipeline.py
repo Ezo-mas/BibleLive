@@ -4,7 +4,6 @@ import logging
 import threading
 import time
 from queue import Empty, Full, Queue
-from typing import Optional
 
 from core.bible_lookup import BibleLookup
 from core.verse_parser import ReferenceParser, StreamingParser
@@ -26,7 +25,7 @@ class BibleLiveAudioProcessor:
         self,
         bible_db_path: str = "bible_data/biblelive.sqlite",
         server_url: str = "http://localhost:8000",
-        config: Optional[AudioPipelineConfig] = None,
+        config: AudioPipelineConfig | None = None,
     ):
         # Configuration
         self.config = config or AudioPipelineConfig()
@@ -66,8 +65,8 @@ class BibleLiveAudioProcessor:
         self._local = threading.local()
 
         # Worker threads
-        self.vad_thread: Optional[threading.Thread] = None
-        self.transcription_thread: Optional[threading.Thread] = None
+        self.vad_thread: threading.Thread | None = None
+        self.transcription_thread: threading.Thread | None = None
 
     def start(self):
         """Start the audio processing pipeline"""

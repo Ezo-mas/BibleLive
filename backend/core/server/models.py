@@ -1,8 +1,8 @@
 """Pydantic models for API and WebSocket messages."""
 
 import uuid
-from datetime import datetime, timezone
-from typing import Literal, Optional, Union
+from datetime import UTC, datetime
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -20,8 +20,8 @@ class BibleReference(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     book: str
     chapter: int
-    verse_start: Optional[int] = None
-    verse_end: Optional[int] = None
+    verse_start: int | None = None
+    verse_end: int | None = None
     confidence: Literal["high", "medium", "low"]
     inferred: bool = False
     text: str = ""
@@ -29,7 +29,7 @@ class BibleReference(BaseModel):
         default_factory=list,
         description="Individual verses with numbers, for bounded display",
     )
-    created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    created_at: str = Field(default_factory=lambda: datetime.now(UTC).isoformat())
 
 
 class ReferenceSubmitRequest(BaseModel):
@@ -37,8 +37,8 @@ class ReferenceSubmitRequest(BaseModel):
 
     book: str = Field(..., min_length=1, description="Bible book name")
     chapter: int = Field(..., gt=0, description="Chapter number")
-    verse_start: Optional[int] = Field(None, gt=0, description="Starting verse number")
-    verse_end: Optional[int] = Field(None, gt=0, description="Ending verse number")
+    verse_start: int | None = Field(None, gt=0, description="Starting verse number")
+    verse_end: int | None = Field(None, gt=0, description="Ending verse number")
     confidence: Literal["high", "medium", "low"] = Field(
         ..., description="Detection confidence level"
     )
@@ -89,7 +89,7 @@ class DisplaySettings(BaseModel):
     pushed to every connected display over the WebSocket.
     """
 
-    verse_limit: Union[int, Literal["all"]] = Field(
+    verse_limit: int | Literal["all"] = Field(
         default=3,
         description="Verses shown at once; 'all' renders the full passage",
     )
@@ -102,7 +102,7 @@ class DisplaySettings(BaseModel):
 class StateResponse(BaseModel):
     """Response containing complete application state."""
 
-    current_display: Optional[BibleReference]
+    current_display: BibleReference | None
     pending: list[BibleReference]
     history: list[BibleReference]
     pending_count: int
@@ -141,7 +141,7 @@ class OperatorSetVerseLimitAction(BaseModel):
     """Action to change how many verses the display shows at once."""
 
     action: Literal["set_verse_limit"]
-    verse_limit: Union[int, Literal["all"]]
+    verse_limit: int | Literal["all"]
 
 
 class OperatorSetDisplayThemeAction(BaseModel):

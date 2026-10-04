@@ -1,13 +1,13 @@
 """Voice activity detection using WebRTC VAD."""
 
 import logging
-from typing import Any, Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
 # webrtcvad is imported lazily: it pulls in pkg_resources (setuptools) at import
 # time, which is noisy and slow, and the VAD object is only needed at runtime.
-_webrtcvad: Optional[Any] = None
+_webrtcvad: Any = None
 
 
 def _load_webrtcvad() -> Any:

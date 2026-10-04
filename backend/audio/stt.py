@@ -3,7 +3,6 @@
 import logging
 import re
 import time
-from typing import Optional
 
 import numpy as np
 from faster_whisper import WhisperModel
@@ -63,7 +62,7 @@ class SpeechToText:
         model_size: str = "small",
         device: str = "cuda",
         language: str = "en",
-        compute_type: Optional[str] = None,
+        compute_type: str | None = None,
     ):
         if language not in SUPPORTED_LANGUAGES:
             raise ValueError(
@@ -109,7 +108,7 @@ class SpeechToText:
         audio_np = np.frombuffer(frame, dtype=np.int16).astype(np.float32) / 32768.0
         self.audio_buffer.extend(audio_np)
 
-    def transcribe_buffer(self) -> tuple[Optional[str], float]:
+    def transcribe_buffer(self) -> tuple[str | None, float]:
         """
         Transcribe accumulated audio buffer and clear it.
 
@@ -175,7 +174,7 @@ class SpeechToText:
             logger.error(f"Unexpected transcription error: {e}", exc_info=True)
             return None, duration_ms
 
-    def _collapse_repetition(self, text: str) -> tuple[str, Optional[str]]:
+    def _collapse_repetition(self, text: str) -> tuple[str, str | None]:
         """Collapse a degenerate Whisper repetition loop.
 
         Whisper sometimes latches onto a phrase (often one seeded by the initial
@@ -192,7 +191,7 @@ class SpeechToText:
 
         # Try each block size, and each start position, looking for a block that
         # repeats back to back often enough to be a decoding artifact.
-        best: Optional[tuple[int, int, int]] = None  # (start, block_len, count)
+        best: tuple[int, int, int] | None = None  # (start, block_len, count)
         max_block = max(MIN_REPEAT_BLOCK_WORDS, len(words) // MIN_REPEAT_COUNT)
 
         for block_len in range(MIN_REPEAT_BLOCK_WORDS, max_block + 1):

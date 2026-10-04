@@ -1,7 +1,6 @@
 """Configuration for the audio pipeline."""
 
 from dataclasses import dataclass
-from typing import Optional
 
 
 @dataclass
@@ -27,6 +26,6 @@ class AudioPipelineConfig:
     # Speech-to-text settings
     whisper_model: str = "small"
     whisper_device: str = "cuda"
-    whisper_compute_type: Optional[str] = None  # None = int8 (safe on all devices)
+    whisper_compute_type: str | None = None  # None = int8 (safe on all devices)
     language: str = "en"  # Spoken language: "en" or "lt"
     vad_aggressiveness: int = 2  # 0=least, 3=most aggressive

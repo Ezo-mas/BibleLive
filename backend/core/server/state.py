@@ -1,7 +1,6 @@
 """Application state management."""
 
 import logging
-from typing import Optional, Union
 
 from fastapi import WebSocket
 
@@ -14,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 # Verse limits an operator may choose. Kept in step with the operator console's
 # options; anything else is rejected so a typo cannot widen or empty the display.
-ALLOWED_VERSE_LIMITS: tuple[Union[int, str], ...] = (3, 5, 10, "all")
+ALLOWED_VERSE_LIMITS: tuple[int | str, ...] = (3, 5, 10, "all")
 
 # Background themes a display may use. Kept in step with the operator console's
 # options; anything else is rejected so a bad value cannot blank the projector.
@@ -26,7 +25,7 @@ class AppState:
 
     def __init__(self, bible_lookup: BibleLookup):
         """Initialize the application state with empty references and connection manager."""
-        self.current_display: Optional[BibleReference] = None
+        self.current_display: BibleReference | None = None
         self.pending_references: list[BibleReference] = []
         self.reference_history: list[BibleReference] = []
         self.display_settings = DisplaySettings()
@@ -55,7 +54,7 @@ class AppState:
         """Notify displays to clear."""
         await self.connection_manager.send_to_display({"type": "clear", "data": {}})
 
-    async def send_display_settings(self, websocket: Optional[WebSocket] = None) -> None:
+    async def send_display_settings(self, websocket: WebSocket | None = None) -> None:
         """Send the current display settings to displays (or one specific client).
 
         Displays are presentation-only: settings are chosen in the operator
@@ -70,7 +69,7 @@ class AppState:
         else:
             await self.connection_manager.send_to_display(message)
 
-    async def set_verse_limit(self, verse_limit: Union[int, str]) -> bool:
+    async def set_verse_limit(self, verse_limit: int | str) -> bool:
         """Set how many verses displays show at once. Returns False if invalid."""
         if verse_limit not in ALLOWED_VERSE_LIMITS:
             return False
@@ -90,7 +89,7 @@ class AppState:
         logger.info(f"Display theme set to {theme}")
         return True
 
-    async def send_operator_state_snapshot(self, websocket: Optional[WebSocket] = None) -> None:
+    async def send_operator_state_snapshot(self, websocket: WebSocket | None = None) -> None:
         """Send complete state snapshot to a specific operator or all operators."""
         snapshot = {
             "type": "state_snapshot",
@@ -163,7 +162,7 @@ class AppState:
         # Notify operators of new pending reference
         await self._send_pending_update()
 
-    async def approve_pending(self, reference_id: str) -> Optional[BibleReference]:
+    async def approve_pending(self, reference_id: str) -> BibleReference | None:
         """Approve and display a pending reference by ID"""
         # Find the reference by ID
         ref_index = None

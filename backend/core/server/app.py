@@ -5,7 +5,6 @@ import json
 import logging
 import secrets
 from contextlib import asynccontextmanager
-from typing import Optional
 
 import uvicorn
 from fastapi import Depends, FastAPI, HTTPException, WebSocket, WebSocketDisconnect
@@ -33,7 +32,7 @@ from .state import AppState
 logger = logging.getLogger(__name__)
 
 
-def create_bible_lookup(db_path: Optional[str] = None) -> BibleLookup:
+def create_bible_lookup(db_path: str | None = None) -> BibleLookup:
     """Create and initialize a BibleLookup instance.
 
     Args:
@@ -65,9 +64,9 @@ def create_bible_lookup(db_path: Optional[str] = None) -> BibleLookup:
 
 
 def create_app(
-    bible_lookup: Optional[BibleLookup] = None,
-    parser: Optional[ReferenceParser] = None,
-    streaming_parser: Optional[StreamingParser] = None,
+    bible_lookup: BibleLookup | None = None,
+    parser: ReferenceParser | None = None,
+    streaming_parser: StreamingParser | None = None,
 ) -> FastAPI:
     """Create and configure the FastAPI application.
 
@@ -190,7 +189,7 @@ def create_app(
 
     @app.websocket("/ws/{client_type}")
     async def websocket_endpoint(
-        websocket: WebSocket, client_type: str, token: Optional[str] = None
+        websocket: WebSocket, client_type: str, token: str | None = None
     ) -> None:
         """WebSocket endpoint for display and operator clients.
 

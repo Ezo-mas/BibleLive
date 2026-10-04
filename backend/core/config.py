@@ -11,7 +11,6 @@ after setting environment variables.
 
 import logging
 from pathlib import Path
-from typing import Optional
 
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -63,7 +62,7 @@ class Config(BaseSettings):
     # Authentication configuration
     # Simple token-based auth for operator access.
     # Set BIBLELIVE_OPERATOR_TOKEN in production to protect operator endpoints.
-    OPERATOR_TOKEN: Optional[str] = None
+    OPERATOR_TOKEN: str | None = None
     # If True, operator endpoints require authentication
     REQUIRE_AUTH: bool = False
 
