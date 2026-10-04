@@ -31,7 +31,7 @@ from __future__ import annotations
 import difflib
 import re
 from dataclasses import dataclass, field
-from typing import Callable, Union
+from typing import Callable, Union, cast
 
 if __package__:
     from . import verse_parser_lt as _lt
@@ -240,7 +240,9 @@ def tokenize(text: str) -> list[Token]:
     while i < len(raw):
         t = raw[i]
         if t[0].isdigit():
-            out.append(int(re.match(r"\d+", t).group()))
+            m = re.match(r"\d+", t)
+            # The regex \d+ guarantees a match here
+            out.append(int(m.group()) if m else 0)
             i += 1
             continue
         r = _read_number(raw, i) if t.isalpha() else None
@@ -301,6 +303,23 @@ class Context:
 # Parser
 # --------------------------------------------------------------------------
 class ReferenceParser:
+    # Instance variable type annotations
+    _chapters: dict[str, int]
+    _index: dict[tuple[int, tuple[str, ...]], str]
+    _max_name_tokens: int
+    _fuzzy_pool: dict[int, list[str]]
+    _tokenize_fn: Callable[[str], list[Token]]
+    _postprocess_fn: Callable[[list[Token]], list[Token]] | None
+    _prefixes: dict[Token, int]
+    _chapter_words: frozenset[str] | set[str]
+    _verse_words: frozenset[str] | set[str]
+    _range_words: frozenset[str] | set[str]
+    _and_words: frozenset[str] | set[str]
+    _fillers: frozenset[str] | set[str]
+    language: str
+    fuzzy: bool
+    validator: Callable[[Reference], bool] | None
+
     def __init__(
         self,
         fuzzy: bool = True,
@@ -374,18 +393,21 @@ class ReferenceParser:
             for length in range(min(self._max_name_tokens, n - j), 0, -1):
                 name = tuple(toks[j : j + length])
                 if all(isinstance(x, str) for x in name):
-                    canon = self._index.get((prefix, name))
+                    canon = self._index.get((prefix, cast(tuple[str, ...], name)))
                     if canon:
                         return canon, (j + length) - i, False
         if self.fuzzy:
             for prefix, j in starts:
-                if j >= n or not isinstance(toks[j], str) or len(toks[j]) < 7:
+                if j >= n:
+                    continue
+                word = toks[j]
+                if not isinstance(word, str) or len(word) < 7:
                     continue
                 if not (
                     self._is_num(toks, j + 1) or (j + 1 < n and toks[j + 1] in self._chapter_words)
                 ):
                     continue
-                hit = difflib.get_close_matches(toks[j], self._fuzzy_pool[prefix], n=1, cutoff=0.85)
+                hit = difflib.get_close_matches(word, self._fuzzy_pool[prefix], n=1, cutoff=0.85)
                 if hit:
                     return self._index[(prefix, (hit[0],))], (j + 1) - i, True
         return None
@@ -393,19 +415,19 @@ class ReferenceParser:
     def _verse_and_range(self, toks: list[Token], k: int) -> tuple[int, int | None, int]:
         """toks[k] is a verse number; optionally followed by 'through 30' / 'and 29'."""
         v1 = toks[k]
+        assert isinstance(v1, int)  # callers only pass a number token here
         k += 1
-        v2 = None
+        v2: int | None = None
+        nxt = toks[k + 1] if k + 1 < len(toks) else None
         if (
-            self._is_num(toks, k + 1)
+            isinstance(nxt, int)
             and not self._book_at(toks, k + 1)
             and (
-                toks[k] in self._range_words
-                and toks[k + 1] > v1
-                or toks[k] in self._and_words
-                and toks[k + 1] == v1 + 1
+                (toks[k] in self._range_words and nxt > v1)
+                or (toks[k] in self._and_words and nxt == v1 + 1)
             )
         ):
-            v2, k = toks[k + 1], k + 2
+            v2, k = nxt, k + 2
         return v1, v2, k
 
     def _connector(
@@ -459,14 +481,17 @@ class ReferenceParser:
         if not self._is_num(toks, k):
             return None
         chapter = toks[k]
+        assert isinstance(chapter, int)  # just checked it is a number token
         k += 1
         kind, kk = self._connector(toks, k)
 
         # "Psalm one nineteen" means Psalm 119 (Psalm 1 only has 6 verses)
-        if canon == "Psalms" and kind == "bare" and chapter == 1 and 7 <= toks[kk] <= 50:
-            chapter = 100 + toks[kk]
-            k = kk + 1
-            kind, kk = self._connector(toks, k, allow_bare=False)
+        if canon == "Psalms" and kind == "bare" and chapter == 1:
+            second = toks[kk] if kk < n else None
+            if isinstance(second, int) and 7 <= second <= 50:
+                chapter = 100 + second
+                k = kk + 1
+                kind, kk = self._connector(toks, k, allow_bare=False)
 
         if not 1 <= chapter <= nch:
             return None
@@ -490,6 +515,7 @@ class ReferenceParser:
                 return Reference(ctx.book, ctx.chapter, v1, v2, "low", inferred=True, end=end)
         if t in self._chapter_words and self._is_num(toks, i + 1):
             chapter = toks[i + 1]
+            assert isinstance(chapter, int)  # just checked it is a number token
             kind, kk = self._connector(toks, i + 2, allow_bare=False)
             if kind and self._is_num(toks, kk) and 1 <= chapter <= self._chapters[ctx.book]:
                 v1, v2, end = self._verse_and_range(toks, kk)

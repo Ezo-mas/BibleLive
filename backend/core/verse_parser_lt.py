@@ -408,7 +408,8 @@ def tokenize(text: str) -> list[Token]:
     words: list[Token] = []
     for t in raw:
         if t[0].isdigit():
-            words.append(int(re.match(r"\d+", t).group()))
+            m = re.match(r"\d+", t)
+            words.append(int(m.group()) if m else 0)
         else:
             words.append(_NORMALIZE.get(t, t))
     out: list[Token] = []
