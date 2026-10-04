@@ -50,7 +50,9 @@ class BibleLookup:
     It provides read-only access to Bible text for validation and retrieval.
     """
 
-    def __init__(self, db_path: str = "bible_data/bible.sqlite", readonly: bool = False) -> None:
+    def __init__(
+        self, db_path: str = "bible_data/biblelive.sqlite", readonly: bool = False
+    ) -> None:
         """Initialize the BibleLookup instance.
 
         Args:
@@ -59,8 +61,8 @@ class BibleLookup:
         """
         self.db_path = Path(db_path)
         self.readonly = readonly
-        self.conn = None
-        self._validation_cache = {}
+        self.conn: Optional[sqlite3.Connection] = None
+        self._validation_cache: dict[tuple[str, int, Optional[int]], bool] = {}
         self._connect_database()
 
         # Log database metadata if available
@@ -163,7 +165,7 @@ class BibleLookup:
         if __package__:
             from .import_bible import BibleImporter
         else:
-            from import_bible import BibleImporter
+            from import_bible import BibleImporter  # type: ignore[no-redef]
 
         importer = BibleImporter(str(self.db_path))
         try:

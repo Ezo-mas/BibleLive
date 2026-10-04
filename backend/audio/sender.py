@@ -30,9 +30,11 @@ class ReferenceSender:
 
     def _retry_delay(self, attempt: int) -> float:
         """Exponential backoff with jitter, capped at api_retry_max_delay."""
-        return min(
-            self.config.api_retry_base_delay * (2**attempt) + random.uniform(0, 0.1),
-            self.config.api_retry_max_delay,
+        return float(
+            min(
+                self.config.api_retry_base_delay * (2**attempt) + random.uniform(0, 0.1),
+                self.config.api_retry_max_delay,
+            )
         )
 
     def _get_reference_hash(self, ref) -> str:

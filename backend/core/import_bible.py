@@ -173,6 +173,8 @@ class BibleImporter:
         EXISTS`` from silently keeping an incompatible definition, and guarantees
         a re-import contains only rows from the new source.
         """
+        if self.conn is None:
+            raise RuntimeError("Database not connected")
         cursor = self.conn.cursor()
         cursor.execute("DROP TABLE IF EXISTS verses")
         cursor.execute("DROP TABLE IF EXISTS books")
