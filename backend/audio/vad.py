@@ -32,7 +32,7 @@ class VoiceActivityDetector:
     def is_speech(self, frame: bytes) -> bool:
         """Check if audio frame contains speech"""
         try:
-            return self.vad.is_speech(frame, self.sample_rate)
+            return bool(self.vad.is_speech(frame, self.sample_rate))
         except _load_webrtcvad().Error as e:
             logger.debug(f"VAD error (invalid frame): {e}")
             return False

@@ -44,11 +44,11 @@ class BibleLiveAudioProcessor:
         )
 
         # VAD queue for speech segments (bounded)
-        self.vad_queue = Queue(maxsize=self.config.vad_queue_maxsize)
+        self.vad_queue: Queue[list[bytes]] = Queue(maxsize=self.config.vad_queue_maxsize)
 
         # State tracking
         self.is_running = False
-        self.speech_frames = []
+        self.speech_frames: list[bytes] = []
         self.silent_frames = 0
         self.frame_duration_ms = 30  # WebRTC VAD frame size (10/20/30ms)
         self._frame_duration_s = self.frame_duration_ms / 1000
@@ -66,8 +66,8 @@ class BibleLiveAudioProcessor:
         self._local = threading.local()
 
         # Worker threads
-        self.vad_thread = None
-        self.transcription_thread = None
+        self.vad_thread: Optional[threading.Thread] = None
+        self.transcription_thread: Optional[threading.Thread] = None
 
     def start(self):
         """Start the audio processing pipeline"""
@@ -78,14 +78,16 @@ class BibleLiveAudioProcessor:
         self.audio_capture.start_capture()
 
         # Start VAD processing thread
-        self.vad_thread = threading.Thread(target=self._vad_loop, daemon=True, name="vad-processor")
-        self.vad_thread.start()
+        vad_thread = threading.Thread(target=self._vad_loop, daemon=True, name="vad-processor")
+        self.vad_thread = vad_thread
+        vad_thread.start()
 
         # Start transcription thread
-        self.transcription_thread = threading.Thread(
+        transcription_thread = threading.Thread(
             target=self._transcription_loop, daemon=True, name="transcription-processor"
         )
-        self.transcription_thread.start()
+        self.transcription_thread = transcription_thread
+        transcription_thread.start()
 
         logger.info("Audio pipeline started. Listening for Bible references...")
 

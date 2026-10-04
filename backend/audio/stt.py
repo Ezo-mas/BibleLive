@@ -100,7 +100,7 @@ class SpeechToText:
             raise
 
         # Audio buffer for accumulating speech
-        self.audio_buffer = []
+        self.audio_buffer: list[float] = []
         self.sample_rate = 16000
 
     def add_audio_frame(self, frame: bytes):
@@ -212,8 +212,8 @@ class SpeechToText:
 
         start, block_len, count = best
         collapsed = words[: start + block_len]  # keep one occurrence of the block
-        block = " ".join(words[start : start + block_len])
-        return " ".join(collapsed), f"'{block}' repeated {count} times, trimmed to 1"
+        block_text = " ".join(words[start : start + block_len])
+        return " ".join(collapsed), f"'{block_text}' repeated {count} times, trimmed to 1"
 
     def _fix_common_transcription_errors(self, text: str) -> str:
         """Fix common transcription errors in Bible references"""

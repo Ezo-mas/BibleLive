@@ -15,11 +15,11 @@ class AudioCapture:
 
     def __init__(self, sample_rate: int = 16000, queue_maxsize: int = 1000):
         self.sample_rate = sample_rate
-        self.audio_queue = Queue(maxsize=queue_maxsize)
+        self.audio_queue: Queue[bytes] = Queue(maxsize=queue_maxsize)
         self.is_running = False
-        self.ffmpeg_process = None
-        self.capture_thread = None
-        self.stderr_thread = None
+        self.ffmpeg_process: Optional[subprocess.Popen[bytes]] = None
+        self.capture_thread: Optional[threading.Thread] = None
+        self.stderr_thread: Optional[threading.Thread] = None
 
         # Carry-over buffer for ffmpeg chunks that don't align with the frame
         # size requested by get_audio_frame(). Without this, any bytes past the
@@ -75,16 +75,18 @@ class AudioCapture:
             raise RuntimeError(f"Failed to start ffmpeg: {e}")
 
         # Start thread to consume stderr (prevents blocking)
-        self.stderr_thread = threading.Thread(
+        stderr_thread = threading.Thread(
             target=self._consume_stderr, daemon=True, name="ffmpeg-stderr"
         )
-        self.stderr_thread.start()
+        self.stderr_thread = stderr_thread
+        stderr_thread.start()
 
         # Start thread to read audio data
-        self.capture_thread = threading.Thread(
+        capture_thread = threading.Thread(
             target=self._read_audio_data, daemon=True, name="audio-capture"
         )
-        self.capture_thread.start()
+        self.capture_thread = capture_thread
+        capture_thread.start()
 
     def _consume_stderr(self):
         """Consume ffmpeg stderr to prevent pipe from filling and blocking."""
@@ -111,8 +113,11 @@ class AudioCapture:
 
         try:
             while self.is_running and self.ffmpeg_process:
+                proc = self.ffmpeg_process
+                if proc is None or proc.stdout is None:
+                    break
                 try:
-                    raw_data = self.ffmpeg_process.stdout.read(chunk_size)
+                    raw_data = proc.stdout.read(chunk_size)
                     if not raw_data:
                         logger.info("ffmpeg stdout closed, stopping audio capture")
                         break
