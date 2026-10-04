@@ -90,11 +90,11 @@ class DisplaySettings(BaseModel):
     """
 
     verse_limit: Union[int, Literal["all"]] = Field(
-        3,
+        default=3,
         description="Verses shown at once; 'all' renders the full passage",
     )
     theme: Literal["dark", "light"] = Field(
-        "dark",
+        default="dark",
         description="Projector background theme; dark avoids washing out the panel",
     )
 

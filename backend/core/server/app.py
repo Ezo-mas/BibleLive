@@ -33,7 +33,7 @@ from .state import AppState
 logger = logging.getLogger(__name__)
 
 
-def create_bible_lookup(db_path: str = None) -> BibleLookup:
+def create_bible_lookup(db_path: Optional[str] = None) -> BibleLookup:
     """Create and initialize a BibleLookup instance.
 
     Args:
@@ -601,7 +601,7 @@ def create_app(
 
 def main() -> None:
     """Entry point for running the server."""
-    config.validate()
+    config.validate_config()
     logger.info("Starting BibleLive Display System...")
     logger.info(config.summary())
     logger.info(f"Display page:  http://{config.HOST}:{config.PORT}/display")

@@ -111,7 +111,7 @@ class Config(BaseSettings):
         db_path = Path(self.DB_PATH)
         return db_path if db_path.is_absolute() else PROJECT_ROOT / db_path
 
-    def validate(self) -> None:
+    def validate_config(self) -> None:
         """Validate configuration and log warnings for production concerns."""
         # Check if reload is enabled
         if self.RELOAD:
