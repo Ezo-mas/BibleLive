@@ -71,7 +71,13 @@ export default function App() {
     }
   }
 
-  const { status: wsStatus } = useWebSocket<DisplayMessage>('/ws/display', handleMessage)
+  // The display must outlive server restarts and network blips: a projector
+  // that goes dark mid-service cannot be recovered without manual refresh, so
+  // keep retrying indefinitely (the operator console keeps the finite budget
+  // so auth failures can surface the token prompt).
+  const { status: wsStatus } = useWebSocket<DisplayMessage>('/ws/display', handleMessage, {
+    maxReconnectAttempts: Infinity,
+  })
 
   // Reflect connection changes in the status line. A reference that is
   // already on screen keeps the status line empty across reconnects.
