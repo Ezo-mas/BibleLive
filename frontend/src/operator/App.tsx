@@ -159,6 +159,11 @@ export default function App() {
         setSelectedIndex(null)
         break
       case 'approval_confirmed':
+        // The server pushes the approved reference; fold it into history and the
+        // counters so the sidebar is not stale until the next snapshot.
+        setHistory(prev => [message.data.reference, ...prev])
+        setHistoryCount(count => count + 1)
+        setShownCount(count => count + 1)
         setDisplayHasContent(true)
         pulse('approve')
         break
