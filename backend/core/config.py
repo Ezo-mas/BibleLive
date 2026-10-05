@@ -54,7 +54,7 @@ class Config(BaseSettings):
 
     # Database configuration
     DB_PATH: str = "bible_data/biblelive.sqlite"
-    DB_READONLY: bool = False
+    DB_READONLY: bool = True
 
     # Bible data
     KJV_JSON_PATH: str = "data/kjv2.json"
