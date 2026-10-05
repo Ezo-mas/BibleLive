@@ -35,15 +35,15 @@ class BibleReference(BaseModel):
 class ReferenceSubmitRequest(BaseModel):
     """Request body for submitting a new reference to the pending queue."""
 
-    book: str = Field(..., min_length=1, description="Bible book name")
-    chapter: int = Field(..., gt=0, description="Chapter number")
+    book: str = Field(..., min_length=1, max_length=100, description="Bible book name")
+    chapter: int = Field(..., gt=0, le=200, description="Chapter number")
     verse_start: int | None = Field(None, gt=0, description="Starting verse number")
     verse_end: int | None = Field(None, gt=0, description="Ending verse number")
     confidence: Literal["high", "medium", "low"] = Field(
         ..., description="Detection confidence level"
     )
     inferred: bool = Field(False, description="Whether context was inferred")
-    text: str = Field("", description="Optional verse text")
+    text: str = Field("", max_length=1000, description="Optional verse text")
 
 
 class ReferenceSubmitResponse(BaseModel):

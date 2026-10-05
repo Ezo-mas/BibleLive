@@ -121,6 +121,41 @@ def test_websocket_handles_unknown_actions(client):
         assert "unknown" in msg["data"]["message"].lower()
 
 
+def test_reference_submit_rejects_oversized_payloads(client):
+    """P2-1: oversized book/text/chapter payloads are rejected before queueing.
+
+    ``/api/reference`` is unauthenticated, so a LAN client must not be able to
+    push multi-MB fields into the pending queue.
+    """
+    base = {"book": "John", "chapter": 3, "verse_start": 16, "confidence": "high"}
+
+    # book over 100 chars
+    assert client.post("/api/reference", json={**base, "book": "A" * 101}).status_code == 422
+    # text over 1000 chars
+    assert client.post("/api/reference", json={**base, "text": "x" * 1001}).status_code == 422
+    # chapter over 200
+    assert client.post("/api/reference", json={**base, "chapter": 201}).status_code == 422
+
+    # Nothing rejected above was queued.
+    assert client.get("/api/state").json()["pending"] == []
+
+
+def test_reference_submit_accepts_values_at_the_limits(client):
+    """P2-1: inputs exactly at the configured limits are still accepted."""
+    response = client.post(
+        "/api/reference",
+        json={
+            "book": "A" * 100,
+            "chapter": 200,
+            "verse_start": 1,
+            "confidence": "high",
+            "text": "x" * 1000,
+        },
+    )
+    assert response.status_code == 201
+    assert "reference_id" in response.json()
+
+
 def test_api_response_models(client):
     """Test that API responses match defined models"""
     # Submit reference
