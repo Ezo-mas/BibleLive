@@ -97,3 +97,13 @@ def test_collapse_repetition_handles_tight_loop():
     text, loop = _stt()._collapse_repetition("the " * 10)
     assert text == "the the"  # exactly one block retained
     assert loop is not None
+
+
+def test_fix_common_transcription_errors_recognizes_timothy():
+    """Regression: the regex typo 'timon' left both Timothy epistles uncorrected."""
+    stt = _stt()
+
+    assert stt._fix_common_transcription_errors("1 timothy 1 1") == "1 timothy 1:1"
+    assert stt._fix_common_transcription_errors("2 timothy 1 7") == "2 timothy 1:7"
+    # A merged transcription must no longer be passed through untouched.
+    assert stt._fix_common_transcription_errors("1timothy312") != "1timothy312"
