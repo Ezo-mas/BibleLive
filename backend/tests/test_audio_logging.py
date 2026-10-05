@@ -6,7 +6,8 @@ import pytest
 
 from audio.capture import AudioCapture
 from audio.logging_config import configure_logging, resolve_log_level
-from audio.stt import SpeechToText
+from audio.stt import _REFERENCE_CORRECTIONS, SpeechToText
+from core.books import CANONICAL_BOOKS
 
 # Requires the optional audio extras (faster-whisper, webrtcvad, numpy).
 pytestmark = pytest.mark.audio
@@ -107,3 +108,15 @@ def test_fix_common_transcription_errors_recognizes_timothy():
     assert stt._fix_common_transcription_errors("2 timothy 1 7") == "2 timothy 1:7"
     # A merged transcription must no longer be passed through untouched.
     assert stt._fix_common_transcription_errors("1timothy312") != "1timothy312"
+
+
+def test_reference_corrections_cover_every_canonical_book():
+    """P1-3: the STT correction regex is generated from the shared canon.
+
+    If a book is added or renamed, this fails until the patterns pick it up —
+    catching the drift that produced 'timon' instead of 'timothy'.
+    """
+    for pattern in _REFERENCE_CORRECTIONS:
+        for book in CANONICAL_BOOKS:
+            name_pattern = r"\s?".join(book.name.lower().split())
+            assert name_pattern in pattern, f"{book.name!r} missing from a correction pattern"

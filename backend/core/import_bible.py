@@ -19,85 +19,16 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from .bible_lookup import clean_verse_text
+from .books import CANONICAL_BOOKS
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
 
 # Canonical 66-book order; index 1-39 is the Old Testament, 40-66 the New.
-BOOK_ORDER = {
-    name: index
-    for index, name in enumerate(
-        [
-            "Genesis",
-            "Exodus",
-            "Leviticus",
-            "Numbers",
-            "Deuteronomy",
-            "Joshua",
-            "Judges",
-            "Ruth",
-            "1 Samuel",
-            "2 Samuel",
-            "1 Kings",
-            "2 Kings",
-            "1 Chronicles",
-            "2 Chronicles",
-            "Ezra",
-            "Nehemiah",
-            "Esther",
-            "Job",
-            "Psalms",
-            "Proverbs",
-            "Ecclesiastes",
-            "Song of Solomon",
-            "Isaiah",
-            "Jeremiah",
-            "Lamentations",
-            "Ezekiel",
-            "Daniel",
-            "Hosea",
-            "Joel",
-            "Amos",
-            "Obadiah",
-            "Jonah",
-            "Micah",
-            "Nahum",
-            "Habakkuk",
-            "Zephaniah",
-            "Haggai",
-            "Zechariah",
-            "Malachi",
-            "Matthew",
-            "Mark",
-            "Luke",
-            "John",
-            "Acts",
-            "Romans",
-            "1 Corinthians",
-            "2 Corinthians",
-            "Galatians",
-            "Ephesians",
-            "Philippians",
-            "Colossians",
-            "1 Thessalonians",
-            "2 Thessalonians",
-            "1 Timothy",
-            "2 Timothy",
-            "Titus",
-            "Philemon",
-            "Hebrews",
-            "James",
-            "1 Peter",
-            "2 Peter",
-            "1 John",
-            "2 John",
-            "3 John",
-            "Jude",
-            "Revelation",
-        ],
-        start=1,
-    )
-}
+# Both maps are derived from the shared canon so they cannot drift from the
+# parser (see core/books.py).
+BOOK_ORDER = {book.name: book.order for book in CANONICAL_BOOKS}
+ABBREV_TO_NAME = {book.abbrev: book.name for book in CANONICAL_BOOKS}
 
 
 class BibleImporter:
@@ -276,76 +207,6 @@ class BibleImporter:
                 for abbrev, chapters in data.items()
             }
 
-        # Mapping from KJV JSON abbreviations to full book names
-        abbrev_to_name = {
-            "gn": "Genesis",
-            "ex": "Exodus",
-            "lv": "Leviticus",
-            "nm": "Numbers",
-            "dt": "Deuteronomy",
-            "js": "Joshua",
-            "jd": "Judges",
-            "rt": "Ruth",
-            "1sm": "1 Samuel",
-            "2sm": "2 Samuel",
-            "1kgs": "1 Kings",
-            "2kgs": "2 Kings",
-            "1ch": "1 Chronicles",
-            "2ch": "2 Chronicles",
-            "ezr": "Ezra",
-            "ne": "Nehemiah",
-            "et": "Esther",
-            "job": "Job",
-            "ps": "Psalms",
-            "prv": "Proverbs",
-            "ec": "Ecclesiastes",
-            "so": "Song of Solomon",
-            "is": "Isaiah",
-            "jr": "Jeremiah",
-            "lm": "Lamentations",
-            "ez": "Ezekiel",
-            "dn": "Daniel",
-            "ho": "Hosea",
-            "jl": "Joel",
-            "am": "Amos",
-            "ob": "Obadiah",
-            "jo": "Jonah",
-            "mi": "Micah",
-            "na": "Nahum",
-            "hk": "Habakkuk",
-            "zp": "Zephaniah",
-            "hg": "Haggai",
-            "zc": "Zechariah",
-            "ml": "Malachi",
-            "mt": "Matthew",
-            "mk": "Mark",
-            "lk": "Luke",
-            "jn": "John",
-            "act": "Acts",
-            "rm": "Romans",
-            "1co": "1 Corinthians",
-            "2co": "2 Corinthians",
-            "gl": "Galatians",
-            "eph": "Ephesians",
-            "ph": "Philippians",
-            "cl": "Colossians",
-            "1ts": "1 Thessalonians",
-            "2ts": "2 Thessalonians",
-            "1tm": "1 Timothy",
-            "2tm": "2 Timothy",
-            "tt": "Titus",
-            "phm": "Philemon",
-            "hb": "Hebrews",
-            "jm": "James",
-            "1pe": "1 Peter",
-            "2pe": "2 Peter",
-            "1jo": "1 John",
-            "2jo": "2 John",
-            "3jo": "3 John",
-            "jud": "Jude",
-            "re": "Revelation",
-        }
-
         # Rebuild content tables so a re-import reflects only this source.
         self._drop_content_tables()
         cursor = self.conn.cursor()
@@ -355,7 +216,7 @@ class BibleImporter:
         logger.info("Importing books and verses...")
 
         for abbrev, chapters in normalized.items():
-            book_name = abbrev_to_name.get(abbrev)
+            book_name = ABBREV_TO_NAME.get(abbrev)
             if not book_name:
                 logger.warning(f"Unknown book abbreviation: {abbrev}, skipping")
                 continue

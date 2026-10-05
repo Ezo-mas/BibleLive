@@ -36,86 +36,24 @@ from typing import cast
 
 if __package__:
     from . import verse_parser_lt as _lt
+    from .books import CANONICAL_BOOKS
 else:
     import verse_parser_lt as _lt  # type: ignore[no-redef]
+    from books import CANONICAL_BOOKS  # type: ignore[no-redef]
 
 Token = int | str
 
 # --------------------------------------------------------------------------
 # Book data: (canonical name, chapter count, name variants as spoken/written)
-# Numbered books list the name WITHOUT the number ("corinthians"); the number
-# comes from the canonical name.
-# Abbreviations (Rom, Matt, ...) are deliberately left out: speech-to-text
-# writes out full names, and short abbreviations cause false positives
-# ("mic 1 2" -> Micah 1:2). Add them here if you parse typed text too.
+# comes from the shared canon in core/books.py so the parser, importer, and
+# STT correction regex cannot drift apart. Numbered books list the name WITHOUT
+# the number ("corinthians"); the number comes from the canonical name.
+# Abbreviations (Rom, Matt, ...) are deliberately left out of the parser:
+# speech-to-text writes out full names, and short abbreviations cause false
+# positives ("mic 1 2" -> Micah 1:2). Add them if you parse typed text too.
 # --------------------------------------------------------------------------
 BOOKS: list[tuple[str, int, list[str]]] = [
-    ("Genesis", 50, ["genesis"]),
-    ("Exodus", 40, ["exodus"]),
-    ("Leviticus", 27, ["leviticus"]),
-    ("Numbers", 36, ["numbers"]),
-    ("Deuteronomy", 34, ["deuteronomy"]),
-    ("Joshua", 24, ["joshua"]),
-    ("Judges", 21, ["judges"]),
-    ("Ruth", 4, ["ruth"]),
-    ("1 Samuel", 31, ["samuel"]),
-    ("2 Samuel", 24, ["samuel"]),
-    ("1 Kings", 22, ["kings"]),
-    ("2 Kings", 25, ["kings"]),
-    ("1 Chronicles", 29, ["chronicles", "chronicle"]),
-    ("2 Chronicles", 36, ["chronicles", "chronicle"]),
-    ("Ezra", 10, ["ezra"]),
-    ("Nehemiah", 13, ["nehemiah"]),
-    ("Esther", 10, ["esther"]),
-    ("Job", 42, ["job"]),
-    ("Psalms", 150, ["psalms", "psalm"]),
-    ("Proverbs", 31, ["proverbs", "proverb"]),
-    ("Ecclesiastes", 12, ["ecclesiastes"]),
-    ("Song of Solomon", 8, ["song of solomon", "song of songs", "songs of solomon", "canticles"]),
-    ("Isaiah", 66, ["isaiah"]),
-    ("Jeremiah", 52, ["jeremiah"]),
-    ("Lamentations", 5, ["lamentations", "lamentation"]),
-    ("Ezekiel", 48, ["ezekiel"]),
-    ("Daniel", 12, ["daniel"]),
-    ("Hosea", 14, ["hosea"]),
-    ("Joel", 3, ["joel"]),
-    ("Amos", 9, ["amos"]),
-    ("Obadiah", 1, ["obadiah"]),
-    ("Jonah", 4, ["jonah"]),
-    ("Micah", 7, ["micah"]),
-    ("Nahum", 3, ["nahum"]),
-    ("Habakkuk", 3, ["habakkuk"]),
-    ("Zephaniah", 3, ["zephaniah"]),
-    ("Haggai", 2, ["haggai"]),
-    ("Zechariah", 14, ["zechariah"]),
-    ("Malachi", 4, ["malachi"]),
-    ("Matthew", 28, ["matthew"]),
-    ("Mark", 16, ["mark"]),
-    ("Luke", 24, ["luke"]),
-    ("John", 21, ["john"]),
-    ("Acts", 28, ["acts", "acts of the apostles"]),
-    ("Romans", 16, ["romans"]),
-    ("1 Corinthians", 16, ["corinthians", "corinthian"]),
-    ("2 Corinthians", 13, ["corinthians", "corinthian"]),
-    ("Galatians", 6, ["galatians"]),
-    ("Ephesians", 6, ["ephesians"]),
-    ("Philippians", 4, ["philippians"]),
-    ("Colossians", 4, ["colossians"]),
-    ("1 Thessalonians", 5, ["thessalonians"]),
-    ("2 Thessalonians", 3, ["thessalonians"]),
-    ("1 Timothy", 6, ["timothy"]),
-    ("2 Timothy", 4, ["timothy"]),
-    ("Titus", 3, ["titus"]),
-    ("Philemon", 1, ["philemon"]),
-    ("Hebrews", 13, ["hebrews", "hebrew"]),
-    ("James", 5, ["james"]),
-    ("1 Peter", 5, ["peter"]),
-    ("2 Peter", 3, ["peter"]),
-    ("1 John", 5, ["john"]),
-    ("2 John", 1, ["john"]),
-    ("3 John", 1, ["john"]),
-    ("Jude", 1, ["jude"]),
-    ("Revelation", 22, ["revelation", "revelations", "revelation of john"]),
+    (book.name, book.chapters, list(book.variants)) for book in CANONICAL_BOOKS
 ]
 
 MAX_VERSE = 176  # Psalm 119 is the longest chapter

@@ -7,6 +7,8 @@ import time
 import numpy as np
 from faster_whisper import WhisperModel
 
+from core.books import CANONICAL_BOOKS
+
 logger = logging.getLogger(__name__)
 
 # Per-language Whisper initial prompts: bias the decoder toward Bible
@@ -37,11 +39,19 @@ WHISPER_INITIAL_PROMPTS: dict[str, str] = {
 SUPPORTED_LANGUAGES = tuple(WHISPER_INITIAL_PROMPTS.keys())
 
 # Regex corrections for merged "book chapter verse" numbers.
+#
+# The book alternation is generated from the shared canon (core/books.py). A
+# hand-maintained copy here is how "timothy" came to be misspelled "timon" and
+# silently dropped from the corrections. Multi-word and numbered names allow
+# optional whitespace between words because Whisper often writes them merged
+# ("1samuel", "songofsolomon").
+_BOOK_NAMES_PATTERN = "|".join(r"\s?".join(book.name.lower().split()) for book in CANONICAL_BOOKS)
+
 _REFERENCE_CORRECTIONS: dict[str, str] = {
     # "mark112" -> "mark 1 12"
-    r"\b(john|jude|genesis|exodus|leviticus|numbers|deuteronomy|joshua|judges|ruth|1\s?samuel|2\s?samuel|1\s?kings|2\s?kings|1\s?chronicles|2\s?chronicles|ezra|nehemiah|esther|job|psalms|proverbs|ecclesiastes|song\s?of\s?solomon|isaiah|jeremiah|lamentations|ezekiel|daniel|hosea|joel|amos|obadiah|jonah|micah|nahum|habakkuk|zephaniah|haggai|zechariah|malachi|matthew|mark|luke|john|acts|romans|1\s?corinthians|2\s?corinthians|galatians|ephesians|philippians|colossians|1\s?thessalonians|2\s?thessalonians|1\s?timothy|2\s?timothy|titus|philemon|hebrews|james|1\s?peter|2\s?peter|1\s?john|2\s?john|3\s?john|jude|revelation)\s*(\d+)\s*(\d+)\b": r"\1 \2:\3",
+    rf"\b({_BOOK_NAMES_PATTERN})\s*(\d+)\s*(\d+)\b": r"\1 \2:\3",
     # "mark 1:12 5" -> "mark 1:12-5"
-    r"\b(john|jude|genesis|exodus|leviticus|numbers|deuteronomy|joshua|judges|ruth|1\s?samuel|2\s?samuel|1\s?kings|2\s?kings|1\s?chronicles|2\s?chronicles|ezra|nehemiah|esther|job|psalms|proverbs|ecclesiastes|song\s?of\s?solomon|isaiah|jeremiah|lamentations|ezekiel|daniel|hosea|joel|amos|obadiah|jonah|micah|nahum|habakkuk|zephaniah|haggai|zechariah|malachi|matthew|mark|luke|john|acts|romans|1\s?corinthians|2\s?corinthians|galatians|ephesians|philippians|colossians|1\s?thessalonians|2\s?thessalonians|1\s?timothy|2\s?timothy|titus|philemon|hebrews|james|1\s?peter|2\s?peter|1\s?john|2\s?john|3\s?john|jude|revelation)\s*(\d+):(\d+)\s*(\d+)\b": r"\1 \2:\3-\4",
+    rf"\b({_BOOK_NAMES_PATTERN})\s*(\d+):(\d+)\s*(\d+)\b": r"\1 \2:\3-\4",
 }
 
 # Whisper hallucination guard. On low-energy or tonal input the decoder can
