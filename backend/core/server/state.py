@@ -188,10 +188,27 @@ class AppState:
         # Notify display to show the reference
         await self._send_display_reference(ref)
 
-        # NOTE: the pending_update broadcast is issued by the caller AFTER it
-        # sends the action confirmation, so operators observe a deterministic
-        # order: confirmation first, then the updated pending queue.
+        # NOTE: operator notification (confirmation, then the updated queue) is
+        # issued by approve_and_notify(); see that method for the required order.
 
+        return ref
+
+    async def approve_and_notify(self, reference_id: str) -> BibleReference | None:
+        """Approve a pending reference and notify operators.
+
+        The WebSocket handler and the HTTP endpoint both approve through here so
+        operators always observe the same deterministic order: the confirmation
+        first, then the updated pending queue. Returns the approved reference, or
+        ``None`` when no pending reference matched the ID.
+        """
+        ref = await self.approve_pending(reference_id)
+        if ref is None:
+            return None
+
+        await self.connection_manager.send_to_operator(
+            {"type": "approval_confirmed", "data": {"reference": ref.model_dump()}}
+        )
+        await self._send_pending_update()
         return ref
 
     def _resolve_verses(self, ref: BibleReference) -> None:
@@ -239,10 +256,28 @@ class AppState:
         self.current_display = None
         await self._send_display_clear()
 
+    async def clear_and_notify(self) -> None:
+        """Clear the display and confirm it to operators."""
+        await self.clear_display()
+        await self.connection_manager.send_to_operator({"type": "clear_confirmed", "data": {}})
+
     async def clear_pending(self) -> None:
         """Clear all pending references.
 
-        Only mutates state; the caller broadcasts pending_cleared and then
-        pending_update so operators observe a deterministic order.
+        Only mutates state; clear_pending_and_notify() broadcasts pending_cleared
+        and then pending_update so operators observe a deterministic order.
         """
         self.pending_references.clear()
+
+    async def clear_pending_and_notify(self) -> int:
+        """Clear the pending queue and notify operators.
+
+        Emits ``pending_cleared`` before the empty ``pending_update`` so the order
+        is enforced here rather than at each call site. Returns how many
+        references were cleared.
+        """
+        count = len(self.pending_references)
+        await self.clear_pending()
+        await self.connection_manager.send_to_operator({"type": "pending_cleared", "data": {}})
+        await self._send_pending_update()
+        return count

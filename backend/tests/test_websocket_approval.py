@@ -414,3 +414,81 @@ class TestDisplaySettings:
             assert error["type"] == "error"
             assert error["data"]["action"] == "set_display_theme"
             assert client.get("/api/state").json()["display_settings"]["theme"] == "dark"
+
+
+def test_http_approve_notifies_operators_in_same_order_as_ws(client):
+    """P1-6: the HTTP approve path emits the same confirm-then-queue order as WS.
+
+    Both approve paths now go through ``AppState.approve_and_notify``; a
+    connected operator must observe ``approval_confirmed`` before
+    ``pending_update`` regardless of which endpoint was used.
+    """
+    reference_id = _submit_reference(client, book="John", chapter=3, verse_start=16)
+
+    with client.websocket_connect("/ws/operator") as operator_ws:
+        snapshot = json.loads(operator_ws.receive_text())
+        assert snapshot["type"] == "state_snapshot"
+        assert len(snapshot["data"]["pending"]) == 1
+
+        response = client.post("/api/approve", json={"reference_id": reference_id})
+        assert response.status_code == 200
+
+        # Deterministic order, identical to the ``approve`` WebSocket action.
+        assert json.loads(operator_ws.receive_text())["type"] == "approval_confirmed"
+        pending_message = json.loads(operator_ws.receive_text())
+        assert pending_message["type"] == "pending_update"
+        assert pending_message["data"]["count"] == 0
+
+
+def test_operator_errors_share_one_envelope(client):
+    """P1-6: every operator error keeps the ``{type, data: {message, action}}`` shape.
+
+    The ``_ws_error`` helper builds all of them, so non-JSON, missing-action,
+    missing-field, and unknown-action failures must be indistinguishable in shape.
+    """
+    with client.websocket_connect("/ws/operator") as websocket:
+        assert json.loads(websocket.receive_text())["type"] == "state_snapshot"
+
+        # (payload, expected ``data.action``)
+        cases = [
+            ("{invalid json}", "unknown"),
+            (json.dumps({}), "unknown"),
+            (json.dumps({"action": "approve"}), "approve"),
+            (json.dumps({"action": "not_a_real_action"}), "not_a_real_action"),
+        ]
+        for payload, expected_action in cases:
+            websocket.send_text(payload)
+            error = json.loads(websocket.receive_text())
+            assert error["type"] == "error"
+            assert set(error["data"]) == {"message", "action"}
+            assert error["data"]["action"] == expected_action
+            assert error["data"]["message"]
+
+
+def test_ws_validates_action_payloads_with_pydantic(client):
+    """P2-7: WS actions are validated against the pydantic ``Operator*Action`` models.
+
+    A known action whose fields are the wrong type or outside the allowed literal
+    is rejected by validation; the error keeps the action name and the connection
+    stays usable for the next (valid) action.
+    """
+    with client.websocket_connect("/ws/operator") as websocket:
+        assert json.loads(websocket.receive_text())["type"] == "state_snapshot"
+
+        # reference_id must be a string, not a number.
+        websocket.send_text(json.dumps({"action": "approve", "reference_id": 123}))
+        error = json.loads(websocket.receive_text())
+        assert error["type"] == "error"
+        assert error["data"]["action"] == "approve"
+
+        # theme must be one of the model's Literal values.
+        websocket.send_text(json.dumps({"action": "set_display_theme", "theme": "sepia"}))
+        error = json.loads(websocket.receive_text())
+        assert error["type"] == "error"
+        assert error["data"]["action"] == "set_display_theme"
+
+        # A valid action still works after the rejections.
+        websocket.send_text(json.dumps({"action": "set_verse_limit", "verse_limit": 5}))
+        confirmed = json.loads(websocket.receive_text())
+        assert confirmed["type"] == "display_settings_confirmed"
+        assert confirmed["data"]["verse_limit"] == 5

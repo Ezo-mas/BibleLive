@@ -5,12 +5,14 @@ import json
 import logging
 import secrets
 from contextlib import asynccontextmanager
+from typing import Any
 
 import uvicorn
 from fastapi import Depends, FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
+from pydantic import TypeAdapter, ValidationError
 
 from ..bible_lookup import BibleLookup
 from ..config import config
@@ -23,6 +25,7 @@ from .models import (
     ClearPendingResponse,
     ClearResponse,
     ErrorResponse,
+    OperatorAction,
     ReferenceSubmitRequest,
     ReferenceSubmitResponse,
     StateResponse,
@@ -61,6 +64,122 @@ def create_bible_lookup(db_path: str | None = None) -> BibleLookup:
     except Exception as e:
         logger.error(f"Failed to initialize Bible database: {e}")
         raise
+
+
+_OPERATOR_ACTION_ADAPTER: TypeAdapter[OperatorAction] = TypeAdapter(OperatorAction)
+
+
+def _validation_message(error: ValidationError) -> str:
+    """Render a pydantic ValidationError as one line for the operator socket."""
+    return "; ".join(
+        f"{'.'.join(str(part) for part in err['loc'])}: {err['msg']}" for err in error.errors()
+    )
+
+
+async def _ws_error(websocket: WebSocket, action: str, message: str) -> None:
+    """Send a structured error to an operator client.
+
+    Every operator-side error shares this ``{type, data: {message, action}}``
+    envelope; building it in one place keeps the wire shape identical across the
+    WebSocket handler's branches.
+    """
+    await websocket.send_text(
+        json.dumps({"type": "error", "data": {"message": message, "action": action}})
+    )
+
+
+async def _handle_approve(
+    websocket: WebSocket, app_state: AppState, message: dict[str, Any]
+) -> None:
+    """Approve a pending reference (operator action ``approve``)."""
+    reference_id = message.get("reference_id")
+    if not reference_id:
+        await _ws_error(websocket, "approve", "Missing reference_id")
+        return
+
+    try:
+        ref = await app_state.approve_and_notify(reference_id)
+        if ref:
+            logger.info(
+                f"Reference approved via WebSocket: {ref.book} {ref.chapter}:{ref.verse_start or '?'}"
+            )
+        else:
+            await _ws_error(websocket, "approve", "Reference not found or already processed")
+    except Exception as e:
+        logger.error(f"Error approving reference: {e}", exc_info=True)
+        await _ws_error(websocket, "approve", "Internal error processing approval")
+
+
+async def _handle_clear(
+    websocket: WebSocket, app_state: AppState, _message: dict[str, Any]
+) -> None:
+    """Clear the display (operator action ``clear``)."""
+    try:
+        await app_state.clear_and_notify()
+        logger.info("Display cleared via WebSocket")
+    except Exception as e:
+        logger.error(f"Error clearing display: {e}", exc_info=True)
+        await _ws_error(websocket, "clear", "Internal error clearing display")
+
+
+async def _handle_clear_pending(
+    websocket: WebSocket, app_state: AppState, _message: dict[str, Any]
+) -> None:
+    """Clear the pending queue (operator action ``clear_pending``)."""
+    try:
+        count = await app_state.clear_pending_and_notify()
+        logger.info(f"Cleared {count} pending references via WebSocket")
+    except Exception as e:
+        logger.error(f"Error clearing pending: {e}", exc_info=True)
+        await _ws_error(websocket, "clear_pending", "Internal error clearing pending queue")
+
+
+async def _handle_set_verse_limit(
+    websocket: WebSocket, app_state: AppState, message: dict[str, Any]
+) -> None:
+    """Change how many verses displays show (operator action ``set_verse_limit``)."""
+    verse_limit = message.get("verse_limit")
+    if verse_limit is None or not await app_state.set_verse_limit(verse_limit):
+        await _ws_error(
+            websocket,
+            "set_verse_limit",
+            "Invalid verse_limit; expected one of 3, 5, 10, 'all'",
+        )
+        return
+
+    # Confirm to operators (including this one) so their controls reflect the
+    # value displays are now using.
+    await app_state.connection_manager.send_to_operator(
+        {"type": "display_settings_confirmed", "data": app_state.display_settings.model_dump()}
+    )
+
+
+async def _handle_set_display_theme(
+    websocket: WebSocket, app_state: AppState, message: dict[str, Any]
+) -> None:
+    """Change the display theme (operator action ``set_display_theme``)."""
+    theme = message.get("theme")
+    if theme is None or not await app_state.set_display_theme(theme):
+        await _ws_error(websocket, "set_display_theme", "Invalid theme; expected 'dark' or 'light'")
+        return
+
+    # Confirm to operators (including this one) so their controls reflect the
+    # value displays are now using.
+    await app_state.connection_manager.send_to_operator(
+        {"type": "display_settings_confirmed", "data": app_state.display_settings.model_dump()}
+    )
+
+
+# Operator WebSocket actions, dispatched by the ``action`` field. Each handler
+# emits exactly the messages (including errors) the previous if/elif chain did;
+# only the organization is new.
+_OPERATOR_ACTIONS: dict[str, Any] = {
+    "approve": _handle_approve,
+    "clear": _handle_clear,
+    "clear_pending": _handle_clear_pending,
+    "set_verse_limit": _handle_set_verse_limit,
+    "set_display_theme": _handle_set_display_theme,
+}
 
 
 def create_app(
@@ -239,200 +358,34 @@ def create_app(
                 except json.JSONDecodeError as e:
                     logger.warning(f"Invalid JSON from {client_type} client: {e}")
                     if client_type == "operator":
-                        await websocket.send_text(
-                            json.dumps(
-                                {
-                                    "type": "error",
-                                    "data": {"message": "Invalid JSON format", "action": "unknown"},
-                                }
-                            )
-                        )
+                        await _ws_error(websocket, "unknown", "Invalid JSON format")
                     continue
 
                 # Handle messages from operator
                 if client_type == "operator":
                     action = message.get("action")
-
                     if not action:
-                        await websocket.send_text(
-                            json.dumps(
-                                {
-                                    "type": "error",
-                                    "data": {
-                                        "message": "Missing 'action' field",
-                                        "action": "unknown",
-                                    },
-                                }
-                            )
-                        )
+                        await _ws_error(websocket, "unknown", "Missing 'action' field")
                         continue
 
-                    if action == "approve":
-                        reference_id = message.get("reference_id")
-                        if not reference_id:
-                            await websocket.send_text(
-                                json.dumps(
-                                    {
-                                        "type": "error",
-                                        "data": {
-                                            "message": "Missing reference_id",
-                                            "action": "approve",
-                                        },
-                                    }
-                                )
-                            )
-                            continue
+                    # Unknown actions must keep their explicit "Unknown action"
+                    # error, so the action name is checked before validation.
+                    handler = _OPERATOR_ACTIONS.get(action) if isinstance(action, str) else None
+                    if handler is None:
+                        await _ws_error(websocket, action, f"Unknown action: {action}")
+                        continue
 
-                        try:
-                            ref = await app_state.approve_pending(reference_id)
-                            if ref:
-                                # Confirm to operators first, then broadcast the
-                                # updated pending queue (deterministic order).
-                                await app_state.connection_manager.send_to_operator(
-                                    {
-                                        "type": "approval_confirmed",
-                                        "data": {"reference": ref.model_dump()},
-                                    }
-                                )
-                                await app_state._send_pending_update()
-                                logger.info(
-                                    f"Reference approved via WebSocket: {ref.book} {ref.chapter}:{ref.verse_start or '?'}"
-                                )
-                            else:
-                                await websocket.send_text(
-                                    json.dumps(
-                                        {
-                                            "type": "error",
-                                            "data": {
-                                                "message": "Reference not found or already processed",
-                                                "action": "approve",
-                                            },
-                                        }
-                                    )
-                                )
-                        except Exception as e:
-                            logger.error(f"Error approving reference: {e}", exc_info=True)
-                            await websocket.send_text(
-                                json.dumps(
-                                    {
-                                        "type": "error",
-                                        "data": {
-                                            "message": "Internal error processing approval",
-                                            "action": "approve",
-                                        },
-                                    }
-                                )
-                            )
+                    # Validate the payload against its Operator*Action model so a
+                    # malformed field is rejected with a clear message before the
+                    # handler runs; the handler still reads the raw payload, so no
+                    # pydantic coercion is applied to the values it acts on.
+                    try:
+                        _OPERATOR_ACTION_ADAPTER.validate_python(message)
+                    except ValidationError as e:
+                        await _ws_error(websocket, action, _validation_message(e))
+                        continue
 
-                    elif action == "clear":
-                        try:
-                            await app_state.clear_display()
-                            await app_state.connection_manager.send_to_operator(
-                                {"type": "clear_confirmed", "data": {}}
-                            )
-                            logger.info("Display cleared via WebSocket")
-                        except Exception as e:
-                            logger.error(f"Error clearing display: {e}", exc_info=True)
-                            await websocket.send_text(
-                                json.dumps(
-                                    {
-                                        "type": "error",
-                                        "data": {
-                                            "message": "Internal error clearing display",
-                                            "action": "clear",
-                                        },
-                                    }
-                                )
-                            )
-
-                    elif action == "set_verse_limit":
-                        verse_limit = message.get("verse_limit")
-                        if not await app_state.set_verse_limit(verse_limit):
-                            await websocket.send_text(
-                                json.dumps(
-                                    {
-                                        "type": "error",
-                                        "data": {
-                                            "message": (
-                                                "Invalid verse_limit; expected one of 3, 5, 10, 'all'"
-                                            ),
-                                            "action": "set_verse_limit",
-                                        },
-                                    }
-                                )
-                            )
-                        else:
-                            # Confirm to operators (including this one) so their
-                            # controls reflect the value displays are now using.
-                            await app_state.connection_manager.send_to_operator(
-                                {
-                                    "type": "display_settings_confirmed",
-                                    "data": app_state.display_settings.model_dump(),
-                                }
-                            )
-
-                    elif action == "set_display_theme":
-                        theme = message.get("theme")
-                        if not await app_state.set_display_theme(theme):
-                            await websocket.send_text(
-                                json.dumps(
-                                    {
-                                        "type": "error",
-                                        "data": {
-                                            "message": (
-                                                "Invalid theme; expected 'dark' or 'light'"
-                                            ),
-                                            "action": "set_display_theme",
-                                        },
-                                    }
-                                )
-                            )
-                        else:
-                            # Confirm to operators (including this one) so their
-                            # controls reflect the value displays are now using.
-                            await app_state.connection_manager.send_to_operator(
-                                {
-                                    "type": "display_settings_confirmed",
-                                    "data": app_state.display_settings.model_dump(),
-                                }
-                            )
-
-                    elif action == "clear_pending":
-                        try:
-                            count = len(app_state.pending_references)
-                            await app_state.clear_pending()
-                            await app_state.connection_manager.send_to_operator(
-                                {"type": "pending_cleared", "data": {}}
-                            )
-                            # Confirm first, then broadcast the (now empty) queue.
-                            await app_state._send_pending_update()
-                            logger.info(f"Cleared {count} pending references via WebSocket")
-                        except Exception as e:
-                            logger.error(f"Error clearing pending: {e}", exc_info=True)
-                            await websocket.send_text(
-                                json.dumps(
-                                    {
-                                        "type": "error",
-                                        "data": {
-                                            "message": "Internal error clearing pending queue",
-                                            "action": "clear_pending",
-                                        },
-                                    }
-                                )
-                            )
-
-                    else:
-                        await websocket.send_text(
-                            json.dumps(
-                                {
-                                    "type": "error",
-                                    "data": {
-                                        "message": f"Unknown action: {action}",
-                                        "action": action,
-                                    },
-                                }
-                            )
-                        )
+                    await handler(websocket, app_state, message)
 
         except WebSocketDisconnect:
             logger.debug(f"{client_type.capitalize()} client disconnected normally")
@@ -500,7 +453,9 @@ def create_app(
 
         Requires authentication if BIBLELIVE_REQUIRE_AUTH is enabled.
         """
-        ref = await app_state.approve_pending(request.reference_id)
+        # Confirms to connected operators and broadcasts the updated queue in one
+        # place, matching the WebSocket handler's order exactly.
+        ref = await app_state.approve_and_notify(request.reference_id)
 
         if ref is None:
             logger.warning(f"Approval failed: reference {request.reference_id[:8]}... not found")
@@ -508,16 +463,6 @@ def create_app(
                 status_code=404,
                 detail=f"Reference not found or already processed: {request.reference_id}",
             )
-
-        # Confirm the result to connected operators, then broadcast the updated
-        # pending queue (same deterministic order as the WebSocket handler).
-        await app_state.connection_manager.send_to_operator(
-            {
-                "type": "approval_confirmed",
-                "data": {"reference": ref.model_dump()},
-            }
-        )
-        await app_state._send_pending_update()
 
         logger.info(
             f"Reference approved: {ref.book} {ref.chapter}:{ref.verse_start or '?'} (ID: {ref.id[:8]}...)"

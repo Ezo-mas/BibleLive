@@ -2,7 +2,7 @@
 
 import uuid
 from datetime import UTC, datetime
-from typing import Literal
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field
 
@@ -149,3 +149,15 @@ class OperatorSetDisplayThemeAction(BaseModel):
 
     action: Literal["set_display_theme"]
     theme: Literal["dark", "light"]
+
+
+# Discriminated union of every operator WebSocket action, used by the server to
+# validate incoming messages against the models above.
+OperatorAction = Annotated[
+    OperatorApproveAction
+    | OperatorClearDisplayAction
+    | OperatorClearPendingAction
+    | OperatorSetVerseLimitAction
+    | OperatorSetDisplayThemeAction,
+    Field(discriminator="action"),
+]
