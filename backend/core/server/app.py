@@ -16,7 +16,6 @@ from pydantic import TypeAdapter, ValidationError
 
 from ..bible_lookup import BibleLookup
 from ..config import config
-from ..verse_parser import ReferenceParser, StreamingParser
 from .auth import verify_operator_token
 from .models import (
     ApprovalRequest,
@@ -182,29 +181,17 @@ _OPERATOR_ACTIONS: dict[str, Any] = {
 }
 
 
-def create_app(
-    bible_lookup: BibleLookup | None = None,
-    parser: ReferenceParser | None = None,
-    streaming_parser: StreamingParser | None = None,
-) -> FastAPI:
+def create_app(bible_lookup: BibleLookup | None = None) -> FastAPI:
     """Create and configure the FastAPI application.
 
     Args:
         bible_lookup: Optional BibleLookup instance. Created from config if not provided.
-        parser: Optional ReferenceParser instance. Created from bible_lookup if not provided.
-        streaming_parser: Optional StreamingParser instance. Created from parser if not provided.
 
     Returns:
         FastAPI: Configured application instance.
     """
     if bible_lookup is None:
         bible_lookup = create_bible_lookup()
-    if parser is None:
-        parser = ReferenceParser(
-            validator=bible_lookup.get_validator_hook() if bible_lookup.is_loaded() else None
-        )
-    if streaming_parser is None:
-        streaming_parser = StreamingParser(parser)
 
     app_state = AppState(bible_lookup)
 
