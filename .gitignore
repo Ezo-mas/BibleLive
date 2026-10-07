@@ -61,3 +61,6 @@ tmp/
 
 # Local tooling config (per-developer, not shared)
 .claude/
+
+# Runtime server settings (written by the server, e.g. the auto-approve mode)
+data/server_settings.json
