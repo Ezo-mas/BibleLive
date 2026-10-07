@@ -438,6 +438,9 @@ sudo journalctl -u biblelive -n 50
 
 Common issues:
 - Port 8000 already in use: `sudo lsof -i :8000`
+- Port 8001 already in use (audio pipeline's language-control server, loopback
+  only): `sudo lsof -i :8001`, or run the pipeline with `--control-port PORT`
+  / `--no-control`
 - Database not found: Run import command
 - Frontend not built: `cd frontend && npm run build`
 - Missing dependencies: `pip install -e ./backend`

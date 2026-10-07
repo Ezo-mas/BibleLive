@@ -96,9 +96,32 @@ Options:
                           int8_float16 (default: int8; use float16 on RTX 20xx+)
   --language LANG         Spoken language: en or lt (default: en)
   --vad-aggressiveness N  WebRTC VAD aggressiveness 0-3 (default: 2)
+  --control-host HOST     Runtime language-control server host (default: 127.0.0.1)
+  --control-port PORT     Runtime language-control server port (default: 8001)
+  --control-token TOKEN   Bearer token the control server requires when set
+  --no-control            Disable the runtime language-control server
   --log-level LEVEL       DEBUG, INFO, WARNING, ERROR (default: INFO, or
                           $BIBLELIVE_AUDIO_LOG_LEVEL)
 ```
+
+#### Runtime language switching
+
+While running, the spoken language can be switched between English and
+Lithuanian without restarting (the Whisper model is language-agnostic and is not
+reloaded):
+
+```bash
+curl http://127.0.0.1:8001/language                    # {"language":"en"}
+curl -X POST http://127.0.0.1:8001/language \
+     -H 'Content-Type: application/json' -d '{"language":"lt"}'
+```
+
+The control server is bound to loopback by default. Exposing it on another host
+with `--control-host` should always be paired with `--control-token` (clients
+send `Authorization: Bearer <token>`). A switch discards the partial utterance
+being captured in the old language; utterances already queued keep the language
+they were captured in — they are transcribed and parsed with their original
+language and prompt.
 
 #### Pipeline logging
 
@@ -110,8 +133,8 @@ report progress:
 INFO - audio.capture  - First audio input received from device (320 bytes, 16000Hz mono s16le)
 INFO - audio.capture  - Audio input active: 10s captured (1001 chunks, queue=1, dropped=0)
 INFO - audio.pipeline - Voice activity detected, capturing utterance...
-INFO - audio.pipeline - Utterance ended: 1.20s of speech (40 frames) queued for transcription
-INFO - audio.pipeline - Processing utterance (40 frames, 1.20s audio)...
+INFO - audio.pipeline - Utterance ended: 1.20s of speech (40 frames, en) queued for transcription
+INFO - audio.pipeline - Processing utterance (40 frames, 1.20s audio, language=en)...
 INFO - audio.stt      - Transcription (842ms): 'and he said read this today john three sixteen'
 INFO - audio.pipeline - Found 1 Bible reference(s):
 INFO - audio.pipeline -   - John 3:16 [high]
@@ -172,6 +195,7 @@ BibleLive/                        # Monorepo root: tooling + shared assets
 │   │   ├── capture.py, vad.py    # ffmpeg capture + WebRTC VAD
 │   │   ├── stt.py                # faster-whisper transcription
 │   │   ├── sender.py             # Reference delivery (dedup + retry/backoff)
+│   │   ├── control.py            # Runtime language-control HTTP server
 │   │   └── config.py, metrics.py
 │   ├── tests/                    # Pytest suite
 │   ├── scripts/                  # Demo and verification scripts
