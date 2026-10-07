@@ -135,10 +135,27 @@ output, ignored short VAD blips, and skipped duplicates.
 
 - `ws://<host>/ws/display` — display clients receive `reference` and `clear` events
 - `ws://<host>/ws/operator` — operator clients receive `pending_update`,
-  `approval_confirmed`, `clear_confirmed`, `pending_cleared`, `state_snapshot`, and
-  `connection_status` events; they send `{action: 'approve', reference_id: 'uuid'}`,
-  `{action: 'clear'}`, or `{action: 'clear_pending'}`
+  `approval_confirmed`, `clear_confirmed`, `pending_cleared`, `state_snapshot`,
+  `auto_mode_confirmed`, and `connection_status` events; they send
+  `{action: 'approve', reference_id: 'uuid'}`, `{action: 'clear'}`,
+  `{action: 'clear_pending'}`, or
+  `{action: 'set_auto_mode', auto_mode: 'off'|'high'|'medium_and_up'|'all'}`
 - Operator WebSocket requires `?token=xxx` query parameter when authentication is enabled
+
+## Auto-approve mode
+
+The operator console can show newly detected references without waiting for an
+approval: `Off` (default — everything is reviewed), `High`, `Med+` (medium and
+high confidence) or `All`. Only references that arrive *after* the change are
+auto-approved; anything already in the pending queue stays pending, and manual
+Approve keeps working as an override.
+
+The mode is server-side state, persisted to `BIBLELIVE_SETTINGS_PATH`
+(`data/server_settings.json`, written atomically). A persisted mode survives
+restarts and takes precedence over the `BIBLELIVE_AUTO_MODE` default, which only
+applies when nothing is persisted. Settings that are missing, malformed, or
+invalid log a warning and fall back to that default; an invalid
+`BIBLELIVE_AUTO_MODE` means `off`.
 
 ## Configuration (environment variables)
 
@@ -149,6 +166,8 @@ output, ignored short VAD blips, and skipped duplicates.
 | `BIBLELIVE_HOST`          | `0.0.0.0`                   | Server bind host         |
 | `BIBLELIVE_PORT`          | `8000`                      | Server port              |
 | `BIBLELIVE_RELOAD`        | `true`                      | Uvicorn auto-reload (dev)|
+| `BIBLELIVE_AUTO_MODE`     | `off`                       | Default auto-approve mode (no persisted setting) |
+| `BIBLELIVE_SETTINGS_PATH` | `data/server_settings.json` | Persisted operator settings |
 
 ## Project layout
 
@@ -161,6 +180,7 @@ BibleLive/                        # Monorepo root: tooling + shared assets
 │   │   │   ├── models.py         # Pydantic request/response models
 │   │   │   ├── auth.py           # Operator token verification
 │   │   │   ├── connections.py    # WebSocket connection management
+│   │   │   ├── settings_store.py # Persisted operator settings (auto-approve mode)
 │   │   │   └── state.py          # AppState (pending queue, display, history)
 │   │   ├── config.py             # Env-driven configuration
 │   │   ├── biblelive_server.py   # Compat shim -> core.server
