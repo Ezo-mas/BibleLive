@@ -3,6 +3,7 @@
 import logging
 import re
 import time
+from dataclasses import dataclass
 
 import numpy as np
 from faster_whisper import WhisperModel
@@ -37,6 +38,35 @@ WHISPER_INITIAL_PROMPTS: dict[str, str] = {
 }
 
 SUPPORTED_LANGUAGES = tuple(WHISPER_INITIAL_PROMPTS.keys())
+
+
+@dataclass(frozen=True)
+class _LanguageState:
+    """Whisper language and its decoder prompt, swapped as a single unit.
+
+    The two must always agree: an English ``language`` paired with a Lithuanian
+    ``initial_prompt`` (or vice versa) biases the decoder toward the wrong
+    vocabulary. Keeping them in one immutable object means a reader always sees
+    a consistent pair and ``set_language`` swaps it in a single assignment.
+    """
+
+    language: str
+    initial_prompt: str
+
+
+def _validate_language(language: str) -> None:
+    """Raise :class:`ValueError` unless ``language`` is supported."""
+    if language not in SUPPORTED_LANGUAGES:
+        raise ValueError(
+            f"Unsupported language '{language}'. Supported: {', '.join(SUPPORTED_LANGUAGES)}"
+        )
+
+
+def _language_state(language: str) -> _LanguageState:
+    """Build the immutable ``(language, prompt)`` pair for ``language``."""
+    _validate_language(language)
+    return _LanguageState(language, WHISPER_INITIAL_PROMPTS[language])
+
 
 # Regex corrections for merged "book chapter verse" numbers.
 #
@@ -74,12 +104,9 @@ class SpeechToText:
         language: str = "en",
         compute_type: str | None = None,
     ):
-        if language not in SUPPORTED_LANGUAGES:
-            raise ValueError(
-                f"Unsupported language '{language}'. Supported: {', '.join(SUPPORTED_LANGUAGES)}"
-            )
-        self.language = language
-        self.initial_prompt = WHISPER_INITIAL_PROMPTS[language]
+        # Language + prompt live in one immutable value (see _LanguageState);
+        # set_language() swaps the pair atomically at runtime.
+        self._state = _language_state(language)
 
         # Default compute type: int8 (works on all GPUs incl. Pascal GTX 10xx
         # and CPU). Pass compute_type explicitly (e.g. "float16") on newer GPUs
@@ -112,21 +139,59 @@ class SpeechToText:
         self.audio_buffer: list[float] = []
         self.sample_rate = 16000
 
+    @property
+    def language(self) -> str:
+        """The language the next transcription will use."""
+        return self._state.language
+
+    @property
+    def initial_prompt(self) -> str:
+        """The Whisper initial prompt matching :attr:`language`."""
+        return self._state.initial_prompt
+
+    def set_language(self, language: str) -> None:
+        """Switch the transcription language and its initial prompt.
+
+        Safe to call from another thread: the language/prompt pair is replaced
+        atomically, and :meth:`transcribe_buffer` reads it once before calling
+        Whisper, so an in-flight transcription keeps the pair it started with.
+        The Whisper model itself is language-agnostic and is not reloaded.
+
+        Raises:
+            ValueError: if ``language`` is not in ``SUPPORTED_LANGUAGES``.
+        """
+        self._state = _language_state(language)
+        logger.info("Speech-to-text language set to '%s'", language)
+
     def add_audio_frame(self, frame: bytes):
         """Add audio frame to buffer for transcription"""
         # Convert bytes to numpy array
         audio_np = np.frombuffer(frame, dtype=np.int16).astype(np.float32) / 32768.0
         self.audio_buffer.extend(audio_np)
 
-    def transcribe_buffer(self) -> tuple[str | None, float]:
+    def transcribe_buffer(self, language: str | None = None) -> tuple[str | None, float]:
         """
         Transcribe accumulated audio buffer and clear it.
 
+        Args:
+            language: the language this utterance was captured in. ``None``
+                uses the current global language. Passing the utterance's own
+                language keeps a segment queued before a runtime switch paired
+                with the language (and initial prompt) it was captured under.
+
         Returns:
             Tuple of (transcribed_text, duration_ms)
+
+        Raises:
+            ValueError: if an explicit ``language`` is not supported.
         """
         if not self.audio_buffer:
             return None, 0.0
+
+        # Resolve the language/prompt pair once, before consuming audio:
+        # set_language() may swap the global pair from another thread, and the
+        # two must never be mixed. No lock is held during transcription.
+        state = self._state if language is None else _language_state(language)
 
         # Convert buffer to numpy array
         audio_np = np.array(self.audio_buffer, dtype=np.float32)
@@ -144,8 +209,8 @@ class SpeechToText:
             # Transcribe with Whisper
             segments, info = self.model.transcribe(
                 audio_np,
-                language=self.language,
-                initial_prompt=self.initial_prompt,
+                language=state.language,
+                initial_prompt=state.initial_prompt,
                 beam_size=5,
                 best_of=5,
                 temperature=0.0,
