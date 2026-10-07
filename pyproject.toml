@@ -22,6 +22,9 @@ filterwarnings = [
     "error",
     "ignore::DeprecationWarning",
     "ignore::PendingDeprecationWarning",
+    # Starlette's TestClient currently warns when httpx2 is unavailable;
+    # keep strict warning handling for everything else until TestClient is migrated.
+    "ignore::starlette.exceptions.StarletteDeprecationWarning",
 ]
 
 [tool.coverage.run]
