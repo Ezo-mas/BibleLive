@@ -524,8 +524,18 @@ def create_app(bible_lookup: BibleLookup | None = None) -> FastAPI:
             display_settings=app_state.display_settings,
         )
 
-    # Serve static files (CSS/JS, and the built frontend bundle under /static/frontend)
-    app.mount("/static", StaticFiles(directory=config.static_dir), name="static")
+    # Serve static files (CSS/JS, and the built frontend bundle under /static/frontend).
+    # static/ is generated and gitignored, so it is absent on a fresh checkout (and in CI)
+    # until the frontend is built. Mount only when it exists: StaticFiles raises at
+    # construction on a missing directory, which would make create_app() fail outright
+    # instead of leaving /display and /operator to return their 503 build instructions.
+    if config.static_dir.exists():
+        app.mount("/static", StaticFiles(directory=config.static_dir), name="static")
+    else:
+        logger.warning(
+            f"WARNING: Static directory not found at {config.static_dir}; "
+            f"/static will not be served. Run: cd frontend && npm install && npm run build"
+        )
 
     return app
 
