@@ -29,6 +29,7 @@ from .models import (
     ReferenceSubmitResponse,
     StateResponse,
 )
+from .settings_store import ALLOWED_AUTO_MODES
 from .state import AppState
 
 logger = logging.getLogger(__name__)
@@ -169,6 +170,29 @@ async def _handle_set_display_theme(
     )
 
 
+async def _handle_set_auto_mode(
+    websocket: WebSocket, app_state: AppState, message: dict[str, Any]
+) -> None:
+    """Choose which new detections bypass manual approval (action ``set_auto_mode``).
+
+    Only references that arrive after the change are auto-approved; the queue the
+    operator can already see is left exactly as it is.
+    """
+    auto_mode = message.get("auto_mode")
+    if auto_mode is None or not await app_state.set_auto_mode(auto_mode):
+        expected = ", ".join(f"'{mode}'" for mode in ALLOWED_AUTO_MODES)
+        await _ws_error(
+            websocket, "set_auto_mode", f"Invalid auto_mode; expected one of {expected}"
+        )
+        return
+
+    # Confirm to operators (including this one) so the selector reflects the mode
+    # the server will apply to the next detection.
+    await app_state.connection_manager.send_to_operator(
+        {"type": "auto_mode_confirmed", "data": {"auto_mode": app_state.auto_mode}}
+    )
+
+
 # Operator WebSocket actions, dispatched by the ``action`` field. Each handler
 # emits exactly the messages (including errors) the previous if/elif chain did;
 # only the organization is new.
@@ -178,6 +202,7 @@ _OPERATOR_ACTIONS: dict[str, Any] = {
     "clear_pending": _handle_clear_pending,
     "set_verse_limit": _handle_set_verse_limit,
     "set_display_theme": _handle_set_display_theme,
+    "set_auto_mode": _handle_set_auto_mode,
 }
 
 
@@ -522,6 +547,7 @@ def create_app(bible_lookup: BibleLookup | None = None) -> FastAPI:
             display_connections=len(app_state.connection_manager.display_connections),
             operator_connections=len(app_state.connection_manager.operator_connections),
             display_settings=app_state.display_settings,
+            auto_mode=app_state.auto_mode,
         )
 
     # Serve static files (CSS/JS, and the built frontend bundle under /static/frontend).
