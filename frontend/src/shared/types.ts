@@ -31,6 +31,13 @@ export interface DisplaySettings {
   theme: DisplayTheme
 }
 
+/**
+ * Which newly detected references the server displays without operator action.
+ * Confidence order is low < medium < high, so 'medium_and_up' ('Med+') covers
+ * high as well; 'off' sends every detection to the pending queue.
+ */
+export type AutoMode = 'off' | 'high' | 'medium_and_up' | 'all'
+
 /** Messages the server sends to display clients (ws /ws/display). */
 export type DisplayMessage =
   | { type: 'reference'; data: BibleReference }
@@ -50,6 +57,8 @@ export type OperatorMessage =
         display_connections: number
         operator_connections: number
         display_settings?: DisplaySettings
+        /** Absent when talking to an older server. */
+        auto_mode?: AutoMode
       }
     }
   | { type: 'pending_update'; data: { pending: BibleReference[]; count: number } }
@@ -58,6 +67,7 @@ export type OperatorMessage =
   | { type: 'pending_cleared'; data: Record<string, never> }
   | { type: 'connection_status'; data: { display: number; operator: number } }
   | { type: 'display_settings_confirmed'; data: DisplaySettings }
+  | { type: 'auto_mode_confirmed'; data: { auto_mode: AutoMode } }
   | { type: 'error'; data: { message: string; action: string } }
 
 /** Messages the operator client sends to the server. */
@@ -84,8 +94,18 @@ export interface SetDisplayThemeAction {
   theme: DisplayTheme
 }
 
+export interface SetAutoModeAction {
+  action: 'set_auto_mode'
+  auto_mode: AutoMode
+}
+
 export type OperatorAction =
-  ApproveAction | ClearAction | ClearPendingAction | SetVerseLimitAction | SetDisplayThemeAction
+  | ApproveAction
+  | ClearAction
+  | ClearPendingAction
+  | SetVerseLimitAction
+  | SetDisplayThemeAction
+  | SetAutoModeAction
 
 /** Snapshot of server state returned by GET /api/state. */
 export interface AppStateSnapshot {
@@ -97,4 +117,5 @@ export interface AppStateSnapshot {
   display_connections: number
   operator_connections: number
   display_settings?: DisplaySettings
+  auto_mode?: AutoMode
 }
