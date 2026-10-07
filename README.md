@@ -28,7 +28,7 @@ references before they go on screen.
 ## Requirements
 
 - Python 3.10+
-- Node.js 18+ (only for building the frontend; a prebuilt bundle is included in `static/frontend/`)
+- Node.js 18+ (required to build the frontend into `static/frontend/`; that directory is generated and not committed, so it must be built once after cloning)
 - ffmpeg (required by the audio pipeline)
 - A microphone (for live reference detection)
 
@@ -45,7 +45,7 @@ pip install -e "./backend[audio]"
 pip install -r backend/requirements.txt
 pip install -r backend/requirements-audio.txt
 
-# Optional: rebuild the frontend from source
+# Required: build the frontend (once after cloning; also re-run after frontend changes)
 cd frontend && npm install && npm run build
 ```
 

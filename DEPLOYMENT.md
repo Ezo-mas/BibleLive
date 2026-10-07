@@ -54,7 +54,7 @@ BIBLELIVE_OPERATOR_TOKEN=<generate-secure-token>
 
 # Database
 BIBLELIVE_DB_PATH=bible_data/biblelive.sqlite
-BIBLELIVE_DB_READONLY=false
+BIBLELIVE_DB_READONLY=true
 
 # Logging
 BIBLELIVE_LOG_LEVEL=INFO
