@@ -7,7 +7,8 @@ from fastapi import WebSocket
 from ..bible_lookup import BibleLookup
 from ..config import config
 from .connections import ConnectionManager
-from .models import BibleReference, DisplaySettings, VerseText
+from .models import AutoMode, BibleReference, DisplaySettings, VerseText
+from .settings_store import SettingsStore, coerce_auto_mode, is_auto_mode
 
 logger = logging.getLogger(__name__)
 
@@ -19,18 +20,46 @@ ALLOWED_VERSE_LIMITS: tuple[int | str, ...] = (3, 5, 10, "all")
 # options; anything else is rejected so a bad value cannot blank the projector.
 ALLOWED_DISPLAY_THEMES: tuple[str, ...] = ("dark", "light")
 
+# Confidence levels each auto-approve mode accepts. Confidence order is
+# low < medium < high, so "medium_and_up" ("Med+" in the console) covers high as
+# well. "off" keeps every detection waiting for the operator.
+AUTO_APPROVE_CONFIDENCES: dict[AutoMode, frozenset[str]] = {
+    "off": frozenset(),
+    "high": frozenset({"high"}),
+    "medium_and_up": frozenset({"high", "medium"}),
+    "all": frozenset({"high", "medium", "low"}),
+}
+
 
 class AppState:
     """Manage the application state including pending references, current display, and connections."""
 
-    def __init__(self, bible_lookup: BibleLookup):
-        """Initialize the application state with empty references and connection manager."""
+    def __init__(
+        self, bible_lookup: BibleLookup, settings_store: SettingsStore | None = None
+    ) -> None:
+        """Initialize the application state with empty references and connection manager.
+
+        Args:
+            bible_lookup: Loaded database used to resolve verse text.
+            settings_store: Where persisted operator settings live. Defaults to
+                ``config.SETTINGS_PATH``; tests pass a temporary file.
+        """
         self.current_display: BibleReference | None = None
         self.pending_references: list[BibleReference] = []
         self.reference_history: list[BibleReference] = []
         self.display_settings = DisplaySettings()
         self.connection_manager = ConnectionManager()
         self.bible_lookup = bible_lookup
+        self.settings_store = (
+            settings_store
+            if settings_store is not None
+            else SettingsStore(config.resolve_settings_path())
+        )
+        # Precedence: a persisted mode wins over the environment default, and an
+        # unknown environment value leaves auto-approval off.
+        self.auto_mode: AutoMode = self.settings_store.load_auto_mode(
+            default=coerce_auto_mode(config.AUTO_MODE)
+        )
 
     async def _send_pending_update(self) -> None:
         """Notify operators of the current pending queue."""
@@ -89,6 +118,31 @@ class AppState:
         logger.info(f"Display theme set to {theme}")
         return True
 
+    async def set_auto_mode(self, auto_mode: object) -> bool:
+        """Choose which new detections are displayed without operator action.
+
+        Returns False for an unknown mode. Only references received from now on
+        are affected: anything already pending stays pending, so flipping this
+        switch can never silently drain the queue or put an unreviewed detection
+        on screen. Persistence is best effort; the in-memory value applies even
+        when the settings file cannot be written.
+        """
+        if not is_auto_mode(auto_mode):
+            return False
+        self.auto_mode = auto_mode
+        self.settings_store.save_auto_mode(auto_mode)
+        logger.info(f"Auto-approve mode set to '{auto_mode}'")
+        return True
+
+    def should_auto_approve(self, ref: BibleReference, auto_mode: AutoMode | None = None) -> bool:
+        """Whether the given mode auto-approves this reference's confidence.
+
+        Defaults to the current mode; ``add_reference`` passes the mode captured
+        at arrival so a concurrent ``set_auto_mode`` cannot change how an already
+        arrived reference is handled.
+        """
+        return ref.confidence in AUTO_APPROVE_CONFIDENCES[auto_mode or self.auto_mode]
+
     async def send_operator_state_snapshot(self, websocket: WebSocket | None = None) -> None:
         """Send complete state snapshot to a specific operator or all operators."""
         snapshot = {
@@ -104,6 +158,7 @@ class AppState:
                 "display_connections": len(self.connection_manager.display_connections),
                 "operator_connections": len(self.connection_manager.operator_connections),
                 "display_settings": self.display_settings.model_dump(),
+                "auto_mode": self.auto_mode,
             },
         }
         if websocket:
@@ -149,7 +204,13 @@ class AppState:
         logger.info("Closed database connection.")
 
     async def add_reference(self, ref: BibleReference) -> None:
-        """Add a new reference to pending queue with bounded size."""
+        """Add a new reference to pending queue with bounded size.
+
+        When auto-approve is on and the detection's confidence qualifies, the
+        reference is approved immediately through ``approve_and_notify`` — the
+        same path the operator uses — so it reaches the display exactly the way a
+        manual approval does and the single display-send path stays in one place.
+        """
         # Enforce queue limit to prevent unbounded memory growth
         if len(self.pending_references) >= config.MAX_PENDING_REFERENCES:
             dropped = self.pending_references.pop(0)
@@ -158,9 +219,24 @@ class AppState:
                 f"dropped oldest reference: {dropped.book} {dropped.chapter}:{dropped.verse_start or '?'}"
             )
 
+        # Capture the mode at arrival, before any await: a set_auto_mode that
+        # lands while the arrival broadcast is in flight must not retroactively
+        # apply to a reference that arrived under the previous mode.
+        mode_at_arrival = self.auto_mode
+
         self.pending_references.append(ref)
         # Notify operators of new pending reference
         await self._send_pending_update()
+
+        # Auto-approval runs after the arrival update, so the message sequence is
+        # the manual one: the reference appears in the queue, then the approval
+        # confirmation, then the queue without it.
+        if self.should_auto_approve(ref, mode_at_arrival):
+            logger.info(
+                f"Auto-approving {ref.confidence}-confidence reference "
+                f"(mode '{mode_at_arrival}'): {ref.book} {ref.chapter}:{ref.verse_start or '?'}"
+            )
+            await self.approve_and_notify(ref.id)
 
     async def approve_pending(self, reference_id: str) -> BibleReference | None:
         """Approve and display a pending reference by ID"""

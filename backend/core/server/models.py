@@ -82,6 +82,12 @@ class ClearPendingResponse(BaseModel):
     message: str
 
 
+# Operator-selected auto-approve modes. Confidence order is low < medium < high,
+# so "medium_and_up" (the console's "Med+") covers high as well; "off" leaves
+# every detection to the operator. Mirrored in frontend/src/shared/types.ts.
+AutoMode = Literal["off", "high", "medium_and_up", "all"]
+
+
 class DisplaySettings(BaseModel):
     """Operator-controlled presentation settings for the audience display.
 
@@ -110,6 +116,9 @@ class StateResponse(BaseModel):
     display_connections: int
     operator_connections: int
     display_settings: DisplaySettings = Field(default_factory=DisplaySettings)
+    auto_mode: AutoMode = Field(
+        default="off", description="Which new detections are displayed without operator action"
+    )
 
 
 class ErrorResponse(BaseModel):
@@ -151,6 +160,13 @@ class OperatorSetDisplayThemeAction(BaseModel):
     theme: Literal["dark", "light"]
 
 
+class OperatorSetAutoModeAction(BaseModel):
+    """Action to choose which new detections are shown without operator approval."""
+
+    action: Literal["set_auto_mode"]
+    auto_mode: AutoMode
+
+
 # Discriminated union of every operator WebSocket action, used by the server to
 # validate incoming messages against the models above.
 OperatorAction = Annotated[
@@ -158,6 +174,7 @@ OperatorAction = Annotated[
     | OperatorClearDisplayAction
     | OperatorClearPendingAction
     | OperatorSetVerseLimitAction
-    | OperatorSetDisplayThemeAction,
+    | OperatorSetDisplayThemeAction
+    | OperatorSetAutoModeAction,
     Field(discriminator="action"),
 ]

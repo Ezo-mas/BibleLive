@@ -12,6 +12,7 @@ import pytest
 from core.config import config
 from core.import_bible import BibleImporter
 from core.server.models import DisplaySettings
+from core.server.settings_store import DEFAULT_AUTO_MODE, SettingsStore
 
 BACKEND_ROOT = Path(__file__).resolve().parent.parent
 REPO_ROOT = BACKEND_ROOT.parent
@@ -103,24 +104,28 @@ def kjv_db(tmp_path_factory: pytest.TempPathFactory) -> Path:
 
 
 @pytest.fixture(scope="session")
-def app(kjv_db: Path):
+def app(kjv_db: Path, tmp_path_factory: pytest.TempPathFactory):
     """Build the FastAPI app once per test session, backed by the test database.
 
     The factory lives in ``core.server.app``; the old module-level ``app``
     global from ``core.biblelive_server`` no longer exists. ``config.DB_PATH``
     is pointed at the session database for the duration of the run and restored
-    afterwards.
+    afterwards. ``config.SETTINGS_PATH`` is redirected the same way so the run
+    neither reads nor writes the developer's ``data/server_settings.json``.
     """
     from core.server.app import create_app
 
     original_db_path = config.DB_PATH
+    original_settings_path = config.SETTINGS_PATH
     config.DB_PATH = str(kjv_db)
+    config.SETTINGS_PATH = str(tmp_path_factory.mktemp("settings") / "server_settings.json")
     application = create_app()
     try:
         yield application
     finally:
         application.state.app_state.bible_lookup.close()
         config.DB_PATH = original_db_path
+        config.SETTINGS_PATH = original_settings_path
 
 
 @pytest.fixture(scope="session")
@@ -130,13 +135,17 @@ def app_state(app):
 
 
 @pytest.fixture(autouse=True)
-def reset_app_state(app_state):
+def reset_app_state(app_state, tmp_path: Path):
     """Reset the shared server state before and after every test."""
     app_state.current_display = None
     app_state.pending_references.clear()
     app_state.reference_history.clear()
     app_state.display_settings = DisplaySettings()
     app_state.connection_manager = app_state.connection_manager.__class__()
+    # Persisted operator settings get a per-test file, so a mode one test saves
+    # cannot leak into another (or onto disk) while tests share one app.
+    app_state.settings_store = SettingsStore(tmp_path / "server_settings.json")
+    app_state.auto_mode = DEFAULT_AUTO_MODE
     yield
     app_state.connection_manager = app_state.connection_manager.__class__()
 

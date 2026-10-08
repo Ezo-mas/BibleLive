@@ -56,6 +56,16 @@ class Config(BaseSettings):
     DB_PATH: str = "bible_data/biblelive.sqlite"
     DB_READONLY: bool = True
 
+    # Server settings that must survive a restart (currently the auto-approve
+    # mode). Written atomically by the server; deliberately outside bible_data/,
+    # which stays read-only.
+    SETTINGS_PATH: str = "data/server_settings.json"
+
+    # Bootstrap default for the auto-approve mode: 'off' | 'high' |
+    # 'medium_and_up' | 'all'. Only used when nothing valid is persisted, and a
+    # value that is not one of those modes means 'off'.
+    AUTO_MODE: str = "off"
+
     # Bible data
     KJV_JSON_PATH: str = "data/kjv2.json"
 
@@ -109,6 +119,11 @@ class Config(BaseSettings):
         """Resolve DB_PATH, which may be relative to the project root."""
         db_path = Path(self.DB_PATH)
         return db_path if db_path.is_absolute() else PROJECT_ROOT / db_path
+
+    def resolve_settings_path(self) -> Path:
+        """Resolve SETTINGS_PATH, which may be relative to the project root."""
+        settings_path = Path(self.SETTINGS_PATH)
+        return settings_path if settings_path.is_absolute() else PROJECT_ROOT / settings_path
 
     def validate_config(self) -> None:
         """Validate configuration and log warnings for production concerns."""
@@ -169,6 +184,7 @@ BibleLive Configuration:
   Frontend: {self.frontend_dist}
   Log Level: {self.LOG_LEVEL}
   Auto-reload: {self.RELOAD}
+  Settings file: {self.SETTINGS_PATH} (auto-approve default: {self.AUTO_MODE})
   Authentication: {auth_status} (token: {token_set})
   CORS Origins: {self.CORS_ORIGINS or "None (same-origin only)"}
   Queue Limits: pending={self.MAX_PENDING_REFERENCES}, history={self.MAX_HISTORY_REFERENCES}

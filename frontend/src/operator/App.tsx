@@ -13,7 +13,7 @@ import {
   writeStoredVerseLimit,
 } from '../shared/verseText'
 import type { DisplayTheme, VerseLimit } from '../shared/verseText'
-import type { BibleReference, OperatorAction, OperatorMessage } from '../shared/types'
+import type { AutoMode, BibleReference, OperatorAction, OperatorMessage } from '../shared/types'
 import {
   Button,
   StatusBadge,
@@ -35,6 +35,23 @@ const FLASH_MS = 150
 
 /** Local storage key for operator token */
 const TOKEN_STORAGE_KEY = 'biblelive_operator_token'
+
+/**
+ * Auto-approve options, most conservative first. The server owns this setting
+ * (and persists it), so the console never stores it locally.
+ */
+const AUTO_MODE_OPTIONS: { value: AutoMode; label: string }[] = [
+  { value: 'off', label: 'Off' },
+  { value: 'high', label: 'High' },
+  { value: 'medium_and_up', label: 'Med+' },
+  { value: 'all', label: 'All' },
+]
+
+/** Coerce an auto mode from the server; an unknown value means manual approval. */
+function coerceAutoMode(value: unknown): AutoMode {
+  const match = AUTO_MODE_OPTIONS.find(option => option.value === value)
+  return match ? match.value : 'off'
+}
 
 type FlashTarget = 'approve' | 'clear' | 'clearPending'
 
@@ -126,6 +143,9 @@ export default function App() {
   const [displayTheme, setDisplayTheme] = useState<DisplayTheme>(() =>
     coerceDisplayTheme(readStoredDisplayTheme(window.localStorage))
   )
+  // Auto-approve mode. Server-side state (persisted there too), so the console
+  // only mirrors it: the snapshot on connect is the source of truth.
+  const [autoMode, setAutoMode] = useState<AutoMode>('off')
   const flashTimerRef = useRef<number | undefined>(undefined)
 
   // Brief "pressed" pulse on a button once the server confirms its action.
@@ -150,6 +170,9 @@ export default function App() {
         if (message.data.display_settings) {
           setVerseLimit(coerceVerseLimit(message.data.display_settings.verse_limit))
           setDisplayTheme(coerceDisplayTheme(message.data.display_settings.theme))
+        }
+        if (message.data.auto_mode) {
+          setAutoMode(coerceAutoMode(message.data.auto_mode))
         }
         setSelectedIndex(null)
         break
@@ -180,6 +203,9 @@ export default function App() {
       case 'display_settings_confirmed':
         setVerseLimit(coerceVerseLimit(message.data.verse_limit))
         setDisplayTheme(coerceDisplayTheme(message.data.theme))
+        break
+      case 'auto_mode_confirmed':
+        setAutoMode(coerceAutoMode(message.data.auto_mode))
         break
       case 'error':
         console.error('Server error:', message.data.message)
@@ -254,6 +280,16 @@ export default function App() {
       setDisplayTheme(next)
       writeStoredDisplayTheme(next, window.localStorage)
       sendAction({ action: 'set_display_theme', theme: next })
+    },
+    [sendAction]
+  )
+
+  // Applied optimistically so the switch feels immediate; the server echoes the
+  // accepted mode back in auto_mode_confirmed.
+  const setAutoApproveMode = useCallback(
+    (next: AutoMode) => {
+      setAutoMode(next)
+      sendAction({ action: 'set_auto_mode', auto_mode: next })
     },
     [sendAction]
   )
@@ -462,6 +498,29 @@ export default function App() {
                   onClick={() => setDisplayBackground(option)}
                 >
                   {option === 'dark' ? 'Dark' : 'Light'}
+                </button>
+              ))}
+            </div>
+
+            {/* Not a display setting, but it reuses the same controls so the
+                console keeps one button style. */}
+            <div className="operator-display-settings-header">
+              <span className="operator-display-settings-label">Auto-approve</span>
+              <span className="operator-display-settings-hint">
+                Shows new detections automatically. Pending items stay put.
+              </span>
+            </div>
+            <div className="operator-verse-options" role="group" aria-label="Auto-approve mode">
+              {AUTO_MODE_OPTIONS.map(option => (
+                <button
+                  key={option.value}
+                  type="button"
+                  className={`operator-verse-option ${autoMode === option.value ? 'is-active' : ''}`}
+                  aria-pressed={autoMode === option.value}
+                  disabled={status !== 'open'}
+                  onClick={() => setAutoApproveMode(option.value)}
+                >
+                  {option.label}
                 </button>
               ))}
             </div>
