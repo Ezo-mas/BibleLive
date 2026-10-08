@@ -180,14 +180,27 @@
   color: var(--color-text-secondary);
 }
 
-/* Main Content */
+/* Main Content.
+   The working column runs LIVE, then NEXT, then the pending queue; the sidebar
+   sits beside it. Flex rather than grid: the sections must keep their own
+   heights on a short window (the column scrolls) instead of being squeezed. */
 .operator-main {
-  display: grid;
-  grid-template-columns: 1fr 320px;
+  display: flex;
   gap: var(--space-6);
   padding: var(--space-6);
   flex: 1;
+  min-height: 0;
   overflow: hidden;
+}
+
+.operator-main-column {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  flex: 1;
+  min-width: 0;
+  /* The running order plus the queue scroll together when the window is short. */
+  overflow-y: auto;
 }
 
 /* Section */
@@ -236,12 +249,255 @@
   padding: var(--space-4);
 }
 
-/* Pending Section */
+/* Pending Section - the working area, so it takes the leftover height. The list
+   keeps its own minimum: the settings and action buttons below it are fixed
+   height, and a short window scrolls the column rather than hiding the list. */
 .operator-pending {
-  grid-row: 1;
-  grid-column: 1;
   display: flex;
   flex-direction: column;
+  flex: 1 0 auto;
+}
+
+.operator-pending .operator-section-content {
+  min-height: 200px;
+}
+
+/* LIVE and NEXT share one row so the queue below keeps a usable height: LIVE is
+   the wide miniature, NEXT the narrower staging panel. */
+.operator-preview-row {
+  display: flex;
+  gap: var(--space-4);
+  flex: 0 0 auto;
+}
+
+/* LIVE Section - a miniature of the audience display */
+.operator-live {
+  flex: 2 1 0;
+  min-width: 0;
+}
+
+.operator-live-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-full);
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--color-text-muted);
+}
+
+.operator-live-badge.is-live {
+  color: var(--color-success-text);
+  background: var(--color-success-bg);
+  border-color: transparent;
+}
+
+.operator-live-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--color-text-muted);
+}
+
+.operator-live-badge.is-live .operator-live-dot {
+  background: var(--color-success);
+}
+
+.operator-live-content {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Compact placeholder shared by the LIVE and NEXT panels. */
+.operator-hint {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  width: 100%;
+  color: var(--color-text-muted);
+}
+
+.operator-hint-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  border-radius: var(--radius-md);
+  background: var(--color-surface-muted);
+  color: var(--color-text-muted);
+}
+
+.operator-hint-icon svg {
+  width: 16px;
+  height: 16px;
+}
+
+.operator-hint-body {
+  min-width: 0;
+}
+
+.operator-hint-title {
+  margin: 0;
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--color-text-secondary);
+}
+
+.operator-hint-text {
+  margin: 0;
+  font-size: var(--font-size-xs);
+}
+
+/* Sized like a small projector: the data-theme attribute scopes the display's
+   own theme tokens here, and the stage clips rather than scrolls, exactly as a
+   projector screen does. The verse markup and classes come from the display. */
+.operator-live-stage {
+  width: 100%;
+  height: 170px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-surface-canvas);
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  text-align: center;
+  font-family: var(--font-serif);
+}
+
+/* Verse text in the miniature: same order and grouping as the projector (number
+   column plus text), at a console-friendly size set inline by the fit logic. */
+.operator-live-verses {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5em;
+  width: 100%;
+  overflow: hidden;
+}
+
+.operator-live-verse {
+  display: flex;
+  gap: 0.5em;
+  margin: 0;
+  line-height: 1.35;
+}
+
+.operator-live-verse-number {
+  flex-shrink: 0;
+  font-size: 0.7em;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  opacity: 0.8;
+}
+
+.operator-live-reference {
+  font-family: var(--font-sans);
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-text-secondary);
+}
+
+.operator-live-note {
+  font-family: var(--font-sans);
+  font-size: var(--font-size-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--color-text-muted);
+}
+
+/* NEXT Section - deliberately smaller and plainer than LIVE */
+.operator-next {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+
+
+.operator-next-badge {
+  padding: var(--space-1) var(--space-3);
+  border: 1px dashed var(--color-border-strong);
+  border-radius: var(--radius-full);
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--color-text-muted);
+}
+
+.operator-next-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.operator-next-preview {
+  padding: var(--space-3);
+  background: var(--color-surface-muted);
+  border: 1px dashed var(--color-border-strong);
+  border-radius: var(--radius-md);
+}
+
+.operator-next-reference {
+  margin: 0 0 var(--space-2) 0;
+  font-size: var(--font-size-base);
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.operator-next-verses {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.operator-next-verse {
+  display: flex;
+  gap: var(--space-2);
+  font-family: var(--font-serif);
+  font-size: var(--font-size-sm);
+  line-height: var(--leading-snug);
+  color: var(--color-text-secondary);
+}
+
+.operator-next-verse-number {
+  flex-shrink: 0;
+  font-family: var(--font-sans);
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  color: var(--color-text-muted);
+}
+
+.operator-next-note {
+  margin-top: var(--space-2);
+  font-size: var(--font-size-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--color-text-muted);
+}
+
+.operator-next-actions {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.operator-next-actions .btn:first-child {
+  flex: 1 1 auto;
 }
 
 /* Reference Card List */
@@ -436,6 +692,9 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-6);
+  width: 320px;
+  flex: 0 0 320px;
+  min-height: 0;
   overflow: hidden;
 }
 
@@ -517,14 +776,22 @@
 }
 
 /* Responsive */
-@media (max-width: 1024px) {
+@media (max-width: 1280px) {
+  /* The sidebar drops below the working area: full width, side by side. */
   .operator-main {
-    grid-template-columns: 1fr;
-    grid-template-rows: 1fr auto;
+    flex-wrap: wrap;
+    overflow-y: auto;
+  }
+
+  .operator-main-column {
+    flex: 1 1 100%;
+    overflow: visible;
   }
 
   .operator-sidebar {
-    grid-row: 2;
+    flex: 1 1 100%;
+    width: auto;
+    min-height: 0;
     flex-direction: row;
   }
 
@@ -534,6 +801,17 @@
 
   .operator-history {
     flex: 2;
+  }
+}
+
+@media (max-width: 1024px) {
+  /* One stacked column: the sections keep their natural height in DOM order. */
+  .operator-main-column {
+    flex: 1 1 100%;
+  }
+
+  .operator-preview-row {
+    flex-direction: column;
   }
 
   .operator-shortcuts {
@@ -561,6 +839,10 @@
   .operator-main {
     padding: var(--space-4);
     gap: var(--space-4);
+  }
+
+  .operator-live-stage {
+    height: 140px;
   }
 
   .operator-actions-secondary {

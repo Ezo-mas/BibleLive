@@ -19,7 +19,12 @@ export const MAX_FONT_SIZE = 88
  */
 const CHAR_WIDTH_RATIO = 0.5
 
-/** Vertical space taken by the reference line and container gaps, in px. */
+/**
+ * Vertical space taken by the reference line and container gaps, in px.
+ *
+ * Sized for a projector stage. A smaller consumer (the operator console's LIVE
+ * preview) passes its own `chromePx` instead of re-deriving the estimate.
+ */
 const CHROME_PX = 160
 
 export interface FitTextInput {
@@ -33,6 +38,8 @@ export interface FitTextInput {
   heightPx: number
   /** CSS line-height multiplier applied to the verse text. */
   lineHeight: number
+  /** Non-text space to leave free; defaults to the projector's allowance. */
+  chromePx?: number
 }
 
 /**
@@ -42,10 +49,10 @@ export interface FitTextInput {
  * even the smallest font would overflow, so callers always get a usable value.
  */
 export function computeFitFontSize(input: FitTextInput): number {
-  const { charCount, lineCount, widthPx, heightPx, lineHeight } = input
+  const { charCount, lineCount, widthPx, heightPx, lineHeight, chromePx = CHROME_PX } = input
 
   const blocks = Math.max(1, lineCount)
-  const lines = Math.max(1, heightPx - CHROME_PX)
+  const lines = Math.max(1, heightPx - chromePx)
   const width = Math.max(1, widthPx)
 
   const fits = (fontSize: number): boolean => {

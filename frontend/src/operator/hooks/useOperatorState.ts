@@ -49,6 +49,14 @@ export interface OperatorState {
   currentDisplay: BibleReference | null
   hasDisplayContent: boolean
   displayConnected: boolean
+  /**
+   * NEXT: the reference staged for the projector. Client-side only — staging
+   * previews a reference and never touches the display.
+   */
+  nextReference: BibleReference | null
+  showNext: () => void
+  clearNext: () => void
+  canShowNext: boolean
 
   /** Reference ID of the selected pending item, or null when nothing is selected. */
   selectedId: string | null
@@ -286,6 +294,19 @@ export function useOperatorState(): OperatorState {
 
   const deselect = useCallback(() => setSelectedId(null), [])
 
+  // NEXT is the staged scripture. It is derived from the queue rather than kept
+  // as its own state so it cannot drift from the list the operator is looking
+  // at: a queue update, an approval, or Esc drops it. Show is the ordinary
+  // approval of a queued reference, so the display still only moves through the
+  // server's approval path.
+  const nextReference = pending.find(reference => reference.id === selectedId) ?? null
+
+  const showNext = useCallback(() => {
+    if (nextReference) {
+      sendAction({ action: 'approve', reference_id: nextReference.id })
+    }
+  }, [nextReference, sendAction])
+
   const isConnected = status === 'open'
   const connectionState: ConnectionState = isConnected
     ? 'connected'
@@ -315,6 +336,10 @@ export function useOperatorState(): OperatorState {
     currentDisplay,
     hasDisplayContent: currentDisplay !== null,
     displayConnected,
+    nextReference,
+    showNext,
+    clearNext: deselect,
+    canShowNext: nextReference !== null && isConnected,
 
     selectedId,
     selectPending: setSelectedId,

@@ -57,6 +57,13 @@ function reference() {
   }
 }
 
+/** The history panel, scoped so LIVE showing the same reference cannot collide. */
+function historyPanel() {
+  const section = screen.getByRole('heading', { name: 'Recent History' }).closest('section')
+  if (!section) throw new Error('history section not found')
+  return within(section)
+}
+
 /** Read the numeric value shown next to a statistics label. */
 function statValue(label: string) {
   return screen.getByText(label).nextElementSibling?.textContent
@@ -135,7 +142,7 @@ describe('operator approval history', () => {
 
     push({ type: 'approval_confirmed', data: { reference: reference() } })
 
-    await waitFor(() => expect(screen.getByText('John 1:1-3')).toBeInTheDocument())
+    await waitFor(() => expect(historyPanel().getByText('John 1:1-3')).toBeInTheDocument())
     expect(statValue('Shown')).toBe('1')
     expect(statValue('History')).toBe('1')
     expect(screen.queryByText('No history yet')).not.toBeInTheDocument()
@@ -162,7 +169,7 @@ describe('operator approval history', () => {
       },
     })
 
-    await waitFor(() => expect(screen.getByText('Romans 8:28')).toBeInTheDocument())
+    await waitFor(() => expect(historyPanel().getByText('Romans 8:28')).toBeInTheDocument())
 
     const titles = screen
       .getAllByRole('heading', { level: 3 })
