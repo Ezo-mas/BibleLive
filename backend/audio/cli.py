@@ -48,6 +48,27 @@ def build_parser() -> argparse.ArgumentParser:
         help="WebRTC VAD aggressiveness (0=least, 3=most aggressive)",
     )
     parser.add_argument(
+        "--control-host",
+        default="127.0.0.1",
+        help="Host for the runtime language-control server (default: 127.0.0.1)",
+    )
+    parser.add_argument(
+        "--control-port",
+        type=int,
+        default=8001,
+        help="Port for the runtime language-control server (default: 8001)",
+    )
+    parser.add_argument(
+        "--control-token",
+        default=None,
+        help="Bearer token the control server requires when set (recommended off-loopback)",
+    )
+    parser.add_argument(
+        "--no-control",
+        action="store_true",
+        help="Disable the runtime language-control server",
+    )
+    parser.add_argument(
         "--log-level",
         default=None,
         choices=["DEBUG", "INFO", "WARNING", "ERROR"],
@@ -75,6 +96,10 @@ def main() -> None:
         whisper_compute_type=args.compute_type,
         language=args.language,
         vad_aggressiveness=args.vad_aggressiveness,
+        control_enabled=not args.no_control,
+        control_host=args.control_host,
+        control_port=args.control_port,
+        control_token=args.control_token,
     )
     processor = BibleLiveAudioProcessor(
         bible_db_path=args.bible_db, server_url=args.server, config=config
@@ -86,6 +111,11 @@ def main() -> None:
         # Keep running until interrupted
         print("\nBibleLive Audio Pipeline is running...")
         print("Speak into your microphone to detect Bible references")
+        if config.control_enabled:
+            print(
+                f"Language control: GET/POST http://{config.control_host}:{config.control_port}"
+                "/language"
+            )
         print("Press Ctrl+C to stop\n")
 
         while processor.is_running:

@@ -8,6 +8,7 @@ Replaces the former ``audio/biblelive_audio_pipeline.py`` monolith:
 - ``audio.vad``         - ``VoiceActivityDetector`` (WebRTC VAD)
 - ``audio.stt``         - ``SpeechToText`` (faster-whisper)
 - ``audio.sender``      - ``ReferenceSender`` (dedup + retry/backoff)
+- ``audio.control``     - ``LanguageControlServer`` (runtime language switching)
 - ``audio.pipeline``    - ``BibleLiveAudioProcessor``
 - ``audio.logging_config`` - ``configure_logging()`` (root logging setup)
 - ``audio.cli``         - ``main()`` entry point
@@ -15,6 +16,7 @@ Replaces the former ``audio/biblelive_audio_pipeline.py`` monolith:
 
 from .capture import AudioCapture
 from .config import AudioPipelineConfig
+from .control import LanguageControlServer
 from .logging_config import configure_logging
 from .metrics import PipelineMetrics
 from .pipeline import BibleLiveAudioProcessor
@@ -28,6 +30,7 @@ __all__ = [
     "AudioCapture",
     "AudioPipelineConfig",
     "BibleLiveAudioProcessor",
+    "LanguageControlServer",
     "PipelineMetrics",
     "ReferenceSender",
     "SpeechToText",
