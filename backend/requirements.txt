@@ -1,14 +1,12 @@
 # BibleLive core server + parser
 fastapi>=0.100.0
-uvicorn>=0.23.0
+uvicorn[standard]>=0.23.0
 pydantic>=2.0.0
+pydantic-settings>=2.0.0
+requests>=2.28.0     # used by audio/sender.py + test scripts
 
 # Development / testing
 pytest>=7.0.0
 httpx>=0.24.0        # required by fastapi.testclient.TestClient
-requests>=2.28.0     # used by integration test scripts
-
-# Config loading + dev tools
-pydantic-settings>=2.0.0
 ruff>=0.1.0
 mypy>=1.0.0

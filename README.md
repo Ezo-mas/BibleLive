@@ -27,10 +27,12 @@ references before they go on screen.
 
 ## Requirements
 
-- Python 3.10+
+- Python 3.11+
 - Node.js 18+ (required to build the frontend into `static/frontend/`; that directory is generated and not committed, so it must be built once after cloning)
 - ffmpeg (required by the audio pipeline)
 - A microphone (for live reference detection)
+
+On Windows use `python` instead of `python3` in the commands below.
 
 ## Installation
 
@@ -40,7 +42,13 @@ pip install -e ./backend
 
 # Optional: audio pipeline extras (faster-whisper, webrtcvad, numpy)
 pip install -e "./backend[audio]"
+```
 
+On Windows, `webrtcvad-wheels` is installed automatically (no C++ build tools
+needed). The audio extras also pin `setuptools<81`, because the VAD package
+imports `pkg_resources` at runtime.
+
+```bash
 # Optional: plain requirements files instead of an install
 pip install -r backend/requirements.txt
 pip install -r backend/requirements-audio.txt
@@ -63,6 +71,17 @@ export PYTHONPATH="$PWD/backend"     # start.sh and the Makefile do this for you
 ```bash
 ./start.sh
 ```
+
+### Run everything on Windows (PowerShell)
+
+```powershell
+Set-ExecutionPolicy -Scope Process Bypass   # only if script execution is blocked
+.\start.ps1
+```
+
+Uses `.venv\Scripts\python.exe` when present, `BIBLELIVE_HOST`/`BIBLELIVE_PORT`
+(default `8000`), and `BIBLELIVE_AUDIO_ARGS` for extra pipeline flags, e.g.
+`$env:BIBLELIVE_AUDIO_ARGS = "--device cpu --model base"`.
 
 ### Run the server only
 
@@ -232,7 +251,8 @@ BibleLive/                        # Monorepo root: tooling + shared assets
 ├── data/                         # KJV / LITV JSON text files
 ├── pyproject.toml                # Root tooling config (ruff, pytest, mypy)
 ├── Makefile                      # Backend + frontend task runner
-└── start.sh                      # Start server + audio pipeline
+├── start.sh                      # Start server + audio pipeline
+└── start.ps1                     # Same, for Windows PowerShell
 ```
 
 ## Testing
