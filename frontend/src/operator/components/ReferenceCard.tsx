@@ -8,12 +8,39 @@ export interface ReferenceCardProps {
   onSelect?: () => void
 }
 
+/** Confidence in plain words; the badge is uppercased by the shared styles. */
+const CONFIDENCE_LABELS: Record<BibleReference['confidence'], string> = {
+  high: 'High',
+  medium: 'Medium',
+  low: 'Low',
+}
+
+/**
+ * Arrival time as a local clock reading, or null when the timestamp is unusable.
+ *
+ * Seeing when a detection came in is part of judging whether it is still worth
+ * showing — a reference from four minutes ago is usually stale mid-sermon.
+ */
+function arrivalTime(createdAt: string): { label: string; iso: string } | null {
+  const date = new Date(createdAt)
+  if (Number.isNaN(date.getTime())) return null
+  return {
+    label: date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+    iso: createdAt,
+  }
+}
+
 /**
  * A single reference tile. Pass `onSelect` to make it selectable — the pending
  * queue does, history does not, since history items are not approvable.
+ *
+ * A selectable tile that is selected is the reference staged in Up Next, so the
+ * card says so: the queue and the staging panel must never be confused for one
+ * another during a live service.
  */
 export function ReferenceCard({ reference, selected = false, onSelect }: ReferenceCardProps) {
   const selectable = onSelect !== undefined
+  const time = arrivalTime(reference.created_at)
 
   const confidenceVariant =
     reference.confidence === 'high'
@@ -25,6 +52,7 @@ export function ReferenceCard({ reference, selected = false, onSelect }: Referen
   return (
     <div
       className={`ref-card ${selected ? 'ref-card-selected' : ''}`}
+      data-confidence={reference.confidence}
       role={selectable ? 'button' : undefined}
       tabIndex={selectable ? 0 : undefined}
       aria-pressed={selectable ? selected : undefined}
@@ -50,18 +78,31 @@ export function ReferenceCard({ reference, selected = false, onSelect }: Referen
         <div className="ref-card-header">
           <h3 className="ref-card-title">{formatReference(reference)}</h3>
           <div className="ref-card-badges">
-            <StatusBadge variant={confidenceVariant}>{reference.confidence}</StatusBadge>
+            <StatusBadge variant={confidenceVariant}>
+              <span className="sr-only">Detection confidence: </span>
+              {CONFIDENCE_LABELS[reference.confidence]}
+            </StatusBadge>
             {reference.inferred && <StatusBadge variant="info">Context</StatusBadge>}
           </div>
         </div>
 
         {reference.text && <p className="ref-card-text">{reference.text}</p>}
 
-        {/* Verse count, so the operator knows what the display will be bounded to.
-            `verses` is absent when talking to an older server. */}
-        {(reference.verses?.length ?? 0) > 1 && (
-          <div className="ref-card-meta">{reference.verses.length} verses</div>
-        )}
+        {/* Arrival order is the queue's order, and the clock reading on each card
+            is what makes that order readable. Verse count is here too, so the
+            operator knows what the display will be bounded to. `verses` is absent
+            when talking to an older server. */}
+        <div className="ref-card-meta">
+          {time && (
+            <time dateTime={time.iso} className="ref-card-time">
+              {time.label}
+            </time>
+          )}
+          {(reference.verses?.length ?? 0) > 1 && (
+            <span className="ref-card-verse-count">{reference.verses.length} verses</span>
+          )}
+          {selected && <span className="ref-card-staged">Staged in Up Next</span>}
+        </div>
       </div>
     </div>
   )

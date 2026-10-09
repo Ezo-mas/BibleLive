@@ -11,18 +11,54 @@ import {
   writeStoredVerseLimit,
 } from '../../shared/verseText'
 import type { DisplayTheme, VerseLimit } from '../../shared/verseText'
+import { formatReference } from '../../shared/reference'
 import type { AutoMode, BibleReference, OperatorAction, OperatorMessage } from '../../shared/types'
-import { coerceAutoMode } from '../autoMode'
+import { autoModeOption, coerceAutoMode } from '../autoMode'
 import type { ConnectionState } from '../../components'
 
 /** How long the button "pressed" feedback lasts after a confirmation. */
 const FLASH_MS = 150
+
+/** How long a notice stays up before it removes itself. */
+const NOTICE_MS: Record<NoticeTone, number> = { success: 3000, info: 4000, error: 6000 }
 
 /** Local storage key for operator token */
 const TOKEN_STORAGE_KEY = 'biblelive_operator_token'
 
 /** Which action button briefly pulses once the server confirms it. */
 export type FlashTarget = 'approve' | 'clear' | 'clearPending'
+
+/** How a notice reads: a confirmation, a neutral fact, or a failure. */
+export type NoticeTone = 'success' | 'info' | 'error'
+
+/** A single server-confirmed message for the operator. */
+export interface OperatorNotice {
+  /** Changes with every notice so repeating a message announces it again. */
+  id: number
+  tone: NoticeTone
+  text: string
+}
+
+/**
+ * Operator-facing wording for a failed action. The server's own message is kept
+ * because it is already written for people ("Reference not found or already
+ * processed"); the prefix names which control to try again.
+ */
+const ERROR_PREFIXES: Record<string, string> = {
+  approve: 'Could not show that reference',
+  clear: 'Could not clear the display',
+  clear_pending: 'Could not clear the queue',
+  set_verse_limit: 'Could not change the verses shown',
+  set_display_theme: 'Could not change the background',
+  set_auto_mode: 'Could not change auto-approve',
+}
+
+/**
+ * Actions the console applies optimistically. When the server rejects one, the
+ * control has to go back to the last confirmed value or it would keep claiming
+ * a setting the display is not using.
+ */
+const OPTIMISTIC_ACTIONS = new Set(['set_verse_limit', 'set_display_theme', 'set_auto_mode'])
 
 export interface OperatorState {
   /** Raw WebSocket status, for callers that need the exact socket state. */
@@ -31,6 +67,11 @@ export interface OperatorState {
   connectionState: ConnectionState
   /** True while the socket is open and actions can be sent. */
   isConnected: boolean
+  /** Replace the socket now, for recovering without a page reload. */
+  reconnect: () => void
+  /** The server's answer to the operator's last action, or null when quiet. */
+  notice: OperatorNotice | null
+  dismissNotice: () => void
   /** True when the operator must (re)enter a token before anything else. */
   needsToken: boolean
   authFailed: boolean
@@ -90,6 +131,10 @@ export interface OperatorState {
  * update between selecting and approving cannot display the wrong passage. The
  * server stays authoritative: every action is a request whose result arrives
  * back over the socket, and a reconnect re-reads the state snapshot.
+ *
+ * Feedback follows the same rule: nothing is announced as done until the server
+ * says so. Confirmations and errors land in `notice`; errors that follow an
+ * optimistic settings change also put the confirmed value back.
  */
 export function useOperatorState(): OperatorState {
   const [token, setToken] = useState<string | null>(() => localStorage.getItem(TOKEN_STORAGE_KEY))
@@ -118,7 +163,17 @@ export function useOperatorState(): OperatorState {
   // Auto-approve mode. Server-side state (persisted there too), so the console
   // only mirrors it: the snapshot on connect is the source of truth.
   const [autoMode, setAutoMode] = useState<AutoMode>('off')
+  // Whether this session ever reached the server. A socket that opened and then
+  // closed is a dropped connection, which is a different situation from a server
+  // refusing us for want of a token.
+  const [hasConnected, setHasConnected] = useState(false)
+  const [notice, setNotice] = useState<OperatorNotice | null>(null)
   const flashTimerRef = useRef<number | undefined>(undefined)
+  const noticeIdRef = useRef(0)
+  const noticeTimerRef = useRef<number | undefined>(undefined)
+  // The last values the server confirmed. Optimistic control changes fall back
+  // to these when the server rejects them.
+  const confirmedRef = useRef({ verseLimit, theme: displayTheme, autoMode })
 
   // Brief "pressed" pulse on a button once the server confirms its action.
   const pulse = useCallback((target: FlashTarget) => {
@@ -127,11 +182,46 @@ export function useOperatorState(): OperatorState {
     flashTimerRef.current = window.setTimeout(() => setFlash(null), FLASH_MS)
   }, [])
 
-  useEffect(() => () => window.clearTimeout(flashTimerRef.current), [])
+  // One notice slot: a new message replaces the previous one instead of stacking,
+  // so a busy queue cannot bury the working area in toasts.
+  const showNotice = useCallback((tone: NoticeTone, text: string) => {
+    noticeIdRef.current += 1
+    setNotice({ id: noticeIdRef.current, tone, text })
+    window.clearTimeout(noticeTimerRef.current)
+    noticeTimerRef.current = window.setTimeout(() => setNotice(null), NOTICE_MS[tone])
+  }, [])
+
+  const dismissNotice = useCallback(() => {
+    window.clearTimeout(noticeTimerRef.current)
+    setNotice(null)
+  }, [])
+
+  useEffect(
+    () => () => {
+      window.clearTimeout(flashTimerRef.current)
+      window.clearTimeout(noticeTimerRef.current)
+    },
+    []
+  )
+
+
+  /**
+   * Keep a staged reference across a queue update when it is still queued.
+   *
+   * Detections arrive while an operator is deciding, and a new arrival used to
+   * wipe the staged selection mid-approval. The reference is only ever approved
+   * by ID, so holding on to it cannot show the wrong passage — and letting go
+   * when its ID leaves the queue keeps the button in step with the list.
+   */
+  const keepStagedSelection = useCallback((next: BibleReference[]) => {
+    setSelectedId(prevId =>
+      prevId !== null && next.some(reference => reference.id === prevId) ? prevId : null
+    )
+  }, [])
 
   const handleMessage = (message: OperatorMessage) => {
     switch (message.type) {
-      case 'state_snapshot':
+      case 'state_snapshot': {
         setPending(message.data.pending)
         setHistory(message.data.history)
         setPendingCount(message.data.pending_count)
@@ -140,53 +230,107 @@ export function useOperatorState(): OperatorState {
         setCurrentDisplay(message.data.current_display)
         setDisplayConnected(message.data.display_connections > 0)
         if (message.data.display_settings) {
-          setVerseLimit(coerceVerseLimit(message.data.display_settings.verse_limit))
-          setDisplayTheme(coerceDisplayTheme(message.data.display_settings.theme))
+          const verseLimit = coerceVerseLimit(message.data.display_settings.verse_limit)
+          const theme = coerceDisplayTheme(message.data.display_settings.theme)
+          setVerseLimit(verseLimit)
+          setDisplayTheme(theme)
+          confirmedRef.current.verseLimit = verseLimit
+          confirmedRef.current.theme = theme
         }
         // Absent when talking to an older server, which leaves the mode off.
         if (message.data.auto_mode) {
-          setAutoMode(coerceAutoMode(message.data.auto_mode))
+          const autoMode = coerceAutoMode(message.data.auto_mode)
+          setAutoMode(autoMode)
+          confirmedRef.current.autoMode = autoMode
         }
-        setSelectedId(null)
+        // A reconnect can land while something is staged; keep it if the queue
+        // still holds it so a dropped socket does not undo the operator's work.
+        keepStagedSelection(message.data.pending)
         break
+      }
       case 'pending_update':
         setPending(message.data.pending)
         setPendingCount(message.data.count)
-        setSelectedId(null)
+        keepStagedSelection(message.data.pending)
         break
-      case 'approval_confirmed':
+      case 'approval_confirmed': {
+        const shown = message.data.reference
         // The server pushes the approved reference; fold it into history and the
         // counters so the sidebar is not stale until the next snapshot.
-        setHistory(prev => [message.data.reference, ...prev])
+        setHistory(prev => [shown, ...prev])
         setHistoryCount(count => count + 1)
         setShownCount(count => count + 1)
-        setCurrentDisplay(message.data.reference)
+        setCurrentDisplay(shown)
         pulse('approve')
+        showNotice('success', `Shown: ${formatReference(shown)}`)
         break
+      }
       case 'clear_confirmed':
         setCurrentDisplay(null)
         pulse('clear')
+        showNotice('info', 'Display cleared')
         break
       case 'pending_cleared':
         pulse('clearPending')
+        showNotice('info', 'Pending queue cleared')
         break
       case 'connection_status':
         setDisplayConnected(message.data.display > 0)
         break
-      case 'display_settings_confirmed':
-        setVerseLimit(coerceVerseLimit(message.data.verse_limit))
-        setDisplayTheme(coerceDisplayTheme(message.data.theme))
+      case 'display_settings_confirmed': {
+        const verseLimit = coerceVerseLimit(message.data.verse_limit)
+        const theme = coerceDisplayTheme(message.data.theme)
+        // The server echoes the whole settings block, so announce only what
+        // actually moved; an unrelated echo stays quiet.
+        const changes: string[] = []
+        if (verseLimit !== confirmedRef.current.verseLimit) {
+          changes.push(`verses shown ${verseLimit === 'all' ? 'All' : verseLimit}`)
+        }
+        if (theme !== confirmedRef.current.theme) {
+          changes.push(`background ${theme === 'dark' ? 'Dark' : 'Light'}`)
+        }
+        setVerseLimit(verseLimit)
+        setDisplayTheme(theme)
+        confirmedRef.current.verseLimit = verseLimit
+        confirmedRef.current.theme = theme
+        if (changes.length > 0) showNotice('info', `Saved — ${changes.join(', ')}`)
         break
-      case 'auto_mode_confirmed':
-        setAutoMode(coerceAutoMode(message.data.auto_mode))
+      }
+      case 'auto_mode_confirmed': {
+        const autoMode = coerceAutoMode(message.data.auto_mode)
+        const changed = autoMode !== confirmedRef.current.autoMode
+        setAutoMode(autoMode)
+        confirmedRef.current.autoMode = autoMode
+        if (changed) showNotice('info', `Auto-approve: ${autoModeOption(autoMode).label}`)
         break
-      case 'error':
-        console.error('Server error:', message.data.message)
+      }
+      case 'error': {
+        const { action, message: reason } = message.data
+        console.error('Server error:', reason)
+        const prefix = ERROR_PREFIXES[action] ?? 'Action failed'
+        showNotice(
+          'error',
+          OPTIMISTIC_ACTIONS.has(action)
+            ? `${prefix} — reverted. ${reason}`
+            : `${prefix}: ${reason}`
+        )
+        // An optimistic change is only provisional. Put the last confirmed value
+        // back so the console matches what the display is really using.
+        if (action === 'set_verse_limit') {
+          setVerseLimit(confirmedRef.current.verseLimit)
+          writeStoredVerseLimit(confirmedRef.current.verseLimit, window.localStorage)
+        } else if (action === 'set_display_theme') {
+          setDisplayTheme(confirmedRef.current.theme)
+          writeStoredDisplayTheme(confirmedRef.current.theme, window.localStorage)
+        } else if (action === 'set_auto_mode') {
+          setAutoMode(confirmedRef.current.autoMode)
+        }
         break
+      }
     }
   }
 
-  const { status, send } = useWebSocket<OperatorMessage>(
+  const { status, send, reconnect } = useWebSocket<OperatorMessage>(
     token ? `/ws/operator?token=${encodeURIComponent(token)}` : '/ws/operator',
     handleMessage,
     {
@@ -201,6 +345,12 @@ export function useOperatorState(): OperatorState {
       },
     }
   )
+
+  // Remember a successful connection: it is what separates a dropped socket (the
+  // console stays, with a reconnect banner) from a server that wants a token.
+  useEffect(() => {
+    if (status === 'open') setHasConnected(true)
+  }, [status])
 
   const handleTokenSubmit = (e: FormEvent) => {
     e.preventDefault()
@@ -318,9 +468,16 @@ export function useOperatorState(): OperatorState {
     status,
     connectionState,
     isConnected,
-    // Without a token the socket stays closed; with a rejected one the server
-    // closes with 1008. Either way the operator must supply a token first.
-    needsToken: authFailed || (status === 'closed' && !token),
+    reconnect,
+    notice,
+    dismissNotice,
+    // A rejected token (close 1008) means the operator must supply one. A socket
+    // that never opened and has no token is treated the same way, so the console
+    // does not flash before the server's refusal arrives — but once the session
+    // has connected, a close is a dropped connection, not an auth failure, and
+    // the console stays up with the reconnect banner instead of a dead-end
+    // token prompt.
+    needsToken: authFailed || (status === 'closed' && !token && !hasConnected),
     authFailed,
     tokenInput,
     setTokenInput,

@@ -1,4 +1,5 @@
-import { AUTO_MODE_OPTIONS } from '../autoMode'
+import { useId } from 'react'
+import { AUTO_MODE_OPTIONS, autoModeOption } from '../autoMode'
 import type { AutoMode } from '../../shared/types'
 
 export interface AutoApproveControlsProps {
@@ -12,23 +13,36 @@ export interface AutoApproveControlsProps {
  * Which newly detected references the server shows without waiting for the
  * operator. The server applies this only to detections that arrive after the
  * change, so switching it never drains the pending queue.
+ *
+ * The short button labels ('Med+' and 'All') do not say which detections
+ * qualify, so the active mode is repeated as a value next to the label and as a
+ * sentence under the buttons. Both come from the same option table the buttons
+ * do, so the explanation cannot drift from the mode being sent.
  */
 export function AutoApproveControls({
   autoMode,
   disabled,
   onAutoModeChange,
 }: AutoApproveControlsProps) {
+  const descriptionId = useId()
+  const active = autoModeOption(autoMode)
+
   return (
-    <>
-      {/* Not a display setting, but it reuses the same controls so the
-          console keeps one button style. */}
-      <div className="operator-display-settings-header">
-        <span className="operator-display-settings-label">Auto-approve</span>
-        <span className="operator-display-settings-hint">
-          Shows new detections automatically. Pending items stay put.
+    <div className="operator-setting">
+      {/* Not a display setting, but it reuses the same row and button styling so
+          the console keeps one control vocabulary. */}
+      <div className="operator-setting-header">
+        <span className="operator-setting-label">Auto-approve</span>
+        <span className={`operator-setting-value ${autoMode === 'off' ? '' : 'is-on'}`}>
+          {active.label}
         </span>
       </div>
-      <div className="operator-verse-options" role="group" aria-label="Auto-approve mode">
+      <div
+        className="operator-verse-options"
+        role="group"
+        aria-label="Auto-approve mode"
+        aria-describedby={descriptionId}
+      >
         {AUTO_MODE_OPTIONS.map(option => (
           <button
             key={option.value}
@@ -42,6 +56,9 @@ export function AutoApproveControls({
           </button>
         ))}
       </div>
-    </>
+      <p className="operator-setting-hint" id={descriptionId}>
+        {active.description}
+      </p>
+    </div>
   )
 }

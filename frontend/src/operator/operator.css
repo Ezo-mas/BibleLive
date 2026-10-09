@@ -180,6 +180,35 @@
   color: var(--color-text-secondary);
 }
 
+/* Disconnected banner: a closed socket disables every control below it, so the
+   reason and a manual way back are stated rather than implied by a red dot. */
+.operator-connection-banner {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-6);
+  background: var(--color-danger-bg);
+  color: var(--color-danger-text);
+  border-bottom: 1px solid var(--color-border);
+  font-size: var(--font-size-sm);
+}
+
+.operator-connection-banner-icon {
+  display: flex;
+  flex-shrink: 0;
+}
+
+.operator-connection-banner-icon svg {
+  width: 18px;
+  height: 18px;
+}
+
+.operator-connection-banner-text {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+}
+
 /* Main Content.
    The working column runs LIVE, then NEXT, then the pending queue; the sidebar
    sits beside it. Flex rather than grid: the sections must keep their own
@@ -249,9 +278,10 @@
   padding: var(--space-4);
 }
 
-/* Pending Section - the working area, so it takes the leftover height. The list
-   keeps its own minimum: the settings and action buttons below it are fixed
-   height, and a short window scrolls the column rather than hiding the list. */
+/* Pending Section - the working area, so it takes the leftover height. The floor
+   is low on purpose: with the settings in the sidebar the whole column fits a
+   short window, so an empty queue should not reserve height the references
+   would need a moment later. */
 .operator-pending {
   display: flex;
   flex-direction: column;
@@ -259,7 +289,7 @@
 }
 
 .operator-pending .operator-section-content {
-  min-height: 200px;
+  min-height: 150px;
 }
 
 /* LIVE and NEXT share one row so the queue below keeps a usable height: LIVE is
@@ -424,8 +454,6 @@
   min-width: 0;
 }
 
-
-
 .operator-next-badge {
   padding: var(--space-1) var(--space-3);
   border: 1px dashed var(--color-border-strong);
@@ -525,6 +553,21 @@
   box-shadow: var(--shadow-sm);
 }
 
+/* Confidence is what an operator weighs first when deciding what to show, so it
+   gets a colour stripe down the card edge on top of the badge. The stripe keeps
+   its colour while the card is selected, when the other borders turn primary. */
+.ref-card[data-confidence='high'] {
+  border-left: 4px solid var(--color-success);
+}
+
+.ref-card[data-confidence='medium'] {
+  border-left: 4px solid var(--color-warning);
+}
+
+.ref-card[data-confidence='low'] {
+  border-left: 4px solid var(--color-danger);
+}
+
 .ref-card:focus-visible {
   outline: 2px solid var(--color-border-focus);
   outline-offset: 2px;
@@ -582,32 +625,55 @@
 }
 
 .ref-card-meta {
-  margin-top: var(--space-1);
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-3);
+  margin-top: var(--space-2);
   font-size: var(--font-size-xs);
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: var(--color-text-muted);
 }
 
-/* Display Settings - lives on the operator page because the audience
-   display is presentation-only. */
+/* Which pending card is the one staged in Up Next — the queue and the staging
+   panel must never be mistaken for each other. */
+.ref-card-staged {
+  margin-left: auto;
+  padding: 2px var(--space-2);
+  border-radius: var(--radius-full);
+  background: var(--color-primary-subtle);
+  color: var(--color-primary);
+  font-weight: 600;
+}
+
+/* Display and auto-approve settings, in the sidebar. The audience display is
+   presentation-only, so the controls live here — but they are configuration,
+   not per-action controls, and keeping them out of the working column is what
+   lets the queue keep its height on a short window. */
 .operator-display-settings {
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
   padding: var(--space-4);
-  background: var(--color-surface);
-  border-top: 1px solid var(--color-border);
 }
 
-.operator-display-settings-header {
+/* One setting per row: label (with the current value when it has one), the
+   control, then a short explanation. */
+.operator-setting {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.operator-setting-header {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  gap: var(--space-3);
+  gap: var(--space-2);
 }
 
-.operator-display-settings-label {
+.operator-setting-label {
   font-size: var(--font-size-sm);
   font-weight: 600;
   text-transform: uppercase;
@@ -615,8 +681,26 @@
   color: var(--color-text-secondary);
 }
 
-.operator-display-settings-hint {
+/* The active value spelled out, so the mode is legible without reading which
+   button is highlighted. */
+.operator-setting-value {
   font-size: var(--font-size-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--color-text-muted);
+}
+
+/* Auto-approve changes what reaches the projectors without the operator, so
+   its active value is called out rather than blending into the label. */
+.operator-setting-value.is-on {
+  color: var(--color-warning-text);
+}
+
+.operator-setting-hint {
+  margin: 0;
+  font-size: var(--font-size-xs);
+  line-height: var(--leading-snug);
   color: var(--color-text-muted);
 }
 
@@ -629,6 +713,9 @@
 
 .operator-verse-option {
   flex: 1 1 0;
+  /* Comfortably tappable on a touch screen, and an easy click target when the
+     operator is watching the service rather than the mouse. */
+  min-height: 40px;
   padding: var(--space-2) var(--space-3);
   font-family: var(--font-sans);
   font-size: var(--font-size-sm);
@@ -655,20 +742,28 @@
   cursor: not-allowed;
 }
 
-/* Actions */
+/* Actions - one row. The primary action has to stay reachable without scrolling
+   on a short window, so it shares a line with the two clears instead of
+   stacking three full-width buttons below the queue. */
 .operator-actions {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
+  align-items: center;
   gap: var(--space-3);
-  padding: var(--space-4);
+  padding: var(--space-3) var(--space-4);
   border-top: 1px solid var(--color-border);
   background: var(--color-surface-raised);
 }
 
+.operator-actions .btn-primary {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
 .operator-actions-secondary {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: var(--space-3);
+  display: flex;
+  flex: 0 0 auto;
+  gap: var(--space-2);
 }
 
 .btn-flash {
@@ -695,10 +790,18 @@
   width: 320px;
   flex: 0 0 320px;
   min-height: 0;
-  overflow: hidden;
+  /* The settings block now lives here, so on a short window the sidebar scrolls
+     rather than squeezing the panels. */
+  overflow-y: auto;
 }
 
-/* Stats */
+/* Settings and stats keep their height; history takes what is left. */
+.operator-settings {
+  flex-shrink: 0;
+}
+
+/* Stats - one compact row of counters rather than three tall tiles, so the
+   sidebar can spend its height on the history list. */
 .operator-stats {
   flex-shrink: 0;
 }
@@ -706,16 +809,16 @@
 .operator-stats-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: var(--space-3);
-  padding: var(--space-4);
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
 }
 
 .operator-stat {
   display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: var(--space-1);
-  padding: var(--space-3);
+  align-items: baseline;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: var(--space-2);
   background: var(--color-surface-raised);
   border-radius: var(--radius-md);
 }
@@ -729,15 +832,97 @@
 }
 
 .operator-stat-value {
-  font-size: var(--font-size-2xl);
+  font-size: var(--font-size-xl);
   font-weight: 700;
   color: var(--color-text);
 }
 
-/* History */
+/* History is the part that scrolls: it keeps a floor instead of collapsing to
+   nothing when the sidebar runs out of height (the sidebar itself scrolls). */
 .operator-history {
-  flex: 1;
-  min-height: 0;
+  flex: 1 1 auto;
+  min-height: 180px;
+}
+
+/* Action feedback. One slot only: a new message replaces the previous one, so a
+   busy queue cannot stack notifications over the working area. It sits above
+   the shortcut legend, which is fixed in the same place. */
+.operator-feedback {
+  position: fixed;
+  bottom: calc(var(--space-4) + 46px);
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  max-width: min(560px, calc(100vw - var(--space-6)));
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-surface-overlay);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  font-size: var(--font-size-sm);
+  color: var(--color-text);
+  z-index: var(--z-tooltip);
+}
+
+.operator-feedback-success {
+  border-color: var(--color-success);
+}
+
+.operator-feedback-error {
+  border-color: var(--color-danger);
+}
+
+.operator-feedback-icon {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.operator-feedback-icon svg {
+  width: 18px;
+  height: 18px;
+}
+
+.operator-feedback-success .operator-feedback-icon {
+  color: var(--color-success-text);
+}
+
+.operator-feedback-info .operator-feedback-icon {
+  color: var(--color-info-text);
+}
+
+.operator-feedback-error .operator-feedback-icon {
+  color: var(--color-danger-text);
+}
+
+.operator-feedback-text {
+  min-width: 0;
+}
+
+.operator-feedback-dismiss {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--color-text-muted);
+}
+
+.operator-feedback-dismiss:hover {
+  color: var(--color-text);
+  background: var(--color-surface-muted);
+}
+
+.operator-feedback-dismiss svg {
+  width: 14px;
+  height: 14px;
 }
 
 /* Keyboard Shortcuts */
@@ -788,19 +973,27 @@
     overflow: visible;
   }
 
+  /* Below the working column the sidebar becomes a row: counters and settings
+     share the first line, history spans the next. */
   .operator-sidebar {
     flex: 1 1 100%;
     width: auto;
     min-height: 0;
     flex-direction: row;
+    flex-wrap: wrap;
+    overflow: visible;
   }
 
   .operator-stats {
-    flex: 1;
+    flex: 1 1 220px;
+  }
+
+  .operator-settings {
+    flex: 1 1 300px;
   }
 
   .operator-history {
-    flex: 2;
+    flex: 1 1 100%;
   }
 }
 
@@ -816,6 +1009,11 @@
 
   .operator-shortcuts {
     display: none;
+  }
+
+  /* With the legend gone, the notice drops to the same margin. */
+  .operator-feedback {
+    bottom: var(--space-4);
   }
 }
 
@@ -836,6 +1034,10 @@
     display: none;
   }
 
+  .operator-connection-banner {
+    padding: var(--space-3) var(--space-4);
+  }
+
   .operator-main {
     padding: var(--space-4);
     gap: var(--space-4);
@@ -845,8 +1047,16 @@
     height: 140px;
   }
 
+  /* On a phone the actions go back to stacked, with the two clears side by
+     side beneath the primary button. */
+  .operator-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
   .operator-actions-secondary {
-    grid-template-columns: 1fr;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
   }
 
   .operator-sidebar {

@@ -179,12 +179,29 @@ describe('pending selection and approval', () => {
     expect(lastSent()).toEqual({ action: 'approve', reference_id: 'p-2' })
   })
 
-  it('clears the selection when the queue updates', () => {
+  it('keeps the staged selection when a queue update still holds it', () => {
     openWith()
     press('ArrowDown')
     expect(approveButton()).toBeEnabled()
 
-    push({ type: 'pending_update', data: { pending, count: pending.length } })
+    // A detection arriving mid-decision must not snatch the staged reference
+    // away. Approval goes by ID, so keeping it cannot show the wrong passage.
+    const grown = [...pending, reference('p-4', 'Acts', 2, 1)]
+    push({ type: 'pending_update', data: { pending: grown, count: grown.length } })
+
+    expect(approveButton()).toBeEnabled()
+    expect(screen.getByTestId('next-preview')).toHaveTextContent('John 1:1')
+
+    press('Enter')
+    expect(lastSent()).toEqual({ action: 'approve', reference_id: 'p-1' })
+  })
+
+  it('drops the selection when the queue update no longer holds it', () => {
+    openWith()
+    press('ArrowDown')
+    expect(approveButton()).toBeEnabled()
+
+    push({ type: 'pending_update', data: { pending: [reference('p-9', 'Acts', 2, 1)], count: 1 } })
     expect(approveButton()).toBeDisabled()
   })
 
