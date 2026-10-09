@@ -5,6 +5,7 @@ import { NextPanel } from './components/NextPanel'
 import { PendingQueue } from './components/PendingQueue'
 import { HistoryPanel } from './components/HistoryPanel'
 import { DisplaySettings } from './components/DisplaySettings'
+import { ScriptureSearch } from './components/ScriptureSearch'
 import { AutoApproveControls } from './components/AutoApproveControls'
 import { StatsPanel } from './components/StatsPanel'
 import { OperatorHeader } from './components/OperatorHeader'
@@ -29,10 +30,12 @@ import './operator.css'
  * pending queue. Configuration (display settings and auto-approve) and history
  * sit in the sidebar, so the live parts keep the height they need on any window.
  *
- * The only path from a pending reference to the display is approving it by ID:
- * the server owns the approval, the display, and history, and the operator
- * console just asks. Staging a reference in NEXT does not bypass that — Show is
- * the same approval request.
+ * Scripture reaches the display by one of two doors, and they stay separate all
+ * the way down. A pending reference is approved by ID through the server's
+ * approval path; a passage the operator finds by hand is staged in NEXT and sent
+ * as coordinates for the server to resolve itself. Find Scripture sits in the
+ * sidebar with the other controls, next to the counters, so the working column
+ * keeps its height (and the queue its room) on a short window.
  */
 export default function App() {
   const operator = useOperatorState()
@@ -79,6 +82,7 @@ export default function App() {
 
             <NextPanel
               reference={operator.nextReference}
+              source={operator.nextSource}
               verseLimit={operator.verseLimit}
               canShow={operator.canShowNext}
               onShow={operator.showNext}
@@ -110,6 +114,8 @@ export default function App() {
             shownCount={operator.shownCount}
             historyCount={operator.historyCount}
           />
+
+          <ScriptureSearch search={operator.search} disabled={!operator.isConnected} />
 
           <section className="operator-section operator-settings">
             <div className="operator-section-header">

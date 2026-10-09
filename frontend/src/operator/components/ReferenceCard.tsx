@@ -9,7 +9,7 @@ export interface ReferenceCardProps {
 }
 
 /** Confidence in plain words; the badge is uppercased by the shared styles. */
-const CONFIDENCE_LABELS: Record<BibleReference['confidence'], string> = {
+const CONFIDENCE_LABELS: Record<'high' | 'medium' | 'low', string> = {
   high: 'High',
   medium: 'Medium',
   low: 'Low',
@@ -37,6 +37,9 @@ function arrivalTime(createdAt: string): { label: string; iso: string } | null {
  * A selectable tile that is selected is the reference staged in Up Next, so the
  * card says so: the queue and the staging panel must never be confused for one
  * another during a live service.
+ *
+ * A manual passage carries no confidence — it was never a detection — so its
+ * badge names its source instead of implying a confidence it does not have.
  */
 export function ReferenceCard({ reference, selected = false, onSelect }: ReferenceCardProps) {
   const selectable = onSelect !== undefined
@@ -52,7 +55,7 @@ export function ReferenceCard({ reference, selected = false, onSelect }: Referen
   return (
     <div
       className={`ref-card ${selected ? 'ref-card-selected' : ''}`}
-      data-confidence={reference.confidence}
+      data-confidence={reference.confidence ?? 'manual'}
       role={selectable ? 'button' : undefined}
       tabIndex={selectable ? 0 : undefined}
       aria-pressed={selectable ? selected : undefined}
@@ -78,10 +81,17 @@ export function ReferenceCard({ reference, selected = false, onSelect }: Referen
         <div className="ref-card-header">
           <h3 className="ref-card-title">{formatReference(reference)}</h3>
           <div className="ref-card-badges">
-            <StatusBadge variant={confidenceVariant}>
-              <span className="sr-only">Detection confidence: </span>
-              {CONFIDENCE_LABELS[reference.confidence]}
-            </StatusBadge>
+            {reference.confidence !== null && reference.source !== 'manual' ? (
+              <StatusBadge variant={confidenceVariant}>
+                <span className="sr-only">Detection confidence: </span>
+                {CONFIDENCE_LABELS[reference.confidence]}
+              </StatusBadge>
+            ) : (
+              <StatusBadge variant="neutral">
+                <span className="sr-only">Source: </span>
+                Manual
+              </StatusBadge>
+            )}
             {reference.inferred && <StatusBadge variant="info">Context</StatusBadge>}
           </div>
         </div>

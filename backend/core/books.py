@@ -114,3 +114,22 @@ CANONICAL_BOOKS: tuple[Book, ...] = (
         ("revelation", "revelations", "revelation of john"),
     ),
 )
+
+
+def find_book(name: str) -> Book | None:
+    """Return the canonical book named ``name``, or None if there is no such book.
+
+    Matching is case- and whitespace-insensitive but otherwise exact, so callers
+    resolve against the same canon the parser, importer, and database use instead
+    of keeping a list of their own. Abbreviations are deliberately not accepted:
+    the canon stores them for import-time mapping only.
+    """
+    if not isinstance(name, str):
+        return None
+    wanted = name.strip().casefold()
+    if not wanted:
+        return None
+    for book in CANONICAL_BOOKS:
+        if book.name.casefold() == wanted:
+            return book
+    return None

@@ -68,9 +68,28 @@ return a 503 with build instructions.
   `{"type": "reference", "data": {book, chapter, verse_start, verse_end, confidence, inferred, text}}`
   and `{"type": "clear"}`.
 - Operator client connects to `/ws/operator?token=xxx` (token required if auth enabled),
-  receives `state_snapshot` on connect, `pending_update`, `approval_confirmed`, `clear_confirmed`,
-  `pending_cleared`, and sends `{"action": "approve", "reference_id": "uuid"}`,
-  `{"action": "clear"}`, `{"action": "clear_pending"}`.
+  receives `state_snapshot` on connect, `pending_update`, `approval_confirmed`, `display_confirmed`,
+  `clear_confirmed`, `pending_cleared`, and sends `{"action": "approve", "reference_id": "uuid"}`,
+  `{"action": "clear"}`, `{"action": "clear_pending"}`, plus the display/settings actions
+  (`set_verse_limit`, `set_display_theme`, `set_auto_mode`).
+
+### Manual scripture selection
+
+The operator can also put a passage of their own on the display. Both halves use
+HTTP (authenticated with the operator token when auth is enabled):
+
+- `GET /api/books` — the canonical 66-book list (`name`, `chapters`, `order`), so
+  the console carries no canon of its own.
+- `GET /api/lookup?book=John&chapter=3&verse_start=16&verse_end=17` — the verses
+  and display-ready text, or 404/422 with the reason. Read-only.
+
+Staging the result in Up Next is client-side and changes nothing on screen. Show
+sends `{"action": "display_reference", "book": ..., "chapter": ..., "verse_start": ...,
+"verse_end": ...}`: coordinates only, no reference ID and no text, because the
+passage was never queued — the server validates it against its own canon and
+Bible database, displays it through the same path an approval uses, and answers
+with `display_confirmed`. A manual passage never enters the pending queue and
+never carries a confidence.
 
 Both clients reconnect automatically with linear backoff (3s × attempt,
 up to 10 attempts).

@@ -465,6 +465,21 @@
   color: var(--color-text-muted);
 }
 
+/* Which door the staged scripture came through. Solid rather than dashed once
+   something is staged, and the manual one is tinted: Show sends a different
+   request for each, so the difference has to survive a glance. */
+.operator-next-badge.is-detected {
+  border-style: solid;
+  color: var(--color-text-secondary);
+}
+
+.operator-next-badge.is-manual {
+  border-style: solid;
+  border-color: transparent;
+  color: var(--color-primary);
+  background: var(--color-primary-subtle);
+}
+
 .operator-next-body {
   display: flex;
   flex-direction: column;
@@ -742,6 +757,86 @@
   cursor: not-allowed;
 }
 
+/* Find Scripture - the operator's own door to the display, next to the counters
+   in the sidebar so the working column keeps its height. The form is three
+   short rows: book, then chapter and verses, then Find. Every lookup is a
+   server request, so it is inert while the socket is down. */
+.operator-scripture {
+  flex-shrink: 0;
+}
+
+.operator-scripture-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.operator-scripture-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.operator-scripture-coordinates {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-2);
+}
+
+.operator-scripture-select,
+.operator-scripture-input {
+  width: 100%;
+  /* Same comfortable target as the verse-limit buttons: the operator is
+     watching the service, not the mouse. */
+  min-height: 40px;
+  padding: var(--space-2) var(--space-3);
+  font-family: var(--font-sans);
+  font-size: var(--font-size-sm);
+  color: var(--color-text);
+  background: var(--color-surface-muted);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  transition: border-color var(--transition-fast);
+}
+
+.operator-scripture-select:focus-visible,
+.operator-scripture-input:focus-visible {
+  outline: none;
+  border-color: var(--color-primary);
+}
+
+.operator-scripture-select:disabled,
+.operator-scripture-input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Lookup failures and the form's own validation, in one shape so the message
+   always appears where the operator just typed. */
+.operator-scripture-error {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  margin: 0;
+  font-size: var(--font-size-xs);
+  line-height: var(--leading-snug);
+  color: var(--color-danger-text);
+}
+
+.operator-scripture-error svg {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+}
+
+.operator-scripture-unavailable {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-3);
+}
+
 /* Actions - one row. The primary action has to stay reachable without scrolling
    on a short window, so it shares a line with the two clears instead of
    stacking three full-width buttons below the queue. */
@@ -989,6 +1084,10 @@
   }
 
   .operator-settings {
+    flex: 1 1 300px;
+  }
+
+  .operator-scripture {
     flex: 1 1 300px;
   }
 

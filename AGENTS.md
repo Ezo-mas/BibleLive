@@ -21,6 +21,13 @@ the architecture invariants that are easy to break by accident.
   instead of working around it. Running the documented install commands
   (`make install-dev`, `make frontend-install` / `npm install` from
   `frontend/`) is fine; installing anything else is not.
+- **Log serious deferred issues in `TECH_DEBT.md`.** Only confirmed,
+  out-of-scope issues: correctness/data integrity, security, realistic
+  load/growth, or design flaws that make future changes much riskier. No
+  style nits or speculation. Read the file first and extend an existing
+  entry rather than duplicating it. Don't fix logged items unless asked,
+  and don't remove or rewrite entries unless asked. Mention any entry you
+  add in your summary.
 
 ## Definition of done
 
@@ -102,6 +109,7 @@ Python tests need `backend/` on the import path — the Makefile and root
 | Add/adjust a verse-reference pattern | `backend/core/verse_parser.py` (+ `verse_parser_lt.py` for Lithuanian) and tests in `backend/tests/test_verse_parser*.py` |
 | Change an HTTP endpoint or WS handler | `backend/core/server/app.py`, `state.py`; message shapes in `models.py` + mirrored in `frontend/src/shared/types.ts` |
 | Change verse text lookup | `backend/core/bible_lookup.py` (SQLite at `bible_data/biblelive.sqlite`) |
+| Change manual scripture selection (Find Scripture) | `backend/core/passage.py` (validation + resolution) over `backend/core/books.py` (canon); endpoints and the `display_reference` action in `backend/core/server/app.py`; UI in `frontend/src/operator/components/ScriptureSearch.tsx` |
 | Import a new Bible translation | `backend/core/import_bible.py` |
 | Change audio capture/VAD/STT/sending | the matching module in `backend/audio/` |
 | Change operator UI | `frontend/src/operator/` (+ `operator.css`) |
@@ -133,13 +141,22 @@ Python tests need `backend/` on the import path — the Makefile and root
 3. **Operator approval flow**: audio pipeline POSTs references to
    `/api/reference`; the server queues them and pushes to the operator over
    WebSocket; `_send_display_reference` (the only path that pushes a
-   reference to display sockets) is called *only* from
-   `AppState.approve_pending()`, so the display never sees unapproved
-   references. The supported operator actions are `approve`, `clear`,
-   `clear_pending`, `set_verse_limit`, `set_display_theme` — there is no
-   `reject` action; discarding a wrong detection is done implicitly by
-   approving the next one or via `clear_pending`. Covered by
-   `backend/tests/test_websocket_approval.py`.
+   reference to display sockets) is called from exactly two
+   operator-authorized places: `AppState.approve_pending()`, and
+   `AppState.display_manual_passage()` — the `display_reference` action, which
+   shows a passage the operator picked by hand. The display still never sees an
+   unapproved detection, and a manual passage never enters the pending queue or
+   carries a confidence (it is `source="manual"`, so nothing can auto-approve
+   it). The supported operator actions are `approve`, `clear`, `clear_pending`,
+   `set_verse_limit`, `set_display_theme`, `set_auto_mode`, `display_reference`
+   — there is no `reject` action; discarding a wrong detection is done
+   implicitly by approving the next one or via `clear_pending`. Covered by
+   `backend/tests/test_websocket_approval.py` and
+   `backend/tests/test_manual_reference.py`.
+   Both doors resolve a passage the same way: `display_reference` carries
+   coordinates only (no ID, no confidence, no text) and the server re-resolves
+   them through `core/passage.py`, so a client cannot inject verse text or pass
+   a manual selection off as a detection.
 4. **VAD frame discipline**: WebRTC VAD requires exact 10/20/30 ms frames at
    16 kHz. `AudioCapture.get_audio_frame()` must return exactly that many
    bytes and must not drop carry-over bytes between calls (it keeps a

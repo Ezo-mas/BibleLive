@@ -12,8 +12,17 @@ import {
 } from '../../shared/verseText'
 import type { DisplayTheme, VerseLimit } from '../../shared/verseText'
 import { formatReference } from '../../shared/reference'
-import type { AutoMode, BibleReference, OperatorAction, OperatorMessage } from '../../shared/types'
+import type {
+  AutoMode,
+  BibleReference,
+  OperatorAction,
+  OperatorMessage,
+  Passage,
+} from '../../shared/types'
+import { passageToReference } from '../passageApi'
 import { autoModeOption, coerceAutoMode } from '../autoMode'
+import { useScriptureSearch } from './useScriptureSearch'
+import type { ScriptureSearchState } from './useScriptureSearch'
 import type { ConnectionState } from '../../components'
 
 /** How long the button "pressed" feedback lasts after a confirmation. */
@@ -46,6 +55,7 @@ export interface OperatorNotice {
  */
 const ERROR_PREFIXES: Record<string, string> = {
   approve: 'Could not show that reference',
+  display_reference: 'Could not show that passage',
   clear: 'Could not clear the display',
   clear_pending: 'Could not clear the queue',
   set_verse_limit: 'Could not change the verses shown',
@@ -59,6 +69,38 @@ const ERROR_PREFIXES: Record<string, string> = {
  * a setting the display is not using.
  */
 const OPTIMISTIC_ACTIONS = new Set(['set_verse_limit', 'set_display_theme', 'set_auto_mode'])
+
+/**
+ * What Up Next is holding: a queued detection the operator selected, or a
+ * passage they picked by hand. The source is explicit rather than inferred from
+ * timing or which component last rendered, because Show means two different
+ * things — approving a reference by ID, or asking the server to display a
+ * passage it resolved from coordinates.
+ */
+export type StagedReference =
+  | { kind: 'pending'; id: string }
+  | { kind: 'manual'; passage: Passage }
+
+/** Where the staged scripture came from, for the panel's badge. */
+export type NextSource = 'detected' | 'manual' | null
+
+/**
+ * Whether a confirmation is about the passage currently staged.
+ *
+ * A manual passage is identified by its coordinates: it never entered the queue
+ * and the server assigns its reference ID only when it displays the passage, so
+ * coordinates are what the request and the confirmation have in common. This is
+ * what stops a late confirmation for one passage from clearing a different one
+ * the operator staged in the meantime.
+ */
+function isStagedPassage(passage: Passage, shown: BibleReference): boolean {
+  return (
+    passage.book === shown.book &&
+    passage.chapter === shown.chapter &&
+    passage.verse_start === shown.verse_start &&
+    passage.verse_end === shown.verse_end
+  )
+}
 
 export interface OperatorState {
   /** Raw WebSocket status, for callers that need the exact socket state. */
@@ -91,13 +133,18 @@ export interface OperatorState {
   hasDisplayContent: boolean
   displayConnected: boolean
   /**
-   * NEXT: the reference staged for the projector. Client-side only — staging
-   * previews a reference and never touches the display.
+   * NEXT: the scripture staged for the projector, whether it came from the
+   * pending queue or from a manual selection. Client-side only — staging
+   * previews a passage and never touches the display.
    */
   nextReference: BibleReference | null
+  nextSource: NextSource
   showNext: () => void
   clearNext: () => void
   canShowNext: boolean
+
+  /** Manual passage search: the book list and the lookup the form calls. */
+  search: ScriptureSearchState
 
   /** Reference ID of the selected pending item, or null when nothing is selected. */
   selectedId: string | null
@@ -147,7 +194,13 @@ export function useOperatorState(): OperatorState {
   const [historyCount, setHistoryCount] = useState(0)
   const [shownCount, setShownCount] = useState(0)
   const [currentDisplay, setCurrentDisplay] = useState<BibleReference | null>(null)
-  const [selectedId, setSelectedId] = useState<string | null>(null)
+  // What Up Next holds. One piece of state, so a queued selection and a manual
+  // passage can never both look staged.
+  const [staged, setStaged] = useState<StagedReference | null>(null)
+  // True between pressing Show and the server's answer. Repeated clicks must not
+  // queue the same passage twice, and a confirmation that never comes (the
+  // socket dropped) must not leave Show disabled — see the status effect below.
+  const [showInFlight, setShowInFlight] = useState(false)
   const [flash, setFlash] = useState<FlashTarget | null>(null)
   const [displayConnected, setDisplayConnected] = useState(false)
   // The display is presentation-only, so this control lives here and the server
@@ -212,10 +265,15 @@ export function useOperatorState(): OperatorState {
    * wipe the staged selection mid-approval. The reference is only ever approved
    * by ID, so holding on to it cannot show the wrong passage — and letting go
    * when its ID leaves the queue keeps the button in step with the list.
+   *
+   * A manually staged passage is deliberately unaffected: it never enters the
+   * queue, so an arriving detection must not discard it.
    */
-  const keepStagedSelection = useCallback((next: BibleReference[]) => {
-    setSelectedId(prevId =>
-      prevId !== null && next.some(reference => reference.id === prevId) ? prevId : null
+  const keepStagedReference = useCallback((next: BibleReference[]) => {
+    setStaged(prev =>
+      prev && prev.kind === 'pending' && !next.some(reference => reference.id === prev.id)
+        ? null
+        : prev
     )
   }, [])
 
@@ -245,13 +303,13 @@ export function useOperatorState(): OperatorState {
         }
         // A reconnect can land while something is staged; keep it if the queue
         // still holds it so a dropped socket does not undo the operator's work.
-        keepStagedSelection(message.data.pending)
+        keepStagedReference(message.data.pending)
         break
       }
       case 'pending_update':
         setPending(message.data.pending)
         setPendingCount(message.data.count)
-        keepStagedSelection(message.data.pending)
+        keepStagedReference(message.data.pending)
         break
       case 'approval_confirmed': {
         const shown = message.data.reference
@@ -261,8 +319,27 @@ export function useOperatorState(): OperatorState {
         setHistoryCount(count => count + 1)
         setShownCount(count => count + 1)
         setCurrentDisplay(shown)
+        setShowInFlight(false)
         pulse('approve')
         showNotice('success', `Shown: ${formatReference(shown)}`)
+        break
+      }
+      case 'display_confirmed': {
+        // The server resolved the manual passage and pushed it to the displays,
+        // so this is the first moment the console can say it is on screen. The
+        // reference comes back server-built: manual, with no confidence.
+        const shown = message.data.reference
+        setHistory(prev => [shown, ...prev])
+        setHistoryCount(count => count + 1)
+        setShownCount(count => count + 1)
+        setCurrentDisplay(shown)
+        setShowInFlight(false)
+        // It is on screen now, so it is no longer waiting in Up Next — unless the
+        // operator staged something else while this request was in flight.
+        setStaged(prev =>
+          prev?.kind === 'manual' && isStagedPassage(prev.passage, shown) ? null : prev
+        )
+        showNotice('success', `Shown: ${formatReference(shown)} (manual)`)
         break
       }
       case 'clear_confirmed':
@@ -307,6 +384,8 @@ export function useOperatorState(): OperatorState {
       case 'error': {
         const { action, message: reason } = message.data
         console.error('Server error:', reason)
+        // A rejected or failed action is over: let the operator try again.
+        if (action === 'approve' || action === 'display_reference') setShowInFlight(false)
         const prefix = ERROR_PREFIXES[action] ?? 'Action failed'
         showNotice(
           'error',
@@ -352,6 +431,12 @@ export function useOperatorState(): OperatorState {
     if (status === 'open') setHasConnected(true)
   }, [status])
 
+  // A show request only exists while the socket is open. If it dropped, the
+  // confirmation is not coming and the staged passage is still theirs to show.
+  useEffect(() => {
+    if (status !== 'open') setShowInFlight(false)
+  }, [status])
+
   const handleTokenSubmit = (e: FormEvent) => {
     e.preventDefault()
     const trimmed = tokenInput.trim()
@@ -376,11 +461,13 @@ export function useOperatorState(): OperatorState {
     [send]
   )
 
+  // The queue's Approve button approves a staged *detection*. A manual passage is
+  // shown from Up Next instead, so this stays off until a queued item is staged.
   const approveSelected = useCallback(() => {
-    if (selectedId !== null) {
-      sendAction({ action: 'approve', reference_id: selectedId })
+    if (staged?.kind === 'pending') {
+      sendAction({ action: 'approve', reference_id: staged.id })
     }
-  }, [selectedId, sendAction])
+  }, [staged, sendAction])
 
   const clearDisplay = useCallback(() => {
     sendAction({ action: 'clear' })
@@ -422,40 +509,81 @@ export function useOperatorState(): OperatorState {
     [sendAction]
   )
 
+  const selectPending = useCallback((id: string) => setStaged({ kind: 'pending', id }), [])
+
   const selectNext = useCallback(() => {
-    setSelectedId(prevId => {
+    setStaged(prev => {
+      const currentId = prev?.kind === 'pending' ? prev.id : null
       if (pending.length === 0) return null
-      if (prevId === null) return pending[0].id
-      const index = pending.findIndex(ref => ref.id === prevId)
-      if (index === -1) return pending[0].id
-      return pending[Math.min(index + 1, pending.length - 1)].id
+      if (currentId === null) return { kind: 'pending', id: pending[0].id }
+      const index = pending.findIndex(ref => ref.id === currentId)
+      if (index === -1) return { kind: 'pending', id: pending[0].id }
+      return { kind: 'pending', id: pending[Math.min(index + 1, pending.length - 1)].id }
     })
   }, [pending])
 
   const selectPrevious = useCallback(() => {
-    setSelectedId(prevId => {
+    setStaged(prev => {
+      const currentId = prev?.kind === 'pending' ? prev.id : null
       if (pending.length === 0) return null
-      if (prevId === null) return pending[0].id
-      const index = pending.findIndex(ref => ref.id === prevId)
-      if (index === -1) return pending[0].id
-      return pending[Math.max(index - 1, 0)].id
+      if (currentId === null) return { kind: 'pending', id: pending[0].id }
+      const index = pending.findIndex(ref => ref.id === currentId)
+      if (index === -1) return { kind: 'pending', id: pending[0].id }
+      return { kind: 'pending', id: pending[Math.max(index - 1, 0)].id }
     })
   }, [pending])
 
-  const deselect = useCallback(() => setSelectedId(null), [])
+  const deselect = useCallback(() => setStaged(null), [])
 
-  // NEXT is the staged scripture. It is derived from the queue rather than kept
-  // as its own state so it cannot drift from the list the operator is looking
-  // at: a queue update, an approval, or Esc drops it. Show is the ordinary
-  // approval of a queued reference, so the display still only moves through the
-  // server's approval path.
-  const nextReference = pending.find(reference => reference.id === selectedId) ?? null
+  // Staging is client-side and local to the console. A queued selection resolves
+  // through the queue by ID, so it cannot drift from the list on screen; a manual
+  // passage is a self-contained snapshot from the server's lookup.
+  const selectedId = staged?.kind === 'pending' ? staged.id : null
+  const nextReference =
+    staged === null
+      ? null
+      : staged.kind === 'manual'
+        ? passageToReference(staged.passage)
+        : (pending.find(reference => reference.id === staged.id) ?? null)
+  const nextSource: NextSource =
+    staged === null ? null : staged.kind === 'manual' ? 'manual' : 'detected'
 
+  // Show is the one place the two sources diverge, and they stay separate on the
+  // wire: a queued reference is approved by ID as before, while a manual passage
+  // is sent as coordinates for the server to resolve itself.
   const showNext = useCallback(() => {
-    if (nextReference) {
-      sendAction({ action: 'approve', reference_id: nextReference.id })
+    if (!staged || showInFlight) return
+    setShowInFlight(true)
+    if (staged.kind === 'pending') {
+      sendAction({ action: 'approve', reference_id: staged.id })
+      return
     }
-  }, [nextReference, sendAction])
+    sendAction({
+      action: 'display_reference',
+      book: staged.passage.book,
+      chapter: staged.passage.chapter,
+      verse_start: staged.passage.verse_start,
+      verse_end: staged.passage.verse_end,
+    })
+  }, [staged, showInFlight, sendAction])
+
+  // Staging a lookup result: NEXT previews it and nothing else changes. The
+  // notice says "staged", never "shown" — nothing is on the display until the
+  // server confirms the Show request.
+  const stageManualPassage = useCallback(
+    (passage: Passage) => {
+      setStaged({ kind: 'manual', passage })
+      showNotice(
+        'info',
+        `Staged: ${formatReference(passageToReference(passage))} — press Show to display`
+      )
+    },
+    [showNotice]
+  )
+
+  // Manual passage search: the server's canon, the server's text, and staging on
+  // success only.
+  const search = useScriptureSearch(token, stageManualPassage)
 
   const isConnected = status === 'open'
   const connectionState: ConnectionState = isConnected
@@ -494,12 +622,15 @@ export function useOperatorState(): OperatorState {
     hasDisplayContent: currentDisplay !== null,
     displayConnected,
     nextReference,
+    nextSource,
     showNext,
     clearNext: deselect,
-    canShowNext: nextReference !== null && isConnected,
+    canShowNext: nextReference !== null && isConnected && !showInFlight,
+
+    search,
 
     selectedId,
-    selectPending: setSelectedId,
+    selectPending,
     selectNext,
     selectPrevious,
     deselect,
@@ -507,7 +638,7 @@ export function useOperatorState(): OperatorState {
     approveSelected,
     clearDisplay,
     clearPendingQueue,
-    canApprove: selectedId !== null && isConnected,
+    canApprove: staged?.kind === 'pending' && isConnected,
     canClearDisplay: currentDisplay !== null && isConnected,
     canClearPending: pending.length > 0 && isConnected,
     flash,

@@ -42,11 +42,16 @@ export default defineConfig({
     },
   },
   server: {
-    // Proxy WebSocket traffic to the FastAPI backend during development.
+    // Proxy backend traffic to the FastAPI server during development. Pages are
+    // served by the backend in production, so relative URLs (/ws, /api) are
+    // same-origin there and only need forwarding in dev.
     proxy: {
       '/ws': {
         target: 'ws://localhost:8000',
         ws: true,
+      },
+      '/api': {
+        target: 'http://localhost:8000',
       },
     },
   },
