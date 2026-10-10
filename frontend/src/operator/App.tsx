@@ -32,10 +32,12 @@ import './operator.css'
  *
  * Scripture reaches the display by one of two doors, and they stay separate all
  * the way down. A pending reference is approved by ID through the server's
- * approval path; a passage the operator finds by hand is staged in NEXT and sent
- * as coordinates for the server to resolve itself. Find Scripture sits in the
- * sidebar with the other controls, next to the counters, so the working column
- * keeps its height (and the queue its room) on a short window.
+ * approval path; a passage the operator finds by hand — or picks from history to
+ * show again — is staged in NEXT and sent as coordinates for the server to
+ * resolve itself. Find Scripture sits in the sidebar with the other controls,
+ * next to the counters, so the working column keeps its height (and the queue
+ * its room) on a short window; history sits under it and stages an entry the
+ * same way.
  */
 export default function App() {
   const operator = useOperatorState()
@@ -136,7 +138,12 @@ export default function App() {
             </DisplaySettings>
           </section>
 
-          <HistoryPanel history={operator.history} count={operator.historyCount} />
+          <HistoryPanel
+            history={operator.history}
+            count={operator.historyCount}
+            selectedId={operator.selectedHistoryId}
+            onSelect={operator.selectHistory}
+          />
         </aside>
       </main>
       <FeedbackNotice notice={operator.notice} onDismiss={operator.dismissNotice} />

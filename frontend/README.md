@@ -91,5 +91,21 @@ Bible database, displays it through the same path an approval uses, and answers
 with `display_confirmed`. A manual passage never enters the pending queue and
 never carries a confidence.
 
+### Display history and Show Again
+
+The sidebar lists the passages that reached the display, newest first — the
+server's `reference_history`, of which a snapshot carries the newest 20 while
+`history_count` reports the total. Each entry has a stable server-assigned `id`,
+and selecting one stages it in Up Next exactly like a found passage (client-side
+only; LIVE does not move). Show sends the same coordinate-only
+`{"action": "display_reference", ...}` request described above, so a repeat is
+validated and resolved by the server like any other display.
+
+Showing a passage again is a new display, so the server records a new history
+entry for it (one per display, bounded the same way). The console holds a staged
+entry as a snapshot taken when it was clicked, so a history update or eviction
+cannot swap in a different passage, and it keeps the staging across a dropped
+socket.
+
 Both clients reconnect automatically with linear backoff (3s × attempt,
 up to 10 attempts).

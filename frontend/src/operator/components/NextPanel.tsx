@@ -26,10 +26,10 @@ export interface NextPanelProps {
  * path (the server owns the display). Deliberately smaller and plainer than the
  * LIVE panel so a glance tells them apart.
  *
- * The badge names which of the two doors the staged scripture came through — a
- * queued detection or the operator's own search — because Show sends a different
- * request for each, and the operator should never have to guess which one they
- * are about to display.
+ * The badge names which door the staged scripture came through — a queued
+ * detection, the operator's own search, or an entry from history — because Show
+ * sends a different request for each, and the operator should never have to
+ * guess which one they are about to display.
  */
 export function NextPanel({
   reference,
@@ -50,7 +50,13 @@ export function NextPanel({
           className={`operator-next-badge ${source ? `is-${source}` : ''}`}
           data-source={source ?? 'none'}
         >
-          {source === 'manual' ? 'Manual' : source === 'detected' ? 'Detected' : 'Staged'}
+          {source === 'manual'
+            ? 'Manual'
+            : source === 'history'
+              ? 'History'
+              : source === 'detected'
+                ? 'Detected'
+                : 'Staged'}
         </span>
       </div>
 
@@ -71,7 +77,8 @@ export function NextPanel({
               </ol>
               {hiddenCount > 0 && (
                 <div className="operator-next-note">
-                  +{hiddenCount} more verse{hiddenCount === 1 ? '' : 's'} hidden by the current limit
+                  +{hiddenCount} more verse{hiddenCount === 1 ? '' : 's'} hidden by the current
+                  limit
                 </div>
               )}
             </div>

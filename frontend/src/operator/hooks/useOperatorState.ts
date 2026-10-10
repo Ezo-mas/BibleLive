@@ -34,6 +34,15 @@ const NOTICE_MS: Record<NoticeTone, number> = { success: 3000, info: 4000, error
 /** Local storage key for operator token */
 const TOKEN_STORAGE_KEY = 'biblelive_operator_token'
 
+/**
+ * How many history entries a state snapshot carries (the server sends the last
+ * 20, see `send_operator_state_snapshot` in `core/server/state.py`). The console
+ * keeps the same window, so an entry folded in from a confirmation cannot grow
+ * the list past what a reconnect would show. `history_count` still reports the
+ * server's total.
+ */
+const HISTORY_WINDOW = 20
+
 /** Which action button briefly pulses once the server confirms it. */
 export type FlashTarget = 'approve' | 'clear' | 'clearPending'
 
@@ -71,34 +80,61 @@ const ERROR_PREFIXES: Record<string, string> = {
 const OPTIMISTIC_ACTIONS = new Set(['set_verse_limit', 'set_display_theme', 'set_auto_mode'])
 
 /**
- * What Up Next is holding: a queued detection the operator selected, or a
- * passage they picked by hand. The source is explicit rather than inferred from
- * timing or which component last rendered, because Show means two different
- * things — approving a reference by ID, or asking the server to display a
- * passage it resolved from coordinates.
+ * What Up Next is holding: a queued detection the operator selected, a passage
+ * they picked by hand, or an entry from display history they want to show again.
+ * The source is explicit rather than inferred from timing or which component last
+ * rendered, because Show means two different things — approving a reference by
+ * ID, or asking the server to display a passage it resolved from coordinates.
+ *
+ * A history entry is held as its own snapshot, taken when the operator clicked
+ * it, rather than as an ID to look up again later. History changes underneath a
+ * staged selection (entries age out of the server's window), and Show sends
+ * coordinates, so holding the entry itself is what keeps the wrong passage off
+ * the display regardless of how the list moves.
  */
 export type StagedReference =
   | { kind: 'pending'; id: string }
   | { kind: 'manual'; passage: Passage }
+  | { kind: 'history'; reference: BibleReference }
 
 /** Where the staged scripture came from, for the panel's badge. */
-export type NextSource = 'detected' | 'manual' | null
+export type NextSource = 'detected' | 'manual' | 'history' | null
 
 /**
  * Whether a confirmation is about the passage currently staged.
  *
- * A manual passage is identified by its coordinates: it never entered the queue
- * and the server assigns its reference ID only when it displays the passage, so
- * coordinates are what the request and the confirmation have in common. This is
- * what stops a late confirmation for one passage from clearing a different one
- * the operator staged in the meantime.
+ * A manual passage and a history entry are both identified by their coordinates:
+ * neither ever entered the queue and the server assigns the reference ID only
+ * when it displays the passage, so coordinates are what the request and the
+ * confirmation have in common. This is what stops a late confirmation for one
+ * passage from clearing a different one the operator staged in the meantime.
+ * A queued selection is matched by the queue update that follows an approval,
+ * never by coordinates.
  */
-function isStagedPassage(passage: Passage, shown: BibleReference): boolean {
+/**
+ * The verse a reference covers at its right end.
+ *
+ * A single-verse reference reaches the console in two shapes: a detection that
+ * named one verse is stored as-is (``verse_end: null``), while the server states
+ * the same passage as ``verse_start === verse_end`` when it resolves one. They
+ * are the same passage, and only comparing them shape-blind would make a replay
+ * of a detected verse look like someone else's confirmation.
+ */
+function referenceEnd(reference: {
+  verse_start: number | null
+  verse_end: number | null
+}): number | null {
+  return reference.verse_end ?? reference.verse_start
+}
+
+function isStagedPassage(staged: StagedReference, shown: BibleReference): boolean {
+  if (staged.kind === 'pending') return false
+  const coordinates = staged.kind === 'manual' ? staged.passage : staged.reference
   return (
-    passage.book === shown.book &&
-    passage.chapter === shown.chapter &&
-    passage.verse_start === shown.verse_start &&
-    passage.verse_end === shown.verse_end
+    coordinates.book === shown.book &&
+    coordinates.chapter === shown.chapter &&
+    coordinates.verse_start === shown.verse_start &&
+    referenceEnd(coordinates) === referenceEnd(shown)
   )
 }
 
@@ -149,6 +185,13 @@ export interface OperatorState {
   /** Reference ID of the selected pending item, or null when nothing is selected. */
   selectedId: string | null
   selectPending: (id: string) => void
+  /** Stage a history entry for a repeat display; nothing is sent. */
+  selectHistory: (reference: BibleReference) => void
+  /**
+   * The history entry staged in Up Next, but only while it is still in the list;
+   * a staged entry that has aged out stays staged and just stops being marked.
+   */
+  selectedHistoryId: string | null
   selectNext: () => void
   selectPrevious: () => void
   deselect: () => void
@@ -257,7 +300,6 @@ export function useOperatorState(): OperatorState {
     []
   )
 
-
   /**
    * Keep a staged reference across a queue update when it is still queued.
    *
@@ -266,8 +308,8 @@ export function useOperatorState(): OperatorState {
    * by ID, so holding on to it cannot show the wrong passage — and letting go
    * when its ID leaves the queue keeps the button in step with the list.
    *
-   * A manually staged passage is deliberately unaffected: it never enters the
-   * queue, so an arriving detection must not discard it.
+   * A manually staged passage and a history entry are deliberately unaffected:
+   * they never enter the queue, so an arriving detection must not discard them.
    */
   const keepStagedReference = useCallback((next: BibleReference[]) => {
     setStaged(prev =>
@@ -315,7 +357,7 @@ export function useOperatorState(): OperatorState {
         const shown = message.data.reference
         // The server pushes the approved reference; fold it into history and the
         // counters so the sidebar is not stale until the next snapshot.
-        setHistory(prev => [shown, ...prev])
+        setHistory(prev => [shown, ...prev].slice(0, HISTORY_WINDOW))
         setHistoryCount(count => count + 1)
         setShownCount(count => count + 1)
         setCurrentDisplay(shown)
@@ -329,16 +371,15 @@ export function useOperatorState(): OperatorState {
         // so this is the first moment the console can say it is on screen. The
         // reference comes back server-built: manual, with no confidence.
         const shown = message.data.reference
-        setHistory(prev => [shown, ...prev])
+        setHistory(prev => [shown, ...prev].slice(0, HISTORY_WINDOW))
         setHistoryCount(count => count + 1)
         setShownCount(count => count + 1)
         setCurrentDisplay(shown)
         setShowInFlight(false)
         // It is on screen now, so it is no longer waiting in Up Next — unless the
-        // operator staged something else while this request was in flight.
-        setStaged(prev =>
-          prev?.kind === 'manual' && isStagedPassage(prev.passage, shown) ? null : prev
-        )
+        // operator staged something else while this request was in flight, which
+        // is why the confirmation has to name the passage it belongs to.
+        setStaged(prev => (prev && isStagedPassage(prev, shown) ? null : prev))
         showNotice('success', `Shown: ${formatReference(shown)} (manual)`)
         break
       }
@@ -511,6 +552,17 @@ export function useOperatorState(): OperatorState {
 
   const selectPending = useCallback((id: string) => setStaged({ kind: 'pending', id }), [])
 
+  // Staging a history entry: NEXT previews it and nothing else changes. The
+  // notice says "staged", never "shown" — nothing is on the display until the
+  // server confirms the Show request.
+  const selectHistory = useCallback(
+    (reference: BibleReference) => {
+      setStaged({ kind: 'history', reference })
+      showNotice('info', `Staged: ${formatReference(reference)} — press Show to display it again`)
+    },
+    [showNotice]
+  )
+
   const selectNext = useCallback(() => {
     setStaged(prev => {
       const currentId = prev?.kind === 'pending' ? prev.id : null
@@ -539,18 +591,33 @@ export function useOperatorState(): OperatorState {
   // through the queue by ID, so it cannot drift from the list on screen; a manual
   // passage is a self-contained snapshot from the server's lookup.
   const selectedId = staged?.kind === 'pending' ? staged.id : null
+  const selectedHistoryId =
+    staged?.kind === 'history' && history.some(entry => entry.id === staged.reference.id)
+      ? staged.reference.id
+      : null
   const nextReference =
     staged === null
       ? null
       : staged.kind === 'manual'
         ? passageToReference(staged.passage)
-        : (pending.find(reference => reference.id === staged.id) ?? null)
+        : staged.kind === 'history'
+          ? staged.reference
+          : (pending.find(reference => reference.id === staged.id) ?? null)
   const nextSource: NextSource =
-    staged === null ? null : staged.kind === 'manual' ? 'manual' : 'detected'
+    staged === null
+      ? null
+      : staged.kind === 'manual'
+        ? 'manual'
+        : staged.kind === 'history'
+          ? 'history'
+          : 'detected'
 
-  // Show is the one place the two sources diverge, and they stay separate on the
-  // wire: a queued reference is approved by ID as before, while a manual passage
-  // is sent as coordinates for the server to resolve itself.
+  // Show is the one place the sources diverge, and they stay separate on the
+  // wire: a queued reference is approved by ID as before, while a passage the
+  // operator chose — by hand or from history — is sent as coordinates for the
+  // server to resolve itself. A history entry carries no ID that means anything
+  // to the server (nothing is queued), so showing it again is the same request
+  // the search panel makes; only the coordinates travel.
   const showNext = useCallback(() => {
     if (!staged || showInFlight) return
     setShowInFlight(true)
@@ -558,12 +625,13 @@ export function useOperatorState(): OperatorState {
       sendAction({ action: 'approve', reference_id: staged.id })
       return
     }
+    const coordinates = staged.kind === 'manual' ? staged.passage : staged.reference
     sendAction({
       action: 'display_reference',
-      book: staged.passage.book,
-      chapter: staged.passage.chapter,
-      verse_start: staged.passage.verse_start,
-      verse_end: staged.passage.verse_end,
+      book: coordinates.book,
+      chapter: coordinates.chapter,
+      verse_start: coordinates.verse_start,
+      verse_end: coordinates.verse_end,
     })
   }, [staged, showInFlight, sendAction])
 
@@ -631,6 +699,8 @@ export function useOperatorState(): OperatorState {
 
     selectedId,
     selectPending,
+    selectHistory,
+    selectedHistoryId,
     selectNext,
     selectPrevious,
     deselect,

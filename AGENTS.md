@@ -110,6 +110,7 @@ Python tests need `backend/` on the import path — the Makefile and root
 | Change an HTTP endpoint or WS handler | `backend/core/server/app.py`, `state.py`; message shapes in `models.py` + mirrored in `frontend/src/shared/types.ts` |
 | Change verse text lookup | `backend/core/bible_lookup.py` (SQLite at `bible_data/biblelive.sqlite`) |
 | Change manual scripture selection (Find Scripture) | `backend/core/passage.py` (validation + resolution) over `backend/core/books.py` (canon); endpoints and the `display_reference` action in `backend/core/server/app.py`; UI in `frontend/src/operator/components/ScriptureSearch.tsx` |
+| Change display history / Show Again | source of truth is `AppState.reference_history` in `backend/core/server/state.py` (newest first, `MAX_HISTORY_REFERENCES`, 20-entry snapshot window); UI and staging in `frontend/src/operator/components/HistoryPanel.tsx` and `frontend/src/operator/hooks/useOperatorState.ts` |
 | Import a new Bible translation | `backend/core/import_bible.py` |
 | Change audio capture/VAD/STT/sending | the matching module in `backend/audio/` |
 | Change operator UI | `frontend/src/operator/` (+ `operator.css`) |
@@ -157,6 +158,16 @@ Python tests need `backend/` on the import path — the Makefile and root
    coordinates only (no ID, no confidence, no text) and the server re-resolves
    them through `core/passage.py`, so a client cannot inject verse text or pass
    a manual selection off as a detection.
+   **Show Again** (Phase 4: showing a passage from display history) is that same
+   action, not a third door: the console stages a history entry locally and sends
+   its coordinates, so the server re-validates and re-resolves them. Consequences
+   that are deliberate, not accidents: a replayed passage is recorded as a new
+   `reference_history` entry (`source="manual"`, no confidence, new ID) — one
+   entry per display, exactly like approving the same detection twice, so history
+   grows linearly and stays bounded by `MAX_HISTORY_REFERENCES`; and an entry that
+   has aged out of the server's 20-entry snapshot window can still be shown again,
+   because the canon and the Bible database — not the history list — are the
+   authority.
 4. **VAD frame discipline**: WebRTC VAD requires exact 10/20/30 ms frames at
    16 kHz. `AudioCapture.get_audio_frame()` must return exactly that many
    bytes and must not drop carry-over bytes between calls (it keeps a

@@ -6,6 +6,12 @@ export interface ReferenceCardProps {
   reference: BibleReference
   selected?: boolean
   onSelect?: () => void
+  /**
+   * What selecting this card does, for screen readers. Without it the accessible
+   * name is the card's whole text (reference, verse text, and meta), which is
+   * long and does not say what pressing it does.
+   */
+  ariaLabel?: string
 }
 
 /** Confidence in plain words; the badge is uppercased by the shared styles. */
@@ -31,8 +37,9 @@ function arrivalTime(createdAt: string): { label: string; iso: string } | null {
 }
 
 /**
- * A single reference tile. Pass `onSelect` to make it selectable — the pending
- * queue does, history does not, since history items are not approvable.
+ * A single reference tile. Pass `onSelect` to make it selectable: the pending
+ * queue stages an approvable detection that way, and history stages an entry to
+ * show again.
  *
  * A selectable tile that is selected is the reference staged in Up Next, so the
  * card says so: the queue and the staging panel must never be confused for one
@@ -41,7 +48,12 @@ function arrivalTime(createdAt: string): { label: string; iso: string } | null {
  * A manual passage carries no confidence — it was never a detection — so its
  * badge names its source instead of implying a confidence it does not have.
  */
-export function ReferenceCard({ reference, selected = false, onSelect }: ReferenceCardProps) {
+export function ReferenceCard({
+  reference,
+  selected = false,
+  onSelect,
+  ariaLabel,
+}: ReferenceCardProps) {
   const selectable = onSelect !== undefined
   const time = arrivalTime(reference.created_at)
 
@@ -59,6 +71,7 @@ export function ReferenceCard({ reference, selected = false, onSelect }: Referen
       role={selectable ? 'button' : undefined}
       tabIndex={selectable ? 0 : undefined}
       aria-pressed={selectable ? selected : undefined}
+      aria-label={selectable ? ariaLabel : undefined}
       onClick={onSelect}
       onKeyDown={
         selectable

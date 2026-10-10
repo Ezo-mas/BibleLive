@@ -466,8 +466,10 @@
 }
 
 /* Which door the staged scripture came through. Solid rather than dashed once
-   something is staged, and the manual one is tinted: Show sends a different
-   request for each, so the difference has to survive a glance. */
+   something is staged, and the manual and history ones are tinted: Show sends a
+   different request for each, so the difference has to survive a glance. A
+   history entry keeps its own colour so it is never mistaken for a fresh
+   detection or for a passage just looked up. */
 .operator-next-badge.is-detected {
   border-style: solid;
   color: var(--color-text-secondary);
@@ -478,6 +480,13 @@
   border-color: transparent;
   color: var(--color-primary);
   background: var(--color-primary-subtle);
+}
+
+.operator-next-badge.is-history {
+  border-style: solid;
+  border-color: transparent;
+  color: var(--color-info-text);
+  background: var(--color-info-bg);
 }
 
 .operator-next-body {
