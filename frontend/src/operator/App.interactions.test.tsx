@@ -107,6 +107,17 @@ function approveButton() {
   return screen.getByRole('button', { name: /approve and show/i })
 }
 
+/**
+ * Open the settings dialog. Display, theme, and auto-approve preferences live
+ * there now, so a test of them is a test of the gear, the dialog, and the
+ * controls inside it.
+ */
+function openSettings() {
+  act(() => {
+    screen.getByRole('button', { name: 'Settings' }).click()
+  })
+}
+
 /** The last action sent to the server, parsed. */
 function lastSent() {
   const calls = socket?.send.mock.calls ?? []
@@ -258,6 +269,7 @@ describe('clear actions', () => {
 describe('display settings', () => {
   it('switches the verse limit and background optimistically', async () => {
     openWith()
+    openSettings()
     const five = screen.getByRole('button', { name: '5' })
     act(() => {
       five.click()
@@ -275,6 +287,7 @@ describe('display settings', () => {
 
   it('disables settings controls while disconnected', () => {
     render(<App />)
+    openSettings()
     // 'All' also labels an auto-approve option, so scope to the verse-limit group.
     const verseLimits = within(screen.getByRole('group', { name: 'Verses shown on display' }))
     expect(verseLimits.getByRole('button', { name: '5' })).toBeDisabled()

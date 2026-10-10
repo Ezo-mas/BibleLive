@@ -64,9 +64,20 @@ function historyPanel() {
   return within(section)
 }
 
-/** Read the numeric value shown next to a statistics label. */
-function statValue(label: string) {
-  return screen.getByText(label).nextElementSibling?.textContent
+/**
+ * Open the settings dialog, where the display, theme, and auto-approve
+ * preferences live. The dialog is where the server-owned values are rendered
+ * now; nothing on the main screen controls them except the compact mode chip.
+ */
+function openSettings() {
+  act(() => {
+    screen.getByRole('button', { name: 'Settings' }).click()
+  })
+}
+
+/** The count badge in the history panel's header. */
+function historyCount() {
+  return historyPanel().getByText(/^\d+$/, { selector: '.operator-section-count' })
 }
 
 /** A state snapshot carrying the given auto-approve mode. */
@@ -130,21 +141,21 @@ afterEach(() => {
 })
 
 describe('operator approval history', () => {
-  it('folds an approved reference into history and increments shown/history', async () => {
+  it('folds an approved reference into the history list', async () => {
     render(<App />)
     act(() => {
       socket?.onopen?.()
     })
 
-    expect(statValue('Shown')).toBe('0')
-    expect(statValue('History')).toBe('0')
+    expect(historyCount()).toHaveTextContent('0')
     expect(screen.getByText('No history yet')).toBeInTheDocument()
 
     push({ type: 'approval_confirmed', data: { reference: reference() } })
 
     await waitFor(() => expect(historyPanel().getByText('John 1:1-3')).toBeInTheDocument())
-    expect(statValue('Shown')).toBe('1')
-    expect(statValue('History')).toBe('1')
+    // The panel's header count is the server's total, so it still reports an
+    // entry whose card would have aged out of the window.
+    expect(historyCount()).toHaveTextContent('1')
     expect(screen.queryByText('No history yet')).not.toBeInTheDocument()
   })
 
@@ -176,7 +187,7 @@ describe('operator approval history', () => {
       .map(el => el.textContent)
       .filter(text => text === 'John 1:1-3' || text === 'Romans 8:28')
     expect(titles[0]).toBe('Romans 8:28')
-    expect(statValue('History')).toBe('2')
+    expect(historyCount()).toHaveTextContent('2')
   })
 })
 
@@ -186,6 +197,8 @@ describe('auto-approve mode', () => {
     act(() => {
       socket?.onopen?.()
     })
+
+    openSettings()
 
     // Before any snapshot the panel assumes manual approval.
     expect(autoModeButton('Off')).toHaveAttribute('aria-pressed', 'true')
@@ -201,6 +214,7 @@ describe('auto-approve mode', () => {
     act(() => {
       socket?.onopen?.()
     })
+    openSettings()
 
     push(snapshot('whenever' as unknown as AutoMode))
 
@@ -212,6 +226,7 @@ describe('auto-approve mode', () => {
     act(() => {
       socket?.onopen?.()
     })
+    openSettings()
 
     fireEvent.click(autoModeButton('All'))
 
@@ -225,6 +240,7 @@ describe('auto-approve mode', () => {
     act(() => {
       socket?.onopen?.()
     })
+    openSettings()
 
     push({ type: 'auto_mode_confirmed', data: { auto_mode: 'high' } })
 
@@ -232,8 +248,27 @@ describe('auto-approve mode', () => {
     expect(autoModeButton('Off')).toHaveAttribute('aria-pressed', 'false')
   })
 
+  it('keeps the mode visible on the console with settings closed', async () => {
+    render(<App />)
+    act(() => {
+      socket?.onopen?.()
+    })
+
+    // The main screen carries only the compact chip; the detailed options live
+    // in the dialog, which is not open here.
+    expect(screen.getByRole('button', { name: /Auto-approve: Off/ })).toBeInTheDocument()
+    expect(screen.queryByRole('group', { name: 'Auto-approve mode' })).not.toBeInTheDocument()
+
+    push(snapshot('medium_and_up'))
+
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /Auto-approve: Med\+/ })).toBeInTheDocument()
+    )
+  })
+
   it('disables the selector while the socket is not open', () => {
     render(<App />)
+    openSettings()
 
     expect(autoModeButton('High')).toBeDisabled()
   })

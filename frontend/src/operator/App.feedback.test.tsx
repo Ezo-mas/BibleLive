@@ -81,6 +81,17 @@ function openWith() {
   })
 }
 
+/**
+ * Open the settings dialog, where the display and auto-approve controls live,
+ * and hand back its contents for scoped queries.
+ */
+function openSettings() {
+  act(() => {
+    screen.getByRole('button', { name: 'Settings' }).click()
+  })
+  return within(screen.getByRole('dialog'))
+}
+
 /** The verse-limit segmented control, scoped so 'All' cannot collide. */
 function versesShown() {
   return within(screen.getByRole('group', { name: 'Verses shown on display' }))
@@ -188,6 +199,7 @@ describe('action failures', () => {
 
   it('reverts a rejected settings change and says so', async () => {
     openWith()
+    openSettings()
 
     act(() => {
       versesShown().getByRole('button', { name: '5' }).click()
@@ -218,6 +230,7 @@ describe('action failures', () => {
 
   it('falls back to the confirmed auto-approve mode when the change fails', async () => {
     openWith()
+    openSettings()
 
     act(() => {
       within(screen.getByRole('group', { name: 'Auto-approve mode' }))
@@ -244,6 +257,7 @@ describe('action failures', () => {
 describe('settings confirmations', () => {
   it('announces what actually changed and stays quiet on an unchanged echo', () => {
     openWith()
+    openSettings()
 
     push({ type: 'display_settings_confirmed', data: { verse_limit: 3, theme: 'dark' } })
     expect(screen.queryByRole('status')).not.toBeInTheDocument()
@@ -256,7 +270,9 @@ describe('settings confirmations', () => {
 
   it('explains which detections the active auto-approve mode accepts', () => {
     openWith()
-    expect(screen.getByText('Every new detection waits for your approval.')).toBeInTheDocument()
+    expect(
+      openSettings().getByText('Every new detection waits for your approval.')
+    ).toBeInTheDocument()
 
     push({ type: 'auto_mode_confirmed', data: { auto_mode: 'medium_and_up' } })
 

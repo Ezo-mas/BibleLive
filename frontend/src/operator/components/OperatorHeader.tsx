@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { ConnectionIndicator, ThemeToggle } from '../../components'
+import { ConnectionIndicator, SettingsIcon } from '../../components'
 import type { ConnectionState } from '../../components'
 
 export interface OperatorHeaderProps {
@@ -9,6 +9,8 @@ export interface OperatorHeaderProps {
   /** Only offer logout when a token is actually in use. */
   showLogout: boolean
   onLogout: () => void
+  /** Open the settings dialog (display, theme, and auto-approve). */
+  onOpenSettings: () => void
   /**
    * Action feedback, rendered between the title and the controls.
    *
@@ -19,12 +21,20 @@ export interface OperatorHeaderProps {
   feedback?: ReactNode
 }
 
-/** Top bar: identity, connection health, display status, logout, theme. */
+/**
+ * Top bar: identity, connection health, display status, settings, logout.
+ *
+ * One slim row. The theme buttons this used to carry now live in the settings
+ * dialog with every other preference, so the bar holds only what the operator
+ * needs while the service is running: that the console is connected, that the
+ * projector is live, and one way into the settings.
+ */
 export function OperatorHeader({
   connectionState,
   displayConnected,
   showLogout,
   onLogout,
+  onOpenSettings,
   feedback,
 }: OperatorHeaderProps) {
   return (
@@ -46,12 +56,21 @@ export function OperatorHeader({
             </div>
           )}
         </div>
+        <button
+          type="button"
+          className="operator-icon-button"
+          onClick={onOpenSettings}
+          aria-label="Settings"
+          aria-haspopup="dialog"
+          title="Settings"
+        >
+          <SettingsIcon />
+        </button>
         {showLogout && (
           <button onClick={onLogout} className="operator-logout-button" title="Logout">
             Logout
           </button>
         )}
-        <ThemeToggle />
       </div>
     </header>
   )

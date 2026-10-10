@@ -42,24 +42,26 @@ Entry format:
   identical command from the repo root started normally.
 - **Logged:** 2026-10-10
 
-### The action row scrolls out of reach on a short window with a busy queue
+### The action row is back at the end of the list in the stacked layout
 - **Where:** `frontend/src/operator/operator.css` (`.operator-pending`,
-  `.operator-actions`) with `.operator-main-column` and `.operator-main`.
-- **Problem:** The pending section grows with its contents (`flex: 1 0 auto`) and the
-  action row is its last row, so a long queue pushes "Approve and Show", "Clear
-  Display", and "Clear Queue" to the bottom of the scrolling column; below 1280px the
-  main area scrolls instead, so the column is never height-bounded and the buttons stay
-  at the end of the list. Bounding the section (`min-height: 0`, letting the queue
-  scroll internally) would pin the row, but below 1280px that means giving the stacked
-  column a bounded height as well — a layout decision, not a bug fix.
-- **Impact:** On a short window (a 600px-tall laptop, or a phone in landscape with the
-  on-screen keyboard up) during a busy service, the primary action needs a long scroll
-  before it can be clicked, which is the opposite of the layout's own stated intent that
-  it stay reachable without scrolling.
-- **Evidence:** Measured 2026-10-10 against the running console: at 1280x600 with 21
-  queued references the action row's top edge sat at y=2666 inside a 517px-tall main
-  area; at 390x844 it sat at y=2706 inside 673px. Nothing was clipped or overlapped —
-  the row is simply far below the fold.
+  `.operator-main-column`) with the media queries at 1024px and 1280px.
+- **Problem:** The pending section is bounded — the queue scrolls inside it and
+"Approve and Show" stays at the section's foot — only while the working column is
+height-bounded, which it is when the utility column sits beside it. Below 1280px
+the column stacks and grows with its content, so the section cannot be bounded
+without bounding the stacked column too — a layout decision, not a bug fix — and
+the action row returns to the end of the queued list.
+- **Impact:** On a tablet or phone window (or a phone in landscape with the
+on-screen keyboard up) during a busy service, the primary action needs a long
+scroll before it can be clicked, and scripture search sits below the whole queue.
+Desktop and laptop widths — the console's main use — are unaffected.
+- **Evidence:** Measured 2026-10-10 against the running console with 21 queued
+references, one line of verse text each: after bounding the section, 1440x900 put
+the action row at y=783 in an 844px main area and 1366x600 at y=483 in 544px
+(both visible without scrolling). In the stacked layout the same queue put it at
+y=2896 in the 544px main area at 1280x600, y=3028 in 644px at 1024x700, and
+y=3045 in 787px at 390x844. Nothing was clipped or overlapped — the row is simply
+below the fold.
 - **Logged:** 2026-10-10
 
 ### Language control server port-conflict test fails on Windows

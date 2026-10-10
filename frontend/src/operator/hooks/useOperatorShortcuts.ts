@@ -3,6 +3,13 @@ import { useEffect } from 'react'
 interface UseOperatorShortcutsOptions {
   /** Enter only acts (and is swallowed) while a pending item is selected. */
   hasSelection: boolean
+  /**
+   * False while a modal owns the page (the settings dialog). Approving the
+   * staged reference from behind a dialog — or clearing the selection with the
+   * Escape that closed it — is exactly the kind of surprise the shortcuts must
+   * not cause.
+   */
+  enabled?: boolean
   onNext: () => void
   onPrevious: () => void
   onApprove: () => void
@@ -39,12 +46,15 @@ function handlesItsOwnKeys(target: EventTarget | null): boolean {
  */
 export function useOperatorShortcuts({
   hasSelection,
+  enabled = true,
   onNext,
   onPrevious,
   onApprove,
   onDeselect,
 }: UseOperatorShortcutsOptions): void {
   useEffect(() => {
+    if (!enabled) return
+
     const handleKeyDown = (e: KeyboardEvent) => {
       if (handlesItsOwnKeys(e.target)) {
         return
@@ -74,5 +84,5 @@ export function useOperatorShortcuts({
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [hasSelection, onNext, onPrevious, onApprove, onDeselect])
+  }, [hasSelection, enabled, onNext, onPrevious, onApprove, onDeselect])
 }

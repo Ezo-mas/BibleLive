@@ -1,18 +1,19 @@
+import { useState } from 'react'
+import { useTheme } from '../hooks/useTheme'
 import { useOperatorState } from './hooks/useOperatorState'
 import { useOperatorShortcuts } from './hooks/useOperatorShortcuts'
 import { LivePanel } from './components/LivePanel'
 import { NextPanel } from './components/NextPanel'
 import { PendingQueue } from './components/PendingQueue'
 import { HistoryPanel } from './components/HistoryPanel'
-import { DisplaySettings } from './components/DisplaySettings'
 import { ScriptureSearch } from './components/ScriptureSearch'
-import { AutoApproveControls } from './components/AutoApproveControls'
-import { StatsPanel } from './components/StatsPanel'
+import { AutoApproveCompact } from './components/AutoApproveCompact'
+import { SettingsDialog } from './components/SettingsDialog'
+import type { SettingsSection } from './components/SettingsDialog'
 import { OperatorHeader } from './components/OperatorHeader'
 import { OperatorActions } from './components/OperatorActions'
 import { ConnectionBanner } from './components/ConnectionBanner'
 import { FeedbackNotice } from './components/FeedbackNotice'
-import { ShortcutOverlay } from './components/ShortcutOverlay'
 import { TokenPrompt } from './components/TokenPrompt'
 import '../styles/tokens.css'
 import '../styles/global.css'
@@ -27,28 +28,45 @@ import './operator.css'
  *
  * The working column reads top to bottom as the service runs: LIVE is what the
  * audience is looking at, NEXT is the scripture being prepared for it, then the
- * pending queue. Configuration (display settings and auto-approve) and history
- * sit in the sidebar, so the live parts keep the height they need on any window.
+ * pending queue with the action row. The utility column on the right holds the
+ * three things that are consulted rather than operated: scripture search, the
+ * auto-approve mode, and recent history.
+ *
+ * Preferences — verses shown, display background, app theme, auto-approve — all
+ * live in one settings dialog behind the header's gear. Keeping them out of the
+ * page is what gives On Display and the queue their space, and the compact
+ * auto-approve chip is the single reminder on screen that the server may be
+ * displaying detections on its own.
  *
  * Scripture reaches the display by one of two doors, and they stay separate all
  * the way down. A pending reference is approved by ID through the server's
  * approval path; a passage the operator finds by hand — or picks from history to
  * show again — is staged in NEXT and sent as coordinates for the server to
- * resolve itself. Find Scripture sits in the sidebar with the other controls,
- * next to the counters, so the working column keeps its height (and the queue
- * its room) on a short window; history sits under it and stages an entry the
- * same way.
+ * resolve itself. Search only ever stages: Show is the operator's own action.
  */
 export default function App() {
   const operator = useOperatorState()
+  // The console's own light/dark/system setting. Applied here rather than only
+  // in the settings dialog's control, so a stored choice is in effect from the
+  // first paint instead of waiting for the dialog to be opened.
+  const { theme, setTheme } = useTheme()
+  const [settingsSection, setSettingsSection] = useState<SettingsSection>('display')
+  const [settingsOpen, setSettingsOpen] = useState(false)
 
   useOperatorShortcuts({
     hasSelection: operator.selectedId !== null,
+    // The dialog owns the keyboard while it is open (see useOperatorShortcuts).
+    enabled: !settingsOpen,
     onNext: operator.selectNext,
     onPrevious: operator.selectPrevious,
     onApprove: operator.approveSelected,
     onDeselect: operator.deselect,
   })
+
+  function openSettings(section: SettingsSection) {
+    setSettingsSection(section)
+    setSettingsOpen(true)
+  }
 
   if (operator.needsToken) {
     return (
@@ -68,6 +86,7 @@ export default function App() {
         displayConnected={operator.displayConnected}
         showLogout={operator.isAuthenticated}
         onLogout={operator.logout}
+        onOpenSettings={() => openSettings('display')}
         // Action feedback lives in the header so it can never cover the actions
         // or the queue; it is still the same single-slot live region.
         feedback={<FeedbackNotice notice={operator.notice} onDismiss={operator.dismissNotice} />}
@@ -113,33 +132,19 @@ export default function App() {
           </PendingQueue>
         </div>
 
-        <aside className="operator-sidebar">
-          <StatsPanel
-            pendingCount={operator.pendingCount}
-            shownCount={operator.shownCount}
-            historyCount={operator.historyCount}
+        <aside className="operator-sidebar" aria-label="Utilities">
+          <ScriptureSearch
+            search={operator.search}
+            disabled={!operator.isConnected}
+            // Shift+Enter in the box shows a passage directly; not from behind
+            // the settings modal.
+            directEnabled={!settingsOpen}
           />
 
-          <ScriptureSearch search={operator.search} disabled={!operator.isConnected} />
-
-          <section className="operator-section operator-settings">
-            <div className="operator-section-header">
-              <h2 className="operator-section-title">Display &amp; Auto-approve</h2>
-            </div>
-            <DisplaySettings
-              verseLimit={operator.verseLimit}
-              displayTheme={operator.displayTheme}
-              disabled={!operator.isConnected}
-              onVerseLimitChange={operator.setDisplayVerseLimit}
-              onThemeChange={operator.setDisplayBackground}
-            >
-              <AutoApproveControls
-                autoMode={operator.autoMode}
-                disabled={!operator.isConnected}
-                onAutoModeChange={operator.setAutoApproveMode}
-              />
-            </DisplaySettings>
-          </section>
+          <AutoApproveCompact
+            autoMode={operator.autoMode}
+            onOpenSettings={() => openSettings('auto')}
+          />
 
           <HistoryPanel
             history={operator.history}
@@ -149,7 +154,21 @@ export default function App() {
           />
         </aside>
       </main>
-      <ShortcutOverlay />
+
+      <SettingsDialog
+        open={settingsOpen}
+        section={settingsSection}
+        onClose={() => setSettingsOpen(false)}
+        verseLimit={operator.verseLimit}
+        displayTheme={operator.displayTheme}
+        disabled={!operator.isConnected}
+        onVerseLimitChange={operator.setDisplayVerseLimit}
+        onThemeChange={operator.setDisplayBackground}
+        autoMode={operator.autoMode}
+        onAutoModeChange={operator.setAutoApproveMode}
+        appTheme={theme}
+        onAppThemeChange={setTheme}
+      />
     </div>
   )
 }

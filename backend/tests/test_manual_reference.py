@@ -65,8 +65,30 @@ class TestBooksEndpoint:
 
         assert [book["name"] for book in books] == [book.name for book in CANONICAL_BOOKS]
         assert [book["order"] for book in books] == list(range(1, 67))
-        assert books[0] == {"name": "Genesis", "chapters": 50, "order": 1}
-        assert books[-1] == {"name": "Revelation", "chapters": 22, "order": 66}
+        assert books[0] == {
+            "name": "Genesis",
+            "chapters": 50,
+            "order": 1,
+            "abbrev": "gn",
+            "variants": ["genesis"],
+        }
+        assert books[-1] == {
+            "name": "Revelation",
+            "chapters": 22,
+            "order": 66,
+            "abbrev": "re",
+            "variants": ["revelation", "revelations", "revelation of john"],
+        }
+
+    def test_abbreviations_and_variants_come_from_the_canon(self, client):
+        """The search box's name matching is built from the canon, not a copy."""
+        from core.books import CANONICAL_BOOKS
+
+        books = client.get("/api/books").json()["books"]
+        served = {book["name"]: (book["abbrev"], tuple(book["variants"])) for book in books}
+        assert served == {book.name: (book.abbrev, book.variants) for book in CANONICAL_BOOKS}
+        assert served["Psalms"][0] == "ps"
+        assert "psalm" in served["Psalms"][1]
 
     def test_chapter_counts_match_the_canon(self, client):
         from core.books import CANONICAL_BOOKS

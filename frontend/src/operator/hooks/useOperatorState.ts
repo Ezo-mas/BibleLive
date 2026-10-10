@@ -20,6 +20,7 @@ import type {
   Passage,
 } from '../../shared/types'
 import { passageToReference } from '../passageApi'
+import type { PassageQuery } from '../passageApi'
 import { autoModeOption, coerceAutoMode } from '../autoMode'
 import { useScriptureSearch } from './useScriptureSearch'
 import type { ScriptureSearchState } from './useScriptureSearch'
@@ -178,6 +179,13 @@ export interface OperatorState {
   showNext: () => void
   clearNext: () => void
   canShowNext: boolean
+  /**
+   * Send a resolved manual passage straight to the display without staging it.
+   * The same `display_reference` request `showNext` sends for a staged passage —
+   * coordinates only, for the server to resolve — used by Shift+Enter in Find
+   * Scripture. Nothing is staged and Up Next is untouched.
+   */
+  showManualDirect: (request: PassageQuery) => void
 
   /** Manual passage search: the book list and the lookup the form calls. */
   search: ScriptureSearchState
@@ -649,9 +657,29 @@ export function useOperatorState(): OperatorState {
     [showNotice]
   )
 
+  // Shift+Enter in Find Scripture: the resolved coordinates go to the display
+  // without staging anything first. This is the same `display_reference` action
+  // `showNext` sends for a staged manual passage — coordinates only, resolved
+  // by the server — so no new display path is introduced. The in-flight guard
+  // is shared with Show: a confirmation or rejection settles it the same way.
+  const showManualDirect = useCallback(
+    (request: PassageQuery) => {
+      if (showInFlight) return
+      setShowInFlight(true)
+      sendAction({
+        action: 'display_reference',
+        book: request.book,
+        chapter: request.chapter,
+        verse_start: request.verseStart,
+        verse_end: request.verseEnd,
+      })
+    },
+    [showInFlight, sendAction]
+  )
+
   // Manual passage search: the server's canon, the server's text, and staging on
   // success only.
-  const search = useScriptureSearch(token, stageManualPassage)
+  const search = useScriptureSearch(token, stageManualPassage, showManualDirect)
 
   const isConnected = status === 'open'
   const connectionState: ConnectionState = isConnected
@@ -694,6 +722,7 @@ export function useOperatorState(): OperatorState {
     showNext,
     clearNext: deselect,
     canShowNext: nextReference !== null && isConnected && !showInFlight,
+    showManualDirect,
 
     search,
 

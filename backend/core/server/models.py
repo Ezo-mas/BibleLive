@@ -142,11 +142,21 @@ class ErrorResponse(BaseModel):
 
 
 class BookInfo(BaseModel):
-    """One book of the canonical canon, for the operator's passage search."""
+    """One book of the canonical canon, for the operator's passage search.
+
+    ``abbrev`` and ``variants`` are the canon's own abbreviation and alternative
+    name forms, served so the operator can type ``ge`` or ``ps`` without the
+    front end keeping a name table of its own (which could drift from the
+    parser's).
+    """
 
     name: str
     chapters: int = Field(..., gt=0, description="Number of chapters in the book")
     order: int = Field(..., gt=0, description="1-based canonical position, Genesis=1")
+    abbrev: str = Field(..., description="Short form from the canon, e.g. 'gn'")
+    variants: list[str] = Field(
+        default_factory=list, description="Alternative name forms accepted by the parser"
+    )
 
 
 class BooksResponse(BaseModel):

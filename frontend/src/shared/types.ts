@@ -33,6 +33,17 @@ export interface ScriptureBook {
   chapters: number
   /** 1-based canonical position (Genesis=1). */
   order: number
+  /**
+   * Short form from the canon, e.g. 'gn'. Optional because a server that
+   * predates it serves only name/chapters/order; matching falls back to the
+   * name alone in that case.
+   */
+  abbrev?: string
+  /**
+   * Alternative name forms the parser accepts, e.g. ['psalms', 'psalm'].
+   * Also optional for the same reason as `abbrev`.
+   */
+  variants?: string[]
 }
 
 /** GET /api/books response. */

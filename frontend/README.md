@@ -78,8 +78,10 @@ return a 503 with build instructions.
 The operator can also put a passage of their own on the display. Both halves use
 HTTP (authenticated with the operator token when auth is enabled):
 
-- `GET /api/books` — the canonical 66-book list (`name`, `chapters`, `order`), so
-  the console carries no canon of its own.
+- `GET /api/books` — the canonical 66-book list (`name`, `chapters`, `order`,
+  plus each book's `abbrev` and parser-accepted name `variants`), so the console
+  carries no canon of its own and the search box can match `ge`, `ps`, or
+  `canticles` without shipping a name table.
 - `GET /api/lookup?book=John&chapter=3&verse_start=16&verse_end=17` — the verses
   and display-ready text, or 404/422 with the reason. Read-only.
 

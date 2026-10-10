@@ -170,11 +170,6 @@ function show() {
   })
 }
 
-/** The stat counter beside a label. */
-function statValue(label: string) {
-  return screen.getByText(label).nextElementSibling?.textContent
-}
-
 beforeEach(() => {
   window.localStorage.clear()
   vi.stubGlobal('WebSocket', MockWebSocket)
@@ -241,8 +236,10 @@ describe('history list', () => {
     const cards = historyPanel().getAllByRole('heading', { level: 3 })
     expect(cards).toHaveLength(20)
     expect(historyPanel().queryByText('John 3:1')).not.toBeInTheDocument()
-    // The count still reports everything the server has recorded.
-    expect(statValue('History')).toBe('21')
+    // The panel's header count still reports everything the server recorded.
+    expect(
+      historyPanel().getByText('21', { selector: '.operator-section-count' })
+    ).toBeInTheDocument()
   })
 })
 

@@ -588,12 +588,21 @@ def create_app(bible_lookup: BibleLookup | None = None) -> FastAPI:
         """List the canonical books for the operator's passage search.
 
         Served from the same canon the parser, importer, and database use, so the
-        front end never carries a copy that could drift. Requires authentication
-        if BIBLELIVE_REQUIRE_AUTH is enabled.
+        front end never carries a copy that could drift — including each book's
+        abbreviation and the name variants the parser accepts, which is what lets
+        the search box match ``ge``, ``ps``, or ``canticles`` without a second
+        name table on the client. Requires authentication if
+        BIBLELIVE_REQUIRE_AUTH is enabled.
         """
         return BooksResponse(
             books=[
-                BookInfo(name=book.name, chapters=book.chapters, order=book.order)
+                BookInfo(
+                    name=book.name,
+                    chapters=book.chapters,
+                    order=book.order,
+                    abbrev=book.abbrev,
+                    variants=list(book.variants),
+                )
                 for book in CANONICAL_BOOKS
             ]
         )
