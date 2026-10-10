@@ -22,6 +22,9 @@ const TONE_ICONS = {
  * (`role="alert"`) while confirmations stay polite, and the element is keyed by
  * the notice id so even a repeated message ("Shown: John 1:1-3" twice) is
  * announced again instead of looking unchanged.
+ *
+ * `OperatorHeader` renders it, between the title and the controls; the live
+ * region follows the message wherever it sits.
  */
 export function FeedbackNotice({ notice, onDismiss }: FeedbackNoticeProps) {
   if (!notice) return null

@@ -24,7 +24,8 @@ export function TokenPrompt({
         <div className="operator-auth-card">
           <h1 className="operator-auth-title">BibleLive Operator</h1>
           {authFailed && (
-            <div className="operator-auth-error">
+            // Announced when a rejected token brings the operator back here.
+            <div className="operator-auth-error" role="alert">
               Authentication failed. Please enter your operator token.
             </div>
           )}

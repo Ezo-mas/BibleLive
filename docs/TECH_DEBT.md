@@ -42,6 +42,26 @@ Entry format:
   identical command from the repo root started normally.
 - **Logged:** 2026-10-10
 
+### The action row scrolls out of reach on a short window with a busy queue
+- **Where:** `frontend/src/operator/operator.css` (`.operator-pending`,
+  `.operator-actions`) with `.operator-main-column` and `.operator-main`.
+- **Problem:** The pending section grows with its contents (`flex: 1 0 auto`) and the
+  action row is its last row, so a long queue pushes "Approve and Show", "Clear
+  Display", and "Clear Queue" to the bottom of the scrolling column; below 1280px the
+  main area scrolls instead, so the column is never height-bounded and the buttons stay
+  at the end of the list. Bounding the section (`min-height: 0`, letting the queue
+  scroll internally) would pin the row, but below 1280px that means giving the stacked
+  column a bounded height as well — a layout decision, not a bug fix.
+- **Impact:** On a short window (a 600px-tall laptop, or a phone in landscape with the
+  on-screen keyboard up) during a busy service, the primary action needs a long scroll
+  before it can be clicked, which is the opposite of the layout's own stated intent that
+  it stay reachable without scrolling.
+- **Evidence:** Measured 2026-10-10 against the running console: at 1280x600 with 21
+  queued references the action row's top edge sat at y=2666 inside a 517px-tall main
+  area; at 390x844 it sat at y=2706 inside 673px. Nothing was clipped or overlapped —
+  the row is simply far below the fold.
+- **Logged:** 2026-10-10
+
 ### Language control server port-conflict test fails on Windows
 - **Where:** `backend/tests/test_control_server.py`
   (`test_control_port_conflict_raises_on_start`) against `backend/audio/control.py`

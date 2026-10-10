@@ -137,6 +137,21 @@ describe('server-confirmed feedback', () => {
     expect(screen.getByRole('status')).toHaveTextContent('Display cleared')
   })
 
+  it('keeps the notice in the header, clear of the actions and the queue', () => {
+    openWith()
+
+    push({ type: 'approval_confirmed', data: { reference: reference() } })
+
+    // Placement is the fix for a measured problem: as a fixed overlay the notice
+    // sat on the action row on a laptop and on the first queue card on a short
+    // landscape window, which are the controls the operator reaches for next.
+    const notice = screen.getByRole('status')
+    const header = notice.closest('header')
+    expect(header).not.toBeNull()
+    expect(within(header as HTMLElement).getByText('BibleLive')).toBeInTheDocument()
+    expect(notice.closest('.operator-main')).toBeNull()
+  })
+
   it('reports clearing the queue', () => {
     openWith()
 

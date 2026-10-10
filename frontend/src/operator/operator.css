@@ -67,7 +67,8 @@
   padding: var(--space-3);
   font-size: var(--text-base);
   font-weight: 500;
-  color: white;
+  /* Inverse text so the dark theme's light-blue button keeps its label. */
+  color: var(--color-text-inverse);
   background: var(--color-primary);
   border: none;
   border-radius: var(--radius-md);
@@ -101,7 +102,11 @@
 .operator-app {
   display: flex;
   flex-direction: column;
+  /* Dynamic viewport height with the classic unit as the fallback: on a phone
+     100vh includes the space behind the browser's own bars, which pushes the
+     bottom of the console (and its action row) out of reach. */
   height: 100vh;
+  height: 100dvh;
   background: var(--color-surface-canvas);
   color: var(--color-text);
 }
@@ -140,6 +145,18 @@
   display: flex;
   align-items: center;
   gap: var(--space-4);
+}
+
+/* Action feedback sits in the header instead of floating over the console.
+   Fixed to the bottom it covered the action row on a laptop (the row is the
+   full width of the working column) and the first queue card on a short
+   landscape window — the two places the operator's next click goes. In the
+   header it is always visible, never over a control, and nothing below it
+   moves when it appears. */
+.operator-header .operator-feedback {
+  flex: 0 1 480px;
+  min-width: 0;
+  box-shadow: var(--shadow-md);
 }
 
 .operator-status-group {
@@ -611,7 +628,9 @@
   height: 24px;
   flex-shrink: 0;
   background: var(--color-primary);
-  color: white;
+  /* Inverse text, not hard white: the dark theme's primary is a light blue and
+     a white tick on it is almost invisible. */
+  color: var(--color-text-inverse);
   border-radius: var(--radius-full);
 }
 
@@ -752,7 +771,7 @@
   transition: all var(--transition-fast);
 }
 
-.operator-verse-option:hover:not(:disabled) {
+.operator-verse-option:hover:not(:disabled):not(.is-active) {
   color: var(--color-text);
 }
 
@@ -912,7 +931,10 @@
 
 .operator-stats-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  /* Three counters while they fit; with the sidebar in its row layout (below
+     1280px) each cell needs about 105px of the label and value, so the grid
+     drops to two columns and a second row instead of clipping the numbers. */
+  grid-template-columns: repeat(auto-fit, minmax(104px, 1fr));
   gap: var(--space-2);
   padding: var(--space-3) var(--space-4);
 }
@@ -949,17 +971,12 @@
 }
 
 /* Action feedback. One slot only: a new message replaces the previous one, so a
-   busy queue cannot stack notifications over the working area. It sits above
-   the shortcut legend, which is fixed in the same place. */
+   busy queue cannot stack notifications. The placement lives in the header (see
+   `.operator-header .operator-feedback`); this block is the message itself. */
 .operator-feedback {
-  position: fixed;
-  bottom: calc(var(--space-4) + 46px);
-  left: 50%;
-  transform: translateX(-50%);
   display: flex;
   align-items: center;
   gap: var(--space-3);
-  max-width: min(560px, calc(100vw - var(--space-6)));
   padding: var(--space-2) var(--space-3);
   background: var(--color-surface-overlay);
   border: 1px solid var(--color-border);
@@ -1003,14 +1020,19 @@
 
 .operator-feedback-text {
   min-width: 0;
+  /* The header slot can be narrow on a tablet; a long confirmation wraps rather
+     than pushing the message out of its pill. */
+  overflow-wrap: anywhere;
 }
 
 .operator-feedback-dismiss {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 24px;
-  height: 24px;
+  /* 24px was under the comfortable touch size for a control the operator may
+     reach for on a tablet. */
+  width: 32px;
+  height: 32px;
   flex-shrink: 0;
   padding: 0;
   background: transparent;
@@ -1047,6 +1069,8 @@
   font-size: var(--font-size-sm);
   color: var(--color-text-secondary);
   z-index: var(--z-tooltip);
+  /* A legend, nothing else: clicks belong to whatever reference sits under it. */
+  pointer-events: none;
 }
 
 .operator-shortcuts-label {
@@ -1119,15 +1143,45 @@
     display: none;
   }
 
-  /* With the legend gone, the notice drops to the same margin. */
-  .operator-feedback {
-    bottom: var(--space-4);
+  /* A tablet header has no spare width between the title and the controls: the
+     notice takes a row of its own there instead of being squeezed into a
+     column of text. It is the last row so the controls stay where they were. */
+  .operator-header {
+    flex-wrap: wrap;
+    row-gap: var(--space-2);
+  }
+
+  .operator-header .operator-feedback {
+    order: 3;
+    flex-basis: 100%;
+    margin: 0;
+  }
+}
+
+/* Short windows have no spare height either: the legend sat over the first
+   reference in the queue at 1280x600, so it goes the same way it does on a
+   tablet. */
+@media (max-height: 720px) {
+  .operator-shortcuts {
+    display: none;
   }
 }
 
 @media (max-width: 640px) {
   .operator-header {
     padding: var(--space-3) var(--space-4);
+  }
+
+  /* Comfortably tappable theme buttons: below 640px the labels are hidden, so
+     the icons carry the control and need the room. */
+  .operator-header .theme-toggle-button {
+    min-width: 40px;
+    min-height: 40px;
+  }
+
+  .operator-feedback-dismiss {
+    width: 40px;
+    height: 40px;
   }
 
   .operator-title {
@@ -1156,7 +1210,8 @@
   }
 
   /* On a phone the actions go back to stacked, with the two clears side by
-     side beneath the primary button. */
+     side beneath the primary button — and one per row when the labels do not
+     fit, rather than overflowing the section. */
   .operator-actions {
     flex-direction: column;
     align-items: stretch;
@@ -1164,14 +1219,13 @@
 
   .operator-actions-secondary {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
   }
 
+  /* Column layout needs nowrap: a wrapped column flex grows sideways, which put
+     the history panel and the queue's cards outside the viewport. */
   .operator-sidebar {
     flex-direction: column;
-  }
-
-  .operator-stats-grid {
-    grid-template-columns: repeat(3, 1fr);
+    flex-wrap: nowrap;
   }
 }

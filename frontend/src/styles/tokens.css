@@ -91,7 +91,10 @@
   /* Content Colors */
   --color-text: #212529;
   --color-text-secondary: #495057;
-  --color-text-muted: #6c757d;
+  /* Muted text is used on the surface and muted-surface greys, where #6c757d
+     measured 3.95:1 (small verse numbers) to 4.45:1 (hints) — under AA. This
+     shade keeps the same grey family and clears 4.5:1 on all three surfaces. */
+  --color-text-muted: #5f666d;
   --color-text-inverse: #ffffff;
 
   /* Border Colors */
@@ -100,9 +103,13 @@
   --color-border-focus: #4a90e2;
 
   /* Semantic Colors */
-  --color-primary: #4a90e2;
-  --color-primary-hover: #357abd;
-  --color-primary-active: #2868a8;
+  /* The lighter blue this used to be put white button labels at 3.29:1 and the
+     tinted "staged"/"manual" chips at 2.88:1 — under AA. The same blue family a
+     step darker clears 4.5:1 for white text (5.36) and for text on the subtle
+     tint (4.69). */
+  --color-primary: #2f6ea8;
+  --color-primary-hover: #28619c;
+  --color-primary-active: #22558a;
   --color-primary-subtle: #e3f2fd;
 
   --color-success: #28a745;

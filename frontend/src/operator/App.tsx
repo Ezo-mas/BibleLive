@@ -68,6 +68,9 @@ export default function App() {
         displayConnected={operator.displayConnected}
         showLogout={operator.isAuthenticated}
         onLogout={operator.logout}
+        // Action feedback lives in the header so it can never cover the actions
+        // or the queue; it is still the same single-slot live region.
+        feedback={<FeedbackNotice notice={operator.notice} onDismiss={operator.dismissNotice} />}
       />
       {/* A closed socket disables every control below, so say why instead of
           leaving the operator to guess. Reachable once the session has
@@ -146,7 +149,6 @@ export default function App() {
           />
         </aside>
       </main>
-      <FeedbackNotice notice={operator.notice} onDismiss={operator.dismissNotice} />
       <ShortcutOverlay />
     </div>
   )
