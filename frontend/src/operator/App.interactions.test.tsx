@@ -229,6 +229,35 @@ describe('pending selection and approval', () => {
   })
 })
 
+describe('keyboard shortcuts while Settings is open', () => {
+  it('does not approve the staged reference on Enter until Settings is closed', () => {
+    openWith()
+    press('ArrowDown')
+    expect(approveButton()).toBeEnabled()
+
+    openSettings()
+
+    // The dialog owns the keyboard while it is open: a keypress sent from
+    // behind it must neither reach the server nor move the staged selection.
+    press('Enter')
+    expect(socket?.send).not.toHaveBeenCalled()
+    expect(screen.getByRole('button', { name: /John 1:1/ })).toHaveAttribute(
+      'aria-pressed',
+      'true'
+    )
+
+    // Closed, the same keypress approves the staged reference again by ID — the
+    // dialog stood the shortcut down, it did not break it.
+    act(() => {
+      within(screen.getByRole('dialog'))
+        .getByRole('button', { name: 'Close settings' })
+        .click()
+    })
+    press('Enter')
+    expect(lastSent()).toEqual({ action: 'approve', reference_id: 'p-1' })
+  })
+})
+
 describe('clear actions', () => {
   it('enables Clear Display only while the display has content', () => {
     openWith()
