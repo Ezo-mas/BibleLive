@@ -56,15 +56,11 @@ async function readFailure(response: Response): Promise<string> {
 }
 
 /** Load the canonical book list the search form is built from. */
-export async function fetchBooks(
-  token: string | null,
-  signal?: AbortSignal
-): Promise<ScriptureBook[]> {
+export async function fetchBooks(token: string | null): Promise<ScriptureBook[]> {
   let response: Response
   try {
-    response = await fetch('/api/books', { headers: authHeaders(token), signal })
-  } catch (error) {
-    if (signal?.aborted) throw error
+    response = await fetch('/api/books', { headers: authHeaders(token) })
+  } catch {
     throw new PassageApiError(0, 'Could not reach the server to load the book list.')
   }
   if (!response.ok) throw new PassageApiError(response.status, await readFailure(response))
@@ -74,11 +70,7 @@ export async function fetchBooks(
 }
 
 /** Resolve a book/chapter/verse passage to the text the display would show. */
-export async function lookupPassage(
-  query: PassageQuery,
-  token: string | null,
-  signal?: AbortSignal
-): Promise<Passage> {
+export async function lookupPassage(query: PassageQuery, token: string | null): Promise<Passage> {
   const params = new URLSearchParams({ book: query.book, chapter: String(query.chapter) })
   if (query.verseStart !== null) params.set('verse_start', String(query.verseStart))
   if (query.verseEnd !== null) params.set('verse_end', String(query.verseEnd))
@@ -87,9 +79,8 @@ export async function lookupPassage(
 
   let response: Response
   try {
-    response = await fetch(url, { headers: authHeaders(token), signal })
-  } catch (error) {
-    if (signal?.aborted) throw error
+    response = await fetch(url, { headers: authHeaders(token) })
+  } catch {
     throw new PassageApiError(0, 'Could not reach the server to look up that passage.')
   }
   if (!response.ok) throw new PassageApiError(response.status, await readFailure(response))

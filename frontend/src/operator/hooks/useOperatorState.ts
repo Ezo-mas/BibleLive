@@ -164,7 +164,6 @@ export interface OperatorState {
   history: BibleReference[]
   pendingCount: number
   historyCount: number
-  shownCount: number
   /** Scripture currently on the display, as reported by the server. */
   currentDisplay: BibleReference | null
   hasDisplayContent: boolean
@@ -243,7 +242,6 @@ export function useOperatorState(): OperatorState {
   const [history, setHistory] = useState<BibleReference[]>([])
   const [pendingCount, setPendingCount] = useState(0)
   const [historyCount, setHistoryCount] = useState(0)
-  const [shownCount, setShownCount] = useState(0)
   const [currentDisplay, setCurrentDisplay] = useState<BibleReference | null>(null)
   // What Up Next holds. One piece of state, so a queued selection and a manual
   // passage can never both look staged.
@@ -334,7 +332,6 @@ export function useOperatorState(): OperatorState {
         setHistory(message.data.history)
         setPendingCount(message.data.pending_count)
         setHistoryCount(message.data.history_count)
-        setShownCount(message.data.history_count)
         setCurrentDisplay(message.data.current_display)
         setDisplayConnected(message.data.display_connections > 0)
         if (message.data.display_settings) {
@@ -367,7 +364,6 @@ export function useOperatorState(): OperatorState {
         // counters so the sidebar is not stale until the next snapshot.
         setHistory(prev => [shown, ...prev].slice(0, HISTORY_WINDOW))
         setHistoryCount(count => count + 1)
-        setShownCount(count => count + 1)
         setCurrentDisplay(shown)
         setShowInFlight(false)
         pulse('approve')
@@ -381,7 +377,6 @@ export function useOperatorState(): OperatorState {
         const shown = message.data.reference
         setHistory(prev => [shown, ...prev].slice(0, HISTORY_WINDOW))
         setHistoryCount(count => count + 1)
-        setShownCount(count => count + 1)
         setCurrentDisplay(shown)
         setShowInFlight(false)
         // It is on screen now, so it is no longer waiting in Up Next — unless the
@@ -713,7 +708,6 @@ export function useOperatorState(): OperatorState {
     history,
     pendingCount,
     historyCount,
-    shownCount,
     currentDisplay,
     hasDisplayContent: currentDisplay !== null,
     displayConnected,

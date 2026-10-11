@@ -12,8 +12,6 @@ export interface ScriptureSearchState {
   /** What the operator has typed, echoed back for the controlled input. */
   input: string
   setInput: (value: string) => void
-  /** Empty the box and its results. */
-  clear: () => void
   /** Canonical books for matching, from the server (never a local copy). */
   books: ScriptureBook[]
   booksError: string | null
@@ -142,12 +140,6 @@ export function useScriptureSearch(
     [ensureBooks]
   )
 
-  const clear = useCallback(() => {
-    setInputState('')
-    setLookupError(null)
-    setShowAllBooks(false)
-  }, [])
-
   const query = useMemo(() => parseScriptureQuery(debouncedInput, books), [debouncedInput, books])
 
   const { results, hiddenCount } = useMemo(
@@ -215,7 +207,6 @@ export function useScriptureSearch(
   return {
     input,
     setInput,
-    clear,
     books,
     booksError,
     isLoadingBooks,
