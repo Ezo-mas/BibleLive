@@ -18,9 +18,11 @@ convention as the operator HTTP endpoints).
 
 from __future__ import annotations
 
+import errno
 import json
 import logging
 import secrets
+import socket
 import threading
 from collections.abc import Callable
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -191,6 +193,32 @@ class LanguageControlServer:
         bound_host, bound_port = self._httpd.server_address[:2]
         return str(bound_host), int(bound_port)
 
+    def _port_has_live_listener(self) -> bool:
+        """Return True when something already accepts connections on the address.
+
+        This is a best-effort pre-bind check, not a portable guarantee. A
+        successful connection is evidence of a reachable listener — the case
+        that matters, since Windows lets a second socket bind an address and
+        port that already has a listener when both set ``SO_REUSEADDR``
+        (which ``http.server`` enables via ``allow_reuse_address``), so a
+        conflicting listener does not make ``bind()`` fail there. But a
+        failed connection does not prove the port is free: a timeout, packet
+        filtering, a saturated listen backlog, or any other connection
+        failure produces a false negative and falls through to the real
+        ``bind()``, which remains the authority. Wildcard bind hosts such as
+        ``0.0.0.0`` cannot be reliably probed as written on Windows, and the
+        check cannot eliminate the race between the probe and the subsequent
+        bind. An orderly close of the probe connection is silent on the
+        server side.
+        """
+        if self.port == 0:
+            return False  # An ephemeral port cannot conflict.
+        try:
+            with socket.create_connection((self.host, self.port), timeout=0.5):
+                return True
+        except OSError:
+            return False
+
     def start(self) -> None:
         """Bind the socket and serve in a background thread.
 
@@ -206,6 +234,17 @@ class LanguageControlServer:
                 "Control server bound to non-loopback host %s without a token; "
                 "anyone who can reach it can switch the pipeline language",
                 self.host,
+            )
+
+        if self._port_has_live_listener():
+            logger.error(
+                "Control server could not bind %s:%s: address already in use",
+                self.host,
+                self.port,
+            )
+            raise OSError(
+                errno.EADDRINUSE,
+                f"Control server port {self.host}:{self.port} already in use",
             )
 
         try:

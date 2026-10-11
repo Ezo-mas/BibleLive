@@ -1,6 +1,7 @@
 """Tests for the runtime language-control HTTP server (``audio.control``)."""
 
 import json
+import socket
 import urllib.error
 import urllib.request
 
@@ -183,6 +184,74 @@ def test_control_port_conflict_raises_on_start():
         second.stop()
     finally:
         first.stop()
+
+
+def test_control_port_held_by_foreign_socket_raises_on_start():
+    """A port owned by another process must fail startup just as clearly."""
+    holder = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        # The holder must set SO_REUSEADDR like our server does: on Windows a
+        # second bind only succeeds (the failure mode under test) when the
+        # existing socket also has it set, so without this the test would pass
+        # against the old implementation via a bind error instead of the probe.
+        holder.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        holder.bind(("127.0.0.1", 0))
+        holder.listen(1)
+        port = holder.getsockname()[1]
+        language = _FakeLanguage("en")
+        server = LanguageControlServer(language.get, language.set, host="127.0.0.1", port=port)
+        with pytest.raises(OSError):
+            server.start()
+        # The failed server stays stopped and can be cleaned up safely.
+        assert server.address is None
+        server.stop()
+    finally:
+        holder.close()
+
+
+def test_control_port_rebinds_after_stop():
+    """Stopping releases the port: a new server can bind it immediately."""
+    language = _FakeLanguage("en")
+    first = LanguageControlServer(language.get, language.set, host="127.0.0.1", port=0)
+    first.start()
+    try:
+        port = first.address[1]
+    finally:
+        first.stop()
+    second = LanguageControlServer(language.get, language.set, host="127.0.0.1", port=port)
+    second.start()
+    try:
+        assert second.address == ("127.0.0.1", port)
+    finally:
+        second.stop()
+
+
+def test_control_port_rebinds_after_serving_traffic():
+    """A restart right after serving a request must rebind the same port.
+
+    This protects the rapid-restart behavior that motivated retaining
+    ``SO_REUSEADDR``: the served connection leaves server-side TIME_WAIT
+    behind, which must not block rebinding. No sleeps: ``stop()`` joins the
+    serve thread, and the helpers time out on their own.
+    """
+    language = _FakeLanguage("en")
+    first = LanguageControlServer(language.get, language.set, host="127.0.0.1", port=0)
+    first.start()
+    try:
+        port = first.address[1]
+        status, body = _http(port, "GET")
+        assert status == 200
+        assert body == {"language": "en"}
+    finally:
+        first.stop()
+    second = LanguageControlServer(language.get, language.set, host="127.0.0.1", port=port)
+    second.start()
+    try:
+        status, body = _http(port, "GET")
+        assert status == 200
+        assert body == {"language": "en"}
+    finally:
+        second.stop()
 
 
 @pytest.mark.parametrize("token", ["", "   "])

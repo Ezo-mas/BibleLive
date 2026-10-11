@@ -34,17 +34,24 @@ y=3045 in 787px at 390x844. Nothing was clipped or overlapped — the row is sim
 below the fold.
 - **Logged:** 2026-10-10
 
-### Language control server port-conflict test fails on Windows
-- **Where:** `backend/tests/test_control_server.py`
-  (`test_control_port_conflict_raises_on_start`) against `backend/audio/control.py`
-  (`_ControlHTTPServer`).
-- **Problem:** The test expects a second bind to an already-bound port to raise
-  `OSError`. `_ControlHTTPServer` inherits `allow_reuse_address = 1` from
+### Language control server port-conflict detection is best-effort on Windows
+- **Where:** `backend/audio/control.py`
+  (`LanguageControlServer._port_has_live_listener`) against `backend/tests/test_control_server.py`
+  (the port-conflict tests).
+- **Problem:** `_ControlHTTPServer` inherits `allow_reuse_address = 1` from
   `http.server`, which on Windows sets `SO_REUSEADDR` and lets a second socket bind the
-  same address and port.
-- **Impact:** `make check` (pytest) reports one failure on Windows while the rest of the
-  suite passes, so a real regression can hide behind a known-failing test.
-- **Evidence:** Reproduced on 2026-10-10: `pytest backend/tests -q` →
-  `1 failed, 289 passed` with `DID NOT RAISE OSError`, and
-  `_ControlHTTPServer.allow_reuse_address` prints `1`.
+  same address and port, so a conflicting listener never makes `bind()` fail there.
+  `start()` therefore probes for a live listener first, but the probe is best-effort:
+  a failed connection does not prove the port is free (timeout, filtering, saturated
+  backlog), wildcard bind hosts such as `0.0.0.0` cannot be reliably probed as written,
+  and the probe-bind race remains.
+- **Impact:** A conflicting listener is detected in the normal loopback case (covered by
+  `test_control_port_conflict_raises_on_start` and
+  `test_control_port_held_by_foreign_socket_raises_on_start`, which pass), but an exotic
+  conflict that defeats both the probe and `bind()` would still start a second server
+  with undefined traffic ownership.
+- **Evidence:** Pre-fix reproduction on Windows 2026-10-11: a second `start()` logged
+  `listening` on the occupied port and the test failed with `DID NOT RAISE OSError`;
+  a raw `ThreadingHTTPServer` double-bind confirmed `SO_REUSEADDR` as the cause.
+  Post-fix full suite: `337 passed`.
 - **Logged:** 2026-10-10
