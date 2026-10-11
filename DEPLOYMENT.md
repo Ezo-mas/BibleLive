@@ -468,7 +468,8 @@ Common issues:
 
 ## Support and Resources
 
-- **Documentation**: See `README.md` and `REFACTORING_PROGRESS.md`
+- **Documentation**: See `README.md` for usage and `DATABASE_SETUP.md` for
+  database import; `SECURITY.md` covers tokens and endpoint protection
 - **Configuration**: `.env.example` for all options
 - **API Documentation**: Visit `http://localhost:8000/docs` when server is running
 - **Health Endpoints**: `/healthz` and `/readyz`

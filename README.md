@@ -28,11 +28,14 @@ references before they go on screen.
 ## Requirements
 
 - Python 3.11+
-- Node.js 18+ (required to build the frontend into `static/frontend/`; that directory is generated and not committed, so it must be built once after cloning)
+- Node.js 18+ (required to build the frontend into `static/frontend/`; that
+  directory is generated and not committed, so it must be built once after
+  cloning)
 - ffmpeg (required by the audio pipeline)
 - A microphone (for live reference detection)
 
-On Windows use `python` instead of `python3` in the commands below.
+On Windows use `python` instead of `python3` in the commands below (and
+`start.ps1` instead of `start.sh`).
 
 ## Installation
 
@@ -97,7 +100,7 @@ Then open:
 | URL                | Purpose                                          |
 |--------------------|--------------------------------------------------|
 | `/display`         | Audience screen showing approved references      |
-| `/operator`        | Operator panel: approve/clear pending references |
+| `/operator`        | Operator panel: approve/clear pending references, manual passage, history |
 | `/docs`            | Interactive API docs (Swagger UI)                |
 
 ### Run the audio pipeline only
@@ -171,17 +174,29 @@ output, ignored short VAD blips, and skipped duplicates.
 | POST   | `/api/approve`      | Approve a pending reference (by reference_id) |
 | POST   | `/api/clear`        | Clear the display                        |
 | POST   | `/api/clear-pending`| Clear the pending queue                  |
+| GET    | `/api/books`        | List canonical books (for Find Scripture) |
+| GET    | `/api/lookup`       | Look up verse text by coordinates        |
 | GET    | `/api/state`        | Current server state snapshot (requires auth if enabled) |
+| GET    | `/healthz`          | Liveness probe                           |
+| GET    | `/readyz`           | Readiness probe (database + frontend built checks) |
 
 ## WebSocket protocol
 
-- `ws://<host>/ws/display` — display clients receive `reference` and `clear` events
+- `ws://<host>/ws/display` — display clients receive `reference`, `clear`,
+  `display_settings`, and `connection_status` events
 - `ws://<host>/ws/operator` — operator clients receive `pending_update`,
   `approval_confirmed`, `clear_confirmed`, `pending_cleared`, `state_snapshot`,
-  `auto_mode_confirmed`, and `connection_status` events; they send
-  `{action: 'approve', reference_id: 'uuid'}`, `{action: 'clear'}`,
-  `{action: 'clear_pending'}`, or
-  `{action: 'set_auto_mode', auto_mode: 'off'|'high'|'medium_and_up'|'all'}`
+  `auto_mode_confirmed`, `display_settings_confirmed`, and `connection_status`
+  events; they send these actions:
+  - `{action: 'approve', reference_id: 'uuid'}`
+  - `{action: 'clear'}`
+  - `{action: 'clear_pending'}`
+  - `{action: 'set_verse_limit', verse_limit: 3 | 5 | 10 | 'all'}`
+  - `{action: 'set_display_theme', theme: 'dark' | 'light'}`
+  - `{action: 'set_auto_mode', auto_mode: 'off' | 'high' | 'medium_and_up' | 'all'}`
+  - `{action: 'display_reference', book, chapter, verse_start?, verse_end?}` —
+    show a passage the operator picked by hand (coordinates only; the server
+    re-resolves them). Also used for Show Again from display history.
 - Operator WebSocket requires `?token=xxx` query parameter when authentication is enabled
 
 ## Auto-approve mode
@@ -204,12 +219,36 @@ invalid log a warning and fall back to that default; an invalid
 | Variable                  | Default                     | Description              |
 |---------------------------|-----------------------------|--------------------------|
 | `BIBLELIVE_DB_PATH`       | `bible_data/biblelive.sqlite` | Bible SQLite database  |
-| `BIBLELIVE_KJV_JSON_PATH` | `data/kjv2.json`             | KJV JSON text file       |
 | `BIBLELIVE_HOST`          | `0.0.0.0`                   | Server bind host         |
 | `BIBLELIVE_PORT`          | `8000`                      | Server port              |
 | `BIBLELIVE_RELOAD`        | `true`                      | Uvicorn auto-reload (dev)|
 | `BIBLELIVE_AUTO_MODE`     | `off`                       | Default auto-approve mode (no persisted setting) |
 | `BIBLELIVE_SETTINGS_PATH` | `data/server_settings.json` | Persisted operator settings |
+| `BIBLELIVE_REQUIRE_AUTH`  | `false`                     | Protect operator endpoints with a token |
+| `BIBLELIVE_OPERATOR_TOKEN`| unset                       | Operator token (required if auth enabled) |
+| `BIBLELIVE_CORS_ORIGINS`  | empty                       | Comma-separated allowed origins (empty = same-origin only) |
+| `BIBLELIVE_LOG_LEVEL`     | `INFO`                      | Server log level         |
+| `BIBLELIVE_DB_READONLY`   | `false`                     | Fail rather than write to the Bible DB |
+| `BIBLELIVE_AUDIO_LOG_LEVEL` | `INFO`                    | Audio pipeline log level |
+
+See `.env.example` for the full annotated list. `BIBLELIVE_AUDIO_LOG_LEVEL`,
+`BIBLELIVE_AUDIO_ARGS` (start scripts), and the pipeline's model/device/language
+options are audio-pipeline-side settings, passed as CLI flags on
+`python3 -m audio.cli` — see the options table above.
+
+## Makefile targets
+
+| Target | Purpose |
+| --- | --- |
+| `make install` / `install-audio` / `install-dev` | Backend pip installs (core / +audio / +dev) |
+| `make test` / `test-integration` | pytest (`-m integration` for the subset) |
+| `make lint` / `format` / `typecheck` | ruff check / ruff format / mypy core+audio |
+| `make check` | lint + format-check + tests (backend one-route) |
+| `make dev` | uvicorn with reload on port 8000 |
+| `make frontend-install` / `frontend-dev` / `frontend-build` | npm install / dev server / production build |
+| `make frontend-lint` / `frontend-format` / `frontend-test` | npm run lint / format / test |
+| `make check-frontend` | frontend lint + tests |
+| `make clean` | remove build artifacts and caches |
 
 ## Project layout
 
@@ -226,8 +265,11 @@ BibleLive/                        # Monorepo root: tooling + shared assets
 │   │   │   └── state.py          # AppState (pending queue, display, history)
 │   │   ├── config.py             # Env-driven configuration
 │   │   ├── biblelive_server.py   # Compat shim -> core.server
-│   │   ├── verse_parser.py
-│   │   └── bible_lookup.py
+│   │   ├── verse_parser.py       # Reference parsing (English)
+│   │   ├── verse_parser_lt.py    # Lithuanian language data for the parser
+│   │   ├── passage.py, books.py  # Manual passage validation + canon
+│   │   ├── bible_lookup.py       # SQLite verse text lookup
+│   │   └── import_bible.py       # Bible DB importer
 │   ├── audio/                    # Audio pipeline (ffmpeg + VAD + Whisper STT)
 │   │   ├── cli.py                # Entry point
 │   │   ├── pipeline.py           # BibleLiveAudioProcessor
@@ -245,30 +287,16 @@ BibleLive/                        # Monorepo root: tooling + shared assets
 │   ├── src/display/              # Audience screen
 │   ├── src/operator/             # Operator panel
 │   ├── src/shared/               # Types, reference formatting, WS hook
-│   └── legacy/                   # Original self-contained HTML pages (reference)
-├── static/frontend/              # Built frontend bundle (served by the server)
-├── bible_data/                   # Bible SQLite databases
+│   └── display.html, operator.html  # Dev-mode Vite entry points
+├── static/frontend/              # Built frontend bundle (generated, not committed)
+├── bible_data/                   # Bible SQLite databases (generated; source JSON in data/)
 ├── data/                         # KJV / LITV JSON text files
+├── docs/                         # Agent guides (docs/agent-guides/) + TECH_DEBT.md
 ├── pyproject.toml                # Root tooling config (ruff, pytest, mypy)
 ├── Makefile                      # Backend + frontend task runner
-├── start.sh                      # Start server + audio pipeline
+├── start.sh                      # Start server + audio pipeline (POSIX)
 └── start.ps1                     # Same, for Windows PowerShell
 ```
-
-## Testing
-
-```bash
-pytest                    # runs backend/tests (configured in root pyproject.toml)
-pytest backend/tests -q   # explicit path
-make test                 # verbose via the Makefile
-make check                # lint + format-check + tests (one route)
-```
-
-Tests that need a Bible database build one from the tracked `data/kjv2.json`,
-so a fresh checkout and CI work without a pre-imported `bible_data/` file.
-Audio tests require the optional extras: `pip install -e "./backend[audio]"`.
-
-## Repository layout
 
 This is a two-part monorepo:
 
@@ -279,6 +307,21 @@ This is a two-part monorepo:
 
 The root `pyproject.toml` only holds tool configuration (ruff, pytest, mypy);
 `backend/pyproject.toml` holds the installable package metadata.
+
+## Testing
+
+```bash
+pytest                    # runs backend/tests (configured in root pyproject.toml)
+pytest backend/tests -q   # explicit path
+make test                 # verbose via the Makefile
+make check                # lint + format-check + tests (one route)
+make test-integration     # integration tests only
+```
+
+Tests that need a Bible database build one from the tracked `data/kjv2.json`,
+so a fresh checkout and CI work without a pre-imported `bible_data/` file.
+Audio tests require the optional extras: `pip install -e "./backend[audio]"`.
+Agent-facing command conventions live in `docs/agent-guides/testing.md`.
 
 ## Development workflow (frontend)
 
@@ -293,3 +336,11 @@ cd frontend && npm run dev
 The dev server serves the pages with Vite's HMR; production pages are the
 built bundle under `static/frontend/`, served by the backend at `/display`
 and `/operator` (returns 503 with build instructions if not built).
+
+## Related documentation
+
+- `DATABASE_SETUP.md` — importing Bible data, DB schema and locations
+- `DEPLOYMENT.md` — production deployment (systemd, nginx, health checks)
+- `SECURITY.md` — authentication endpoints and tokens
+- `docs/TECH_DEBT.md` — known deferred issues
+- `docs/agent-guides/` — conventions for AI coding agents (entry point: `AGENTS.md`)

@@ -55,3 +55,18 @@ below the fold.
   a raw `ThreadingHTTPServer` double-bind confirmed `SO_REUSEADDR` as the cause.
   Post-fix full suite: `337 passed`.
 - **Logged:** 2026-10-10
+
+### Untracked DB snapshot files live in the repo working tree
+- **Where:** `bible_data/biblelive.sqlite.bak-20261011-135608` and
+  `bible_data/biblelive.sqlite.pre-repair-20261011-135608` (untracked).
+- **Problem:** Two one-off SQLite snapshots (a backup and a pre-repair copy,
+  from a 2026-10-11 DB repair) sit permanently in the working tree. They are
+  not referenced by any code or config and will silently grow stale as the
+  real `bible_data/biblelive.sqlite` is re-imported.
+- **Impact:** Disk bloat in a directory operators may mistake for live data;
+  a stale snapshot could be restored or shipped by mistake (e.g. a
+  deployment copying the whole `bible_data/` directory), serving outdated
+  verse text with no error.
+- **Evidence:** `git status --short` shows `?? bible_data/` containing only
+  these two files; no manifest, script, or code refers to them.
+- **Logged:** 2026-10-11
