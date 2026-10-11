@@ -8,12 +8,12 @@ Set-Location $RepoRoot
 
 # Python packages live under backend/; make them importable as core.* / audio.*
 $backend = Join-Path $RepoRoot "backend"
-if ($env:PYTHONPATH) { $env:PYTHONPATH = "$backend;$($env:PYTHONPATH)" } else { $env:PYTHONPATH = $backend }
+$paths = @($env:PYTHONPATH -split ';' | Where-Object { $_ -and $_ -ne $backend })
+$env:PYTHONPATH = (@($backend) + $paths) -join ';'
 
 # Use the venv's Python if present, otherwise whatever "python" is on PATH
 $Python = Join-Path $RepoRoot ".venv\Scripts\python.exe"
-if (-not (Test-Path $Python)) { $Python = "python" }
-
+if (-not (Test-Path $Python)) { $Python = "py" }
 # Configuration
 $ServerHost = if ($env:BIBLELIVE_HOST) { $env:BIBLELIVE_HOST } else { "0.0.0.0" }
 $ServerPort = if ($env:BIBLELIVE_PORT) { $env:BIBLELIVE_PORT } else { "8000" }
@@ -68,8 +68,7 @@ try {
 
         if ($script:Server.HasExited) {
             Write-Host "Error: Server process died during startup"
-            $exitCode = 1
-            return
+            exit 1
         }
         Start-Sleep -Seconds $HealthCheckInterval
         $elapsed += $HealthCheckInterval
@@ -77,8 +76,7 @@ try {
 
     if (-not $ready) {
         Write-Host "Error: Server did not become ready within $HealthCheckTimeout seconds"
-        $exitCode = 1
-        return
+        exit 1
     }
     Write-Host "Server is ready!"
     Write-Host ""
