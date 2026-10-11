@@ -1,8 +1,10 @@
 """Tests for importing the flat e-Sword JSON format (``data/kjv2.json``).
 
-The bundled ``data/kjv.json`` is truncated (John has only 4 chapters), while
 ``data/kjv2.json`` carries the complete 31102-verse text in a flat list format
-that the importer must understand.
+that the importer must understand. (The older ``data/kjv.json`` is also
+complete at 31100 verses but mislabels four books — Judges/Jude and John/Jonah
+carry each other's abbreviations — so it cannot be imported as-is; see
+``test_import_book_identity.py``.)
 """
 
 import json

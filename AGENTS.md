@@ -76,7 +76,7 @@ static/frontend/   Prebuilt frontend bundle served by FastAPI — regenerate
                    bundle is rebuilt; don't rebuild it unless asked
                    (rebuild diffs are big and generated).
 bible_data/        SQLite Bible database
-data/              Source JSON files for Bible imports (kjv.json, ltkb.json)
+data/              Source JSON files for Bible imports (kjv2.json, ltkb.json)
 ```
 
 ## Commands
