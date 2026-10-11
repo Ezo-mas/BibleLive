@@ -192,10 +192,7 @@ export function SettingsDialog({
             />
           </section>
 
-          <section
-            className="operator-dialog-section"
-            aria-labelledby={shortcutsSectionId}
-          >
+          <section className="operator-dialog-section" aria-labelledby={shortcutsSectionId}>
             <h3 className="operator-dialog-section-title" id={shortcutsSectionId}>
               Keyboard Shortcuts
             </h3>

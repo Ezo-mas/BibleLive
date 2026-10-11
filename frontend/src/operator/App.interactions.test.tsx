@@ -241,17 +241,12 @@ describe('keyboard shortcuts while Settings is open', () => {
     // behind it must neither reach the server nor move the staged selection.
     press('Enter')
     expect(socket?.send).not.toHaveBeenCalled()
-    expect(screen.getByRole('button', { name: /John 1:1/ })).toHaveAttribute(
-      'aria-pressed',
-      'true'
-    )
+    expect(screen.getByRole('button', { name: /John 1:1/ })).toHaveAttribute('aria-pressed', 'true')
 
     // Closed, the same keypress approves the staged reference again by ID — the
     // dialog stood the shortcut down, it did not break it.
     act(() => {
-      within(screen.getByRole('dialog'))
-        .getByRole('button', { name: 'Close settings' })
-        .click()
+      within(screen.getByRole('dialog')).getByRole('button', { name: 'Close settings' }).click()
     })
     press('Enter')
     expect(lastSent()).toEqual({ action: 'approve', reference_id: 'p-1' })

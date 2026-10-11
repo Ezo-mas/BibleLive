@@ -163,7 +163,9 @@ describe('LIVE panel', () => {
 
     push({ type: 'approval_confirmed', data: { reference: psalms } })
 
-    expect(within(screen.getByTestId('live-verses')).getByText('Psalms 23:1 text')).toBeInTheDocument()
+    expect(
+      within(screen.getByTestId('live-verses')).getByText('Psalms 23:1 text')
+    ).toBeInTheDocument()
     expect(screen.queryByText('Nothing on display')).not.toBeInTheDocument()
   })
 
@@ -200,10 +202,14 @@ describe('NEXT panel', () => {
 
     const staged = within(screen.getByTestId('next-preview'))
     expect(staged.getByText('Romans 8:28')).toBeInTheDocument()
-    expect(within(screen.getByTestId('next-verses')).getByText('Romans 8:28 text')).toBeInTheDocument()
+    expect(
+      within(screen.getByTestId('next-verses')).getByText('Romans 8:28 text')
+    ).toBeInTheDocument()
 
     // LIVE still shows what the projector showed before; nothing was sent.
-    expect(within(screen.getByTestId('live-verses')).getByText('Psalms 23:1 text')).toBeInTheDocument()
+    expect(
+      within(screen.getByTestId('live-verses')).getByText('Psalms 23:1 text')
+    ).toBeInTheDocument()
     expect(screen.queryByText('Nothing staged')).not.toBeInTheDocument()
     expect(socket?.send).not.toHaveBeenCalled()
   })
@@ -228,7 +234,9 @@ describe('NEXT panel', () => {
     push({ type: 'approval_confirmed', data: { reference: romans } })
     push({ type: 'pending_update', data: { pending: [john], count: 1 } })
 
-    expect(within(screen.getByTestId('live-verses')).getByText('Romans 8:28 text')).toBeInTheDocument()
+    expect(
+      within(screen.getByTestId('live-verses')).getByText('Romans 8:28 text')
+    ).toBeInTheDocument()
     expect(screen.getByText('Nothing staged')).toBeInTheDocument()
   })
 
@@ -241,7 +249,9 @@ describe('NEXT panel', () => {
     })
 
     expect(screen.getByText('Nothing staged')).toBeInTheDocument()
-    expect(within(screen.getByTestId('live-verses')).getByText('Psalms 23:1 text')).toBeInTheDocument()
+    expect(
+      within(screen.getByTestId('live-verses')).getByText('Psalms 23:1 text')
+    ).toBeInTheDocument()
     expect(socket?.send).not.toHaveBeenCalled()
   })
 

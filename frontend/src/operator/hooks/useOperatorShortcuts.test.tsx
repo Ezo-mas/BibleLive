@@ -37,9 +37,7 @@ function Harness({
           <option>Exodus</option>
         </select>
       )}
-      {withCard && (
-        <div role="button" tabIndex={0} aria-label="card" onKeyDown={onCardSelect} />
-      )}
+      {withCard && <div role="button" tabIndex={0} aria-label="card" onKeyDown={onCardSelect} />}
     </div>
   )
 }
