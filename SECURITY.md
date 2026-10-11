@@ -1,53 +1,64 @@
-# BibleLive Security & Deployment Guide
+# BibleLive Security Guide
 
-## Authentication Overview
+BibleLive supports optional token-based authentication for operator endpoints.
+When enabled, all operator actions (approve, clear, clear queue, settings,
+manual display) require authentication via:
 
-BibleLive supports optional token-based authentication for operator endpoints. When enabled, all operator actions (approve, clear, clear queue) require authentication via:
-- WebSocket: Query parameter `?token=YOUR_TOKEN`
+- WebSocket: query parameter `?token=YOUR_TOKEN`
 - HTTP: `Authorization: Bearer YOUR_TOKEN` header
 
-### Quick Start
+## Quick Start
 
 1. Generate a secure token:
+
 ```bash
 python3 -c "import secrets; print(secrets.token_urlsafe(32))"
 ```
 
 2. Add to `.env`:
+
 ```bash
 BIBLELIVE_REQUIRE_AUTH=true
 BIBLELIVE_OPERATOR_TOKEN=your-generated-token-here
 ```
 
 3. Start the server:
+
 ```bash
 ./start.sh
 ```
 
-4. Access operator console at `http://localhost:8000/operator` and enter your token when prompted.
+4. Access the operator console at `http://localhost:8000/operator` and enter
+   your token when prompted.
 
 ## Security Architecture
 
-### Public Endpoints (No Authentication Required)
-- `GET /display` - Display page
-- `GET /healthz` - Health check
-- `GET /readyz` - Readiness check  
-- `POST /api/reference` - Reference ingestion (from audio pipeline)
-- `GET /ws/display` - Display WebSocket
+### Public endpoints (no authentication required)
 
-### Protected Endpoints (Authentication Required When Enabled)
-- `GET /operator` - Operator console page
-- `GET /api/state` - Application state
-- `POST /api/approve` - Approve pending reference
-- `POST /api/clear` - Clear display
-- `POST /api/clear-pending` - Clear pending queue
-- `GET /ws/operator` - Operator WebSocket (requires `?token=...`)
+- `GET /` — root (redirects to the display page)
+- `GET /display` — display page
+- `GET /healthz` — health check
+- `GET /readyz` — readiness check
+- `POST /api/reference` — reference ingestion (from the audio pipeline)
+- `GET /api/books` — canonical book list (read-only canon data)
+- `GET /api/lookup` — verse text lookup by coordinates (read-only)
+- `GET /ws/display` — display WebSocket
+
+### Protected endpoints (authentication required when enabled)
+
+- `GET /operator` — operator console page
+- `GET /api/state` — application state
+- `POST /api/approve` — approve pending reference
+- `POST /api/clear` — clear display
+- `POST /api/clear-pending` — clear pending queue
+- `GET /ws/operator` — operator WebSocket (requires `?token=...`)
 
 ## Production Configuration
 
 ### Environment Variables
 
 **Required for production:**
+
 ```bash
 # Authentication
 BIBLELIVE_REQUIRE_AUTH=true
@@ -63,11 +74,12 @@ BIBLELIVE_PORT=8000
 BIBLELIVE_RELOAD=false
 BIBLELIVE_LOG_LEVEL=INFO
 
-# CORS (only if serving frontend from different origin)
+# CORS (only if serving frontend from a different origin)
 BIBLELIVE_CORS_ORIGINS=  # Leave empty for same-origin only
 ```
 
-
+The full annotated list lives in `.env.example`; deployment walkthroughs
+(systemd units, nginx, health checks) live in `DEPLOYMENT.md`.
 
 ### Systemd Service
 
@@ -107,27 +119,20 @@ sudo mkdir -p /etc/biblelive
 sudo nano /etc/biblelive/biblelive.env
 ```
 
-Add your configuration with `0600` permissions:
+Add your configuration (`BIBLELIVE_REQUIRE_AUTH`, `BIBLELIVE_OPERATOR_TOKEN`,
+`BIBLELIVE_DB_PATH`, `BIBLELIVE_DB_READONLY`, `BIBLELIVE_HOST`, `BIBLELIVE_PORT`)
+with `0600` permissions:
 
-```bash
-BIBLELIVE_REQUIRE_AUTH=true
-BIBLELIVE_OPERATOR_TOKEN=your-secure-token-here
-BIBLELIVE_DB_PATH=/opt/biblelive/bible_data/biblelive.sqlite
-BIBLELIVE_DB_READONLY=true
-BIBLELIVE_HOST=127.0.0.1
-BIBLELIVE_PORT=8000
-```
-
-Set permissions:
 ```bash
 sudo chown biblelive:biblelive /etc/biblelive/biblelive.env
 sudo chmod 0600 /etc/biblelive/biblelive.env
 sudo systemctl daemon-reload
-
+```
 
 ### Nginx Configuration with Log Redaction
 
-**Important:** WebSocket tokens appear in URLs. This configuration redacts query strings from logs:
+**Important:** WebSocket tokens appear in URLs. This configuration redacts
+query strings from logs:
 
 ```nginx
 # Redact query strings from logs
@@ -138,19 +143,19 @@ log_format biblelive_safe '$remote_addr - $remote_user [$time_local] '
 server {
     listen 443 ssl http2;
     server_name biblelive.example.com;
-    
+
     ssl_certificate /etc/letsencrypt/live/biblelive.example.com/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/biblelive.example.com/privkey.pem;
-    
+
     access_log /var/log/nginx/biblelive-access.log biblelive_safe;
-    
+
     location / {
         proxy_pass http://127.0.0.1:8000;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-Proto $scheme;
     }
-    
+
     location /ws/ {
         proxy_pass http://127.0.0.1:8000;
         proxy_http_version 1.1;
@@ -175,8 +180,4 @@ server {
 
 ---
 
-See DEPLOYMENT.md for complete deployment instructions.
-
-sudo systemctl enable biblelive
-sudo systemctl start biblelive
-```
+See [DEPLOYMENT.md](DEPLOYMENT.md) for complete deployment instructions.
