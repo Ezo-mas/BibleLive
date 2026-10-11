@@ -94,6 +94,8 @@ npm run screenshots   # visual regression (needs the stack running)
 Python tests need `backend/` on the import path — the Makefile and root
 `pyproject.toml` (`pythonpath = ["backend", "."]`) handle it; bare
 `python -m ...` invocations need `export PYTHONPATH="$PWD/backend"`.
+On Windows there is no `make`: use `.venv\Scripts\python.exe -m ...` with
+`$env:PYTHONPATH = "$PWD/backend"`.
 
 ## Where to look (common tasks)
 
