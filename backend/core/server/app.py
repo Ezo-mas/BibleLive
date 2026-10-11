@@ -8,26 +8,32 @@ from contextlib import asynccontextmanager
 from typing import Any
 
 import uvicorn
-from fastapi import Depends, FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import Depends, FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import TypeAdapter, ValidationError
 
 from ..bible_lookup import BibleLookup
+from ..books import CANONICAL_BOOKS
 from ..config import config
+from ..passage import PassageError, resolve_passage
 from .auth import verify_operator_token
 from .models import (
     ApprovalRequest,
     ApprovalResponse,
     BibleReference,
+    BookInfo,
+    BooksResponse,
     ClearPendingResponse,
     ClearResponse,
     ErrorResponse,
     OperatorAction,
+    PassageResponse,
     ReferenceSubmitRequest,
     ReferenceSubmitResponse,
     StateResponse,
+    VerseText,
 )
 from .settings_store import ALLOWED_AUTO_MODES
 from .state import AppState
@@ -170,6 +176,48 @@ async def _handle_set_display_theme(
     )
 
 
+async def _handle_display_reference(
+    websocket: WebSocket, app_state: AppState, message: dict[str, Any]
+) -> None:
+    """Display a passage the operator selected by hand (action ``display_reference``).
+
+    Unlike ``approve``, this never consults the pending queue: the operator names
+    the passage directly. The payload is coordinates only, and the book, chapter,
+    and verses are re-resolved here against the canonical canon and the server's
+    own Bible text — so a client cannot inject verse text, forge a confidence, or
+    pass anything off as a detection. Success is confirmed to operators only
+    after the display update has been sent.
+    """
+    try:
+        passage = resolve_passage(
+            app_state.bible_lookup,
+            book=message.get("book"),
+            chapter=message.get("chapter"),
+            verse_start=message.get("verse_start"),
+            verse_end=message.get("verse_end"),
+        )
+    except PassageError as e:
+        logger.warning(f"Rejected manual display request: {e.message}")
+        await _ws_error(websocket, "display_reference", e.message)
+        return
+    except Exception as e:
+        logger.error(f"Error resolving manual passage: {e}", exc_info=True)
+        await _ws_error(websocket, "display_reference", "Could not look up that passage")
+        return
+
+    try:
+        ref = await app_state.display_manual_passage(passage)
+    except Exception as e:
+        logger.error(f"Error displaying manual passage: {e}", exc_info=True)
+        await _ws_error(websocket, "display_reference", "Internal error displaying passage")
+        return
+
+    logger.info(
+        f"Manual passage displayed via WebSocket: "
+        f"{ref.book} {ref.chapter}:{ref.verse_start}-{ref.verse_end}"
+    )
+
+
 async def _handle_set_auto_mode(
     websocket: WebSocket, app_state: AppState, message: dict[str, Any]
 ) -> None:
@@ -203,6 +251,7 @@ _OPERATOR_ACTIONS: dict[str, Any] = {
     "set_verse_limit": _handle_set_verse_limit,
     "set_display_theme": _handle_set_display_theme,
     "set_auto_mode": _handle_set_auto_mode,
+    "display_reference": _handle_display_reference,
 }
 
 
@@ -524,6 +573,86 @@ def create_app(bible_lookup: BibleLookup | None = None) -> FastAPI:
         await app_state._send_pending_update()
         logger.info(f"Cleared {count} pending references")
         return ClearPendingResponse(status="success", message=f"Cleared {count} pending references")
+
+    @app.get(
+        "/api/books",
+        response_model=BooksResponse,
+        responses={
+            200: {"description": "The canonical 66-book list"},
+            401: {"model": ErrorResponse, "description": "Unauthorized"},
+            403: {"model": ErrorResponse, "description": "Forbidden"},
+        },
+        dependencies=[Depends(verify_operator_token)],
+    )
+    async def list_books() -> BooksResponse:
+        """List the canonical books for the operator's passage search.
+
+        Served from the same canon the parser, importer, and database use, so the
+        front end never carries a copy that could drift — including each book's
+        abbreviation and the name variants the parser accepts, which is what lets
+        the search box match ``ge``, ``ps``, or ``canticles`` without a second
+        name table on the client. Requires authentication if
+        BIBLELIVE_REQUIRE_AUTH is enabled.
+        """
+        return BooksResponse(
+            books=[
+                BookInfo(
+                    name=book.name,
+                    chapters=book.chapters,
+                    order=book.order,
+                    abbrev=book.abbrev,
+                    variants=list(book.variants),
+                )
+                for book in CANONICAL_BOOKS
+            ]
+        )
+
+    @app.get(
+        "/api/lookup",
+        response_model=PassageResponse,
+        responses={
+            200: {"description": "Passage resolved to verse text"},
+            401: {"model": ErrorResponse, "description": "Unauthorized"},
+            403: {"model": ErrorResponse, "description": "Forbidden"},
+            404: {"model": ErrorResponse, "description": "No such book, chapter, or verse"},
+            422: {"model": ErrorResponse, "description": "Invalid passage parameters"},
+        },
+        dependencies=[Depends(verify_operator_token)],
+    )
+    async def lookup_passage(
+        book: str = Query(..., min_length=1, max_length=100, description="Canonical book name"),
+        chapter: int = Query(..., gt=0, le=200, description="Chapter number"),
+        verse_start: int | None = Query(None, gt=0, description="First verse"),
+        verse_end: int | None = Query(None, gt=0, description="Last verse (inclusive)"),
+    ) -> PassageResponse:
+        """Resolve a book/chapter/verse passage to display-ready text.
+
+        Read-only: it consults the canonical canon and the server's Bible
+        database and returns the verses, so the console can show the operator what
+        would be displayed before they stage it. The same resolver backs the
+        ``display_reference`` WebSocket action, so a rejected request reads the
+        same either way. Requires authentication if BIBLELIVE_REQUIRE_AUTH is
+        enabled.
+        """
+        try:
+            passage = resolve_passage(
+                bible_lookup,
+                book=book,
+                chapter=chapter,
+                verse_start=verse_start,
+                verse_end=verse_end,
+            )
+        except PassageError as e:
+            raise HTTPException(status_code=e.status_code, detail=e.message)
+
+        return PassageResponse(
+            book=passage.book,
+            chapter=passage.chapter,
+            verse_start=passage.verse_start,
+            verse_end=passage.verse_end,
+            verses=[VerseText(verse=verse, text=text) for verse, text in passage.verses],
+            text=passage.text,
+        )
 
     @app.get(
         "/api/state",

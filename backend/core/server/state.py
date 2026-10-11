@@ -6,6 +6,7 @@ from fastapi import WebSocket
 
 from ..bible_lookup import BibleLookup
 from ..config import config
+from ..passage import ResolvedPassage
 from .connections import ConnectionManager
 from .models import AutoMode, BibleReference, DisplaySettings, VerseText
 from .settings_store import SettingsStore, coerce_auto_mode, is_auto_mode
@@ -74,7 +75,14 @@ class AppState:
         )
 
     async def _send_display_reference(self, ref: BibleReference) -> None:
-        """Notify displays to show a reference."""
+        """Notify displays to show a reference.
+
+        The only path that puts a reference on a projector. Its callers are the
+        two operator-authorized ways to change the display: approving a queued
+        detection (``approve_pending``) and an operator displaying a passage they
+        picked by hand (``display_manual_passage``). Nothing else — and in
+        particular no unapproved detection — can reach this method.
+        """
         await self.connection_manager.send_to_display(
             {"type": "reference", "data": ref.model_dump()}
         )
@@ -326,6 +334,46 @@ class AppState:
             ref.text = " ".join(verse.text for verse in ref.verses)
         elif not ref.text:
             logger.warning(f"No verse text found for {ref.book} {ref.chapter}:{ref.verse_start}")
+
+    async def display_manual_passage(self, passage: ResolvedPassage) -> BibleReference:
+        """Display a passage the operator selected by hand.
+
+        Manual selection is separate from the detection workflow in every way
+        that matters: the reference is never added to the pending queue, it
+        carries ``source='manual'`` and no confidence (so nothing can auto-approve
+        or confuse it with a detection), and it goes out through the same
+        authoritative display path an approval uses. The server, not the client,
+        supplies the verse text.
+
+        History semantics match an approval — a manually shown passage is part of
+        what the audience saw — while ``current_display`` stays the single source
+        of truth for what is on screen.
+        """
+        ref = BibleReference(
+            book=passage.book,
+            chapter=passage.chapter,
+            verse_start=passage.verse_start,
+            verse_end=passage.verse_end,
+            confidence=None,
+            source="manual",
+            text=passage.text,
+            verses=[VerseText(verse=verse, text=text) for verse, text in passage.verses],
+        )
+
+        self.current_display = ref
+
+        self.reference_history.insert(0, ref)
+        if len(self.reference_history) > config.MAX_HISTORY_REFERENCES:
+            self.reference_history = self.reference_history[: config.MAX_HISTORY_REFERENCES]
+
+        await self._send_display_reference(ref)
+
+        # Confirm to operators (including this one) only after the display has the
+        # passage, so the console never claims a passage is live before it is.
+        await self.connection_manager.send_to_operator(
+            {"type": "display_confirmed", "data": {"reference": ref.model_dump()}}
+        )
+        return ref
 
     async def clear_display(self) -> None:
         """Clear the current display"""

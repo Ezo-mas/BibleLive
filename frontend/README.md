@@ -68,9 +68,46 @@ return a 503 with build instructions.
   `{"type": "reference", "data": {book, chapter, verse_start, verse_end, confidence, inferred, text}}`
   and `{"type": "clear"}`.
 - Operator client connects to `/ws/operator?token=xxx` (token required if auth enabled),
-  receives `state_snapshot` on connect, `pending_update`, `approval_confirmed`, `clear_confirmed`,
-  `pending_cleared`, and sends `{"action": "approve", "reference_id": "uuid"}`,
-  `{"action": "clear"}`, `{"action": "clear_pending"}`.
+  receives `state_snapshot` on connect, `pending_update`, `approval_confirmed`, `display_confirmed`,
+  `clear_confirmed`, `pending_cleared`, and sends `{"action": "approve", "reference_id": "uuid"}`,
+  `{"action": "clear"}`, `{"action": "clear_pending"}`, plus the display/settings actions
+  (`set_verse_limit`, `set_display_theme`, `set_auto_mode`).
+
+### Manual scripture selection
+
+The operator can also put a passage of their own on the display. Both halves use
+HTTP (authenticated with the operator token when auth is enabled):
+
+- `GET /api/books` — the canonical 66-book list (`name`, `chapters`, `order`,
+  plus each book's `abbrev` and parser-accepted name `variants`), so the console
+  carries no canon of its own and the search box can match `ge`, `ps`, or
+  `canticles` without shipping a name table.
+- `GET /api/lookup?book=John&chapter=3&verse_start=16&verse_end=17` — the verses
+  and display-ready text, or 404/422 with the reason. Read-only.
+
+Staging the result in Up Next is client-side and changes nothing on screen. Show
+sends `{"action": "display_reference", "book": ..., "chapter": ..., "verse_start": ...,
+"verse_end": ...}`: coordinates only, no reference ID and no text, because the
+passage was never queued — the server validates it against its own canon and
+Bible database, displays it through the same path an approval uses, and answers
+with `display_confirmed`. A manual passage never enters the pending queue and
+never carries a confidence.
+
+### Display history and Show Again
+
+The sidebar lists the passages that reached the display, newest first — the
+server's `reference_history`, of which a snapshot carries the newest 20 while
+`history_count` reports the total. Each entry has a stable server-assigned `id`,
+and selecting one stages it in Up Next exactly like a found passage (client-side
+only; LIVE does not move). Show sends the same coordinate-only
+`{"action": "display_reference", ...}` request described above, so a repeat is
+validated and resolved by the server like any other display.
+
+Showing a passage again is a new display, so the server records a new history
+entry for it (one per display, bounded the same way). The console holds a staged
+entry as a snapshot taken when it was clicked, so a history update or eviction
+cannot swap in a different passage, and it keeps the staging across a dropped
+socket.
 
 Both clients reconnect automatically with linear backoff (3s × attempt,
 up to 10 attempts).

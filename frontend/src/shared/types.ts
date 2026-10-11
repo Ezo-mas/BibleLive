@@ -4,19 +4,61 @@ export interface VerseText {
   text: string
 }
 
-/** A Bible reference as produced by the parser and validated by the backend. */
+/**
+ * A Bible reference.
+ *
+ * `confidence` is null for passages the operator picked by hand: those are not
+ * detections, so they carry no confidence rather than an invented one.
+ * `source` says which kind it is (absent when talking to an older server).
+ */
 export interface BibleReference {
   id: string
   book: string
   chapter: number
   verse_start: number | null
   verse_end: number | null
-  confidence: 'high' | 'medium' | 'low'
+  confidence: 'high' | 'medium' | 'low' | null
   inferred: boolean
   text: string
   /** Individual verses; empty when the server has not resolved text yet. */
   verses: VerseText[]
+  source?: 'detected' | 'manual'
   created_at: string
+}
+
+/** One book of the canonical canon, as served by GET /api/books. */
+export interface ScriptureBook {
+  name: string
+  /** Number of chapters, so the console never guesses a chapter count. */
+  chapters: number
+  /** 1-based canonical position (Genesis=1). */
+  order: number
+  /**
+   * Short form from the canon, e.g. 'gn'. Optional because a server that
+   * predates it serves only name/chapters/order; matching falls back to the
+   * name alone in that case.
+   */
+  abbrev?: string
+  /**
+   * Alternative name forms the parser accepts, e.g. ['psalms', 'psalm'].
+   * Also optional for the same reason as `abbrev`.
+   */
+  variants?: string[]
+}
+
+/** GET /api/books response. */
+export interface BooksResponse {
+  books: ScriptureBook[]
+}
+
+/** A passage resolved by the server, ready to stage and then display. */
+export interface Passage {
+  book: string
+  chapter: number
+  verse_start: number
+  verse_end: number
+  verses: VerseText[]
+  text: string
 }
 
 /** How many verses the display renders at once; 'all' shows the full passage. */
@@ -68,6 +110,8 @@ export type OperatorMessage =
   | { type: 'connection_status'; data: { display: number; operator: number } }
   | { type: 'display_settings_confirmed'; data: DisplaySettings }
   | { type: 'auto_mode_confirmed'; data: { auto_mode: AutoMode } }
+  /** Confirms a manual passage reached the display (action `display_reference`). */
+  | { type: 'display_confirmed'; data: { reference: BibleReference } }
   | { type: 'error'; data: { message: string; action: string } }
 
 /** Messages the operator client sends to the server. */
@@ -99,6 +143,21 @@ export interface SetAutoModeAction {
   auto_mode: AutoMode
 }
 
+/**
+ * Ask the server to put an operator-selected passage on the display.
+ *
+ * Coordinates only: there is no reference ID (nothing is queued), no confidence,
+ * and no text — the server re-resolves the passage against its own canon and
+ * Bible database, so a manual selection can never be passed off as a detection.
+ */
+export interface DisplayReferenceAction {
+  action: 'display_reference'
+  book: string
+  chapter: number
+  verse_start: number | null
+  verse_end: number | null
+}
+
 export type OperatorAction =
   | ApproveAction
   | ClearAction
@@ -106,6 +165,7 @@ export type OperatorAction =
   | SetVerseLimitAction
   | SetDisplayThemeAction
   | SetAutoModeAction
+  | DisplayReferenceAction
 
 /** Snapshot of server state returned by GET /api/state. */
 export interface AppStateSnapshot {

@@ -15,19 +15,33 @@ class VerseText(BaseModel):
 
 
 class BibleReference(BaseModel):
-    """A detected Bible reference with stable ID for tracking."""
+    """A Bible reference with a stable ID for tracking.
+
+    Detected references come from the audio pipeline; manually selected passages
+    are created by the server from an operator's ``display_reference`` request.
+    The two are kept distinguishable: ``source`` says which it is, and a manual
+    passage carries no ``confidence`` at all rather than a made-up one, so no
+    later consumer can mistake it for a detection or auto-approve it.
+    """
 
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     book: str
     chapter: int
     verse_start: int | None = None
     verse_end: int | None = None
-    confidence: Literal["high", "medium", "low"]
+    confidence: Literal["high", "medium", "low"] | None = Field(
+        default=None,
+        description="Detection confidence; null for manually selected passages",
+    )
     inferred: bool = False
     text: str = ""
     verses: list[VerseText] = Field(
         default_factory=list,
         description="Individual verses with numbers, for bounded display",
+    )
+    source: Literal["detected", "manual"] = Field(
+        default="detected",
+        description="'detected' for STT detections, 'manual' for operator-selected passages",
     )
     created_at: str = Field(default_factory=lambda: datetime.now(UTC).isoformat())
 
@@ -127,6 +141,41 @@ class ErrorResponse(BaseModel):
     detail: str
 
 
+class BookInfo(BaseModel):
+    """One book of the canonical canon, for the operator's passage search.
+
+    ``abbrev`` and ``variants`` are the canon's own abbreviation and alternative
+    name forms, served so the operator can type ``ge`` or ``ps`` without the
+    front end keeping a name table of its own (which could drift from the
+    parser's).
+    """
+
+    name: str
+    chapters: int = Field(..., gt=0, description="Number of chapters in the book")
+    order: int = Field(..., gt=0, description="1-based canonical position, Genesis=1")
+    abbrev: str = Field(..., description="Short form from the canon, e.g. 'gn'")
+    variants: list[str] = Field(
+        default_factory=list, description="Alternative name forms accepted by the parser"
+    )
+
+
+class BooksResponse(BaseModel):
+    """The canonical book list; the front end keeps no canon of its own."""
+
+    books: list[BookInfo]
+
+
+class PassageResponse(BaseModel):
+    """A resolved passage, ready to stage in Up Next and then display."""
+
+    book: str
+    chapter: int
+    verse_start: int
+    verse_end: int
+    verses: list[VerseText]
+    text: str
+
+
 class OperatorApproveAction(BaseModel):
     """Action to approve a pending reference by ID."""
 
@@ -167,6 +216,22 @@ class OperatorSetAutoModeAction(BaseModel):
     auto_mode: AutoMode
 
 
+class OperatorDisplayReferenceAction(BaseModel):
+    """Action to display a passage the operator selected by hand.
+
+    Deliberately carries coordinates only: no reference ID (there is no pending
+    reference), no confidence, and no text. The server re-resolves the passage
+    against its own canon and Bible database, so a client cannot inject verse
+    text or make a manual selection look like a detection.
+    """
+
+    action: Literal["display_reference"]
+    book: str = Field(..., min_length=1, max_length=100, description="Canonical book name")
+    chapter: int = Field(..., gt=0, le=200, description="Chapter number")
+    verse_start: int | None = Field(None, gt=0, description="First verse")
+    verse_end: int | None = Field(None, gt=0, description="Last verse (inclusive)")
+
+
 # Discriminated union of every operator WebSocket action, used by the server to
 # validate incoming messages against the models above.
 OperatorAction = Annotated[
@@ -175,6 +240,7 @@ OperatorAction = Annotated[
     | OperatorClearPendingAction
     | OperatorSetVerseLimitAction
     | OperatorSetDisplayThemeAction
-    | OperatorSetAutoModeAction,
+    | OperatorSetAutoModeAction
+    | OperatorDisplayReferenceAction,
     Field(discriminator="action"),
 ]
