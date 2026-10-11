@@ -4,16 +4,31 @@
 
 BibleLive uses SQLite for Bible text storage. Database import is now an **explicit one-time setup step**, separated from runtime operation.
 
+## Source datasets
+
+The configured default source is `data/kjv2.json` (66 books, 31,102 verses).
+The older `data/kjv.json` is kept for reference only: it mislabels four books
+(Judges/Jude and John/Jonah carry each other's abbreviations), so the importer
+rejects it instead of importing it. The two files also differ by a few verses
+in six other books (1 Samuel, 1 Kings, Matthew, Mark, 3 John, Revelation);
+those are edition differences, not errors, and are preserved as-is.
+
+Imports are atomic: the new database is built in a temporary file and promoted
+only after validation confirms all 66 canonical books are present with at
+least one verse each, so a failed import never leaves a partial output behind.
+That validation is book-level: it does not check per-book chapter or verse
+counts.
+
 ## Quick Setup
 
 ### 1. Import Bible Data
 
 ```bash
 # Import KJV translation (default)
-python3 -m core.import_bible --translation kjv --source data/kjv.json
+python3 -m core.import_bible --translation kjv --source data/kjv2.json
 
 # Or specify custom output location
-python3 -m core.import_bible --translation kjv --source data/kjv.json --output bible_data/custom.sqlite
+python3 -m core.import_bible --translation kjv --source data/kjv2.json --output bible_data/custom.sqlite
 ```
 
 ### 2. Verify Import
@@ -27,7 +42,7 @@ Expected output:
 Database Information:
 ============================================================
 Translation:      kjv
-Source:           kjv.json
+Source:           kjv2.json
 Import Date:      2026-09-30T19:51:28.123456
 Version:          1.0
 Books:            66
@@ -59,24 +74,25 @@ export BIBLELIVE_DB_PATH=bible_data/custom.sqlite
 
 ### Basic Import
 ```bash
-python3 -m core.import_bible --translation kjv --source data/kjv.json
+python3 -m core.import_bible --translation kjv --source data/kjv2.json
 ```
 
 ### Force Reimport
 ```bash
-python3 -m core.import_bible --translation kjv --source data/kjv.json --force
+python3 -m core.import_bible --translation kjv --source data/kjv2.json --force
 ```
 
 ### Show Database Info
 ```bash
 python3 -m core.import_bible --output bible_data/biblelive.sqlite --info
 ```
+`--info` only reads the existing database, so it does not need `--source`.
 
 ### Custom Output Location
 ```bash
 python3 -m core.import_bible \
   --translation kjv \
-  --source data/kjv.json \
+  --source data/kjv2.json \
   --output bible_data/kjv_production.sqlite
 ```
 
@@ -128,7 +144,7 @@ export BIBLELIVE_DB_READONLY=true
 
 1. Import database during deployment setup:
    ```bash
-   python3 -m core.import_bible --translation kjv --source data/kjv.json
+   python3 -m core.import_bible --translation kjv --source data/kjv2.json
    ```
 
 2. Verify import:
@@ -146,10 +162,10 @@ export BIBLELIVE_DB_READONLY=true
 In Dockerfile:
 ```dockerfile
 # Copy source data
-COPY data/kjv.json /app/data/
+COPY data/kjv2.json /app/data/
 
 # Import during build
-RUN python3 -m core.import_bible --translation kjv --source data/kjv.json
+RUN python3 -m core.import_bible --translation kjv --source data/kjv2.json
 
 # Runtime uses existing database
 CMD ["./start.sh"]
@@ -168,7 +184,7 @@ The import command supports multiple translations:
 
 ```bash
 # Import KJV
-python3 -m core.import_bible --translation kjv --source data/kjv.json --output bible_data/kjv.sqlite
+python3 -m core.import_bible --translation kjv --source data/kjv2.json --output bible_data/kjv.sqlite
 
 # Import NIV (when available)
 python3 -m core.import_bible --translation niv --source data/niv.json --output bible_data/niv.sqlite
@@ -185,15 +201,15 @@ export BIBLELIVE_DB_PATH=bible_data/niv.sqlite
 
 Check that source JSON exists and is valid:
 ```bash
-ls -lh data/kjv.json
-python3 -c "import json; json.load(open('data/kjv.json'))"
+ls -lh data/kjv2.json
+python3 -c "import json; json.load(open('data/kjv2.json'))"
 ```
 
 ### Database Already Exists
 
 Use `--force` to reimport:
 ```bash
-python3 -m core.import_bible --translation kjv --source data/kjv.json --force
+python3 -m core.import_bible --translation kjv --source data/kjv2.json --force
 ```
 
 ### Server Can't Find Database
@@ -203,6 +219,10 @@ Check path configuration:
 echo $BIBLELIVE_DB_PATH
 ls -lh bible_data/biblelive.sqlite
 ```
+
+The server resolves the configured database against the project root, so it
+finds the same file regardless of the directory it is started from. Run the
+documented commands from the repository root.
 
 ### Permission Issues
 
@@ -218,7 +238,7 @@ If you have an existing database without metadata:
 
 1. Run import with `--force` to add metadata table:
    ```bash
-   python3 -m core.import_bible --translation kjv --source data/kjv.json --force
+   python3 -m core.import_bible --translation kjv --source data/kjv2.json --force
    ```
 
 2. Or manually add metadata:
@@ -231,7 +251,7 @@ If you have an existing database without metadata:
 ## Git and Version Control
 
 Generated databases are in `.gitignore`. Only commit:
-- Source JSON files (`data/kjv.json`)
+- Source JSON files (`data/kjv2.json`)
 - Import scripts
 - Schema documentation
 

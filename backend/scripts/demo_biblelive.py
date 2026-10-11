@@ -21,7 +21,7 @@ def demo_biblelive():
     print("1. Initializing Bible lookup system...")
     bible = BibleLookup("bible_data/biblelive.sqlite")
     print("2. Loading KJV Bible data...")
-    bible.load_kjv_from_json("data/kjv.json")
+    bible.load_kjv_from_json("data/kjv2.json")
     book_count = bible.conn.execute("SELECT COUNT(*) FROM books").fetchone()[0]
     verse_count = bible.conn.execute("SELECT COUNT(*) FROM verses").fetchone()[0]
     print(f"   ✓ Loaded {book_count} books")

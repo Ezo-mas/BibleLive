@@ -45,13 +45,17 @@ def create_bible_lookup(db_path: str | None = None) -> BibleLookup:
     """Create and initialize a BibleLookup instance.
 
     Args:
-        db_path: Path to the SQLite database file. Defaults to config.DB_PATH.
+        db_path: Path to the SQLite database file. When omitted, the configured
+            ``config.DB_PATH`` is used resolved against the project root, so
+            the server finds the same database regardless of the process's
+            current working directory. An explicitly passed relative path is
+            resolved against the current working directory, as usual.
 
     Returns:
         BibleLookup: An initialized BibleLookup instance.
     """
     if db_path is None:
-        db_path = config.DB_PATH
+        db_path = str(config.resolve_db_path())
     try:
         lookup = BibleLookup(db_path, readonly=config.DB_READONLY)
         metadata = lookup.get_metadata()
