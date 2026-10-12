@@ -3,12 +3,13 @@
 import pytest
 
 from benchmarks.cpu_report import (
-    DRIFT_WARN,
+    LIMIT_RTF,
     TARGET_RTF,
-    drift,
+    clock_summary,
+    load_clock,
+    percentile,
     render,
     summarize_recording,
-    thirds,
     verdict,
 )
 from benchmarks.hwprobe import parse_cpuinfo, verdicts
@@ -94,19 +95,6 @@ class TestHardwareVerdicts:
         assert verdicts(unknown) == []
 
 
-class TestThirds:
-    def test_first_and_last_third_means(self):
-        assert thirds([1, 1, 2, 2, 3, 3]) == (1.0, 3.0)
-
-    def test_needs_three_windows(self):
-        with pytest.raises(ValueError):
-            thirds([1.0, 2.0])
-
-    def test_drift(self):
-        assert drift(1.0, 1.5) == pytest.approx(0.5)
-        assert drift(0.0, 1.0) == 0.0  # no baseline: no claim
-
-
 def _rec(times, tp=1, fp=0, fn=2):
     return {
         "record_id": "09-13-live-lt",
@@ -117,23 +105,36 @@ def _rec(times, tp=1, fp=0, fn=2):
     }
 
 
-class TestReport:
-    def test_rtf_uses_audio_seconds_per_window(self):
+class TestSpeedReport:
+    def test_rtf_is_compute_per_audio_second(self):
         row = summarize_recording(_rec([15.0] * 6), window_s=30.0)
         assert row["rtf"] == pytest.approx(0.5)
-        assert row["drift"] == pytest.approx(0.0)
+        assert row["rtf_p90"] == pytest.approx(0.5)
 
-    def test_throttling_is_flagged(self):
-        row = summarize_recording(_rec([10.0] * 3 + [14.0] * 3), window_s=30.0)
-        assert row["drift"] == pytest.approx(0.4)
-        assert row["drift"] > DRIFT_WARN
-        assert "heats up" in verdict(row)
+    def test_percentile_nearest_rank(self):
+        assert percentile([1, 2, 3, 4, 5, 6, 7, 8, 9, 10], 0.9) == 10
+        assert percentile([], 0.9) == 0.0
 
-    def test_verdict_uses_the_late_rtf(self):
-        # Fast start, slow finish: judged on how it ends, not how it begins.
-        row = summarize_recording(_rec([5.0] * 3 + [20.0] * 3), window_s=30.0)
-        assert row["rtf_first"] < TARGET_RTF < row["rtf_last"]
+    def test_content_does_not_masquerade_as_throttling(self):
+        # Dense speech first, quiet later: the late windows are faster. The report
+        # must judge the mean, not flatter the machine by its last third.
+        row = summarize_recording(_rec([25.0] * 10 + [5.0] * 10), window_s=30.0)
+        assert row["rtf"] == pytest.approx(0.5)
+        assert "keeps up" in verdict(row)
+
+    def test_average_above_target_is_marginal(self):
+        row = summarize_recording(_rec([20.0] * 6), window_s=30.0)  # RTF 0.67
+        assert TARGET_RTF < row["rtf"] <= LIMIT_RTF
+        assert "marginal" in verdict(row)
+
+    def test_slower_than_real_time_is_too_slow(self):
+        row = summarize_recording(_rec([36.0] * 6), window_s=30.0)
         assert "TOO SLOW" in verdict(row)
+
+    def test_dense_speech_tail_is_called_out_even_if_average_is_fine(self):
+        row = summarize_recording(_rec([5.0] * 8 + [36.0, 36.0]), window_s=30.0)
+        assert row["rtf"] < TARGET_RTF
+        assert "dense speech runs slower than real time" in verdict(row)
 
     def test_cached_replay_has_no_timings(self):
         row = summarize_recording(_rec([]), window_s=30.0)
@@ -144,3 +145,24 @@ class TestReport:
         row = summarize_recording(_rec([15.0] * 6), window_s=30.0)
         row["overlap"] = True
         assert "WARNING" in render([row])
+
+
+class TestClockReport:
+    def test_stable_clock_is_not_throttling(self):
+        line = clock_summary([(3500.0, 70.0)] * 12)
+        assert "THROTTLING" not in line
+        assert "3500 MHz early -> 3500 MHz late" in line
+
+    def test_clock_drop_is_flagged_with_temperature(self):
+        samples = [(3500.0, 70.0)] * 4 + [(3200.0, 85.0)] * 4 + [(2400.0, 95.0)] * 4
+        line = clock_summary(samples)
+        assert "THROTTLING" in line
+        assert "peak 95 C" in line
+
+    def test_too_few_samples_makes_no_claim(self):
+        assert "too few samples" in clock_summary([(3500.0, 70.0)] * 3)
+
+    def test_load_clock_skips_unreadable_rows(self, tmp_path):
+        path = tmp_path / "clock.csv"
+        path.write_text("1,3500,70\n2,,\n3,3400,\nnot,a,row\n", encoding="utf-8")
+        assert load_clock(path) == [(3500.0, 70.0), (3400.0, 0.0)]

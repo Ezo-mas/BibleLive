@@ -8,7 +8,8 @@
 #   ./scripts/bench-cpu.sh --audio-dir /path/to/bench_audio
 #
 # Uses non-overlapping 30 s windows (hop = window) so RTF is per audio second
-# actually transcribed, and records per-window times to detect throttling.
+# actually transcribed, records per-window times (speed tail), and samples the
+# CPU clock and temperature during each run (throttling).
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -23,7 +24,7 @@ RECORD="09-13-live-lt"
 AUDIO_FILE="09-13.mp3"
 MANIFEST="benchmarks/corpus/manifest-07-05-lt.json"
 
-usage() { sed -n '2,11p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
+usage() { sed -n '2,12p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -54,6 +55,29 @@ mkdir -p "$OUT"
 echo "== Hardware"
 "$PY" benchmarks/hwprobe.py --json "$OUT/hwinfo.json" | tee "$OUT/hwinfo.txt"
 
+# Throttling check: per-window time follows how much is said, so it cannot reveal
+# heat. Sample the real CPU clock and temperature while a model runs instead.
+CLOCK_CSV="$OUT/clock.csv"
+SAMPLER_PID=""
+sample_clock() {  # epoch,max_mhz,max_temp_c every 5 s until killed
+    while :; do
+        mhz="$(cat /sys/devices/system/cpu/cpu*/cpufreq/scaling_cur_freq 2>/dev/null |
+            sort -n | tail -1 | awk '{printf "%.0f", $1/1000}')"
+        temp="$(cat /sys/class/thermal/thermal_zone*/temp 2>/dev/null |
+            sort -n | tail -1 | awk '{printf "%.0f", $1/1000}')"
+        echo "$(date +%s),${mhz:-},${temp:-}" >> "$CLOCK_CSV"
+        sleep 5
+    done
+}
+stop_sampler() {
+    if [ -n "$SAMPLER_PID" ]; then
+        kill "$SAMPLER_PID" 2>/dev/null || true
+        wait "$SAMPLER_PID" 2>/dev/null || true
+        SAMPLER_PID=""
+    fi
+}
+trap stop_sampler EXIT
+
 RANGE_ARGS=()
 if [ "$FULL" -eq 0 ]; then
     RANGE_ARGS=(--t-range "0:$((MINUTES * 60))")
@@ -72,6 +96,7 @@ for MODEL in $MODELS; do
     FIRST=0
     echo
     echo "== Model: $MODEL (cpu, int8)"
+    sample_clock & SAMPLER_PID=$!
     # --no-cache: a cache replay has no per-window timings, which is the point of this run.
     "$PY" benchmarks/run_benchmark.py \
         --manifest "$MANIFEST" --audio-dir "$AUDIO_DIR" \
@@ -79,17 +104,20 @@ for MODEL in $MODELS; do
         --records "$RECORD" --device cpu --compute-type int8 --model "$MODEL" \
         --no-cache "${RANGE_ARGS[@]}" \
         --out "$OUT/$MODEL.json" 2>&1 | tee -a "$OUT/run.log"
+    stop_sampler
     RESULT_FILES+=("$OUT/$MODEL.json")
 done
 
 echo
 echo "== Summary"
-"$PY" benchmarks/cpu_report.py "${RESULT_FILES[@]}" | tee "$OUT/summary.txt"
+"$PY" benchmarks/cpu_report.py "${RESULT_FILES[@]}" --clock "$CLOCK_CSV" | tee "$OUT/summary.txt"
 cat <<EOF
 
 Results saved in $OUT/
 Read the table like this:
-  RTF   seconds of compute per second of audio; the 'last' column is the one that matters.
-  A model 'keeps up' when last-third RTF <= 0.5. TP/FP/FN are for the slice only;
-  gold references outside it are counted as misses, so compare TP against the desktop.
+  RTF   seconds of compute per second of audio (mean over the run). 'keeps up' means
+        RTF <= 0.5. p90/max are the slowest windows, i.e. dense speech.
+  clock the CPU clock early vs late in the runs; a drop means throttling.
+  TP/FP/FN are for the slice only; gold references outside it are counted as
+  misses, so compare TP against the desktop run of the same command.
 EOF
