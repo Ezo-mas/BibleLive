@@ -43,6 +43,11 @@ On Windows there is no `make`: use `.venv\Scripts\python.exe -m ...` with
   markers: `integration`, `audio`.
 - Don't add dependencies without asking; the current set is minimal on
   purpose (FastAPI/uvicorn, faster-whisper, webrtcvad).
+- Whisper prompts (`WHISPER_INITIAL_PROMPTS` / `WHISPER_HOTWORDS` in
+  `audio/stt.py`): keep each under 223 tokens — faster-whisper keeps only
+  the *last* 223 tokens of the initial prompt and silently drops the start.
+  No citations or numbers in them: Whisper echoes the prompt over silence
+  or music, and an example citation becomes a false detection.
 
 ## Where to look (backend tasks)
 
@@ -53,7 +58,8 @@ On Windows there is no `make`: use `.venv\Scripts\python.exe -m ...` with
 | Change verse text lookup | `backend/core/bible_lookup.py` (SQLite at `bible_data/biblelive.sqlite`) |
 | Change manual scripture selection (Find Scripture) | `backend/core/passage.py` (validation + resolution) over `backend/core/books.py` (canon); endpoints and the `display_reference` action in `backend/core/server/app.py` |
 | Change display history source / Show Again state | `backend/core/server/state.py` (`AppState.reference_history`, newest first, `MAX_HISTORY_REFERENCES`, 20-entry snapshot window) |
-| Change audio capture/VAD/STT/sending | the matching module in `backend/audio/` |
+| Change audio capture/VAD/STT/sending | the matching module in `backend/audio/`; if it can change what gets detected, benchmark before/after (`testing.md`) |
+| Measure detection accuracy | `benchmarks/run_benchmark.py`, manifests + gold in `benchmarks/corpus/`, method in `benchmarks/README.md` |
 | Change authentication or WS connection management | `backend/core/server/auth.py`, `connections.py` |
 | Change WS message protocol or approval flow | **stop — ask the user first** (Behavior rules) |
 
