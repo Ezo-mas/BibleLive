@@ -22,7 +22,7 @@ dependencies = [
 
 [project.optional-dependencies]
 audio = [
-    "faster-whisper>=0.9.0",
+    "faster-whisper>=1.1.0",  # 1.1.0 added "large-v3-turbo"
     "numpy>=1.24.0",
     # webrtcvad imports pkg_resources: removed in setuptools 81+, absent from
     # Python 3.12+ venvs. Remove the pin once the VAD package stops importing it.
