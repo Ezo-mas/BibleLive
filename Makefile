@@ -13,8 +13,8 @@ help:
 	@echo "  make frontend-install Install frontend npm dependencies"
 	@echo ""
 	@echo "Quality:"
-	@echo "  make lint             Run Ruff linter (backend)"
-	@echo "  make format           Format code with Ruff (backend)"
+	@echo "  make lint             Run Ruff linter (whole repo, same scope as CI)"
+	@echo "  make format           Format code with Ruff (whole repo, same scope as CI)"
 	@echo "  make typecheck        Run mypy type checker (backend)"
 	@echo ""
 	@echo "Testing:"
@@ -40,11 +40,13 @@ install-audio:
 install-dev:
 	pip install -e "./$(BACKEND)[dev,audio]"
 
+# Lint/format scope matches CI (.github/workflows/ci.yml): the whole repo.
+# Ruff's extend-exclude in pyproject.toml skips frontend, static, data, bible_data.
 lint:
-	ruff check $(BACKEND)
+	ruff check .
 
 format:
-	ruff format $(BACKEND)
+	ruff format .
 
 typecheck:
 	mypy $(BACKEND)/core $(BACKEND)/audio --install-types --non-interactive
@@ -74,7 +76,7 @@ frontend-test:
 	cd frontend && npm test
 
 check: lint
-	ruff format --check $(BACKEND)
+	ruff format --check .
 	pytest $(BACKEND)/tests -q
 
 check-frontend: frontend-lint frontend-test
