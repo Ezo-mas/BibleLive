@@ -47,15 +47,23 @@ python benchmarks/run_benchmark.py \
 - The canonical corpus is two Lithuanian services, 25 gold references.
   There is no English gold corpus yet: say so when an English-only change
   is unmeasured instead of implying it was.
+- `--mode windowed` cuts fixed 30 s windows and never runs the VAD or the
+  segmenter. VAD or segmentation changes need `--mode offline`, which
+  replays frames through `audio/segmenter.py` exactly as the live pipeline
+  does.
 - Report `total_tp` / `total_fp` / `total_fn` and runtime (`rtf`) for both
   runs. Fewer false positives matters as much as more true positives — every
   FP is a wrong verse offered to the operator.
 - Name outputs uniquely under `results/`; never overwrite an earlier run.
+- Tuning knobs are flags shared with the live CLI (`--beam-size`,
+  `--end-of-speech-s`, `--soft-utterance-s`, `--max-utterance-s`, ...), so a
+  sweep needs no code edit.
 - The transcript cache (`results/.bench-cache`) is keyed on audio hash,
-  model/device/compute type, prompt + hotwords, and mode/window settings —
-  **not** on beam size or any code change (STT post-processing, parser,
-  VAD). For those, pass `--no-cache` (or a fresh `--cache-dir`) to the
-  "after" run, or it silently replays the old transcripts.
+  model/device/compute type, beam size, prompt + hotwords, mode/window
+  settings and (offline/rt) the segmentation settings — **not** on any code
+  change (STT post-processing, parser, VAD). For those, pass `--no-cache`
+  (or a fresh `--cache-dir`) to the "after" run, or it silently replays the
+  old transcripts.
 - `bench_audio/` is the user's recordings: read-only. If it or CUDA is
   unavailable, report the benchmark as not run — don't substitute a
   smaller or synthetic run and call it a result.

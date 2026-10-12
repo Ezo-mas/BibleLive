@@ -118,6 +118,12 @@ Options:
                           int8_float16 (default: int8; use float16 on RTX 20xx+)
   --language LANG         Spoken language: en or lt (default: en)
   --vad-aggressiveness N  WebRTC VAD aggressiveness 0-3 (default: 2)
+  --beam-size N           Whisper beam width; lower is faster (default: 5)
+  --cpu-threads N         Whisper CPU threads, 0 = library default (default: 0)
+  --end-of-speech-s S     Silence that ends an utterance (default: 1.5)
+  --min-speech-s S        Shorter utterances are dropped (default: 0.3)
+  --soft-utterance-s S    Past this, end the utterance at the next pause (default: 8)
+  --max-utterance-s S     Hard utterance length cap (default: 12)
   --input-device NAME     Microphone: exact DirectShow name on Windows, PulseAudio
                           source on Linux, avfoundation index on macOS (default:
                           first Windows input, system default elsewhere)

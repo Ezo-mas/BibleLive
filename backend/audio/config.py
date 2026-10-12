@@ -28,10 +28,18 @@ class AudioPipelineConfig:
     whisper_device: str = "cuda"
     whisper_compute_type: str | None = None  # None = int8 (safe on all devices)
     language: str = "en"  # Spoken language: "en" or "lt"
+    beam_size: int = 5  # Whisper beam search width; lower is faster
+    cpu_threads: int = 0  # Whisper threads on CPU; 0 = library default
     vad_aggressiveness: int = 2  # 0=least, 3=most aggressive
     # Microphone name for ffmpeg (dshow device on Windows, pulse source on Linux,
     # avfoundation index on macOS). None = platform default; see capture.py.
     input_device: str | None = None
+
+    # Utterance segmentation (see audio/segmenter.py); rounded to 30ms VAD frames.
+    end_of_speech_s: float = 1.5  # silence that ends an utterance
+    min_speech_s: float = 0.3  # shorter utterances are dropped as blips
+    soft_utterance_s: float = 8.0  # past this, end at the next pause
+    max_utterance_s: float = 12.0  # hard cap, for audio that never pauses
 
     # Runtime language-control server (stdlib http.server). Bound to loopback
     # by default; only expose it more widely behind a token.

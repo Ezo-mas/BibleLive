@@ -47,8 +47,10 @@ sys.path.insert(0, str(REPO_ROOT / "backend"))
 
 from audio import stt as stt_module  # noqa: E402  (prompt/hotwords fingerprint for the cache key)
 from audio.capture import AudioCapture  # noqa: E402  (frame sizing reference)
+from audio.cli import add_tuning_arguments, apply_tuning_arguments  # noqa: E402
 from audio.config import AudioPipelineConfig  # noqa: E402
 from audio.metrics import PipelineMetrics  # noqa: E402
+from audio.segmenter import FRAME_DURATION_MS, Segmenter, SegmentEvent  # noqa: E402
 from audio.sender import ReferenceSender  # noqa: E402
 from audio.stt import SpeechToText  # noqa: E402
 from audio.vad import VoiceActivityDetector  # noqa: E402
@@ -378,14 +380,16 @@ def feed_cache_key(
     device: str,
     compute_type: str | None,
     mode: str,
+    beam_size: int = 5,
     window_s: float | None = None,
     hop_s: float | None = None,
     skip_silent: bool = False,
     silence_rms: float | None = None,
     context_ttl_s: float | None = 60.0,
     t_range: tuple[float, float] | None = None,
+    segmentation: dict[str, int] | None = None,
 ) -> dict[str, Any]:
-    return {
+    key = {
         "cache_version": CACHE_VERSION,
         "record_id": record_id,
         "audio_sha256": audio_sha256,
@@ -394,6 +398,7 @@ def feed_cache_key(
         "whisper_device": device,
         "whisper_compute_type": compute_type,
         "stt_prompt": stt_prompt_fingerprint(language),
+        "beam_size": beam_size,
         "mode": mode,
         "window_s": window_s,
         "hop_s": hop_s,
@@ -402,6 +407,10 @@ def feed_cache_key(
         "context_ttl_s": context_ttl_s,
         "t_range": list(t_range) if t_range else None,
     }
+    # VAD modes only; omitted for windowed so its existing cache entries stay valid.
+    if segmentation is not None:
+        key["segmentation"] = segmentation
+    return key
 
 
 def feed_cache_path(cache_dir: Path, key: dict[str, Any]) -> Path:
@@ -505,6 +514,16 @@ def run_single_recording(
     coordinates; iteration-only, gold outside the span simply misses.
     """
     audio_sha = verified_audio_sha(rec, audio_path)
+    # The live segmenter's settings; part of the cache key, since changing any
+    # of them changes which audio Whisper sees.
+    segmentation = {
+        "vad_aggressiveness": config.vad_aggressiveness,
+        "frame_duration_ms": FRAME_DURATION_MS,
+        "end_of_speech_s": config.end_of_speech_s,
+        "min_speech_s": config.min_speech_s,
+        "soft_utterance_s": config.soft_utterance_s,
+        "max_utterance_s": config.max_utterance_s,
+    }
     key = feed_cache_key(
         record_id=rec.id,
         audio_sha256=audio_sha,
@@ -513,8 +532,10 @@ def run_single_recording(
         device=config.whisper_device,
         compute_type=config.whisper_compute_type,
         mode=mode,
+        beam_size=config.beam_size,
         context_ttl_s=context_ttl_s,
         t_range=t_range,
+        segmentation=segmentation,
     )
     cpath = feed_cache_path(cache_dir, key) if cache_dir is not None and use_cache else None
 
@@ -525,18 +546,13 @@ def run_single_recording(
     detections: list[Detection] = []
     transcripts: list[tuple[float, str]] = []
     vad_events: list[tuple[float, str]] = []
-    frame_duration_ms = 30  # matches pipeline.py
-    min_speech_frames = 10
-    max_silent_frames = 50
+    frame_duration_ms = FRAME_DURATION_MS
     frame_bytes = AudioCapture().sample_rate * 2 * frame_duration_ms // 1000  # 960 bytes
     config_snapshot = {
         "whisper_model": config.whisper_model,
         "whisper_device": config.whisper_device,
         "whisper_compute_type": config.whisper_compute_type,
-        "vad_aggressiveness": config.vad_aggressiveness,
-        "frame_duration_ms": frame_duration_ms,
-        "min_speech_frames": min_speech_frames,
-        "max_silent_frames": max_silent_frames,
+        **segmentation,
         "dedup_window_seconds": config.dedup_window_seconds,
         "mode": mode,
         "context_ttl_s": context_ttl_s,
@@ -576,21 +592,20 @@ def run_single_recording(
         device=config.whisper_device,
         language=rec.language,
         compute_type=config.whisper_compute_type,
+        beam_size=config.beam_size,
+        cpu_threads=config.cpu_threads,
     )
 
-    # Iterate frames from the PCM buffer, replicating _vad_loop's utterance
-    # assembly logic (speech_frames / silent_frames bookkeeping).
-    speech_frames: list[bytes] = []
-    silent_frames = 0
+    # The live pipeline's segmenter, so benchmark and live segmentation cannot drift.
+    segmenter = Segmenter.from_config(vad.is_speech, config)
     units: list[list[tuple[float, str]]] = []
 
-    def utterance_end(t_start: float, frames: list[bytes]) -> None:
+    def utterance_end(t_start: float, event: SegmentEvent) -> None:
         # Mirrors pipeline._queue_speech_segment + _process_utterance.
-        if len(frames) < min_speech_frames:
-            vad_events.append((t_start, "blip"))
+        vad_events.append((t_start, event.kind))
+        if event.kind == "blip":
             return
-        vad_events.append((t_start, "end"))
-        for f in frames:
+        for f in event.frames:
             stt.add_audio_frame(f)
         text, _ms = stt.transcribe_buffer(rec.language)
         if text is None:
@@ -626,21 +641,17 @@ def run_single_recording(
         # when slicing (iteration-only) so gold still matches.
         t_s = audio_t if (mode != "rt" or t_range is not None) else time.time() - t0
 
-        if vad.is_speech(frame):
-            if not speech_frames:
-                vad_events.append((t_s, "start"))
-            silent_frames = 0
-            speech_frames.append(frame)
+        event = segmenter.push(frame)
+        if event is None:
+            continue
+        if event.kind == "start":
+            vad_events.append((t_s, "start"))
         else:
-            if speech_frames:
-                silent_frames += 1
-                if silent_frames > max_silent_frames:
-                    utterance_end(t_s - silent_frames * frame_duration_ms / 1000.0, speech_frames)
-                    speech_frames = []
-                    silent_frames = 0
+            utterance_end(t_s - event.trailing_silent_frames * frame_duration_ms / 1000.0, event)
 
-    if speech_frames:
-        utterance_end(last_frame * frame_s, speech_frames)
+    final = segmenter.flush()
+    if final is not None:
+        utterance_end(last_frame * frame_s, final)
 
     runtime_s = time.time() - t0
     if cache_dir is not None:
@@ -761,12 +772,12 @@ def _transcribe_window_segments(
         language=language,
         initial_prompt=stt.initial_prompt,
         **({"hotwords": stt.hotwords} if stt.hotwords else {}),
-        beam_size=5,
+        beam_size=stt.beam_size,
         best_of=5,
         temperature=0.0,
-        compression_ratio_threshold=2.4,
-        log_prob_threshold=-1.0,
-        no_speech_threshold=0.6,
+        compression_ratio_threshold=stt_module.COMPRESSION_RATIO_THRESHOLD,
+        log_prob_threshold=stt_module.LOG_PROB_THRESHOLD,
+        no_speech_threshold=stt_module.NO_SPEECH_THRESHOLD,
         condition_on_previous_text=False,
         repetition_penalty=1.05,
         no_repeat_ngram_size=6,
@@ -819,6 +830,7 @@ def run_windowed_recording(
         device=config.whisper_device,
         compute_type=config.whisper_compute_type,
         mode="windowed",
+        beam_size=config.beam_size,
         window_s=window_s,
         hop_s=hop_s,
         skip_silent=skip_silent,
@@ -896,6 +908,8 @@ def run_windowed_recording(
         device=config.whisper_device,
         language=rec.language,
         compute_type=config.whisper_compute_type,
+        beam_size=config.beam_size,
+        cpu_threads=config.cpu_threads,
     )
     bounds = window_bounds(len(samples), SAMPLE_RATE, window_s, hop_s)
     if t_range is not None:
@@ -1122,6 +1136,7 @@ def main() -> int:
         help="Whisper device override (e.g. cpu when CUDA BLAS DLLs are unavailable)",
     )
     ap.add_argument("--model", default=None, help="Whisper model size override")
+    add_tuning_arguments(ap)  # the live CLI's tuning flags, e.g. --max-utterance-s
     ap.add_argument(
         "--compute-type", default=None, help="Whisper compute type override (e.g. int8 on cpu)"
     )
@@ -1138,6 +1153,7 @@ def main() -> int:
         config.whisper_model = args.model
     if args.compute_type:
         config.whisper_compute_type = args.compute_type
+    apply_tuning_arguments(config, args)
     tmp_dir = audio_dir / ".bench-16k" if audio_dir else Path("bench_audio/.bench-16k")
     tmp_dir.mkdir(parents=True, exist_ok=True)
     cache_dir = Path(args.cache_dir)

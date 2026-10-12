@@ -9,8 +9,11 @@ quality is explicitly a hypothesis until a run against real sermons happens.
 - Capture: ffmpeg mic → 10ms s16le chunks in a bounded queue (1000 ≈ 10s);
   `get_audio_frame()` re-frames to 30ms (960 B) frames with a carry-over
   buffer (`_frame_buffer`) so no bytes are dropped between frames.
-- VAD thread: WebRTC VAD (aggressiveness 2). An utterance accumulates speech
-  frames until > 50 consecutive silent 30ms frames (~1.5s). Utterances of
+- VAD thread: WebRTC VAD (aggressiveness 2) into `audio/segmenter.py`. An
+  utterance accumulates speech frames until > 50 consecutive silent 30ms
+  frames (~1.5s); past ~8s it ends at the next unvoiced frame, and at ~12s
+  it ends regardless (ungated full-mix audio rarely gives 1.5s of silence:
+  uncapped, the 07-05 service produced 6 utterances in 40 min). Utterances of
   < 10 speech frames (~300ms) are discarded as blips. Full `vad_queue`
   (> 100 segments) drops utterances silently (metric only).
 - STT thread: faster-whisper `small`, cuda/int8 (falls back to int8 if the
