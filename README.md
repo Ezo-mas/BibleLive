@@ -118,6 +118,10 @@ Options:
                           int8_float16 (default: int8; use float16 on RTX 20xx+)
   --language LANG         Spoken language: en or lt (default: en)
   --vad-aggressiveness N  WebRTC VAD aggressiveness 0-3 (default: 2)
+  --input-device NAME     Microphone: exact DirectShow name on Windows, PulseAudio
+                          source on Linux, avfoundation index on macOS (default:
+                          first Windows input, system default elsewhere)
+  --list-input-devices    Print the Windows audio inputs and exit
   --control-host HOST     Runtime language-control server host (default: 127.0.0.1)
   --control-port PORT     Runtime language-control server port (default: 8001)
   --control-token TOKEN   Bearer token the control server requires when set

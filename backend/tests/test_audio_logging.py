@@ -1,11 +1,13 @@
 """Tests for audio pipeline logging configuration and audio-input accounting."""
 
+import io
 import logging
 from types import SimpleNamespace
 
 import pytest
 
-from audio.capture import AudioCapture
+from audio import capture as capture_module
+from audio.capture import AudioCapture, list_input_devices
 from audio.logging_config import configure_logging, resolve_log_level
 from audio.stt import _REFERENCE_CORRECTIONS, SpeechToText, segment_low_confidence_reason
 from core.books import CANONICAL_BOOKS
@@ -62,6 +64,93 @@ def test_capture_accounting_and_progress_logging(caplog):
     with caplog.at_level(logging.INFO, logger="audio.capture"):
         capture._log_capture_progress()
         assert not caplog.records
+
+
+# Real ``ffmpeg -list_devices true -f dshow -i dummy`` stderr (ffmpeg 8.1).
+_DSHOW_LISTING = """\
+[in#0 @ 0000] Could not enumerate video devices (or none found).
+[in#0 @ 0000] "Microphone (Realtek(R) Audio)" (audio)
+[in#0 @ 0000]   Alternative name "@device_cm_{33D9A762}\\wave_{638549BE}"
+[in#0 @ 0000] "Microphone (Voice Changer Virtual Audio Device (WDM))" (audio)
+[in#0 @ 0000]   Alternative name "@device_cm_{33D9A762}\\wave_{468CBDEA}"
+Error opening input file dummy.
+"""
+
+
+def _fake_windows_ffmpeg(monkeypatch, popen_calls):
+    """Pretend to be Windows: dshow listing from ``run``, an ffmpeg that dies at once."""
+    monkeypatch.setattr(capture_module.sys, "platform", "win32")
+    monkeypatch.setattr(
+        capture_module.subprocess,
+        "run",
+        lambda *a, **k: SimpleNamespace(returncode=1, stdout="", stderr=_DSHOW_LISTING),
+    )
+
+    def _popen(cmd, **kwargs):
+        popen_calls.append(cmd)
+        return SimpleNamespace(
+            stdout=io.BytesIO(b""),
+            stderr=io.BytesIO(b"Error opening input: I/O error\n"),
+            poll=lambda: 1,
+        )
+
+    monkeypatch.setattr(capture_module.subprocess, "Popen", _popen)
+
+
+def test_list_input_devices_parses_dshow_names(monkeypatch):
+    _fake_windows_ffmpeg(monkeypatch, [])
+
+    assert list_input_devices() == [
+        "Microphone (Realtek(R) Audio)",
+        "Microphone (Voice Changer Virtual Audio Device (WDM))",
+    ]
+
+
+@pytest.mark.parametrize(
+    ("device", "expected_input"),
+    [
+        # dshow has no "default" device; it must get a real name.
+        (None, "audio=Microphone (Realtek(R) Audio)"),
+        ("Microphone (Voice Changer Virtual Audio Device (WDM))", None),
+    ],
+)
+def test_start_capture_passes_a_real_dshow_device(monkeypatch, device, expected_input):
+    popen_calls: list[list[str]] = []
+    _fake_windows_ffmpeg(monkeypatch, popen_calls)
+    capture = AudioCapture()
+
+    capture.start_capture(device)
+    capture.capture_thread.join(timeout=2)
+
+    cmd = popen_calls[0]
+    assert cmd[cmd.index("-i") + 1] == (expected_input or f"audio={device}")
+
+
+def test_start_capture_without_any_dshow_device_fails_clearly(monkeypatch):
+    _fake_windows_ffmpeg(monkeypatch, [])
+    monkeypatch.setattr(
+        capture_module.subprocess,
+        "run",
+        lambda *a, **k: SimpleNamespace(returncode=1, stdout="", stderr="none found"),
+    )
+
+    with pytest.raises(RuntimeError, match="No DirectShow audio input"):
+        AudioCapture().start_capture()
+
+
+def test_ffmpeg_dying_early_is_reported_as_an_error(monkeypatch, caplog):
+    """A bad device used to show only 'stdout closed' at INFO; ffmpeg's reason was DEBUG."""
+    _fake_windows_ffmpeg(monkeypatch, [])
+    capture = AudioCapture()
+
+    with caplog.at_level(logging.INFO, logger="audio.capture"):
+        capture.start_capture("No Such Mic")
+        capture.capture_thread.join(timeout=2)
+
+    errors = [r.message for r in caplog.records if r.levelno == logging.ERROR]
+    assert len(errors) == 1
+    assert "ffmpeg exited" in errors[0]
+    assert "I/O error" in errors[0]
 
 
 def _stt() -> object:

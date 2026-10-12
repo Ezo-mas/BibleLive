@@ -93,7 +93,7 @@ class _FailingCapture:
         self.started = False
         self.stopped = False
 
-    def start_capture(self, device_index=None):  # noqa: ARG002 - signature parity
+    def start_capture(self, device=None):  # noqa: ARG002 - signature parity
         self.started = True
         raise RuntimeError("capture boom")
 

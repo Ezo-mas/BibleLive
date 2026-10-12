@@ -4,6 +4,7 @@ import argparse
 import logging
 import time
 
+from .capture import list_input_devices
 from .config import AudioPipelineConfig
 from .logging_config import configure_logging
 from .pipeline import BibleLiveAudioProcessor
@@ -48,6 +49,20 @@ def build_parser() -> argparse.ArgumentParser:
         help="WebRTC VAD aggressiveness (0=least, 3=most aggressive)",
     )
     parser.add_argument(
+        "--input-device",
+        default=None,
+        help=(
+            "Microphone to capture: the exact DirectShow name on Windows (see "
+            "--list-input-devices), a PulseAudio source on Linux, an avfoundation index "
+            "on macOS. Default: the first Windows input, or the system default elsewhere."
+        ),
+    )
+    parser.add_argument(
+        "--list-input-devices",
+        action="store_true",
+        help="Print the audio inputs ffmpeg can open (Windows) and exit",
+    )
+    parser.add_argument(
         "--control-host",
         default="127.0.0.1",
         help="Host for the runtime language-control server (default: 127.0.0.1)",
@@ -84,6 +99,20 @@ def main() -> None:
     """Main function to run the BibleLive audio pipeline"""
     args = build_parser().parse_args()
 
+    if args.list_input_devices:
+        devices = list_input_devices()
+        if devices:
+            print("Audio inputs (pass one to --input-device, quoted):")
+            for name in devices:
+                print(f"  {name}")
+        else:
+            print(
+                "No DirectShow audio inputs found. Listing is Windows-only; on Linux use "
+                "`pactl list short sources`, on macOS "
+                '`ffmpeg -f avfoundation -list_devices true -i ""`.'
+            )
+        return
+
     # Configure logging before any component starts so audio capture, VAD,
     # transcription and reference sending all report progress.
     level = configure_logging(args.log_level)
@@ -96,6 +125,7 @@ def main() -> None:
         whisper_compute_type=args.compute_type,
         language=args.language,
         vad_aggressiveness=args.vad_aggressiveness,
+        input_device=args.input_device,
         control_enabled=not args.no_control,
         control_host=args.control_host,
         control_port=args.control_port,
