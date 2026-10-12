@@ -35,7 +35,9 @@ Unit tests prove the code does what it says, not that it detects more
 references. Any change that can move detection quality — Whisper prompt,
 hotwords, beam size, model or compute type, VAD choice or tuning, utterance
 segmentation, transcript post-processing, parser patterns — needs a
-before/after run on the same corpus and settings:
+before/after run on the same corpus and settings. Before proposing one,
+check "Tried and not adopted" in `benchmarks/BASELINE_NOTES.md` (rolling
+windows, longer caps, vocal isolation, denoise/gate already measured):
 
 ```bash
 python benchmarks/run_benchmark.py \
