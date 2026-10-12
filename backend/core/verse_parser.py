@@ -359,6 +359,8 @@ class ReferenceParser:
         a different, numbered book starting right after it (Lithuanian only).
         E.g. [jono, 1, jono, laiskas, 5, ...]: "John 1" is a ghost, the
         real reference is "1 John 5:...".
+        Only a numbered name that spans prefix + name + label word (>= 3
+        tokens) counts: a bare "1 jono" is too weak, as in "Jono 1, Jono 3".
         """
         if self.language != "lt" or ref.verse_start is not None or ref.end < 1:
             return False
@@ -366,7 +368,7 @@ class ReferenceParser:
         if toks[k] != ref.chapter or self._prefixes.get(toks[k]) != ref.chapter:
             return False
         match = self._book_at(toks, k)
-        return match is not None and match[0] != ref.book
+        return match is not None and match[0] != ref.book and match[1] >= 3
 
     def _verse_and_range(self, toks: list[Token], k: int) -> tuple[int, int | None, int]:
         """toks[k] is a verse number; optionally followed by 'through 30' / 'and 29'."""
@@ -413,7 +415,7 @@ class ReferenceParser:
             and not self._book_at(toks, kk)
             and any(t in self._verse_intro_words for t in toks[k:kk])
         ):
-            return "word", kk
+            return "intro", kk
         if allow_bare and self._is_num(toks, k) and not self._book_at(toks, k):
             return "bare", k
         return None, k
@@ -452,6 +454,7 @@ class ReferenceParser:
         # 8-12" may span chapters) nothing is invented.
         if (
             kind is None
+            and self.language == "lt"
             and k + 1 < n
             and toks[k] == "-"
             and self._is_num(toks, k + 1)
@@ -475,7 +478,7 @@ class ReferenceParser:
             v1, v2, end = self._verse_and_range(toks, kk)
             if not 1 <= v1 <= MAX_VERSE:
                 return None
-            conf = "medium" if kind in ("bare", "dash") else "high"
+            conf = "medium" if kind in ("bare", "dash", "intro") else "high"
             return Reference(canon, chapter, v1, v2, conf, end=end)
         return Reference(canon, chapter, None, None, "medium", end=k)
 
@@ -580,9 +583,10 @@ class StreamingParser:
         refs = self.parser._scan(toks, self.ctx)
         fresh = [r for r in refs if r.end > len(self.carry)]  # skip already-reported ones
         self.carry = toks[-self.carry_tokens :]
-        if refs and t_s is not None:
-            # A reported reference means the context now holds this
-            # book/chapter; its age counts from here.
+        if fresh and t_s is not None:
+            # A newly reported reference means the context now holds this
+            # book/chapter; its age counts from here. Refs re-found inside
+            # the carry-over were already reported and must not refresh it.
             self._ctx_t = t_s
         return fresh
 

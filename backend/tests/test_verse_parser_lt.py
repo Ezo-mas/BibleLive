@@ -161,6 +161,17 @@ class TestContextTTL:
         assert [str(r) for r in sp.feed("Mato 24", 0.0)] == ["Matthew 24"]
         assert [str(r) for r in sp.feed("23 eilutė", 10000.0)] == ["Matthew 24:23"]
 
+    def test_carry_redetection_does_not_refresh_ttl(self):
+        # "Romans 8" is only re-found inside the carry-over while "amen" keeps
+        # arriving; that must not count as a new reported reference, or the
+        # stale context would survive past the TTL.
+        sp = StreamingParser(language="lt")
+        assert [str(r) for r in sp.feed("Romiečiams 8 skyrius", 0.0)] == ["Romans 8"]
+        assert sp.feed("amen", 55.0) == []
+        assert sp.feed("amen", 110.0) == []
+        assert sp.feed("amen", 165.0) == []
+        assert sp.feed("28 eilutė", 220.0) == []
+
 
 class TestEnglishUnaffected:
     def test_english_default(self):
@@ -183,6 +194,17 @@ class TestObservedLiveMisses:
 
     def test_nuo_does_not_invent_verses_in_plain_speech(self):
         assert refs("nuo 3 iki 5 valandos") == []
+
+    def test_nuo_intro_is_medium_confidence(self):
+        # "nuo" alone announces a verse; that is less certain than an explicit
+        # "eilutė", so it must not be reported as high confidence.
+        found = P.parse("Mato 5 nuo 3 iki 5 valandos")
+        verse_refs = [r for r in found if r.verse_start is not None]
+        assert [str(r) for r in verse_refs] == ["Matthew 5:3-5"]
+        assert verse_refs[0].confidence == "medium"
+        found = P.parse("Išėjimo 16 nuo 16 iki 20")
+        assert [str(r) for r in found] == ["Exodus 16:16-20"]
+        assert found[0].confidence == "medium"
 
     def test_psalm_number_before_psalm_word_keeps_psalm_book(self):
         assert refs("119 psalmė 142 eilutė") == ["Psalms 119:142"]
@@ -275,6 +297,18 @@ class TestBareBookBeforeNumberedBook:
     def test_chapter_only_book_before_other_book_kept(self):
         assert refs("Jono 3 Mato 5") == ["John 3", "Matthew 5"]
 
+    def test_chapter_only_ref_followed_by_bare_jono_is_not_a_restart(self):
+        # "Jono 1" followed by a plain "Jono" is not "1 Jono": only a numbered
+        # book name (prefix + name + label word) restarts the chapter-only ref.
+        assert refs("Luko 1, Jono 3 skyrius 16 eilutė") == ["Luke 1", "John 3:16"]
+        assert refs("Mato 1, Jono 1") == ["Matthew 1", "John 1"]
+        assert refs("Jono 1, Jono 3") == ["John 1", "John 3"]
+
+    def test_streaming_chapter_only_then_bare_jono(self):
+        sp = StreamingParser(language="lt")
+        assert [str(r) for r in sp.feed("Luko 1 skyrius")] == ["Luke 1"]
+        assert [str(r) for r in sp.feed("Jono 3 skyrius 16 eilutė")] == ["John 3:16"]
+
 
 class TestBenchmarkMicroGaps:
     """Misses read off the medium-model transcripts of the 07-05 / 09-13
@@ -306,6 +340,10 @@ class TestBenchmarkMicroGaps:
         assert refs("Skaičių 24 skyrius 16 eilutė") == ["Numbers 24:16"]
         assert refs("Skaičių knyga 33 skyrius 50") == ["Numbers 33:50"]
         assert refs("Skaičiai 14 skyrius") == ["Numbers 14"]
+
+    def test_locative_book_name_is_not_a_verb(self):
+        # "Skaičiuose" (in Numbers) starts with the verb-ish "skaičiuo" stem
+        assert refs("Skaičiuose 24 skyriuje 16 eilutėje") == ["Numbers 24:16"]
 
     def test_psalm_word_repeated_before_verse(self):
         # "psalmynė 119 psalmė, 142 eilutė": the second psalm word is a stutter

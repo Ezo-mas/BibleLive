@@ -208,6 +208,19 @@ class Streaming(unittest.TestCase):
         self.assertEqual(sp.feed("to those who love God"), [])
 
 
+class DashAfterChapter(unittest.TestCase):
+    """The chapter-verse dash rule ("Mark 12-30") is Lithuanian-only; English
+    keeps reading a dash-joined pair as a chapter."""
+
+    def test_mark_dash_is_chapter_only(self):
+        found = ReferenceParser().parse("Mark 12-30")
+        self.assertEqual([str(r) for r in found], ["Mark 12"])
+
+    def test_genesis_dash_past_chapter_count_is_chapter_only(self):
+        found = ReferenceParser().parse("Genesis 50-51")
+        self.assertEqual([str(r) for r in found], ["Genesis 50"])
+
+
 class Validator(unittest.TestCase):
     def test_validator_can_drop_references(self):
         only_john = ReferenceParser(validator=lambda r: r.book == "John")

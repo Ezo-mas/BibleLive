@@ -394,7 +394,7 @@ BOOK_STEMS: frozenset[str] = frozenset(
 _STEMS_BY_LENGTH: tuple[str, ...] = tuple(sorted(BOOK_STEMS, key=len, reverse=True))
 # Verb forms that merely start with a book stem: "skaičiau 24" is "I read 24",
 # not the book of Numbers. Checked before the stem match.
-_NOT_BOOK_PREFIXES = ("skaiciau", "skaiciav", "skaiciuo")
+_NOT_BOOK_PREFIXES = ("skaiciau", "skaiciav", "skaiciuoj", "skaiciuot", "skaiciuod")
 
 
 def book_stem(word: str) -> str:
@@ -484,8 +484,9 @@ def postprocess(toks: list[Token]) -> list[Token]:
         skyrius 5 eilute 3     -> unchanged (already prepositional)
 
     Only reorders (apart from collapsing a stuttered psalm word, see
-    _collapse_psalm_stutter) and is idempotent, so it can be re-run over
-    streaming carry-over + new segment.
+    _collapse_psalm_stutter). It is applied to each new segment only;
+    StreamingParser keeps already-processed tokens as carry-over and does
+    not re-run it.
     """
     toks = _collapse_psalm_stutter(toks)
     out: list[Token] = []
