@@ -217,7 +217,7 @@ def test_transcribe_uses_explicit_language_over_global_state():
 
 
 def test_transcribe_passes_hotwords_with_the_matching_language(monkeypatch):
-    """Hotwords travel with the language/prompt pair; empty hotwords are sent as None."""
+    """Hotwords travel with the language/prompt pair and are omitted when empty."""
     from audio import stt as stt_module
 
     monkeypatch.setitem(stt_module.WHISPER_HOTWORDS, "lt", "skyrius, eilutė")
@@ -227,7 +227,7 @@ def test_transcribe_passes_hotwords_with_the_matching_language(monkeypatch):
 
     class _Model:
         def transcribe(self, audio, **kwargs):
-            calls.append((kwargs["language"], kwargs["hotwords"]))
+            calls.append((kwargs["language"], kwargs.get("hotwords", "<absent>")))
             return [], None
 
     stt.model = _Model()
@@ -237,7 +237,8 @@ def test_transcribe_passes_hotwords_with_the_matching_language(monkeypatch):
         stt.audio_buffer = [0.0] * 16000
         stt.transcribe_buffer()
 
-    assert calls == [("lt", "skyrius, eilutė"), ("en", None)]
+    # Empty hotwords must not be sent at all (older faster-whisper rejects the kwarg).
+    assert calls == [("lt", "skyrius, eilutė"), ("en", "<absent>")]
 
 
 def test_hotwords_default_off():

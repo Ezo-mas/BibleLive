@@ -760,7 +760,7 @@ def _transcribe_window_segments(
         chunk,
         language=language,
         initial_prompt=stt.initial_prompt,
-        hotwords=stt.hotwords or None,
+        **({"hotwords": stt.hotwords} if stt.hotwords else {}),
         beam_size=5,
         best_of=5,
         temperature=0.0,

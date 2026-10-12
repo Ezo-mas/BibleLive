@@ -272,7 +272,10 @@ class SpeechToText:
                 audio_np,
                 language=state.language,
                 initial_prompt=state.initial_prompt,
-                hotwords=state.hotwords or None,
+                # Only sent when set: older faster-whisper releases (the pin
+                # allows >=0.9.0) reject the argument, and the broad except
+                # below would then turn every utterance into "no transcript".
+                **({"hotwords": state.hotwords} if state.hotwords else {}),
                 beam_size=5,
                 best_of=5,
                 temperature=0.0,
