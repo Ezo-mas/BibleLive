@@ -400,7 +400,9 @@ class BibleLiveAudioProcessor:
             return
 
         try:
-            references = parser.feed(transcript)
+            # Wallclock-stamped so a book/chapter context older than the
+            # TTL is dropped instead of attaching to stray numbers.
+            references = parser.feed(transcript, time.time())
         except Exception as e:
             logger.error(f"Error parsing references: {e}", exc_info=True)
             return

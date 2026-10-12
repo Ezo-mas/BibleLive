@@ -62,6 +62,11 @@ _WORD_FORMS: dict[str, set[str]] = {
         "skyriais",
         "skyriuose",
         "sk",
+        # frequent STT mangles of "skyrius"
+        "skirius",
+        "skiris",
+        "skyris",
+        "skyrus",
     },
     VERSE: {
         "eilute",
@@ -74,6 +79,10 @@ _WORD_FORMS: dict[str, set[str]] = {
         "eilutemis",
         "eilutese",
         "eil",
+        # frequent STT mangles of "eilute" ("aštuntai ilutė", "25 lūtė")
+        "ilute",
+        "ilutes",
+        "lute",
         "posmas",
         "posmo",
         "posma",
@@ -112,6 +121,9 @@ VERSE_WORDS = frozenset({VERSE})
 RANGE_WORDS = frozenset({"iki", "ligi", "-"})
 AND_WORDS = frozenset({"ir"})  # consecutive-verse range: "4 ir 5" -> 4-5
 FILLERS = frozenset({"ir", "nuo", "is", "pradedant", "pradedame", "skaitome", "skaitykime"})
+# Filler words that, right after a chapter number, announce a verse
+# ("4 skyrius nuo 16 iki 20") even when "eilute" itself is not spoken.
+VERSE_INTRO_WORDS = frozenset({"nuo"})
 
 # Book prefixes ("Pirmasis laiškas korintiečiams", "Antroji ..."). Spoken
 # ordinals ("pirmasis", "antrasis", "trečiasis", ...) are already converted to
@@ -380,6 +392,9 @@ BOOK_STEMS: frozenset[str] = frozenset(
     }
 )
 _STEMS_BY_LENGTH: tuple[str, ...] = tuple(sorted(BOOK_STEMS, key=len, reverse=True))
+# Verb forms that merely start with a book stem: "skaičiau 24" is "I read 24",
+# not the book of Numbers. Checked before the stem match.
+_NOT_BOOK_PREFIXES = ("skaiciau", "skaiciav", "skaiciuoj", "skaiciuot", "skaiciuod")
 
 
 def book_stem(word: str) -> str:
@@ -387,6 +402,8 @@ def book_stem(word: str) -> str:
 
     "romiečiams" -> "romiec"; words that match no stem are returned unchanged.
     """
+    if word.startswith(_NOT_BOOK_PREFIXES):
+        return word
     for stem in _STEMS_BY_LENGTH:
         if word.startswith(stem):
             return stem
@@ -431,6 +448,33 @@ _POSTPOSITIONAL = frozenset({CHAPTER, VERSE, PSALM})
 _JOINERS = RANGE_WORDS | AND_WORDS
 
 
+def _collapse_psalm_stutter(toks: list[Token]) -> list[Token]:
+    """psalme 119 psalme 142 eilute -> psalme 119 eilute 142.
+
+    A speaker says "psalmynė 119 psalmė, 142 eilutė" for Psalm 119 verse 142;
+    the repeated psalm word would otherwise start a second, bogus psalm. The
+    same goes for a redundant chapter word ("psalmė 16 skyrius, 8 eilutė"):
+    it would otherwise strand the verse number.
+    """
+    out: list[Token] = []
+    i, n = 0, len(toks)
+    while i < n:
+        if (
+            toks[i] == PSALM
+            and i + 4 < n
+            and isinstance(toks[i + 1], int)
+            and toks[i + 2] in (PSALM, CHAPTER)
+            and isinstance(toks[i + 3], int)
+            and toks[i + 4] == VERSE
+        ):
+            out += [PSALM, toks[i + 1], VERSE, toks[i + 3]]
+            i += 5
+            continue
+        out.append(toks[i])
+        i += 1
+    return out
+
+
 def postprocess(toks: list[Token]) -> list[Token]:
     """Move postpositional chapter/verse/psalm words before their number.
 
@@ -439,9 +483,12 @@ def postprocess(toks: list[Token]) -> list[Token]:
         23 psalme              -> psalme 23
         skyrius 5 eilute 3     -> unchanged (already prepositional)
 
-    Only reorders, never adds/removes tokens, and is idempotent, so it can be
-    re-run over streaming carry-over + new segment.
+    Only reorders (apart from collapsing a stuttered psalm word, see
+    _collapse_psalm_stutter). It is applied to each new segment only;
+    StreamingParser keeps already-processed tokens as carry-over and does
+    not re-run it.
     """
+    toks = _collapse_psalm_stutter(toks)
     out: list[Token] = []
     n = len(toks)
     owned = False  # previous token is a chapter/verse word that owns the next number
@@ -466,7 +513,8 @@ def postprocess(toks: list[Token]) -> list[Token]:
                     if i + 3 < n and toks[i + 3] == VERSE:
                         # [num, CHAPTER, num2, VERSE] -> [CHAPTER, num, VERSE, num2]
                         # ("3 skyrius 16 eilute" -> "skyrius 3 eilute 16")
-                        out += [CHAPTER, t, VERSE, toks[i + 2]]
+                        # ("119 psalme 142 eilute" -> "psalme 119 eilute 142")
+                        out += [PSALM if word == PSALM else CHAPTER, t, VERSE, toks[i + 2]]
                         i += 4
                         owned = False
                         continue
@@ -536,7 +584,7 @@ BOOKS: list[tuple[str, int, list[str]]] = [
     ("Lamentations", 5, ["raud knyga", "raud"]),
     ("Ezekiel", 48, ["ezechiel knyga", "ezechiel"]),
     ("Daniel", 12, ["daniel knyga", "daniel"]),
-    ("Hosea", 14, ["ozej knyga", "ozej"]),
+    ("Hosea", 14, ["ozej knyga", "ozej", "ozejo knyga", "ozejo"]),
     ("Joel", 3, ["joel knyga", "joel"]),
     ("Amos", 9, ["amos knyga", "amos"]),
     ("Obadiah", 1, ["abdij knyga", "abdij"]),
@@ -581,7 +629,7 @@ BOOKS: list[tuple[str, int, list[str]]] = [
     ("James", 5, ["jokub laiskas", "jokub"]),
     ("1 Peter", 5, ["petr laiskas", "petr"]),
     ("2 Peter", 3, ["petr laiskas", "petr"]),
-    ("1 John", 5, ["jono laiskas"]),
+    ("1 John", 5, ["jono laiskas", "jono"]),
     ("2 John", 1, ["jono laiskas"]),
     ("3 John", 1, ["jono laiskas"]),
     ("Jude", 1, ["judo laiskas", "judo"]),

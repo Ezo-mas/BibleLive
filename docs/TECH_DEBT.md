@@ -12,6 +12,24 @@ Entry format:
 
 ## Open
 
+### No cap on utterance length: a stuck-open VAD feeds unbounded audio to Whisper
+- **Where:** `backend/audio/pipeline.py` (`_vad_loop` utterance assembly;
+  mirrored in `benchmarks/run_benchmark.py::run_single_recording`).
+- **Problem:** An utterance closes only after >50 consecutive silent 30ms
+  frames (~1.5s). If VAD never sees that much consecutive silence (steady
+  noise floor, music, reverberation), `speech_frames` grows without bound and
+  the whole accumulation goes to a single `transcribe_buffer` call.
+- **Impact:** Unbounded memory growth in the audio buffer during a live
+  service, one multi-minute STT call blocking the single transcription
+  thread (all other utterances queue behind it), and Whisper returning only
+  a fragment of a very long buffer — references in the dropped portion are
+  silently lost.
+- **Evidence:** Benchmark 2026-10-11 on a 50min live recording
+  (`results/07-05-lt-norm-offline-cuda-small-gpu.json`): after loudnorm the
+  VAD never closed, producing exactly 1 segment at t=3012.8s whose
+  transcript covers only the start of the file.
+- **Logged:** 2026-10-11
+
 ### The action row is back at the end of the list in the stacked layout
 - **Where:** `frontend/src/operator/operator.css` (`.operator-pending`,
   `.operator-main-column`) with the media queries at 1024px and 1280px.
@@ -70,3 +88,21 @@ below the fold.
 - **Evidence:** `git status --short` shows `?? bible_data/` containing only
   these two files; no manifest, script, or code refers to them.
 - **Logged:** 2026-10-11
+
+### Lithuanian 1 and 2 Timothy are missed when spelled "Timotiej-"
+- **Where:** `backend/core/verse_parser_lt.py` (`BOOK_STEMS`, `BOOKS` entries for
+  `1 Timothy` / `2 Timothy`).
+- **Problem:** The stem table and book variants use `timotej`. The spelling
+  "Timotėjui" folds to that stem and parses, but the spelling "Timotiejui"
+  (also "Timotiejaus", "Timotiejų") does not start with it, so the book name
+  never matches. Titus ("Titui") and Philemon ("Filemonui") are unaffected.
+- **Impact:** A transcript that spells the name "Timotiej-" silently loses
+  every 1 or 2 Timothy citation: no reference reaches the operator panel.
+  Present on `main` too. Which spelling Whisper emits for a given speaker is
+  not established.
+- **Evidence:** `ReferenceParser(language="lt").parse(...)` returns `[]` for
+  "1 Timotiejui 3 16", "2 Timotiejaus 4 skyrius 2 eilutė" and
+  "Timotiejui 3 skyrius 16 eilutė", but parses "1 Timotėjui 3 16" (1 Timothy
+  3:16) and "2 Timotėjaus 4 skyrius 2 eilutė" (2 Timothy 4:2). Found by an
+  independent review of PR #7, reproduced 2026-10-12.
+- **Logged:** 2026-10-12
