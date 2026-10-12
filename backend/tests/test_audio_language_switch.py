@@ -34,7 +34,9 @@ pytestmark = pytest.mark.audio
 # ---------------------------------------------------------------------------
 def _bare_stt() -> SpeechToText:
     """``SpeechToText`` without loading a Whisper model."""
-    return SpeechToText.__new__(SpeechToText)
+    stt = SpeechToText.__new__(SpeechToText)
+    stt.beam_size = 5
+    return stt
 
 
 class _FakeSTT:

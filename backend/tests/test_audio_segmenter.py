@@ -4,6 +4,8 @@ import random
 
 import pytest
 
+from audio import segmenter as segmenter_module
+from audio.config import AudioPipelineConfig
 from audio.segmenter import Segmenter
 
 VOICED, SILENT = b"v", b"s"
@@ -142,6 +144,52 @@ def test_pause_before_the_soft_limit_does_not_cut():
     events = _push_all(segmenter, [b"v1", SILENT, b"v2"])
 
     assert [kind for _, kind, _ in events] == ["start"]
+
+
+def test_config_defaults_match_the_frame_defaults():
+    """The live config (seconds) and the module defaults (frames) must agree."""
+    built = Segmenter.from_config(lambda f: True, AudioPipelineConfig())
+
+    assert (
+        built.max_silent_frames,
+        built.min_speech_frames,
+        built.soft_utterance_frames,
+        built.max_utterance_frames,
+    ) == (
+        segmenter_module.MAX_SILENT_FRAMES,
+        segmenter_module.MIN_SPEECH_FRAMES,
+        segmenter_module.SOFT_UTTERANCE_FRAMES,
+        segmenter_module.MAX_UTTERANCE_FRAMES,
+    )
+
+
+def test_from_config_converts_seconds_to_frames():
+    config = AudioPipelineConfig(end_of_speech_s=0.6, soft_utterance_s=6, max_utterance_s=10)
+
+    built = Segmenter.from_config(lambda f: True, config)
+
+    assert (built.max_silent_frames, built.soft_utterance_frames) == (20, 200)
+    assert built.max_utterance_frames == 333
+
+
+@pytest.mark.parametrize(("soft_s", "max_s"), [(12.0, 8.0), (0.0, 8.0)])
+def test_from_config_rejects_inconsistent_limits(soft_s, max_s):
+    config = AudioPipelineConfig(soft_utterance_s=soft_s, max_utterance_s=max_s)
+
+    with pytest.raises(ValueError, match="soft_utterance_s"):
+        Segmenter.from_config(lambda f: True, config)
+
+
+def test_cli_tuning_flags_reach_the_config():
+    from audio.cli import apply_tuning_arguments, build_parser
+
+    args = build_parser().parse_args(["--max-utterance-s", "10", "--beam-size", "2"])
+    config = AudioPipelineConfig()
+
+    apply_tuning_arguments(config, args)
+
+    assert (config.max_utterance_s, config.beam_size) == (10.0, 2)
+    assert config.end_of_speech_s == AudioPipelineConfig().end_of_speech_s  # untouched
 
 
 def _legacy_vad_loop(frames, is_speech, max_silent_frames, min_speech_frames):

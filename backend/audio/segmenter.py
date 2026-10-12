@@ -9,6 +9,8 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Literal
 
+from .config import AudioPipelineConfig
+
 FRAME_DURATION_MS = 30  # WebRTC VAD frame size (10/20/30ms)
 MAX_SILENT_FRAMES = 50  # ~1.5 seconds of silence to end utterance
 MIN_SPEECH_FRAMES = 10  # Minimum frames to consider as speech (~300ms)
@@ -68,6 +70,27 @@ class Segmenter:
         self.speech_frames: list[bytes] = []
         self.silent_frames = 0
         self.utterance_frames = 0  # voiced + silent frames since the start
+
+    @classmethod
+    def from_config(cls, is_speech: Callable[[bytes], bool], config: AudioPipelineConfig):
+        """Build from the config's durations, rounded to whole VAD frames."""
+
+        def frames(seconds: float) -> int:
+            return round(seconds * 1000 / FRAME_DURATION_MS)
+
+        soft, cap = frames(config.soft_utterance_s), frames(config.max_utterance_s)
+        if not 0 < soft <= cap:
+            raise ValueError(
+                f"need 0 < soft_utterance_s ({config.soft_utterance_s}) "
+                f"<= max_utterance_s ({config.max_utterance_s})"
+            )
+        return cls(
+            is_speech,
+            max_silent_frames=frames(config.end_of_speech_s),
+            min_speech_frames=frames(config.min_speech_s),
+            soft_utterance_frames=soft,
+            max_utterance_frames=cap,
+        )
 
     @property
     def in_utterance(self) -> bool:

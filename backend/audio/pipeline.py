@@ -42,6 +42,8 @@ class BibleLiveAudioProcessor:
             device=self.config.whisper_device,
             language=self.config.language,
             compute_type=self.config.whisper_compute_type,
+            beam_size=self.config.beam_size,
+            cpu_threads=self.config.cpu_threads,
         )
 
         # VAD queue for speech segments (bounded). Each item is
@@ -56,7 +58,7 @@ class BibleLiveAudioProcessor:
         self.frame_duration_ms = FRAME_DURATION_MS
         self._frame_duration_s = self.frame_duration_ms / 1000
         # Utterance assembly, shared with the benchmark (owned by the VAD thread).
-        self.segmenter = Segmenter(self.vad.is_speech)
+        self.segmenter = Segmenter.from_config(self.vad.is_speech, self.config)
 
         # Metrics
         self.metrics = PipelineMetrics()

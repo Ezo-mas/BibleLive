@@ -55,11 +55,15 @@ python benchmarks/run_benchmark.py \
   runs. Fewer false positives matters as much as more true positives — every
   FP is a wrong verse offered to the operator.
 - Name outputs uniquely under `results/`; never overwrite an earlier run.
+- Tuning knobs are flags shared with the live CLI (`--beam-size`,
+  `--end-of-speech-s`, `--soft-utterance-s`, `--max-utterance-s`, ...), so a
+  sweep needs no code edit.
 - The transcript cache (`results/.bench-cache`) is keyed on audio hash,
-  model/device/compute type, prompt + hotwords, and mode/window settings —
-  **not** on beam size or any code change (STT post-processing, parser,
-  VAD). For those, pass `--no-cache` (or a fresh `--cache-dir`) to the
-  "after" run, or it silently replays the old transcripts.
+  model/device/compute type, beam size, prompt + hotwords, mode/window
+  settings and (offline/rt) the segmentation settings — **not** on any code
+  change (STT post-processing, parser, VAD). For those, pass `--no-cache`
+  (or a fresh `--cache-dir`) to the "after" run, or it silently replays the
+  old transcripts.
 - `bench_audio/` is the user's recordings: read-only. If it or CUDA is
   unavailable, report the benchmark as not run — don't substitute a
   smaller or synthetic run and call it a result.

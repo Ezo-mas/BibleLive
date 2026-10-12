@@ -266,6 +266,7 @@ def _stt_returning(*segments):
     stt = _stt()
     stt.set_language("en")
     stt.sample_rate = 16000
+    stt.beam_size = 5
     stt.audio_buffer = [0.0] * 16000
 
     class _Model:

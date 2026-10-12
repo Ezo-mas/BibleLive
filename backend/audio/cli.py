@@ -13,6 +13,35 @@ from .stt import SUPPORTED_LANGUAGES
 logger = logging.getLogger(__name__)
 
 
+_TUNING_DEFAULTS = AudioPipelineConfig()
+
+# (flag, config field, type, help) — shared with benchmarks/run_benchmark.py so
+# every live tuning knob can be swept there under the same name.
+TUNING_ARGUMENTS: list[tuple[str, str, type, str]] = [
+    ("--beam-size", "beam_size", int, "Whisper beam width; lower is faster"),
+    ("--cpu-threads", "cpu_threads", int, "Whisper CPU threads (0 = library default)"),
+    ("--end-of-speech-s", "end_of_speech_s", float, "silence that ends an utterance"),
+    ("--min-speech-s", "min_speech_s", float, "shorter utterances are dropped"),
+    ("--soft-utterance-s", "soft_utterance_s", float, "past this, end at the next pause"),
+    ("--max-utterance-s", "max_utterance_s", float, "hard utterance length cap"),
+]
+
+
+def add_tuning_arguments(parser: argparse.ArgumentParser) -> None:
+    """Add the speech-tuning flags; each defaults to None (= config default)."""
+    for flag, field_name, kind, help_text in TUNING_ARGUMENTS:
+        default = getattr(_TUNING_DEFAULTS, field_name)
+        parser.add_argument(flag, type=kind, default=None, help=f"{help_text} (default: {default})")
+
+
+def apply_tuning_arguments(config: AudioPipelineConfig, args: argparse.Namespace) -> None:
+    """Copy any tuning flags that were given onto ``config``."""
+    for _flag, field_name, _kind, _help in TUNING_ARGUMENTS:
+        value = getattr(args, field_name)
+        if value is not None:
+            setattr(config, field_name, value)
+
+
 def build_parser() -> argparse.ArgumentParser:
     """Build the CLI argument parser."""
     parser = argparse.ArgumentParser(description="BibleLive Audio Processing Pipeline")
@@ -48,6 +77,7 @@ def build_parser() -> argparse.ArgumentParser:
         choices=[0, 1, 2, 3],
         help="WebRTC VAD aggressiveness (0=least, 3=most aggressive)",
     )
+    add_tuning_arguments(parser)
     parser.add_argument(
         "--input-device",
         default=None,
@@ -131,6 +161,7 @@ def main() -> None:
         control_port=args.control_port,
         control_token=args.control_token,
     )
+    apply_tuning_arguments(config, args)
     processor = BibleLiveAudioProcessor(
         bible_db_path=args.bible_db, server_url=args.server, config=config
     )

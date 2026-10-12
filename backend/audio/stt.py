@@ -248,7 +248,10 @@ class SpeechToText:
         device: str = "cuda",
         language: str = "en",
         compute_type: str | None = None,
+        beam_size: int = 5,
+        cpu_threads: int = 0,
     ):
+        self.beam_size = beam_size
         # Language + prompt live in one immutable value (see _LanguageState);
         # set_language() swaps the pair atomically at runtime.
         self._state = _language_state(language)
@@ -274,7 +277,9 @@ class SpeechToText:
             f"(compute_type={compute_type}, language={language})..."
         )
         try:
-            self.model = WhisperModel(model_size, device=device, compute_type=compute_type)
+            self.model = WhisperModel(
+                model_size, device=device, compute_type=compute_type, cpu_threads=cpu_threads
+            )
             logger.info("Whisper model loaded successfully")
         except Exception as e:
             logger.error(f"Failed to load Whisper model: {e}")
@@ -374,7 +379,7 @@ class SpeechToText:
                 # allows >=0.9.0) reject the argument, and the broad except
                 # below would then turn every utterance into "no transcript".
                 **({"hotwords": state.hotwords} if state.hotwords else {}),
-                beam_size=5,
+                beam_size=self.beam_size,
                 best_of=5,
                 temperature=0.0,
                 compression_ratio_threshold=COMPRESSION_RATIO_THRESHOLD,
