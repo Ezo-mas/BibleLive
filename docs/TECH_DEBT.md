@@ -88,3 +88,18 @@ below the fold.
 - **Evidence:** `git status --short` shows `?? bible_data/` containing only
   these two files; no manifest, script, or code refers to them.
 - **Logged:** 2026-10-11
+
+### Lithuanian 1 and 2 Timothy are never detected
+- **Where:** `backend/core/verse_parser_lt.py` (`BOOK_STEMS`, `BOOKS` entries for
+  `1 Timothy` / `2 Timothy`).
+- **Problem:** The stem table and book variants use `timotej`, but the
+  Lithuanian name is "Timotiejus" (dative "Timotiejui"), so the tokenized word
+  `timotiejui` never starts with the stem and the book name never matches.
+  Titus ("Titui") and Philemon ("Filemonui") are unaffected.
+- **Impact:** Every spoken citation of 1 or 2 Timothy in Lithuanian is silently
+  missed: no reference reaches the operator panel. Present on `main` too.
+- **Evidence:** `ReferenceParser(language="lt").parse(...)` returns `[]` for
+  "1 Timotiejui 3 16", "pirmas laiškas Timotiejui 3 skyrius 16 eilutė" and
+  "Timotiejui 3 skyrius 16 eilutė", while "Titui 2 skyrius 11 eilutė" parses.
+  Found by an independent review of PR #7, reproduced 2026-10-12.
+- **Logged:** 2026-10-12

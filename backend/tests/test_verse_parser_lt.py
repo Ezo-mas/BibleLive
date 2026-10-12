@@ -309,6 +309,16 @@ class TestBareBookBeforeNumberedBook:
         assert [str(r) for r in sp.feed("Luko 1 skyrius")] == ["Luke 1"]
         assert [str(r) for r in sp.feed("Jono 3 skyrius 16 eilutė")] == ["John 3:16"]
 
+    def test_chapter_word_before_the_number_is_not_a_restart(self):
+        # "1 skyrius" becomes [skyrius, 1]; that chapter 1 must not read as the
+        # prefix of the following book name.
+        assert refs("Pradžios 1 skyrius, Karalių knyga 3") == ["Genesis 1"]
+        assert refs("Luko 2 skyrius, Petro laiškas 3") == ["Luke 2"]
+        assert refs("Jono 1 skyrius, Jono laiškas 5") == ["John 1"]
+        assert refs("Pradžios knygos 1 skyrius, Jono laiške 4 skyriuje") == ["Genesis 1"]
+        assert refs("Luko 1 skyriuje, Jono laiške rašoma") == ["Luke 1"]
+        assert refs("Jono 3 skyriuje Jono laiško mintis") == ["John 3"]
+
 
 class TestBenchmarkMicroGaps:
     """Misses read off the medium-model transcripts of the 07-05 / 09-13

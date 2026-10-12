@@ -367,6 +367,9 @@ class ReferenceParser:
         k = ref.end - 1
         if toks[k] != ref.chapter or self._prefixes.get(toks[k]) != ref.chapter:
             return False
+        # A number spoken as a chapter ("1 skyrius") is not a book prefix.
+        if k >= 1 and toks[k - 1] in self._chapter_words:
+            return False
         match = self._book_at(toks, k)
         return match is not None and match[0] != ref.book and match[1] >= 3
 
