@@ -113,7 +113,7 @@ class BibleLiveAudioProcessor:
             self.is_running = True
 
             # Start audio capture
-            self.audio_capture.start_capture()
+            self.audio_capture.start_capture(self.config.input_device)
 
             # Start VAD processing thread
             vad_thread = threading.Thread(target=self._vad_loop, daemon=True, name="vad-processor")

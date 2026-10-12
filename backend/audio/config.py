@@ -29,6 +29,9 @@ class AudioPipelineConfig:
     whisper_compute_type: str | None = None  # None = int8 (safe on all devices)
     language: str = "en"  # Spoken language: "en" or "lt"
     vad_aggressiveness: int = 2  # 0=least, 3=most aggressive
+    # Microphone name for ffmpeg (dshow device on Windows, pulse source on Linux,
+    # avfoundation index on macOS). None = platform default; see capture.py.
+    input_device: str | None = None
 
     # Runtime language-control server (stdlib http.server). Bound to loopback
     # by default; only expose it more widely behind a token.

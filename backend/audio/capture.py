@@ -1,12 +1,42 @@
 """Microphone audio capture via ffmpeg."""
 
 import logging
+import re
 import subprocess
 import sys
 import threading
+from collections import deque
 from queue import Empty, Full, Queue
 
 logger = logging.getLogger(__name__)
+
+# ``ffmpeg -list_devices true -f dshow`` prints each device as
+# ``"Microphone (Realtek(R) Audio)" (audio)``; the alternative-name lines that
+# follow carry no ``(audio)`` suffix.
+_DSHOW_AUDIO_DEVICE = re.compile(r'"(?P<name>[^"]+)"\s+\(audio\)')
+
+
+def list_input_devices() -> list[str]:
+    """Names of the DirectShow audio inputs ffmpeg can open (Windows only).
+
+    dshow has no ``default`` device: ``-i audio=<name>`` needs one of these
+    names verbatim. Returns an empty list on other platforms.
+    """
+    if sys.platform != "win32":
+        return []
+    try:
+        result = subprocess.run(
+            ["ffmpeg", "-hide_banner", "-list_devices", "true", "-f", "dshow", "-i", "dummy"],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=10,
+        )
+    except FileNotFoundError:
+        raise RuntimeError("ffmpeg not found. Please install ffmpeg and ensure it's in PATH")
+    # ffmpeg exits non-zero here (the "dummy" input never opens); the list is on stderr.
+    return _DSHOW_AUDIO_DEVICE.findall(result.stderr)
 
 
 class AudioCapture:
@@ -31,24 +61,34 @@ class AudioCapture:
         self.dropped_chunks = 0
         self._last_progress_log = 0.0
 
+        # Recent ffmpeg stderr, so an early exit (bad device, no mic) is
+        # reported at ERROR instead of being visible only at DEBUG.
+        self._stderr_tail: deque[str] = deque(maxlen=5)
+
     @property
     def captured_seconds(self) -> float:
         """Total audio seconds received from the input device."""
         return self.total_bytes_captured / 2 / self.sample_rate
 
-    def start_capture(self, device_index: int | None = None):
-        """Start capturing audio from microphone"""
-        self.is_running = True
+    def start_capture(self, device: str | None = None):
+        """Start capturing audio from the microphone.
 
+        ``device`` is the platform's input name: a DirectShow device name on
+        Windows, a PulseAudio source on Linux, an avfoundation index or name on
+        macOS. ``None`` picks the platform default (the first dshow device on
+        Windows, which has no default of its own).
+        """
         # Build ffmpeg command
         if sys.platform == "darwin":  # macOS
-            input_args = ["-f", "avfoundation", "-i", f":{device_index or ''}"]
+            input_args = ["-f", "avfoundation", "-i", f":{device or ''}"]
         elif sys.platform.startswith("linux"):  # Linux
-            input_args = ["-f", "pulse", "-i", "default"]
+            input_args = ["-f", "pulse", "-i", device or "default"]
         elif sys.platform == "win32":  # Windows
-            input_args = ["-f", "dshow", "-i", f"audio={device_index or 'default'}"]
+            input_args = ["-f", "dshow", "-i", f"audio={device or self._default_dshow_device()}"]
         else:
             raise ValueError(f"Unsupported platform: {sys.platform}")
+
+        self.is_running = True
 
         ffmpeg_cmd = [
             "ffmpeg",
@@ -99,6 +139,7 @@ class AudioCapture:
                 # Log ffmpeg output at debug level (can be noisy)
                 line_str = line.decode("utf-8", errors="replace").strip()
                 if line_str:
+                    self._stderr_tail.append(line_str)
                     logger.debug(f"ffmpeg: {line_str}")
         except OSError as e:
             # Pipe closed, expected during shutdown
@@ -118,7 +159,7 @@ class AudioCapture:
                 try:
                     raw_data = proc.stdout.read(chunk_size)
                     if not raw_data:
-                        logger.info("ffmpeg stdout closed, stopping audio capture")
+                        self._report_ffmpeg_exit()
                         break
 
                     self.total_bytes_captured += len(raw_data)
@@ -153,6 +194,35 @@ class AudioCapture:
                 f"({self.captured_seconds:.1f}s of audio captured, "
                 f"{self.total_chunks} chunks, {self.dropped_chunks} dropped)"
             )
+
+    @staticmethod
+    def _default_dshow_device() -> str:
+        """First DirectShow audio input; dshow rejects ``audio=default``."""
+        devices = list_input_devices()
+        if not devices:
+            raise RuntimeError(
+                "No DirectShow audio input found. Connect a microphone, or check "
+                "`ffmpeg -list_devices true -f dshow -i dummy`."
+            )
+        logger.warning(
+            f"No --input-device given; using the first audio input {devices[0]!r}. "
+            f"Available: {devices}. Pass --input-device to choose another."
+        )
+        return devices[0]
+
+    def _report_ffmpeg_exit(self) -> None:
+        """Say why capture ended: a stop request, or ffmpeg dying on its own."""
+        if not self.is_running:
+            logger.info("ffmpeg stdout closed, stopping audio capture")
+            return
+        # Let the stderr thread drain ffmpeg's last lines before reporting them.
+        if self.stderr_thread is not None:
+            self.stderr_thread.join(timeout=1.0)
+        detail = " | ".join(self._stderr_tail) or "no ffmpeg output"
+        logger.error(
+            f"ffmpeg exited after {self.captured_seconds:.1f}s of audio; capture stopped. "
+            f"ffmpeg said: {detail}"
+        )
 
     def _log_capture_progress(self) -> None:
         """Log a live 'audio is flowing' line roughly every 10 seconds of audio."""
