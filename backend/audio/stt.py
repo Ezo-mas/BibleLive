@@ -19,7 +19,9 @@ def _register_nvidia_dll_dirs() -> None:
     survives venv recreates with no manual PATH edits. No-op off Windows or
     when the wheels are absent.
     """
-    if os.name != "nt":
+    # sys.platform (not os.name) so mypy skips this body on Linux, where
+    # typeshed has no os.add_dll_directory.
+    if sys.platform != "win32":
         return
     bin_dirs: list[str] = []
     for base in sys.path:
