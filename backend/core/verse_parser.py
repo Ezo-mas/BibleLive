@@ -218,6 +218,17 @@ def _split_merged(number: int, chapters: int) -> tuple[int, int] | None:
     return valid[0] if len(valid) == 1 else None
 
 
+def _drop_covered_chapters(refs: list[Reference], others: list[Reference]) -> list[Reference]:
+    """Drop chapter-only refs whose chapter ``others`` also names with a verse.
+
+    "Jono 10, atskirius 37 eilutė. Jono 10, 37": the mangled chapter word
+    leaves a bare "John 10" next to "John 10:37"; the operator needs only
+    the second.
+    """
+    with_verse = {(r.book, r.chapter) for r in others if r.verse_start is not None}
+    return [r for r in refs if r.verse_start is not None or (r.book, r.chapter) not in with_verse]
+
+
 def _downgrade(level: str) -> str:
     return _LEVELS[max(0, _LEVELS.index(level) - 1)]
 
@@ -564,7 +575,7 @@ class ReferenceParser:
                 i = ref.end
                 continue
             i += 1
-        return refs
+        return _drop_covered_chapters(refs, refs)
 
 
 # --------------------------------------------------------------------------
@@ -572,7 +583,16 @@ class ReferenceParser:
 # --------------------------------------------------------------------------
 class StreamingParser:
     """Keeps context between segments and a short tail of the previous one,
-    so "turn to Romans" + "chapter eight verse twenty-eight" still works."""
+    so "turn to Romans" + "chapter eight verse twenty-eight" still works.
+
+    With ``hold_chapter_only`` (the live pipeline and the benchmark turn it
+    on), a chapter-only reference ("Romiečiams, 5 skyrius, mes ...") is held until
+    the next segment: preachers often give the verse a few seconds later, and
+    once "Romans 5" is sent it cannot be taken back. If the next segment names
+    a verse in that chapter, only the full reference is reported; otherwise the
+    held one is reported then (one segment late). ``flush()`` releases it at
+    the end of a stream.
+    """
 
     def __init__(
         self,
@@ -580,11 +600,14 @@ class StreamingParser:
         carry_tokens: int = 12,
         language: str = "en",
         context_ttl_s: float | None = 60.0,
+        hold_chapter_only: bool = False,
     ):
         self.parser = parser or ReferenceParser(language=language)
         self.ctx = Context()
         self.carry: list[Token] = []
         self.carry_tokens = carry_tokens
+        self.hold_chapter_only = hold_chapter_only
+        self._held: list[Reference] = []
         # Max age of the running book/chapter context. A stale context
         # (e.g. Romans still set 300 s later) turns stray numbers into
         # confident wrong references, so feeds timestamped later than this
@@ -597,12 +620,14 @@ class StreamingParser:
         # scanning: the book/chapter on record belongs to a long-gone
         # passage, not to these tokens. Untimestamped feeds keep the
         # legacy never-expire behavior.
+        released: list[Reference] = []
         if (
             t_s is not None
             and self.context_ttl_s is not None
             and self._ctx_t is not None
             and t_s - self._ctx_t > self.context_ttl_s
         ):
+            released = self.flush()  # a held chapter belongs to the old passage
             self.reset()
         # Postprocess runs inside _prepare on the new segment only; carry was
         # already postprocessed when it arrived, so re-running it could
@@ -616,12 +641,22 @@ class StreamingParser:
             # book/chapter; its age counts from here. Refs re-found inside
             # the carry-over were already reported and must not refresh it.
             self._ctx_t = t_s
-        return fresh
+        if not self.hold_chapter_only:
+            return released + fresh
+        released += _drop_covered_chapters(self.flush(), fresh)
+        self._held = [r for r in fresh if r.verse_start is None]
+        return released + [r for r in fresh if r.verse_start is not None]
+
+    def flush(self) -> list[Reference]:
+        """Release any held chapter-only reference (end of stream)."""
+        held, self._held = self._held, []
+        return held
 
     def reset(self) -> None:
         self.ctx = Context()
         self.carry = []
         self._ctx_t = None
+        self._held = []
 
 
 if __name__ == "__main__":

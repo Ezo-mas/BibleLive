@@ -404,3 +404,44 @@ class TestWhisperMergedAndGluedWords:
 
     def test_ordinary_words_starting_with_nuo_or_pagal_stay_whole(self):
         assert refs("nuodėmės ir nuosprendis, pagalba 3 skyrius") == []
+
+
+class TestChapterOnlyDuplicates:
+    """A bare "Romans 5" next to "Romans 5:6" is a duplicate the operator has to
+    discard. Seen in every benchmark run (Romans 5, John 10, Luke 12)."""
+
+    @staticmethod
+    def _held():
+        return StreamingParser(language="lt", hold_chapter_only=True)
+
+    def test_same_text_drops_the_chapter_only_twin(self):
+        # The stray "k." splits chapter from verse: "John 10" plus a verse that
+        # context resolves to "John 10:37". Only the full one is kept.
+        assert refs("Jono, 10. k. 37. eilutė.") == ["John 10:37"]
+
+    def test_same_text_keeps_a_different_chapter(self):
+        assert refs("Jono 10 skyrius, o Jono 11 skyrius 3 eilutė") == ["John 10", "John 11:3"]
+
+    def test_held_chapter_is_dropped_when_the_verse_follows(self):
+        sp = self._held()
+        assert sp.feed("Romiečiams, 5. Skyrius, mes po truputį") == []
+        assert [str(r) for r in sp.feed("6 eilutė sako")] == ["Romans 5:6"]
+
+    def test_held_chapter_is_released_when_no_verse_follows(self):
+        sp = self._held()
+        assert sp.feed("Romiečiams 5 skyrius") == []
+        assert [str(r) for r in sp.feed("ir tada meldėmės")] == ["Romans 5"]
+
+    def test_held_chapter_is_released_before_an_unrelated_reference(self):
+        sp = self._held()
+        sp.feed("Romiečiams 5 skyrius")
+        assert [str(r) for r in sp.feed("Jono 3 skyrius 16 eilutė")] == ["Romans 5", "John 3:16"]
+
+    def test_flush_releases_at_end_of_stream(self):
+        sp = self._held()
+        sp.feed("Psalmė 23")
+        assert [str(r) for r in sp.flush()] == ["Psalms 23"]
+        assert sp.flush() == []
+
+    def test_full_references_are_never_held(self):
+        assert [str(r) for r in self._held().feed("Jono 3 skyrius 16 eilutė")] == ["John 3:16"]
