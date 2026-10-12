@@ -157,6 +157,16 @@ def test_set_language_always_uses_the_matching_initial_prompt():
         assert stt.initial_prompt == WHISPER_INITIAL_PROMPTS[language]
 
 
+@pytest.mark.parametrize("language", SUPPORTED_LANGUAGES)
+def test_initial_prompt_contains_no_citation_numbers(language):
+    """Regression: Whisper echoes the prompt over silence, so a citation in it
+    ("Romans 8:28") became a detected reference. Book names only."""
+    prompt = WHISPER_INITIAL_PROMPTS[language]
+    assert not any(ch.isdigit() for ch in prompt)
+    for example_word in ("example", "pavyzd", "sixteen", "šešiolikt", "trečias"):
+        assert example_word not in prompt.lower()
+
+
 def test_set_language_rejects_invalid_language():
     stt = _bare_stt()
     stt.set_language("lt")
