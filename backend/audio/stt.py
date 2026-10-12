@@ -1,14 +1,60 @@
 """Speech-to-text transcription using faster-whisper."""
 
+import contextlib
 import logging
+import os
 import re
+import sys
 import time
 from dataclasses import dataclass
 
-import numpy as np
-from faster_whisper import WhisperModel
 
-from core.books import CANONICAL_BOOKS
+def _register_nvidia_dll_dirs() -> None:
+    """Register pip-installed NVIDIA DLL dirs before ctranslate2 loads (Windows).
+
+    The cu12 wheels (nvidia-cublas-cu12, nvidia-cudnn-cu12, ...) drop their
+    DLLs under <site-packages>/nvidia/*/bin, which is not on the DLL search
+    path by default — without this, WhisperModel(device="cuda") fails with
+    "cublas64_12.dll is not found". Locations resolve from sys.path so this
+    survives venv recreates with no manual PATH edits. No-op off Windows or
+    when the wheels are absent.
+    """
+    if os.name != "nt":
+        return
+    bin_dirs: list[str] = []
+    for base in sys.path:
+        if not base or not os.path.isdir(base):
+            continue
+        nvidia_dir = os.path.join(base, "nvidia")
+        if not os.path.isdir(nvidia_dir):
+            continue
+        try:
+            packages = os.listdir(nvidia_dir)
+        except OSError:
+            continue
+        for pkg in packages:
+            bin_dir = os.path.join(nvidia_dir, pkg, "bin")
+            if os.path.isdir(bin_dir):
+                bin_dirs.append(bin_dir)
+                with contextlib.suppress(OSError, AttributeError):
+                    os.add_dll_directory(bin_dir)
+    if bin_dirs:
+        # ctranslate2 resolves cublas via PATH rather than the
+        # AddDllDirectory list, so export the folders to the process PATH as
+        # well (read dynamically by the loader at call time). Prepend so the
+        # venv-pinned copies win over any stale system ones.
+        path_entries = os.environ.get("PATH", "").split(os.pathsep)
+        missing = [d for d in bin_dirs if d not in path_entries]
+        if missing:
+            os.environ["PATH"] = os.pathsep.join([*missing, *path_entries])
+
+
+_register_nvidia_dll_dirs()
+
+import numpy as np  # noqa: E402 (deferred: DLL dirs must register before ctranslate2 loads)
+from faster_whisper import WhisperModel  # noqa: E402 (deferred: see above)
+
+from core.books import CANONICAL_BOOKS  # noqa: E402 (deferred: see above)
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +83,15 @@ WHISPER_INITIAL_PROMPTS: dict[str, str] = {
     ),
 }
 
+# Per-language Whisper hotwords (empty = off). In faster-whisper these are not a
+# decode-time boost: they are text placed in the same "previous text" prompt
+# slot as ``initial_prompt``, just ahead of it, and re-applied on every 30 s
+# seek. Left empty on purpose: a bare Lithuanian number/"skyrius/eilutė" word
+# list measured WORSE on the small model (2026-10-12, 07-05 trim40 + 09-13,
+# 25 gold refs: 5 TP / 5 FP without it, 3 TP / 12 FP with it), mostly extra
+# false positives. Re-measure with benchmarks/run_benchmark.py before enabling.
+WHISPER_HOTWORDS: dict[str, str] = {"en": "", "lt": ""}
+
 SUPPORTED_LANGUAGES = tuple(WHISPER_INITIAL_PROMPTS.keys())
 
 
@@ -52,6 +107,7 @@ class _LanguageState:
 
     language: str
     initial_prompt: str
+    hotwords: str
 
 
 def _validate_language(language: str) -> None:
@@ -65,7 +121,7 @@ def _validate_language(language: str) -> None:
 def _language_state(language: str) -> _LanguageState:
     """Build the immutable ``(language, prompt)`` pair for ``language``."""
     _validate_language(language)
-    return _LanguageState(language, WHISPER_INITIAL_PROMPTS[language])
+    return _LanguageState(language, WHISPER_INITIAL_PROMPTS[language], WHISPER_HOTWORDS[language])
 
 
 # Regex corrections for merged "book chapter verse" numbers.
@@ -149,6 +205,11 @@ class SpeechToText:
         """The Whisper initial prompt matching :attr:`language`."""
         return self._state.initial_prompt
 
+    @property
+    def hotwords(self) -> str:
+        """The Whisper hotwords matching :attr:`language` (may be empty)."""
+        return self._state.hotwords
+
     def set_language(self, language: str) -> None:
         """Switch the transcription language and its initial prompt.
 
@@ -211,6 +272,7 @@ class SpeechToText:
                 audio_np,
                 language=state.language,
                 initial_prompt=state.initial_prompt,
+                hotwords=state.hotwords or None,
                 beam_size=5,
                 best_of=5,
                 temperature=0.0,
