@@ -202,6 +202,42 @@ MIN_REPEAT_BLOCK_WORDS = 2  # shortest phrase that can be the repeated block
 MIN_REPEAT_COUNT = 3  # repetitions of that block before we call it a loop
 MIN_REPEAT_WORDS = 8  # total repeated words before we call it a loop
 
+# Whisper's own per-segment quality thresholds, passed to ``transcribe`` and
+# reused by :func:`segment_low_confidence_reason`. With a single temperature
+# faster-whisper has nothing to fall back to, so a segment failing them is
+# still returned; it is flagged here instead of passing as trusted text.
+LOG_PROB_THRESHOLD = -1.0  # mean token log-probability below this: unsure decode
+COMPRESSION_RATIO_THRESHOLD = 2.4  # gzip ratio above this: repetitive text
+NO_SPEECH_THRESHOLD = 0.6  # no-speech probability above this: probably silence
+
+
+def segment_low_confidence_reason(
+    avg_logprob: float, no_speech_prob: float, compression_ratio: float
+) -> str | None:
+    """Why a Whisper segment is untrustworthy, or ``None`` if it looks sound."""
+    if no_speech_prob > NO_SPEECH_THRESHOLD:
+        return f"no_speech_prob {no_speech_prob:.2f} > {NO_SPEECH_THRESHOLD}"
+    if avg_logprob < LOG_PROB_THRESHOLD:
+        return f"avg_logprob {avg_logprob:.2f} < {LOG_PROB_THRESHOLD}"
+    if compression_ratio > COMPRESSION_RATIO_THRESHOLD:
+        return f"compression_ratio {compression_ratio:.2f} > {COMPRESSION_RATIO_THRESHOLD}"
+    return None
+
+
+@dataclass(frozen=True)
+class Transcription:
+    """One utterance's transcript and whether it can be trusted.
+
+    ``low_confidence_reason`` is set when any Whisper segment of the utterance
+    failed a quality threshold or a repetition loop was trimmed. References
+    parsed from such a transcript must not reach the operator as confident
+    detections (confidence drives auto-approve).
+    """
+
+    text: str | None
+    duration_ms: float
+    low_confidence_reason: str | None = None
+
 
 class SpeechToText:
     """Handles speech-to-text transcription using faster-whisper"""
@@ -284,6 +320,15 @@ class SpeechToText:
         self.audio_buffer.extend(audio_np)
 
     def transcribe_buffer(self, language: str | None = None) -> tuple[str | None, float]:
+        """Transcribe and clear the buffer; see :meth:`transcribe_utterance`.
+
+        Returns:
+            Tuple of (transcribed_text, duration_ms)
+        """
+        result = self.transcribe_utterance(language)
+        return result.text, result.duration_ms
+
+    def transcribe_utterance(self, language: str | None = None) -> Transcription:
         """
         Transcribe accumulated audio buffer and clear it.
 
@@ -294,13 +339,13 @@ class SpeechToText:
                 with the language (and initial prompt) it was captured under.
 
         Returns:
-            Tuple of (transcribed_text, duration_ms)
+            The transcript, its duration, and why it is low-confidence (if it is).
 
         Raises:
             ValueError: if an explicit ``language`` is not supported.
         """
         if not self.audio_buffer:
-            return None, 0.0
+            return Transcription(None, 0.0)
 
         # Resolve the language/prompt pair once, before consuming audio:
         # set_language() may swap the global pair from another thread, and the
@@ -315,7 +360,7 @@ class SpeechToText:
 
         # Skip if audio is too short (less than 0.5 seconds)
         if len(audio_np) < self.sample_rate * 0.5:
-            return None, 0.0
+            return Transcription(None, 0.0)
 
         start_time = time.time()
 
@@ -332,9 +377,9 @@ class SpeechToText:
                 beam_size=5,
                 best_of=5,
                 temperature=0.0,
-                compression_ratio_threshold=2.4,
-                log_prob_threshold=-1.0,
-                no_speech_threshold=0.6,
+                compression_ratio_threshold=COMPRESSION_RATIO_THRESHOLD,
+                log_prob_threshold=LOG_PROB_THRESHOLD,
+                no_speech_threshold=NO_SPEECH_THRESHOLD,
                 condition_on_previous_text=False,
                 # Decoder-side loop guards (post-processing in
                 # _collapse_repetition is the backstop if these are ever hit).
@@ -342,8 +387,19 @@ class SpeechToText:
                 no_repeat_ngram_size=6,
             )
 
-            # Combine all segments
-            text = " ".join([segment.text.strip() for segment in segments]).strip()
+            # Combine all segments, keeping the first quality problem seen
+            texts: list[str] = []
+            low_confidence_reason: str | None = None
+            for segment in segments:
+                segment_text = segment.text.strip()
+                if not segment_text:
+                    continue
+                texts.append(segment_text)
+                if low_confidence_reason is None:
+                    low_confidence_reason = segment_low_confidence_reason(
+                        segment.avg_logprob, segment.no_speech_prob, segment.compression_ratio
+                    )
+            text = " ".join(texts).strip()
 
             # Apply post-processing fixes for common transcription errors
             text = self._fix_common_transcription_errors(text)
@@ -355,17 +411,21 @@ class SpeechToText:
 
             if loop:
                 logger.warning(f"Discarded Whisper repetition loop ({loop})")
+                # What survives the trim came out of a degenerate decode.
+                low_confidence_reason = low_confidence_reason or f"repetition loop: {loop}"
 
-            return text if text else None, duration_ms
+            if not text:
+                return Transcription(None, duration_ms)
+            return Transcription(text, duration_ms, low_confidence_reason)
 
         except RuntimeError as e:
             duration_ms = (time.time() - start_time) * 1000
             logger.error(f"Whisper runtime error: {e}")
-            return None, duration_ms
+            return Transcription(None, duration_ms)
         except Exception as e:
             duration_ms = (time.time() - start_time) * 1000
             logger.error(f"Unexpected transcription error: {e}", exc_info=True)
-            return None, duration_ms
+            return Transcription(None, duration_ms)
 
     def _collapse_repetition(self, text: str) -> tuple[str, str | None]:
         """Collapse a degenerate Whisper repetition loop.

@@ -17,6 +17,7 @@ class PipelineMetrics:
     transcription_successes: int = 0
     transcription_failures: int = 0
     references_detected: int = 0
+    references_low_confidence: int = 0  # downgraded by Whisper segment quality
     references_sent: int = 0
     references_failed: int = 0
     references_deduplicated: int = 0
@@ -68,7 +69,10 @@ class PipelineMetrics:
             f"({self.transcription_failures} failed)"
         )
         logger.info(f"  Avg transcription time: {self.get_avg_transcription_duration():.1f}ms")
-        logger.info(f"  References detected: {self.references_detected}")
+        logger.info(
+            f"  References detected: {self.references_detected} "
+            f"({self.references_low_confidence} low-confidence transcription)"
+        )
         logger.info(
             f"  References sent: {self.references_sent} "
             f"({self.references_failed} failed, {self.references_deduplicated} deduplicated)"
