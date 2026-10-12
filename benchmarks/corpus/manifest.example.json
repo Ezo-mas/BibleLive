@@ -1,0 +1,23 @@
+{
+  "_comment": "BibleLive transcription benchmark corpus manifest. Copy to benchmarks/corpus/manifest.json (not committed if you prefer), or keep beside recordings you may share. Audio files are NOT committed; point BIBLELIVE_BENCH_AUDIO_DIR at their local directory.",
+  "schema_version": 1,
+  "language": "en",
+  "recordings": [
+    {
+      "id": "example-sermon-001",
+      "source": "describe the authorized origin (e.g. self-recorded test sermon, licensed archive, public-domain recording)",
+      "file": "example-sermon-001.wav",
+      "duration_s": 1234.5,
+      "sha256": "hex digest of the local audio file (fill with benchmarks/hash_audio.py or sha256sum)",
+      "sample_rate_hz": 16000,
+      "channels": 1,
+      "speakers": ["pastor-a"],
+      "audio_quality": "clear | noisy | reverberant | mic-clipped ...",
+      "speaking_rate_note": "free-text: e.g. slow measured, fast with quick reference mentions",
+      "language": "en",
+      "annotation_provenance": "manual | caption-derived-and-verified | partially-verified",
+      "gold_file": "gold/example-sermon-001.gold.jsonl",
+      "notes": "limitations of source captions here, if any"
+    }
+  ]
+}

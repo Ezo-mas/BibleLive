@@ -1,0 +1,108 @@
+{
+  "language": "lt",
+  "recordings": [
+    {
+      "annotation_provenance": "none",
+      "audio_quality": "live-event",
+      "channels": 1,
+      "duration_s": 3012.83,
+      "file": "benchmark_audio_07-05.wav",
+      "gold_file": "",
+      "id": "07-05-live-lt",
+      "language": "lt",
+      "notes": "Lithuanian live event 07-05, no gold annotations yet - first try, transcripts+detections only",
+      "sample_rate_hz": 16000,
+      "sha256": "84fa4282f639dc8f5113aff96cbaf1278b09435c44dbf51159200fe3403b4b09",
+      "source": "local live event recording 07-05 (Lithuanian)",
+      "speakers": [
+        "unknown"
+      ]
+    },
+    {
+      "annotation_provenance": "none",
+      "audio_quality": "live-event loudnorm -16 LUFS",
+      "channels": 1,
+      "duration_s": 3012.83,
+      "file": "benchmark_audio_07-05-norm.wav",
+      "gold_file": "",
+      "id": "07-05-live-lt-norm",
+      "language": "lt",
+      "notes": "Same recording, ffmpeg loudnorm dual-pass I=-16 TP=-1.5 LRA=11 (input was -35.9 LUFS) to fix VAD collapse on quiet audio",
+      "sample_rate_hz": 16000,
+      "sha256": "c2983bc27268060d8792202fb92846350ca75f813462ad833e6860eea4b57945",
+      "source": "local live event recording 07-05 normalized (Lithuanian)",
+      "speakers": [
+        "unknown"
+      ]
+    },
+    {
+      "annotation_provenance": "manual",
+      "audio_quality": "live-event",
+      "channels": 1,
+      "duration_s": 2400.0,
+      "file": "benchmark_audio_07-05-trim40.wav",
+      "gold_file": "gold/07-05-live-lt.gold.jsonl",
+      "id": "07-05-live-lt-trim40",
+      "language": "lt",
+      "notes": "First 40min of 07-05 preaching (worship after 40min cut). 12 hand-annotated references.",
+      "sample_rate_hz": 16000,
+      "sha256": "54965beba5cfb9fb08b6c98d59586144fda07370d52a00129f8e99f10a670da6",
+      "source": "local live event recording 07-05 trimmed (Lithuanian)",
+      "speakers": [
+        "unknown"
+      ]
+    },
+    {
+      "annotation_provenance": "manual",
+      "audio_quality": "live-event afftdn-denoised",
+      "channels": 1,
+      "duration_s": 2400.0,
+      "file": "benchmark_audio_07-05-trim40-dn.wav",
+      "gold_file": "gold/07-05-live-lt-dn.gold.jsonl",
+      "id": "07-05-live-lt-trim40-dn",
+      "language": "lt",
+      "notes": "Trim40 with ffmpeg afftdn defaults to lower noise floor for VAD",
+      "sample_rate_hz": 16000,
+      "sha256": "7fb3012bf2b14ddda9373bd80e89fcae9a45297d55c1158ba8bcd4c6b2b3c48c",
+      "source": "local live event recording 07-05 trimmed+denoised (Lithuanian)",
+      "speakers": [
+        "unknown"
+      ]
+    },
+    {
+      "id": "07-05-live-lt-trim40-dng",
+      "source": "local live event recording 07-05 trimmed+denoised+gated (Lithuanian)",
+      "file": "benchmark_audio_07-05-trim40-dng.wav",
+      "duration_s": 2400.0,
+      "sha256": "bc3edf578d82ee3f4d478a3b599fe6dad5296ada5f4dcce617ee37b3bf0f37d6",
+      "sample_rate_hz": 16000,
+      "channels": 1,
+      "speakers": [
+        "unknown"
+      ],
+      "audio_quality": "live-event afftdn+agate(-30dB)",
+      "language": "lt",
+      "annotation_provenance": "manual",
+      "gold_file": "gold/07-05-live-lt-dng.gold.jsonl",
+      "notes": "Trim40 with afftdn + agate threshold -30dB ratio 10 to give VAD real silence"
+    },
+    {
+      "id": "09-13-live-lt",
+      "source": "local live event recording 09-13 cut from 48:00 (Lithuanian)",
+      "file": "09-13.mp3",
+      "duration_s": 2455.65,
+      "sha256": "1af1f0517c7f380cfb6949fa46dcd993f452a85ff67ac25fd207b91c7739ff1b",
+      "sample_rate_hz": 44100,
+      "channels": 2,
+      "speakers": [
+        "unknown"
+      ],
+      "audio_quality": "live-event louder",
+      "language": "lt",
+      "annotation_provenance": "manual",
+      "gold_file": "gold/09-13-live-lt.gold.jsonl",
+      "notes": "13 hand-annotated references incl. ranges, continuations, repeats"
+    }
+  ],
+  "schema_version": 1
+}

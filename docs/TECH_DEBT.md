@@ -12,6 +12,24 @@ Entry format:
 
 ## Open
 
+### No cap on utterance length: a stuck-open VAD feeds unbounded audio to Whisper
+- **Where:** `backend/audio/pipeline.py` (`_vad_loop` utterance assembly;
+  mirrored in `benchmarks/run_benchmark.py::run_single_recording`).
+- **Problem:** An utterance closes only after >50 consecutive silent 30ms
+  frames (~1.5s). If VAD never sees that much consecutive silence (steady
+  noise floor, music, reverberation), `speech_frames` grows without bound and
+  the whole accumulation goes to a single `transcribe_buffer` call.
+- **Impact:** Unbounded memory growth in the audio buffer during a live
+  service, one multi-minute STT call blocking the single transcription
+  thread (all other utterances queue behind it), and Whisper returning only
+  a fragment of a very long buffer — references in the dropped portion are
+  silently lost.
+- **Evidence:** Benchmark 2026-10-11 on a 50min live recording
+  (`results/07-05-lt-norm-offline-cuda-small-gpu.json`): after loudnorm the
+  VAD never closed, producing exactly 1 segment at t=3012.8s whose
+  transcript covers only the start of the file.
+- **Logged:** 2026-10-11
+
 ### The action row is back at the end of the list in the stacked layout
 - **Where:** `frontend/src/operator/operator.css` (`.operator-pending`,
   `.operator-main-column`) with the media queries at 1024px and 1280px.
