@@ -49,6 +49,10 @@ from audio import stt as stt_module  # noqa: E402  (prompt/hotwords fingerprint 
 from audio.capture import AudioCapture  # noqa: E402  (frame sizing reference)
 from audio.config import AudioPipelineConfig  # noqa: E402
 from audio.metrics import PipelineMetrics  # noqa: E402
+from audio.rolling import HOP_S as ROLL_HOP_S  # noqa: E402
+from audio.rolling import LOOKAHEAD_S as ROLL_LOOKAHEAD_S  # noqa: E402
+from audio.rolling import WINDOW_S as ROLL_WINDOW_S  # noqa: E402
+from audio.rolling import RollingWindow  # noqa: E402
 from audio.sender import ReferenceSender  # noqa: E402
 from audio.stt import SpeechToText  # noqa: E402
 from audio.vad import VoiceActivityDetector  # noqa: E402
@@ -974,6 +978,107 @@ def run_windowed_recording(
     )
 
 
+def run_rolling_recording(
+    rec: Recording,
+    audio_path: Path,
+    config: AudioPipelineConfig,
+    tmp_dir: Path,
+    window_s: float,
+    hop_s: float,
+    lookahead_s: float,
+    context_ttl_s: float | None = 60.0,
+    t_range: tuple[float, float] | None = None,
+) -> RunResult:
+    """Replay one recording through ``audio.rolling.RollingWindow`` (prototype).
+
+    The live alternative to VAD utterances: every ``hop_s`` the last
+    ``window_s`` is transcribed with word timestamps and the words starting in
+    the uncommitted stretch go to one StreamingParser. A detection's time is
+    when it would be *delivered* (the audio position of its hop, decode time
+    excluded), so it compares directly with offline mode's utterance-close
+    times; ``transcript_t_s`` keeps when it was spoken. No transcript cache.
+    """
+    parser = StreamingParser(ReferenceParser(language=rec.language), context_ttl_s=context_ttl_s)
+    detections: list[Detection] = []
+    transcripts: list[tuple[float, str]] = []
+
+    pcm_path = pcm_resample(audio_path, audio_path, tmp_dir)
+    pcm, full_duration = read_wav_16k_mono(pcm_path)
+    samples = np.frombuffer(pcm, dtype=np.int16).astype(np.float32) / 32768.0
+    lo_s, hi_s = t_range if t_range is not None else (0.0, full_duration)
+    hi_s = min(hi_s, full_duration)
+    samples = samples[int(lo_s * SAMPLE_RATE) : int(hi_s * SAMPLE_RATE)]
+
+    stt = SpeechToText(
+        model_size=config.whisper_model,
+        device=config.whisper_device,
+        language=rec.language,
+        compute_type=config.whisper_compute_type,
+    )
+    rolling = RollingWindow(window_s=window_s, hop_s=hop_s, lookahead_s=lookahead_s)
+    hop = int(hop_s * SAMPLE_RATE)
+    decode_times_s: list[float] = []
+
+    def process(final: bool) -> None:
+        audio, w_start = rolling.window()
+        d_t0 = time.time()
+        words = stt.transcribe_words(audio, rec.language)
+        decode_times_s.append(round(time.time() - d_t0, 3))
+        commit = rolling.commit(words, w_start, final=final)
+        if not commit.text:
+            return
+        text = stt._fix_common_transcription_errors(commit.text)
+        text, _loop = stt._collapse_repetition(text)
+        delivered_s = lo_s + rolling.now_s
+        transcripts.append((lo_s + commit.start_s, text))
+        for ref in parser.feed(text, delivered_s):
+            detections.append(
+                Detection(
+                    t_s=delivered_s,
+                    book=ref.book,
+                    chapter=ref.chapter,
+                    verse_start=ref.verse_start,
+                    verse_end=ref.verse_end,
+                    confidence="low" if commit.low_confidence_reason else ref.confidence,
+                    inferred=ref.inferred,
+                    utterance_text=text,
+                    transcript_t_s=lo_s + (commit.spoken_s or commit.start_s),
+                )
+            )
+
+    t0 = time.time()
+    for i in range(0, len(samples), hop):
+        rolling.push(samples[i : i + hop])
+        if rolling.due:
+            process(final=False)
+    process(final=True)
+    runtime_s = time.time() - t0
+
+    return RunResult(
+        record_id=rec.id,
+        mode="rolling",
+        detections=detections,
+        transcripts=transcripts,
+        vad_events=[],
+        runtime_s=runtime_s,
+        audio_duration_s=len(samples) / SAMPLE_RATE,
+        queue_dropped=0,
+        config_snapshot={
+            "whisper_model": config.whisper_model,
+            "whisper_device": config.whisper_device,
+            "whisper_compute_type": config.whisper_compute_type,
+            "mode": "rolling",
+            "window_s": window_s,
+            "hop_s": hop_s,
+            "lookahead_s": lookahead_s,
+            "timestamp_rule": "delivery: audio position of the hop that committed it",
+            "context_ttl_s": context_ttl_s,
+            "decode_times_s": decode_times_s,
+            "t_range": list(t_range) if t_range else None,
+        },
+    )
+
+
 # ---------------------------------------------------------------------------
 # Scoring
 # ---------------------------------------------------------------------------
@@ -1069,7 +1174,19 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--manifest", required=True)
     ap.add_argument("--audio-dir", default=None, help="directory containing audio (or env var)")
-    ap.add_argument("--mode", choices=["rt", "offline", "windowed"], default="rt")
+    ap.add_argument("--mode", choices=["rt", "offline", "windowed", "rolling"], default="rt")
+    ap.add_argument(
+        "--roll-window-s", type=float, default=ROLL_WINDOW_S, help="rolling mode: window length"
+    )
+    ap.add_argument(
+        "--roll-hop-s", type=float, default=ROLL_HOP_S, help="rolling mode: decode every N s"
+    )
+    ap.add_argument(
+        "--roll-lookahead-s",
+        type=float,
+        default=ROLL_LOOKAHEAD_S,
+        help="rolling mode: newest audio held back until the next hop",
+    )
     ap.add_argument(
         "--window-s",
         type=float,
@@ -1176,7 +1293,19 @@ def main() -> int:
         print(f"[run ] {rec.id} ({rec.duration_s or '?'}s, gold={len(gold)}) ...")
         context_ttl = args.context_ttl_s if args.context_ttl_s > 0 else None
         use_cache = not args.no_cache
-        if args.mode == "windowed":
+        if args.mode == "rolling":
+            run = run_rolling_recording(
+                rec,
+                audio_path,
+                config,
+                tmp_dir,
+                args.roll_window_s,
+                args.roll_hop_s,
+                args.roll_lookahead_s,
+                context_ttl,
+                t_range,
+            )
+        elif args.mode == "windowed":
             run = run_windowed_recording(
                 rec,
                 audio_path,
@@ -1222,6 +1351,10 @@ def main() -> int:
         "aggregate": aggregate(results),
         "recordings": results,
     }
+    if args.mode == "rolling":
+        out["roll_window_s"] = args.roll_window_s
+        out["roll_hop_s"] = args.roll_hop_s
+        out["roll_lookahead_s"] = args.roll_lookahead_s
     if args.mode == "windowed":
         out["window_s"] = args.window_s
         out["hop_s"] = args.hop_s

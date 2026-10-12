@@ -8,6 +8,7 @@ import sys
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
+from typing import Any
 
 
 def _register_nvidia_dll_dirs() -> None:
@@ -224,6 +225,42 @@ def segment_low_confidence_reason(
     return None
 
 
+def _decode_options(state: _LanguageState) -> dict[str, Any]:
+    """Whisper decoding kwargs shared by every transcription path."""
+    return {
+        "language": state.language,
+        "initial_prompt": state.initial_prompt,
+        # Only sent when set: older faster-whisper releases (the pin allows
+        # >=0.9.0) reject the argument, and the broad except in the callers
+        # would then turn every utterance into "no transcript".
+        **({"hotwords": state.hotwords} if state.hotwords else {}),
+        "beam_size": 5,
+        "best_of": 5,
+        "temperature": 0.0,
+        "compression_ratio_threshold": COMPRESSION_RATIO_THRESHOLD,
+        "log_prob_threshold": LOG_PROB_THRESHOLD,
+        "no_speech_threshold": NO_SPEECH_THRESHOLD,
+        "condition_on_previous_text": False,
+        # Decoder-side loop guards (post-processing in _collapse_repetition is
+        # the backstop if these are ever hit).
+        "repetition_penalty": 1.05,
+        "no_repeat_ngram_size": 6,
+    }
+
+
+@dataclass(frozen=True)
+class TimedWord:
+    """One Whisper word with its time in the decoded audio (seconds).
+
+    ``low_confidence_reason`` is the verdict on the segment the word came from.
+    """
+
+    start: float
+    end: float
+    text: str
+    low_confidence_reason: str | None = None
+
+
 @dataclass(frozen=True)
 class Transcription:
     """One utterance's transcript and whether it can be trusted.
@@ -366,26 +403,7 @@ class SpeechToText:
 
         try:
             # Transcribe with Whisper
-            segments, info = self.model.transcribe(
-                audio_np,
-                language=state.language,
-                initial_prompt=state.initial_prompt,
-                # Only sent when set: older faster-whisper releases (the pin
-                # allows >=0.9.0) reject the argument, and the broad except
-                # below would then turn every utterance into "no transcript".
-                **({"hotwords": state.hotwords} if state.hotwords else {}),
-                beam_size=5,
-                best_of=5,
-                temperature=0.0,
-                compression_ratio_threshold=COMPRESSION_RATIO_THRESHOLD,
-                log_prob_threshold=LOG_PROB_THRESHOLD,
-                no_speech_threshold=NO_SPEECH_THRESHOLD,
-                condition_on_previous_text=False,
-                # Decoder-side loop guards (post-processing in
-                # _collapse_repetition is the backstop if these are ever hit).
-                repetition_penalty=1.05,
-                no_repeat_ngram_size=6,
-            )
+            segments, info = self.model.transcribe(audio_np, **_decode_options(state))
 
             # Combine all segments, keeping the first quality problem seen
             texts: list[str] = []
@@ -426,6 +444,34 @@ class SpeechToText:
             duration_ms = (time.time() - start_time) * 1000
             logger.error(f"Unexpected transcription error: {e}", exc_info=True)
             return Transcription(None, duration_ms)
+
+    def transcribe_words(
+        self, audio_np: np.ndarray, language: str | None = None
+    ) -> list[TimedWord]:
+        """Transcribe ``audio_np`` (float32, 16 kHz) into timed words.
+
+        For the rolling-window mode, which commits each stretch of audio once by
+        word time. Raw Whisper words: the caller post-processes the text it
+        commits. Errors are logged and yield no words.
+        """
+        if len(audio_np) < self.sample_rate * 0.5:
+            return []
+        state = self._state if language is None else _language_state(language)
+        try:
+            segments, _info = self.model.transcribe(
+                audio_np, word_timestamps=True, **_decode_options(state)
+            )
+            words: list[TimedWord] = []
+            for segment in segments:
+                reason = segment_low_confidence_reason(
+                    segment.avg_logprob, segment.no_speech_prob, segment.compression_ratio
+                )
+                for w in segment.words or []:
+                    words.append(TimedWord(float(w.start), float(w.end), w.word, reason))
+            return words
+        except Exception as e:
+            logger.error(f"Word-timestamp transcription failed: {e}", exc_info=True)
+            return []
 
     def _collapse_repetition(self, text: str) -> tuple[str, str | None]:
         """Collapse a degenerate Whisper repetition loop.
