@@ -323,7 +323,10 @@ class BibleLiveAudioProcessor:
         for language in SUPPORTED_LANGUAGES:
             try:
                 parser = ReferenceParser(validator=validator, language=language)
-                parsers[language] = StreamingParser(parser, language=language)
+                # Hold a chapter-only ref one utterance in case the verse follows.
+                parsers[language] = StreamingParser(
+                    parser, language=language, hold_chapter_only=True
+                )
             except Exception as e:
                 logger.error(f"Failed to initialize '{language}' parser: {e}")
 

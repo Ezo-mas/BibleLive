@@ -498,6 +498,21 @@ def register_feeds(
                 sender.send(ref)
 
 
+def release_held(
+    parser: StreamingParser,
+    sender: BenchmarkingSender | None,
+    units: list[Any],
+    detections: list[Detection],
+) -> None:
+    """End of recording: report a chapter-only ref the parser is still holding.
+
+    An empty feed releases it (nothing in it can name the verse), timed at the
+    last feed. Live and cache-replay paths both call this, so they stay equal.
+    """
+    last_t = float(units[-1][-1][0]) if units and units[-1] else 0.0
+    register_feeds(parser, sender, [(last_t, "")], detections)
+
+
 def run_single_recording(
     rec: Recording,
     audio_path: Path,
@@ -547,7 +562,9 @@ def run_single_recording(
     cpath = feed_cache_path(cache_dir, key) if cache_dir is not None and use_cache else None
 
     parser = StreamingParser(
-        ReferenceParser(language=rec.language, validator=_VALIDATOR), context_ttl_s=context_ttl_s
+        ReferenceParser(language=rec.language, validator=_VALIDATOR),
+        context_ttl_s=context_ttl_s,
+        hold_chapter_only=True,  # as live
     )
     metrics = PipelineMetrics()
     stub = StubReceiver(t0=time.time())
@@ -575,6 +592,7 @@ def run_single_recording(
             t0 = time.time()
             for unit in cached["units"]:
                 register_feeds(parser, sender, [(float(t), txt) for t, txt in unit], detections)
+            release_held(parser, sender, cached["units"], detections)
             transcripts.extend((float(t), txt) for t, txt in cached["transcripts"])
             runtime_s = time.time() - t0
             config_snapshot["transcripts_cached"] = True
@@ -661,6 +679,7 @@ def run_single_recording(
     final = segmenter.flush()
     if final is not None:
         utterance_end(last_frame * frame_s, final)
+    release_held(parser, sender, units, detections)
 
     runtime_s = time.time() - t0
     if cache_dir is not None:
@@ -850,7 +869,9 @@ def run_windowed_recording(
     cpath = feed_cache_path(cache_dir, key) if cache_dir is not None and use_cache else None
 
     parser = StreamingParser(
-        ReferenceParser(language=rec.language, validator=_VALIDATOR), context_ttl_s=context_ttl_s
+        ReferenceParser(language=rec.language, validator=_VALIDATOR),
+        context_ttl_s=context_ttl_s,
+        hold_chapter_only=True,  # as live
     )
     raw: list[Detection] = []
     transcripts: list[tuple[float, str]] = []
@@ -876,6 +897,7 @@ def run_windowed_recording(
             t0 = time.time()
             for unit in cached["units"]:
                 register_feeds(parser, None, [(float(t), txt) for t, txt in unit], raw)
+            release_held(parser, None, cached["units"], raw)
             transcripts.extend((float(t), txt) for t, txt in cached["transcripts"])
             cached_stats = cached.get("stats", {})
             stats = WindowStats(
@@ -960,6 +982,7 @@ def run_windowed_recording(
         ]
         units.append(feeds)
         register_feeds(parser, None, feeds, raw)
+    release_held(parser, None, units, raw)
     runtime_s = time.time() - t0
 
     detections = dedupe_detections(raw, window_s)
