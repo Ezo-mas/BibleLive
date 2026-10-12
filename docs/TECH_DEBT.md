@@ -89,17 +89,20 @@ below the fold.
   these two files; no manifest, script, or code refers to them.
 - **Logged:** 2026-10-11
 
-### Lithuanian 1 and 2 Timothy are never detected
+### Lithuanian 1 and 2 Timothy are missed when spelled "Timotiej-"
 - **Where:** `backend/core/verse_parser_lt.py` (`BOOK_STEMS`, `BOOKS` entries for
   `1 Timothy` / `2 Timothy`).
-- **Problem:** The stem table and book variants use `timotej`, but the
-  Lithuanian name is "Timotiejus" (dative "Timotiejui"), so the tokenized word
-  `timotiejui` never starts with the stem and the book name never matches.
-  Titus ("Titui") and Philemon ("Filemonui") are unaffected.
-- **Impact:** Every spoken citation of 1 or 2 Timothy in Lithuanian is silently
-  missed: no reference reaches the operator panel. Present on `main` too.
+- **Problem:** The stem table and book variants use `timotej`. The spelling
+  "Timotėjui" folds to that stem and parses, but the spelling "Timotiejui"
+  (also "Timotiejaus", "Timotiejų") does not start with it, so the book name
+  never matches. Titus ("Titui") and Philemon ("Filemonui") are unaffected.
+- **Impact:** A transcript that spells the name "Timotiej-" silently loses
+  every 1 or 2 Timothy citation: no reference reaches the operator panel.
+  Present on `main` too. Which spelling Whisper emits for a given speaker is
+  not established.
 - **Evidence:** `ReferenceParser(language="lt").parse(...)` returns `[]` for
-  "1 Timotiejui 3 16", "pirmas laiškas Timotiejui 3 skyrius 16 eilutė" and
-  "Timotiejui 3 skyrius 16 eilutė", while "Titui 2 skyrius 11 eilutė" parses.
-  Found by an independent review of PR #7, reproduced 2026-10-12.
+  "1 Timotiejui 3 16", "2 Timotiejaus 4 skyrius 2 eilutė" and
+  "Timotiejui 3 skyrius 16 eilutė", but parses "1 Timotėjui 3 16" (1 Timothy
+  3:16) and "2 Timotėjaus 4 skyrius 2 eilutė" (2 Timothy 4:2). Found by an
+  independent review of PR #7, reproduced 2026-10-12.
 - **Logged:** 2026-10-12
