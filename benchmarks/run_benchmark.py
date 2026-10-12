@@ -385,8 +385,9 @@ def feed_cache_key(
     silence_rms: float | None = None,
     context_ttl_s: float | None = 60.0,
     t_range: tuple[float, float] | None = None,
+    segmentation: dict[str, int] | None = None,
 ) -> dict[str, Any]:
-    return {
+    key = {
         "cache_version": CACHE_VERSION,
         "record_id": record_id,
         "audio_sha256": audio_sha256,
@@ -403,6 +404,10 @@ def feed_cache_key(
         "context_ttl_s": context_ttl_s,
         "t_range": list(t_range) if t_range else None,
     }
+    # VAD modes only; omitted for windowed so its existing cache entries stay valid.
+    if segmentation is not None:
+        key["segmentation"] = segmentation
+    return key
 
 
 def feed_cache_path(cache_dir: Path, key: dict[str, Any]) -> Path:
@@ -506,6 +511,16 @@ def run_single_recording(
     coordinates; iteration-only, gold outside the span simply misses.
     """
     audio_sha = verified_audio_sha(rec, audio_path)
+    # The live segmenter's settings; part of the cache key, since changing any
+    # of them changes which audio Whisper sees.
+    segmentation = {
+        "vad_aggressiveness": config.vad_aggressiveness,
+        "frame_duration_ms": FRAME_DURATION_MS,
+        "end_of_speech_s": 1.5,
+        "min_speech_s": 0.3,
+        "soft_utterance_s": 8.0,
+        "max_utterance_s": 12.0,
+    }
     key = feed_cache_key(
         record_id=rec.id,
         audio_sha256=audio_sha,
@@ -516,6 +531,7 @@ def run_single_recording(
         mode=mode,
         context_ttl_s=context_ttl_s,
         t_range=t_range,
+        segmentation=segmentation,
     )
     cpath = feed_cache_path(cache_dir, key) if cache_dir is not None and use_cache else None
 
@@ -527,17 +543,12 @@ def run_single_recording(
     transcripts: list[tuple[float, str]] = []
     vad_events: list[tuple[float, str]] = []
     frame_duration_ms = FRAME_DURATION_MS
-    min_speech_frames = 10
-    max_silent_frames = 50
     frame_bytes = AudioCapture().sample_rate * 2 * frame_duration_ms // 1000  # 960 bytes
     config_snapshot = {
         "whisper_model": config.whisper_model,
         "whisper_device": config.whisper_device,
         "whisper_compute_type": config.whisper_compute_type,
-        "vad_aggressiveness": config.vad_aggressiveness,
-        "frame_duration_ms": frame_duration_ms,
-        "min_speech_frames": min_speech_frames,
-        "max_silent_frames": max_silent_frames,
+        **segmentation,
         "dedup_window_seconds": config.dedup_window_seconds,
         "mode": mode,
         "context_ttl_s": context_ttl_s,

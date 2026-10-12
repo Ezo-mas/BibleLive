@@ -268,7 +268,7 @@ class BibleLiveAudioProcessor:
                 self.vad_queue.put((self._capture_language, frames), timeout=0.1)
                 self.metrics.vad_segments_detected += 1
                 logger.info(
-                    f"Utterance ended: {utterance_seconds:.2f}s of speech "
+                    f"Utterance ended ({event.reason}): {utterance_seconds:.2f}s of speech "
                     f"({len(frames)} frames, {self._capture_language}) "
                     f"queued for transcription"
                 )
