@@ -52,8 +52,21 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--model",
         default="small",
-        choices=["tiny", "base", "small", "medium", "large-v2", "large-v3", "distil-large-v3"],
-        help="Whisper model size (default: small)",
+        choices=[
+            "tiny",
+            "base",
+            "small",
+            "medium",
+            "large-v2",
+            "large-v3",
+            "large-v3-turbo",
+            "distil-large-v3",
+        ],
+        help=(
+            "Whisper model size (default: small). On a GPU, large-v3-turbo with "
+            "--compute-type float16 is far more accurate for Lithuanian at similar speed; "
+            "distil-* models are English-only"
+        ),
     )
     parser.add_argument(
         "--device", default="cuda", choices=["cpu", "cuda"], help="Device for Whisper model"
