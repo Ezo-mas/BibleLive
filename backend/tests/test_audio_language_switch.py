@@ -21,7 +21,7 @@ from audio.config import AudioPipelineConfig
 from audio.control import LanguageControlServer
 from audio.metrics import PipelineMetrics
 from audio.pipeline import BibleLiveAudioProcessor
-from audio.stt import SUPPORTED_LANGUAGES, WHISPER_INITIAL_PROMPTS, SpeechToText
+from audio.stt import SUPPORTED_LANGUAGES, WHISPER_INITIAL_PROMPTS, SpeechToText, Transcription
 from core.verse_parser import ReferenceParser, StreamingParser
 
 # Requires the optional audio extras (faster-whisper, webrtcvad, numpy).
@@ -53,18 +53,29 @@ class _FakeSTT:
     def transcribe_buffer(self, language=None):  # noqa: ARG002 - signature parity
         return None, 0.0
 
+    def transcribe_utterance(self, language=None):
+        text, duration_ms = self.transcribe_buffer(language)
+        return Transcription(text, duration_ms)
+
 
 class _StaticSTT(_FakeSTT):
     """Returns a fixed transcript and records the language it was called with."""
 
-    def __init__(self, transcript: str, language: str = "en"):
+    def __init__(
+        self, transcript: str, language: str = "en", low_confidence_reason: str | None = None
+    ):
         super().__init__(language)
         self._transcript = transcript
+        self._low_confidence_reason = low_confidence_reason
         self.transcribe_languages = []
 
     def transcribe_buffer(self, language=None):
         self.transcribe_languages.append(language)
         return self._transcript, 1.0
+
+    def transcribe_utterance(self, language=None):
+        text, duration_ms = self.transcribe_buffer(language)
+        return Transcription(text, duration_ms, self._low_confidence_reason)
 
 
 class _RecordingSender:
@@ -414,6 +425,31 @@ def test_process_utterance_uses_the_speaking_languages_parser():
     # The Lithuanian parser does not recognise the English book name.
     proc._process_utterance("lt", [b""])
     assert len(proc.sender.sent) == 1
+
+
+def test_low_confidence_transcription_marks_references_low():
+    """A shaky decode must not send a reference that auto-approve would show."""
+    proc = _processor()
+    _install_parsers(proc)
+    proc.stt = _StaticSTT("Romans 8:28", low_confidence_reason="no_speech_prob 0.91 > 0.6")
+    proc.sender = _RecordingSender()
+
+    proc._process_utterance("en", [b""])
+
+    assert [(str(ref), ref.confidence) for ref in proc.sender.sent] == [("Romans 8:28", "low")]
+    assert proc.metrics.references_low_confidence == 1
+
+
+def test_sound_transcription_keeps_parser_confidence():
+    proc = _processor()
+    _install_parsers(proc)
+    proc.stt = _StaticSTT("Romans chapter 8 verse 28")
+    proc.sender = _RecordingSender()
+
+    proc._process_utterance("en", [b""])
+
+    assert [ref.confidence for ref in proc.sender.sent] == ["high"]
+    assert proc.metrics.references_low_confidence == 0
 
 
 # ---------------------------------------------------------------------------

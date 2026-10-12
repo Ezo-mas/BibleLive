@@ -382,7 +382,8 @@ class BibleLiveAudioProcessor:
         # Transcribe with the language this utterance was captured in, so a
         # runtime switch cannot re-language a segment that was already queued.
         self.metrics.transcription_attempts += 1
-        transcript, duration_ms = self.stt.transcribe_buffer(language)
+        result = self.stt.transcribe_utterance(language)
+        transcript, duration_ms = result.text, result.duration_ms
 
         if transcript is None:
             self.metrics.transcription_failures += 1
@@ -430,6 +431,18 @@ class BibleLiveAudioProcessor:
                 f"Collapsed {len(references) - len(unique)} duplicate reference(s) "
                 f"within this utterance"
             )
+
+        # A shaky decode (probably silence, unsure tokens, or a trimmed loop)
+        # is exactly where prompt-echo hallucinations come from. Its references
+        # still reach the operator, but as "low" so auto-approve won't show them.
+        if result.low_confidence_reason is not None:
+            self.metrics.references_low_confidence += len(unique)
+            logger.warning(
+                f"Low-confidence transcription ({result.low_confidence_reason}): "
+                f"marking {len(unique)} reference(s) as low confidence"
+            )
+            for ref in unique:
+                ref.confidence = "low"
 
         self.metrics.references_detected += len(unique)
         logger.info(f"Found {len(unique)} Bible reference(s):")

@@ -1,12 +1,13 @@
 """Tests for audio pipeline logging configuration and audio-input accounting."""
 
 import logging
+from types import SimpleNamespace
 
 import pytest
 
 from audio.capture import AudioCapture
 from audio.logging_config import configure_logging, resolve_log_level
-from audio.stt import _REFERENCE_CORRECTIONS, SpeechToText
+from audio.stt import _REFERENCE_CORRECTIONS, SpeechToText, segment_low_confidence_reason
 from core.books import CANONICAL_BOOKS
 
 # Requires the optional audio extras (faster-whisper, webrtcvad, numpy).
@@ -120,3 +121,66 @@ def test_reference_corrections_cover_every_canonical_book():
         for book in CANONICAL_BOOKS:
             name_pattern = r"\s?".join(book.name.lower().split())
             assert name_pattern in pattern, f"{book.name!r} missing from a correction pattern"
+
+
+def test_segment_low_confidence_reason_uses_whisper_thresholds():
+    assert segment_low_confidence_reason(-0.3, 0.1, 1.5) is None
+    assert "no_speech_prob" in segment_low_confidence_reason(-0.3, 0.9, 1.5)
+    assert "avg_logprob" in segment_low_confidence_reason(-1.4, 0.1, 1.5)
+    assert "compression_ratio" in segment_low_confidence_reason(-0.3, 0.1, 3.1)
+
+
+def _segment(text, avg_logprob=-0.3, no_speech_prob=0.1, compression_ratio=1.5):
+    return SimpleNamespace(
+        text=text,
+        avg_logprob=avg_logprob,
+        no_speech_prob=no_speech_prob,
+        compression_ratio=compression_ratio,
+    )
+
+
+def _stt_returning(*segments):
+    """A model-free SpeechToText whose Whisper call yields ``segments``."""
+    stt = _stt()
+    stt.set_language("en")
+    stt.sample_rate = 16000
+    stt.audio_buffer = [0.0] * 16000
+
+    class _Model:
+        def transcribe(self, audio, **kwargs):
+            return iter(segments), None
+
+    stt.model = _Model()
+    return stt
+
+
+def test_transcribe_utterance_flags_a_shaky_segment():
+    """One probably-silent segment makes the whole utterance low-confidence."""
+    stt = _stt_returning(
+        _segment(" Turn with me."), _segment(" Romans chapter 8 verse 28.", no_speech_prob=0.9)
+    )
+
+    result = stt.transcribe_utterance()
+
+    assert result.text == "Turn with me. Romans chapter 8 verse 28."
+    assert result.low_confidence_reason is not None
+    assert "no_speech_prob" in result.low_confidence_reason
+
+
+def test_transcribe_utterance_trusts_sound_segments():
+    stt = _stt_returning(_segment(" Turn with me to Romans chapter 8 verse 28."))
+
+    result = stt.transcribe_utterance()
+
+    assert result.text == "Turn with me to Romans chapter 8 verse 28."
+    assert result.low_confidence_reason is None
+
+
+def test_transcribe_utterance_flags_a_trimmed_repetition_loop():
+    stt = _stt_returning(_segment(" " + "Romans 8, or " * 10))
+
+    result = stt.transcribe_utterance()
+
+    assert result.text == "Romans 8, or"
+    assert result.low_confidence_reason is not None
+    assert "repetition loop" in result.low_confidence_reason
