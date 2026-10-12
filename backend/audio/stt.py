@@ -60,28 +60,36 @@ from core.books import CANONICAL_BOOKS  # noqa: E402 (deferred: see above)
 
 logger = logging.getLogger(__name__)
 
-# Per-language Whisper initial prompts: bias the decoder toward Bible
-# vocabulary and "chapter/verse" number patterns for each supported language.
+# Per-language Whisper initial prompts: bias the decoder toward Bible book
+# spellings for each supported language.
+#
+# Book names only — never a citation or a number. Whisper reuses the prompt on
+# every window and, over silence or music, can emit it as the transcript; an
+# example like "Romans 8:28" then reaches the operator as a detected reference
+# (the loop guard below exists because of "Romans 8, or Romans 8, ..."). The
+# parsers read spelled-out numbers, so no digit-format example is needed.
+#
+# Keep each prompt under 223 tokens: faster-whisper keeps only the last 223
+# prompt tokens, so a longer prompt silently loses its start (the previous
+# 261-token Lithuanian prompt dropped the first books of the list).
 WHISPER_INITIAL_PROMPTS: dict[str, str] = {
     "en": (
-        "The sermon references Bible books such as Genesis, Exodus, Leviticus, "
-        "Numbers, Deuteronomy, Joshua, Judges, Ruth, Samuel, Kings, Chronicles, "
-        "Ezra, Nehemiah, Esther, Job, Psalms, Proverbs, Ecclesiastes, Isaiah, "
-        "Jeremiah, Ezekiel, Daniel, Matthew, Mark, Luke, John, Acts, Romans, "
-        "Corinthians, Galatians, Ephesians, Philippians, Colossians, Thessalonians, "
-        "Timothy, Titus, Philemon, Hebrews, James, Peter, Jude, and Revelation. "
-        "For example: turn to John chapter three verse sixteen, or Romans 8:28."
+        "Genesis, Exodus, Leviticus, Numbers, Deuteronomy, Joshua, Judges, Ruth, "
+        "Samuel, Kings, Chronicles, Ezra, Nehemiah, Esther, Job, Psalms, Proverbs, "
+        "Ecclesiastes, Isaiah, Jeremiah, Ezekiel, Daniel, Matthew, Mark, Luke, "
+        "John, Acts, Romans, Corinthians, Galatians, Ephesians, Philippians, "
+        "Colossians, Thessalonians, Timothy, Titus, Philemon, Hebrews, James, "
+        "Peter, Jude, Revelation."
     ),
     "lt": (
-        "Pamokslas mini Rašto knygas: Pradžios, Išėjimo, Kunigų, Skaičių, "
-        "Pakartoto Įstatymo, Jozuės, Teisėjų, Rūtos, Samuelio, Karalių, "
-        "Metraščių, Ezros, Nehemijo, Esteros, Jobo, Psalmynas, Psalmės, "
-        "Patarlių, Mokytojo, Izaijo, Jeremijo, Ezechielio, Danielės, Mato, "
-        "Morkaus, Luko, Jono evangelija, Apaštalų darbai, Romiečiams, "
-        "Korintiečiams, Galatams, Efeziečiams, Filipiečiams, Kolosiečiams, "
-        "Tesalonikiečiams, Timotėjui, Titui, Filemonui, Hebrėjams, Jokūbo, "
-        "Petro, Judo, Apreiškimas Jonui. Pavyzdžiui: Jono evangelija "
-        "trečias skyrius, šešiolikta eilutė."
+        "Pradžios, Išėjimo, Kunigų, Skaičių, Pakartoto Įstatymo, Jozuės, "
+        "Teisėjų, Rūtos, Samuelio, Karalių, Metraščių, Ezros, Nehemijo, "
+        "Esteros, Jobo, Psalmės, Patarlių, Mokytojo, Izaijo, "
+        "Jeremijo, Ezechielio, Danielės, Mato, Morkaus, Luko, Jono evangelija, "
+        "Apaštalų darbai, Romiečiams, Korintiečiams, Galatams, Efeziečiams, "
+        "Filipiečiams, Kolosiečiams, Tesalonikiečiams, Timotėjui, Titui, "
+        "Filemonui, Hebrėjams, Jokūbo, Petro, Judo, Apreiškimas Jonui. "
+        "Skyrius, eilutė."
     ),
 }
 
