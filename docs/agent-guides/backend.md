@@ -22,6 +22,7 @@ backend/
     biblelive_server.py  Thin back-compat shim — do NOT edit; real code is in server/
   audio/           Capture/VAD/STT/sender pipeline (imported as audio.*)
     biblelive_audio_pipeline.py  Thin back-compat shim — same rule
+    segmenter.py   VAD frames → utterances; shared by pipeline.py and the benchmark
   scripts/         DB import / maintenance scripts
   tests/           pytest suite
 data/              Source JSON files for Bible imports (kjv2.json, ltkb.json)

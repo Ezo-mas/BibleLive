@@ -21,6 +21,7 @@ from audio.config import AudioPipelineConfig
 from audio.control import LanguageControlServer
 from audio.metrics import PipelineMetrics
 from audio.pipeline import BibleLiveAudioProcessor
+from audio.segmenter import Segmenter, SegmentEvent
 from audio.stt import SUPPORTED_LANGUAGES, WHISPER_INITIAL_PROMPTS, SpeechToText, Transcription
 from core.verse_parser import ReferenceParser, StreamingParser
 
@@ -111,14 +112,11 @@ def _processor(language: str = "en") -> BibleLiveAudioProcessor:
     proc.control_server = None
     proc.vad_thread = None
     proc.transcription_thread = None
-    proc.speech_frames = []
-    proc.silent_frames = 0
+    proc.segmenter = Segmenter(lambda frame: True)
     proc.vad_queue = Queue(maxsize=10)
     proc.metrics = PipelineMetrics()
     proc.frame_duration_ms = 30
     proc._frame_duration_s = 0.03
-    proc.max_silent_frames = 50
-    proc.min_speech_frames = 10
     proc._capture_language = language
     proc._pending_language = None
     proc._pending_language_lock = threading.Lock()
@@ -315,37 +313,35 @@ def test_consume_pending_switch_updates_capture_language():
 
 def test_consume_pending_switch_discards_partial_speech():
     proc = _processor()
-    proc.speech_frames = [b"frame"] * 5
-    proc.silent_frames = 12
+    proc.segmenter.speech_frames = [b"frame"] * 5
+    proc.segmenter.silent_frames = 12
     proc.set_language("lt")
 
     proc._consume_pending_language_switch()
 
-    assert proc.speech_frames == []
-    assert proc.silent_frames == 0
+    assert proc.segmenter.speech_frames == []
+    assert proc.segmenter.silent_frames == 0
     assert proc._capture_language == "lt"
 
 
 def test_consume_switch_is_noop_without_a_request():
     proc = _processor()
-    proc.speech_frames = [b"frame"]
-    proc.silent_frames = 3
+    proc.segmenter.speech_frames = [b"frame"]
+    proc.segmenter.silent_frames = 3
 
     proc._consume_pending_language_switch()
 
-    assert proc.speech_frames == [b"frame"]
-    assert proc.silent_frames == 3
+    assert proc.segmenter.speech_frames == [b"frame"]
+    assert proc.segmenter.silent_frames == 3
     assert proc._capture_language == "en"
 
 
 def test_new_utterances_receive_the_new_language_tag():
     proc = _processor()
-    proc.min_speech_frames = 1
     proc.set_language("lt")
     proc._consume_pending_language_switch()
 
-    proc.speech_frames = [b"a", b"b", b"c"]
-    proc._queue_speech_segment()
+    proc._queue_speech_segment(SegmentEvent("end", [b"a", b"b", b"c"]))
 
     language, frames = proc.vad_queue.get_nowait()
     assert language == "lt"

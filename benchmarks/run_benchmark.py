@@ -49,6 +49,7 @@ from audio import stt as stt_module  # noqa: E402  (prompt/hotwords fingerprint 
 from audio.capture import AudioCapture  # noqa: E402  (frame sizing reference)
 from audio.config import AudioPipelineConfig  # noqa: E402
 from audio.metrics import PipelineMetrics  # noqa: E402
+from audio.segmenter import FRAME_DURATION_MS, Segmenter, SegmentEvent  # noqa: E402
 from audio.sender import ReferenceSender  # noqa: E402
 from audio.stt import SpeechToText  # noqa: E402
 from audio.vad import VoiceActivityDetector  # noqa: E402
@@ -525,7 +526,7 @@ def run_single_recording(
     detections: list[Detection] = []
     transcripts: list[tuple[float, str]] = []
     vad_events: list[tuple[float, str]] = []
-    frame_duration_ms = 30  # matches pipeline.py
+    frame_duration_ms = FRAME_DURATION_MS
     min_speech_frames = 10
     max_silent_frames = 50
     frame_bytes = AudioCapture().sample_rate * 2 * frame_duration_ms // 1000  # 960 bytes
@@ -578,19 +579,16 @@ def run_single_recording(
         compute_type=config.whisper_compute_type,
     )
 
-    # Iterate frames from the PCM buffer, replicating _vad_loop's utterance
-    # assembly logic (speech_frames / silent_frames bookkeeping).
-    speech_frames: list[bytes] = []
-    silent_frames = 0
+    # The live pipeline's segmenter, so benchmark and live segmentation cannot drift.
+    segmenter = Segmenter(vad.is_speech)
     units: list[list[tuple[float, str]]] = []
 
-    def utterance_end(t_start: float, frames: list[bytes]) -> None:
+    def utterance_end(t_start: float, event: SegmentEvent) -> None:
         # Mirrors pipeline._queue_speech_segment + _process_utterance.
-        if len(frames) < min_speech_frames:
-            vad_events.append((t_start, "blip"))
+        vad_events.append((t_start, event.kind))
+        if event.kind == "blip":
             return
-        vad_events.append((t_start, "end"))
-        for f in frames:
+        for f in event.frames:
             stt.add_audio_frame(f)
         text, _ms = stt.transcribe_buffer(rec.language)
         if text is None:
@@ -626,21 +624,17 @@ def run_single_recording(
         # when slicing (iteration-only) so gold still matches.
         t_s = audio_t if (mode != "rt" or t_range is not None) else time.time() - t0
 
-        if vad.is_speech(frame):
-            if not speech_frames:
-                vad_events.append((t_s, "start"))
-            silent_frames = 0
-            speech_frames.append(frame)
+        event = segmenter.push(frame)
+        if event is None:
+            continue
+        if event.kind == "start":
+            vad_events.append((t_s, "start"))
         else:
-            if speech_frames:
-                silent_frames += 1
-                if silent_frames > max_silent_frames:
-                    utterance_end(t_s - silent_frames * frame_duration_ms / 1000.0, speech_frames)
-                    speech_frames = []
-                    silent_frames = 0
+            utterance_end(t_s - event.trailing_silent_frames * frame_duration_ms / 1000.0, event)
 
-    if speech_frames:
-        utterance_end(last_frame * frame_s, speech_frames)
+    final = segmenter.flush()
+    if final is not None:
+        utterance_end(last_frame * frame_s, final)
 
     runtime_s = time.time() - t0
     if cache_dir is not None:

@@ -47,6 +47,10 @@ python benchmarks/run_benchmark.py \
 - The canonical corpus is two Lithuanian services, 25 gold references.
   There is no English gold corpus yet: say so when an English-only change
   is unmeasured instead of implying it was.
+- `--mode windowed` cuts fixed 30 s windows and never runs the VAD or the
+  segmenter. VAD or segmentation changes need `--mode offline`, which
+  replays frames through `audio/segmenter.py` exactly as the live pipeline
+  does.
 - Report `total_tp` / `total_fp` / `total_fn` and runtime (`rtf`) for both
   runs. Fewer false positives matters as much as more true positives — every
   FP is a wrong verse offered to the operator.
