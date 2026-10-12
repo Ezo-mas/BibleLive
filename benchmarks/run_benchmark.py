@@ -909,6 +909,7 @@ def run_windowed_recording(
     units: list[list[tuple[float, str]]] = []
 
     t0 = time.time()
+    window_times_s: list[float] = []  # wall time per transcribed window (throttling check)
     for start, end in bounds:
         w_start_s = start / SAMPLE_RATE
         chunk = samples[start:end]
@@ -917,7 +918,9 @@ def run_windowed_recording(
             transcripts.append((w_start_s, "<silent>"))
             continue
         try:
+            w_t0 = time.time()
             pieces = _transcribe_window_segments(stt, chunk, rec.language)
+            window_times_s.append(round(time.time() - w_t0, 3))
         except Exception as e:  # keep the run going; the failure is counted and printed
             stats.windows_failed += 1
             print(f"       [window {w_start_s:.1f}s] transcription failed: {e}", file=sys.stderr)
@@ -942,6 +945,7 @@ def run_windowed_recording(
             "windows_skipped_silent": stats.windows_skipped_silent,
             "windows_failed": stats.windows_failed,
             "raw_detections_before_dedup": stats.raw_detections,
+            "window_times_s": window_times_s,
         }
     )
     if cache_dir is not None:
