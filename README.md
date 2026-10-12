@@ -137,11 +137,14 @@ Options:
 ```
 
 **Choosing a model.** On an NVIDIA GPU, use
-`--model large-v3-turbo --compute-type float16`, especially for Lithuanian:
-on the benchmark corpus it found 20 of 25 references against 9 for `small`,
-and ran faster (about 0.12x real time on an RTX 5070 Ti). The `distil-*`
-models are English-only. On a CPU-only machine `small` (int8) is the
-practical ceiling.
+`--model large-v3-turbo --compute-type float16`, especially for Lithuanian.
+On the two Lithuanian benchmark services (25 references), replayed through
+the live segmentation (`run_benchmark.py --mode offline`), it reported 20
+of them against 5 for `small`, counting a detection within 30 s of the
+spoken reference (live detections arrive about 12 s after the words). It
+also decoded faster than `small` int8 on an RTX 5070 Ti (about 0.06x real
+time). The `distil-*` models are English-only. On a CPU-only machine
+`small` (int8) is the practical ceiling.
 
 #### Runtime language switching
 
