@@ -6,6 +6,7 @@ import os
 import re
 import sys
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 
 
@@ -135,11 +136,53 @@ def _language_state(language: str) -> _LanguageState:
 # ("1samuel", "songofsolomon").
 _BOOK_NAMES_PATTERN = "|".join(r"\s?".join(book.name.lower().split()) for book in CANONICAL_BOOKS)
 
-_REFERENCE_CORRECTIONS: dict[str, str] = {
-    # "mark112" -> "mark 1 12"
-    rf"\b({_BOOK_NAMES_PATTERN})\s*(\d+)\s*(\d+)\b": r"\1 \2:\3",
-    # "mark 1:12 5" -> "mark 1:12-5"
-    rf"\b({_BOOK_NAMES_PATTERN})\s*(\d+):(\d+)\s*(\d+)\b": r"\1 \2:\3-\4",
+# Chapter count per book, keyed by the lowercased name with whitespace removed
+# so a merged match ("1timothy") finds its book.
+_BOOK_CHAPTERS: dict[str, int] = {
+    "".join(book.name.lower().split()): book.chapters for book in CANONICAL_BOOKS
+}
+
+# Longest chapter in the canon (Psalm 119). Verse counts per chapter live only
+# in the DB, so this is the upper bound used when splitting merged digits.
+_MAX_VERSE = 176
+
+
+def _split_merged_digits(match: re.Match[str]) -> str:
+    """Split merged "book<chapter><verse>" digits when only one split is valid.
+
+    "John 316" -> "John 3:16" (John has 21 chapters, so 31:6 is impossible).
+    The text is left unchanged when the whole number is itself a valid chapter
+    ("Romans 12" is a chapter reference) or when more than one split fits
+    ("Mark 112" could be 1:12 or 11:2) — guessing would put a wrong verse on
+    screen.
+    """
+    book, digits = match.group(1), match.group(2)
+    chapters = _BOOK_CHAPTERS.get("".join(book.lower().split()))
+    if chapters is None or int(digits) <= chapters:
+        return match.group(0)
+    splits = [
+        (digits[:i], digits[i:])
+        for i in range(1, len(digits))
+        if not digits[i:].startswith("0")
+        and 1 <= int(digits[:i]) <= chapters
+        and int(digits[i:]) <= _MAX_VERSE
+    ]
+    if len(splits) != 1:
+        return match.group(0)
+    chapter, verse = splits[0]
+    return f"{book} {chapter}:{verse}"
+
+
+# Number groups must be separated by real whitespace: with optional whitespace
+# the regex split Whisper's own "John 3:16" into "John 3:1-6" and
+# "Psalms 119:105" into "Psalms 11:9:105". Patterns run in order.
+_REFERENCE_CORRECTIONS: dict[str, str | Callable[[re.Match[str]], str]] = {
+    # "john 316" -> "john 3:16" (only when exactly one split is valid)
+    rf"\b({_BOOK_NAMES_PATTERN})\s*(\d{{2,4}})\b(?!\s*:)": _split_merged_digits,
+    # "mark 1 12" -> "mark 1:12"
+    rf"\b({_BOOK_NAMES_PATTERN})\s+(\d+)\s+(\d+)\b(?!\s*:)": r"\1 \2:\3",
+    # "mark 1:12 15" -> "mark 1:12-15"
+    rf"\b({_BOOK_NAMES_PATTERN})\s+(\d+):(\d+)\s+(\d+)\b": r"\1 \2:\3-\4",
 }
 
 # Whisper hallucination guard. On low-energy or tonal input the decoder can

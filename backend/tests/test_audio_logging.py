@@ -110,6 +110,39 @@ def test_fix_common_transcription_errors_recognizes_timothy():
     assert stt._fix_common_transcription_errors("1timothy312") != "1timothy312"
 
 
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        # Already-formatted Whisper output must pass through unchanged
+        # (previously "John 3:16" became "John 3:1-6").
+        ("John 3:16", "John 3:16"),
+        ("Romans 8:28.", "Romans 8:28."),
+        ("Psalms 119:105", "Psalms 119:105"),
+        ("1 Corinthians 13:4", "1 Corinthians 13:4"),
+        ("Genesis 1:1", "Genesis 1:1"),
+        # Space-separated numbers become chapter:verse, multi-digit included.
+        ("turn to John 3 16", "turn to John 3:16"),
+        ("Psalms 119 105", "Psalms 119:105"),
+        ("Mark 11 12", "Mark 11:12"),
+        # A trailing number after chapter:verse becomes a range.
+        ("Mark 1:12 15", "Mark 1:12-15"),
+        ("John 3 16 17", "John 3:16-17"),
+        # Merged digits are split only when exactly one split is valid.
+        ("John 316", "John 3:16"),
+        ("Romans 828", "Romans 8:28"),
+        ("1timothy312", "1timothy 3:12"),
+        # A valid chapter number is a chapter reference, not merged digits.
+        ("Romans 12", "Romans 12"),
+        ("Psalms 119", "Psalms 119"),
+        # Ambiguous merged digits are left for the parser instead of guessed.
+        ("mark112", "mark112"),
+    ],
+)
+def test_fix_common_transcription_errors_keeps_multi_digit_numbers(text, expected):
+    """Regression: optional whitespace let the regex split multi-digit numbers."""
+    assert _stt()._fix_common_transcription_errors(text) == expected
+
+
 def test_reference_corrections_cover_every_canonical_book():
     """P1-3: the STT correction regex is generated from the shared canon.
 
