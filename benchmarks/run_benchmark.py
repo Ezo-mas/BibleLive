@@ -36,6 +36,7 @@ import re
 import sys
 import time
 import wave
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -54,6 +55,7 @@ from audio.segmenter import FRAME_DURATION_MS, Segmenter, SegmentEvent  # noqa: 
 from audio.sender import ReferenceSender  # noqa: E402
 from audio.stt import SpeechToText  # noqa: E402
 from audio.vad import VoiceActivityDetector  # noqa: E402
+from core.bible_lookup import BibleLookup  # noqa: E402
 from core.verse_parser import Reference as ParsedReference  # noqa: E402
 from core.verse_parser import ReferenceParser, StreamingParser  # noqa: E402
 
@@ -315,6 +317,11 @@ class RunResult:
 
 CACHE_VERSION = 2
 
+# Like the live pipeline, drop references to verses that do not exist
+# (BibleLookup's validator hook); set in main() from --bible-db. Parsing is
+# not part of the transcript cache key, so cached runs validate too.
+_VALIDATOR: Callable[[ParsedReference], bool] | None = None
+
 
 def parse_t_range(spec: str | None) -> tuple[float, float] | None:
     """Parse 'START:END' seconds (empty END = file end). None disables."""
@@ -539,7 +546,9 @@ def run_single_recording(
     )
     cpath = feed_cache_path(cache_dir, key) if cache_dir is not None and use_cache else None
 
-    parser = StreamingParser(ReferenceParser(language=rec.language), context_ttl_s=context_ttl_s)
+    parser = StreamingParser(
+        ReferenceParser(language=rec.language, validator=_VALIDATOR), context_ttl_s=context_ttl_s
+    )
     metrics = PipelineMetrics()
     stub = StubReceiver(t0=time.time())
     sender = BenchmarkingSender(stub, config, metrics)
@@ -840,7 +849,9 @@ def run_windowed_recording(
     )
     cpath = feed_cache_path(cache_dir, key) if cache_dir is not None and use_cache else None
 
-    parser = StreamingParser(ReferenceParser(language=rec.language), context_ttl_s=context_ttl_s)
+    parser = StreamingParser(
+        ReferenceParser(language=rec.language, validator=_VALIDATOR), context_ttl_s=context_ttl_s
+    )
     raw: list[Detection] = []
     transcripts: list[tuple[float, str]] = []
     config_snapshot = {
@@ -1128,6 +1139,11 @@ def main() -> int:
         default=None,
         help="restrict processing to START:END seconds, e.g. 0:600 (iteration-only)",
     )
+    ap.add_argument(
+        "--bible-db",
+        default=str(REPO_ROOT / "bible_data" / "biblelive.sqlite"),
+        help="Bible SQLite DB for the live pipeline's verse-exists check (skipped if missing)",
+    )
     ap.add_argument("--out", required=True)
     ap.add_argument("--records", default=None, help="comma-separated subset of record ids")
     ap.add_argument(
@@ -1141,6 +1157,16 @@ def main() -> int:
         "--compute-type", default=None, help="Whisper compute type override (e.g. int8 on cpu)"
     )
     args = ap.parse_args()
+
+    global _VALIDATOR
+    if Path(args.bible_db).is_file():
+        _VALIDATOR = BibleLookup(args.bible_db, readonly=True).get_validator_hook()
+    else:
+        print(
+            f"[warn] {args.bible_db} not found: references to non-existent verses are kept "
+            "(the live pipeline drops them)",
+            file=sys.stderr,
+        )
 
     audio_dir_env = Path(__import__("os").environ.get("BIBLELIVE_BENCH_AUDIO_DIR", ""))
     audio_dir = Path(args.audio_dir) if args.audio_dir else audio_dir_env
@@ -1234,6 +1260,7 @@ def main() -> int:
         "audio_dir": str(audio_dir) if audio_dir else None,
         "created_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "tolerance_s": LATENCY_TOLERANCE_S,
+        "verse_validator": _VALIDATOR is not None,
         "dependency_versions": {"ctranslate2": ct2_version},
         "aggregate": aggregate(results),
         "recordings": results,
