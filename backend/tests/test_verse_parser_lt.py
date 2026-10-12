@@ -364,3 +364,43 @@ class TestBenchmarkMicroGaps:
         assert refs("Psalmė 16 skyrius 8 eilutė") == ["Psalms 16:8"]
         assert refs("Psalmė 16") == ["Psalms 16"]
         assert refs("Psalmė 16 skyrius") == ["Psalms 16"]
+
+
+class TestWhisperMergedAndGluedWords:
+    """Misses read off the small-model transcripts of 09-13 / 07-05: Whisper
+    merged chapter and verse into one number, or glued two words together."""
+
+    def test_merged_chapter_and_verse_number(self):
+        # Philippians has 4 chapters, so 46 can only be 4:6.
+        assert refs("Filipiečiams, 46. rašo") == ["Philippians 4:6"]
+        assert refs("pirmas Jono 56. Jis") == ["1 John 5:6"]
+        # Ephesians has 6 chapters: 42:5 is impossible, 4:25 is the reading.
+        assert refs("Efeziečiams 425, sako") == ["Ephesians 4:25"]
+        assert refs("Jono 316") == ["John 3:16"]
+
+    def test_merged_number_is_a_low_confidence_guess(self):
+        assert one("Filipiečiams 46").confidence == "low"
+
+    def test_merged_number_with_two_readings_is_not_guessed(self):
+        # Psalm 1191: 11:91 and 119:1 are both valid, so nothing is invented.
+        assert refs("Psalmė 1191") == []
+
+    def test_spoken_chapter_word_blocks_the_split(self):
+        assert refs("Filipiečiams 46 skyrius") == []
+
+    def test_valid_chapter_is_never_split(self):
+        assert refs("Romiečiams 12") == ["Romans 12"]
+
+    def test_nuo_glued_to_a_number_word(self):
+        assert refs("išėjimo 20. Skyrius nuotrėčios, nedarik") == ["Exodus 20:3"]
+
+    def test_no_is_whisper_for_nuo(self):
+        # Without it "no" split the chapter from its verse range and an extra
+        # chapter-only "Exodus 16" was reported.
+        assert refs("išėjimo šešioliką, no šešioliktos iki 20. eilutės") == ["Exodus 16:16-20"]
+
+    def test_pagal_glued_to_a_book_name(self):
+        assert refs("evangelija pagaluką 12 skyrius 29 eilutė") == ["Luke 12:29"]
+
+    def test_ordinary_words_starting_with_nuo_or_pagal_stay_whole(self):
+        assert refs("nuodėmės ir nuosprendis, pagalba 3 skyrius") == []

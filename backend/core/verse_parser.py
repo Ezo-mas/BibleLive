@@ -200,6 +200,24 @@ def tokenize(text: str) -> list[Token]:
 _LEVELS = ["low", "medium", "high"]
 
 
+def _split_merged(number: int, chapters: int) -> tuple[int, int] | None:
+    """The one valid chapter:verse reading of a merged number, if unique.
+
+    46 in a 4-chapter book -> (4, 6); 425 in a 6-chapter book -> (4, 25), as
+    42:5 is impossible. A verse never starts with 0. None when no split, or
+    more than one, is valid.
+    """
+    digits = str(number)
+    valid = [
+        (int(digits[:i]), int(digits[i:]))
+        for i in range(1, len(digits))
+        if digits[i] != "0"
+        and 1 <= int(digits[:i]) <= chapters
+        and 1 <= int(digits[i:]) <= MAX_VERSE
+    ]
+    return valid[0] if len(valid) == 1 else None
+
+
 def _downgrade(level: str) -> str:
     return _LEVELS[max(0, _LEVELS.index(level) - 1)]
 
@@ -475,6 +493,13 @@ class ReferenceParser:
                 kind, kk = self._connector(toks, k, allow_bare=False)
 
         if not 1 <= chapter <= nch:
+            # "Filipiečiams 46" / "Efeziečiams 425": STT merged chapter and verse
+            # into one number that cannot be a chapter of this book. Split it
+            # only when exactly one split is a valid chapter:verse.
+            if kind is None and not chapter_kw:
+                split = _split_merged(chapter, nch)
+                if split is not None:
+                    return Reference(canon, split[0], split[1], None, "low", end=k)
             return None
 
         if kind and self._is_num(toks, kk):
