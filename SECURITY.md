@@ -97,49 +97,26 @@ The full annotated list lives in `.env.example`; deployment walkthroughs
 
 ### Systemd Service
 
-Create `/etc/systemd/system/biblelive.service`:
+The canonical server unit lives in `DEPLOYMENT.md` ("Systemd Service
+(Server)"); use that file so the two docs cannot drift apart. In
+particular: `EnvironmentFile=/opt/biblelive/.env`,
+`ExecStart=/opt/biblelive/venv/bin/python -m core.server`, and hardening with
+`ReadWritePaths=/opt/biblelive/data` (the settings file) while `bible_data/`
+stays read-only.
 
-```ini
-[Unit]
-Description=BibleLive Display System
-After=network.target
-
-[Service]
-Type=simple
-User=biblelive
-Group=biblelive
-WorkingDirectory=/opt/biblelive
-EnvironmentFile=/etc/biblelive/biblelive.env
-Environment=PYTHONPATH=/opt/biblelive/backend
-ExecStart=/opt/biblelive/venv/bin/python -m core.server
-
-# Security hardening
-PrivateTmp=yes
-NoNewPrivileges=yes
-ReadWritePaths=/opt/biblelive/bible_data
-ReadOnlyPaths=/opt/biblelive
-
-Restart=always
-RestartSec=10
-
-[Install]
-WantedBy=multi-user.target
-```
-
-**Create secure environment file:**
+**Create secure environment file (`/opt/biblelive/.env`, as the unit reads):**
 
 ```bash
-sudo mkdir -p /etc/biblelive
-sudo nano /etc/biblelive/biblelive.env
+sudo nano /opt/biblelive/.env
 ```
 
 Add your configuration (`BIBLELIVE_REQUIRE_AUTH`, `BIBLELIVE_OPERATOR_TOKEN`,
 `BIBLELIVE_DB_PATH`, `BIBLELIVE_DB_READONLY`, `BIBLELIVE_HOST`, `BIBLELIVE_PORT`)
-with `0600` permissions:
+with `0640` permissions (root-owned, group-readable):
 
 ```bash
-sudo chown biblelive:biblelive /etc/biblelive/biblelive.env
-sudo chmod 0600 /etc/biblelive/biblelive.env
+sudo chown root:biblelive /opt/biblelive/.env
+sudo chmod 0640 /opt/biblelive/.env
 sudo systemctl daemon-reload
 ```
 
@@ -186,7 +163,7 @@ server {
 
 - [ ] `BIBLELIVE_REQUIRE_AUTH=true` set
 - [ ] Strong `BIBLELIVE_OPERATOR_TOKEN` generated (32+ bytes)
-- [ ] Token stored securely with `0600` permissions
+- [ ] Token stored in a root-owned file readable by the service group (`0640`)
 - [ ] TLS enabled (HTTPS/WSS)
 - [ ] Server bound to `127.0.0.1`
 - [ ] Database read-only mode enabled

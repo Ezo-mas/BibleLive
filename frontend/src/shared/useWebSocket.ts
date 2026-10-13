@@ -28,11 +28,12 @@ interface UseWebSocketResult {
 }
 
 /**
- * Open a WebSocket to `path` and keep it alive with linear backoff.
+ * Open a WebSocket to `path` and keep it alive with capped linear backoff.
  *
  * `onMessage` receives each parsed JSON message. The handler may change
  * between renders without reconnecting the socket. Reconnection retries up
- * to `maxReconnectAttempts` times, waiting 3s * attempt between tries.
+ * to `maxReconnectAttempts` times, waiting 3s * attempt between tries,
+ * capped at 30s so a long outage does not back off into minutes.
  *
  * `onClose` is called with the CloseEvent when the connection closes, useful
  * for handling authentication failures (code 1008).
@@ -105,7 +106,8 @@ export function useWebSocket<T>(
 
         if (attemptsRef.current < maxReconnectAttempts) {
           attemptsRef.current += 1
-          reconnectTimerRef.current = window.setTimeout(connect, 3000 * attemptsRef.current)
+          const delayMs = Math.min(3000 * attemptsRef.current, 30000)
+          reconnectTimerRef.current = window.setTimeout(connect, delayMs)
         }
       }
 
