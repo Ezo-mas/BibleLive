@@ -50,15 +50,8 @@ class _FakeSTT:
             raise ValueError(f"Unsupported language '{language}'")
         self.language = language
 
-    def add_audio_frame(self, frame: bytes) -> None:
-        pass
-
-    def transcribe_buffer(self, language=None):  # noqa: ARG002 - signature parity
-        return None, 0.0
-
-    def transcribe_utterance(self, language=None):
-        text, duration_ms = self.transcribe_buffer(language)
-        return Transcription(text, duration_ms)
+    def transcribe_utterance(self, pcm, language=None):  # noqa: ARG002 - signature parity
+        return Transcription(None, 0.0)
 
 
 class _StaticSTT(_FakeSTT):
@@ -72,13 +65,9 @@ class _StaticSTT(_FakeSTT):
         self._low_confidence_reason = low_confidence_reason
         self.transcribe_languages = []
 
-    def transcribe_buffer(self, language=None):
+    def transcribe_utterance(self, pcm, language=None):  # noqa: ARG002 - signature parity
         self.transcribe_languages.append(language)
-        return self._transcript, 1.0
-
-    def transcribe_utterance(self, language=None):
-        text, duration_ms = self.transcribe_buffer(language)
-        return Transcription(text, duration_ms, self._low_confidence_reason)
+        return Transcription(self._transcript, 1.0, self._low_confidence_reason)
 
 
 class _RecordingSender:
@@ -188,11 +177,14 @@ def test_set_language_rejects_invalid_language():
     assert stt.initial_prompt == WHISPER_INITIAL_PROMPTS["lt"]
 
 
+# One second of 16 kHz int16 silence: long enough to clear the 0.5 s minimum.
+_ONE_SECOND = bytes(2 * 16000)
+
+
 def test_transcribe_reads_language_and_prompt_as_one_snapshot():
     """A switch mid-transcription must not mix a language with the other prompt."""
     stt = _bare_stt()
     stt.set_language("en")
-    stt.audio_buffer = [0.0] * 16000
     stt.sample_rate = 16000
 
     calls = []
@@ -205,9 +197,9 @@ def test_transcribe_reads_language_and_prompt_as_one_snapshot():
 
     stt.model = _Model()
 
-    transcript, _ = stt.transcribe_buffer()
+    result = stt.transcribe_utterance(_ONE_SECOND)
 
-    assert transcript is None
+    assert result.text is None
     assert calls == [("en", WHISPER_INITIAL_PROMPTS["en"])]
     assert stt.language == "lt"
     assert stt.initial_prompt == WHISPER_INITIAL_PROMPTS["lt"]
@@ -217,7 +209,6 @@ def test_transcribe_uses_explicit_language_over_global_state():
     """An 'en' utterance is transcribed in English even after a switch to lt."""
     stt = _bare_stt()
     stt.set_language("lt")  # switch happened after the utterance was queued
-    stt.audio_buffer = [0.0] * 16000
     stt.sample_rate = 16000
 
     calls = []
@@ -229,7 +220,7 @@ def test_transcribe_uses_explicit_language_over_global_state():
 
     stt.model = _Model()
 
-    stt.transcribe_buffer("en")
+    stt.transcribe_utterance(_ONE_SECOND, "en")
 
     assert calls == [("en", WHISPER_INITIAL_PROMPTS["en"])]
     # The global state is only for un-tagged calls; it is left untouched.
@@ -255,8 +246,7 @@ def test_transcribe_passes_hotwords_with_the_matching_language(monkeypatch):
     stt.sample_rate = 16000
     for language in ("lt", "en"):
         stt.set_language(language)
-        stt.audio_buffer = [0.0] * 16000
-        stt.transcribe_buffer()
+        stt.transcribe_utterance(_ONE_SECOND)
 
     # Empty hotwords must not be sent at all (older faster-whisper rejects the kwarg).
     assert calls == [("lt", "skyrius, eilutė"), ("en", "<absent>")]
@@ -269,17 +259,14 @@ def test_hotwords_default_off():
     assert not any(stt_module.WHISPER_HOTWORDS.values())
 
 
-def test_transcribe_rejects_invalid_explicit_language_without_consuming_audio():
+def test_transcribe_rejects_invalid_explicit_language():
     stt = _bare_stt()
     stt.set_language("en")
-    stt.audio_buffer = [0.0] * 16000
     stt.sample_rate = 16000
     stt.model = None  # must not be reached
 
     with pytest.raises(ValueError):
-        stt.transcribe_buffer("fr")
-
-    assert len(stt.audio_buffer) == 16000  # audio not dropped by a bad tag
+        stt.transcribe_utterance(_ONE_SECOND, "fr")
 
 
 # ---------------------------------------------------------------------------

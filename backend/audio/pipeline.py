@@ -362,14 +362,10 @@ class BibleLiveAudioProcessor:
             f"language={language})..."
         )
 
-        # Add all frames to STT buffer
-        for frame in speech_frames:
-            self.stt.add_audio_frame(frame)
-
         # Transcribe with the language this utterance was captured in, so a
         # runtime switch cannot re-language a segment that was already queued.
         self.metrics.transcription_attempts += 1
-        result = self.stt.transcribe_utterance(language)
+        result = self.stt.transcribe_utterance(b"".join(speech_frames), language)
         transcript, duration_ms = result.text, result.duration_ms
 
         if transcript is None:

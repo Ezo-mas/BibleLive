@@ -285,8 +285,6 @@ class SpeechToText:
             logger.error(f"Failed to load Whisper model: {e}")
             raise
 
-        # Audio buffer for accumulating speech
-        self.audio_buffer: list[float] = []
         self.sample_rate = 16000
 
     @property
@@ -308,7 +306,7 @@ class SpeechToText:
         """Switch the transcription language and its initial prompt.
 
         Safe to call from another thread: the language/prompt pair is replaced
-        atomically, and :meth:`transcribe_buffer` reads it once before calling
+        atomically, and :meth:`transcribe_utterance` reads it once before calling
         Whisper, so an in-flight transcription keeps the pair it started with.
         The Whisper model itself is language-agnostic and is not reloaded.
 
@@ -318,26 +316,12 @@ class SpeechToText:
         self._state = _language_state(language)
         logger.info("Speech-to-text language set to '%s'", language)
 
-    def add_audio_frame(self, frame: bytes):
-        """Add audio frame to buffer for transcription"""
-        # Convert bytes to numpy array
-        audio_np = np.frombuffer(frame, dtype=np.int16).astype(np.float32) / 32768.0
-        self.audio_buffer.extend(audio_np)
-
-    def transcribe_buffer(self, language: str | None = None) -> tuple[str | None, float]:
-        """Transcribe and clear the buffer; see :meth:`transcribe_utterance`.
-
-        Returns:
-            Tuple of (transcribed_text, duration_ms)
+    def transcribe_utterance(self, pcm: bytes, language: str | None = None) -> Transcription:
         """
-        result = self.transcribe_utterance(language)
-        return result.text, result.duration_ms
-
-    def transcribe_utterance(self, language: str | None = None) -> Transcription:
-        """
-        Transcribe accumulated audio buffer and clear it.
+        Transcribe one utterance.
 
         Args:
+            pcm: the utterance's audio as 16 kHz mono signed 16-bit PCM.
             language: the language this utterance was captured in. ``None``
                 uses the current global language. Passing the utterance's own
                 language keeps a segment queued before a runtime switch paired
@@ -349,19 +333,12 @@ class SpeechToText:
         Raises:
             ValueError: if an explicit ``language`` is not supported.
         """
-        if not self.audio_buffer:
-            return Transcription(None, 0.0)
-
-        # Resolve the language/prompt pair once, before consuming audio:
-        # set_language() may swap the global pair from another thread, and the
-        # two must never be mixed. No lock is held during transcription.
+        # Resolve the language/prompt pair once: set_language() may swap the
+        # global pair from another thread, and the two must never be mixed.
+        # No lock is held during transcription.
         state = self._state if language is None else _language_state(language)
 
-        # Convert buffer to numpy array
-        audio_np = np.array(self.audio_buffer, dtype=np.float32)
-
-        # Clear buffer for next utterance
-        self.audio_buffer = []
+        audio_np = np.frombuffer(pcm, dtype=np.int16).astype(np.float32) / 32768.0
 
         # Skip if audio is too short (less than 0.5 seconds)
         if len(audio_np) < self.sample_rate * 0.5:

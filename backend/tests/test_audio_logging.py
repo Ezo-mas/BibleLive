@@ -267,7 +267,6 @@ def _stt_returning(*segments):
     stt.set_language("en")
     stt.sample_rate = 16000
     stt.beam_size = 5
-    stt.audio_buffer = [0.0] * 16000
 
     class _Model:
         def transcribe(self, audio, **kwargs):
@@ -283,7 +282,7 @@ def test_transcribe_utterance_flags_a_shaky_segment():
         _segment(" Turn with me."), _segment(" Romans chapter 8 verse 28.", no_speech_prob=0.9)
     )
 
-    result = stt.transcribe_utterance()
+    result = stt.transcribe_utterance(bytes(2 * 16000))
 
     assert result.text == "Turn with me. Romans chapter 8 verse 28."
     assert result.low_confidence_reason is not None
@@ -293,7 +292,7 @@ def test_transcribe_utterance_flags_a_shaky_segment():
 def test_transcribe_utterance_trusts_sound_segments():
     stt = _stt_returning(_segment(" Turn with me to Romans chapter 8 verse 28."))
 
-    result = stt.transcribe_utterance()
+    result = stt.transcribe_utterance(bytes(2 * 16000))
 
     assert result.text == "Turn with me to Romans chapter 8 verse 28."
     assert result.low_confidence_reason is None
@@ -302,7 +301,7 @@ def test_transcribe_utterance_trusts_sound_segments():
 def test_transcribe_utterance_flags_a_trimmed_repetition_loop():
     stt = _stt_returning(_segment(" " + "Romans 8, or " * 10))
 
-    result = stt.transcribe_utterance()
+    result = stt.transcribe_utterance(bytes(2 * 16000))
 
     assert result.text == "Romans 8, or"
     assert result.low_confidence_reason is not None
