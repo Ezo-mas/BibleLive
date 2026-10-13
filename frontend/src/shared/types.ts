@@ -190,3 +190,21 @@ export interface AppStateSnapshot {
   display_settings?: DisplaySettings
   auto_mode?: AutoMode
 }
+
+/**
+ * Audio pipeline health, from GET /api/pipeline/status.
+ *
+ * Polled over HTTP rather than pushed on the operator socket, so the WebSocket
+ * protocol is unchanged. 'unknown' means the server has had no report since it
+ * started (a console used without the pipeline stays quiet); 'offline' means
+ * reports stopped arriving, which is how a dead pipeline shows up.
+ */
+export type PipelineHealth = 'unknown' | 'ok' | 'degraded' | 'offline'
+
+export interface PipelineStatus {
+  status: PipelineHealth
+  language: string | null
+  /** One sentence per thing that has stopped working; empty unless degraded. */
+  problems: string[]
+  seconds_since_report: number | null
+}

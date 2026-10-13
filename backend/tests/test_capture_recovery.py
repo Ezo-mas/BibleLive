@@ -191,6 +191,7 @@ def _processor(capture, **config) -> BibleLiveAudioProcessor:
     proc._capture_lock = threading.Lock()
     proc._capture_restart_attempt = 0
     proc._capture_restarted_at_s = None
+    proc._capture_down = False
     return proc
 
 
@@ -276,3 +277,17 @@ def test_vad_loop_resumes_after_ffmpeg_dies(monkeypatch):
     assert proc.metrics.capture_restarts == 1
     assert proc.metrics.audio_chunks_captured >= 50  # frames flowed again after the restart
     assert not vad_thread.is_alive()
+
+
+def test_operator_hears_about_the_outage_until_capture_is_back(monkeypatch):
+    """The heartbeat reports capture as down for exactly the restart window."""
+    proc = _processor(_FlakyCapture(failures=1), capture_restart_base_delay=0.0)
+    down_while_waiting: list[bool] = []
+    monkeypatch.setattr(
+        proc, "_wait_while_running", lambda s: down_while_waiting.append(proc._capture_down) or True
+    )
+
+    proc._restart_capture()
+
+    assert down_while_waiting == [True, True]
+    assert proc._capture_down is False

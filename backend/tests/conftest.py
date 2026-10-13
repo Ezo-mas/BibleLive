@@ -146,6 +146,8 @@ def reset_app_state(app_state, tmp_path: Path):
     # cannot leak into another (or onto disk) while tests share one app.
     app_state.settings_store = SettingsStore(tmp_path / "server_settings.json")
     app_state.auto_mode = DEFAULT_AUTO_MODE
+    app_state.pipeline_report = None
+    app_state.pipeline_reported_at = None
     yield
     app_state.connection_manager = app_state.connection_manager.__class__()
 

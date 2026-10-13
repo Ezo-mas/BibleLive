@@ -211,6 +211,8 @@ output, ignored short VAD blips, and skipped duplicates.
 | GET    | `/api/books`        | List canonical books (for Find Scripture) |
 | GET    | `/api/lookup`       | Look up verse text by coordinates        |
 | GET    | `/api/state`        | Current server state snapshot (requires auth if enabled) |
+| POST   | `/api/pipeline/heartbeat` | Audio pipeline health report, sent every 5 s (token when auth is on) |
+| GET    | `/api/pipeline/status` | Pipeline health for the operator console: `unknown`, `ok`, `degraded` (with problems), or `offline` after three missed reports (requires auth if enabled) |
 | GET    | `/healthz`          | Liveness probe                           |
 | GET    | `/readyz`           | Readiness probe (database + frontend built checks) |
 

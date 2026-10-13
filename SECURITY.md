@@ -9,7 +9,7 @@ authentication via:
   (the deprecated `?token=` query parameter still works)
 - HTTP: `Authorization: Bearer YOUR_TOKEN` header
 
-The audio pipeline sends the token with every reference. It reads
+The audio pipeline sends the token with every reference and health report. It reads
 `BIBLELIVE_OPERATOR_TOKEN` from the environment or the project `.env` (the same
 place the server reads it), or takes `--server-token`.
 
@@ -58,6 +58,9 @@ BIBLELIVE_OPERATOR_TOKEN=your-generated-token-here
 
 - `GET /operator` — operator console page
 - `POST /api/reference` — reference ingestion (from the audio pipeline)
+- `POST /api/pipeline/heartbeat` — audio pipeline health report (so nobody
+  else can tell the operator that detection is healthy)
+- `GET /api/pipeline/status` — pipeline health shown in the operator console
 - `GET /api/state` — application state
 - `POST /api/approve` — approve pending reference
 - `POST /api/clear` — clear display

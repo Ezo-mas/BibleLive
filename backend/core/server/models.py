@@ -200,6 +200,35 @@ class PassageResponse(BaseModel):
     text: str
 
 
+class PipelineHeartbeat(BaseModel):
+    """The audio pipeline's periodic health report (``POST /api/pipeline/heartbeat``)."""
+
+    language: str = Field(..., min_length=1, max_length=16, description="Spoken language")
+    interval_s: float = Field(..., gt=0, le=300, description="Seconds until the next report is due")
+    problems: list[Annotated[str, Field(min_length=1, max_length=300)]] = Field(
+        default_factory=list,
+        max_length=10,
+        description="One sentence per thing that has stopped working; empty when healthy",
+    )
+
+
+class PipelineStatusResponse(BaseModel):
+    """What the operator console shows about the audio pipeline."""
+
+    status: Literal["unknown", "ok", "degraded", "offline"] = Field(
+        ...,
+        description=(
+            "'unknown': no report since the server started; 'ok': reporting, no "
+            "problems; 'degraded': reporting problems; 'offline': reports stopped"
+        ),
+    )
+    language: str | None = None
+    problems: list[str] = Field(default_factory=list)
+    seconds_since_report: float | None = Field(
+        default=None, description="Age of the latest report; null when there has been none"
+    )
+
+
 class OperatorApproveAction(BaseModel):
     """Action to approve a pending reference by ID."""
 

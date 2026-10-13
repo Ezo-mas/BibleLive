@@ -11,6 +11,7 @@ from core.verse_parser import ReferenceParser, StreamingParser
 from .capture import AudioCapture
 from .config import AudioPipelineConfig
 from .control import LanguageControlServer
+from .heartbeat import HeartbeatSender
 from .metrics import PipelineMetrics
 from .segmenter import FRAME_DURATION_MS, Segmenter, SegmentEvent
 from .sender import ReferenceSender
@@ -18,6 +19,10 @@ from .stt import SUPPORTED_LANGUAGES, SpeechToText
 from .vad import VoiceActivityDetector
 
 logger = logging.getLogger(__name__)
+
+# Seconds without a single audio frame before the operator is told capture has
+# stalled. Frames arrive every 30 ms, so this is far beyond any normal hiccup.
+AUDIO_STALL_S = 5.0
 
 
 class BibleLiveAudioProcessor:
@@ -87,6 +92,21 @@ class BibleLiveAudioProcessor:
         self._capture_restart_attempt = 0
         self._capture_restarted_at_s: float | None = None
 
+        # Health the operator should see (reported by the heartbeat thread).
+        # Each field has one writer: capture state the VAD thread, the rest the
+        # transcription thread; the heartbeat thread only reads them.
+        self._capture_down = False
+        # time.monotonic() of the last audio frame; a stalled ffmpeg delivers
+        # nothing without exiting, so silence from capture is reported too.
+        self._last_frame_at: float | None = None
+        self._consecutive_transcription_errors = 0
+        self._parser_problems: list[str] = []
+        self.heartbeat: HeartbeatSender | None = (
+            HeartbeatSender(server_url, self.config, self.health_report)
+            if self.config.heartbeat_interval > 0
+            else None
+        )
+
         # Worker threads
         self.vad_thread: threading.Thread | None = None
         self.transcription_thread: threading.Thread | None = None
@@ -119,6 +139,7 @@ class BibleLiveAudioProcessor:
                 self.control_server.start()
 
             self.is_running = True
+            self._last_frame_at = time.monotonic()
 
             # Start audio capture
             self.audio_capture.start_capture(self.config.input_device)
@@ -137,6 +158,10 @@ class BibleLiveAudioProcessor:
             )
             self.transcription_thread = transcription_thread
             transcription_thread.start()
+
+            # Report health to the server so the operator can see a failure
+            if self.heartbeat is not None:
+                self.heartbeat.start()
         except BaseException:
             # A partially started pipeline must not leave the control port bound,
             # capture running, or is_running stuck True for direct callers.
@@ -148,6 +173,8 @@ class BibleLiveAudioProcessor:
     def _rollback_start(self) -> None:
         """Unwind a failed :meth:`start`, preserving the original exception."""
         self.is_running = False
+        if self.heartbeat is not None:
+            self.heartbeat.stop()
         try:
             self.audio_capture.stop_capture()
         except Exception as e:
@@ -167,6 +194,11 @@ class BibleLiveAudioProcessor:
         """Stop the audio processing pipeline"""
         logger.info("Stopping audio pipeline...")
         self.is_running = False
+
+        # Stop reporting first: the server then shows the pipeline as offline,
+        # which is what it is about to be.
+        if self.heartbeat is not None:
+            self.heartbeat.stop()
 
         # Stop audio capture (after any restart in progress has finished, so it
         # cannot start ffmpeg again behind our back)
@@ -221,6 +253,46 @@ class BibleLiveAudioProcessor:
             self._pending_language = language
         logger.info("Language switch requested: %s", language)
 
+    def health_report(self) -> dict:
+        """What the heartbeat tells the server: the language and any problems.
+
+        Each problem is one sentence for the operator, naming what has stopped
+        working. An empty list means the pipeline is detecting normally (a quiet
+        room is not a problem).
+        """
+        problems: list[str] = []
+        # An uncaught exception ends a worker thread silently; this thread
+        # would otherwise go on reporting a pipeline that detects nothing.
+        for thread, role in (
+            (self.vad_thread, "listening"),
+            (self.transcription_thread, "transcription"),
+        ):
+            if self.is_running and thread is not None and not thread.is_alive():
+                problems.append(f"The pipeline's {role} thread has stopped; restart the pipeline")
+        if self._capture_down:
+            problems.append("Audio capture stopped; the pipeline is trying to restart it")
+        elif self.is_running and self._last_frame_at is not None:
+            # Capture streams continuously (silence included), so a gap means
+            # ffmpeg is stuck, not that the room is quiet.
+            silent_s = time.monotonic() - self._last_frame_at
+            if silent_s > AUDIO_STALL_S:
+                problems.append(f"No audio has arrived from the microphone for {silent_s:.0f} s")
+        errors = self._consecutive_transcription_errors
+        if errors:
+            problems.append(
+                f"Speech recognition failed on the last {errors} "
+                f"utterance{'s' if errors != 1 else ''}"
+            )
+        delivery_problem = self.sender.delivery_problem
+        if delivery_problem:
+            problems.append(f"The last detected reference was not delivered: {delivery_problem}")
+        problems.extend(self._parser_problems)
+        return {
+            "language": self.current_language,
+            "interval_s": self.config.heartbeat_interval,
+            "problems": problems,
+        }
+
     def _consume_pending_language_switch(self) -> None:
         """Apply a pending language switch (VAD thread only).
 
@@ -262,6 +334,7 @@ class BibleLiveAudioProcessor:
                 continue
 
             self._note_capture_healthy()
+            self._last_frame_at = time.monotonic()
             self.metrics.audio_chunks_captured += 1
 
             event = self.segmenter.push(frame)
@@ -292,6 +365,7 @@ class BibleLiveAudioProcessor:
         delivered ``capture_healthy_s`` of audio, so a flapping device backs off.
         """
         self.metrics.capture_failures += 1
+        self._capture_down = True
         event = self.segmenter.flush()
         if event is not None:
             self._queue_speech_segment(event)
@@ -321,6 +395,7 @@ class BibleLiveAudioProcessor:
                     continue
 
             self.metrics.capture_restarts += 1
+            self._capture_down = False
             self._capture_restarted_at_s = self.audio_capture.captured_seconds
             logger.warning("Audio capture restarted; listening for Bible references again")
             return
@@ -396,6 +471,14 @@ class BibleLiveAudioProcessor:
 
         lookup = self._local.bible_lookup
         validator = lookup.get_validator_hook() if lookup and lookup.conn else None
+        problems: list[str] = []
+        if validator is None:
+            # Parsing still works, but nothing checks that a detected verse
+            # exists before it reaches the operator.
+            problems.append(
+                "The pipeline could not open the Bible database, so detections "
+                "are not checked against it"
+            )
 
         # English and Lithuanian parsing stay separate implementations; the
         # language selects which tables a parser is built with.
@@ -409,7 +492,12 @@ class BibleLiveAudioProcessor:
                 )
             except Exception as e:
                 logger.error(f"Failed to initialize '{language}' parser: {e}")
+                problems.append(
+                    f"The '{language}' reference parser failed to start, so no "
+                    f"references are detected in that language"
+                )
 
+        self._parser_problems = problems
         self._local.streaming_parsers = parsers
         self._local.last_parser_language = None
         logger.debug(
@@ -447,6 +535,10 @@ class BibleLiveAudioProcessor:
         self.metrics.transcription_attempts += 1
         result = self.stt.transcribe_utterance(b"".join(speech_frames), language)
         transcript, duration_ms = result.text, result.duration_ms
+        if result.failed:
+            self._consecutive_transcription_errors += 1
+        else:
+            self._consecutive_transcription_errors = 0
 
         if transcript is None:
             self.metrics.transcription_failures += 1

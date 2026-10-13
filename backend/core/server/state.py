@@ -1,6 +1,8 @@
 """Application state management."""
 
 import logging
+import time
+from typing import Literal
 
 from fastapi import WebSocket
 
@@ -8,7 +10,14 @@ from ..bible_lookup import BibleLookup
 from ..config import config
 from ..passage import ResolvedPassage
 from .connections import ConnectionManager
-from .models import AutoMode, BibleReference, DisplaySettings, VerseText
+from .models import (
+    AutoMode,
+    BibleReference,
+    DisplaySettings,
+    PipelineHeartbeat,
+    PipelineStatusResponse,
+    VerseText,
+)
 from .settings_store import SettingsStore, coerce_auto_mode, is_auto_mode
 
 logger = logging.getLogger(__name__)
@@ -30,6 +39,10 @@ AUTO_APPROVE_CONFIDENCES: dict[AutoMode, frozenset[str]] = {
     "medium_and_up": frozenset({"high", "medium"}),
     "all": frozenset({"high", "medium", "low"}),
 }
+
+# How many report intervals the audio pipeline may miss before the operator is
+# told it is offline. One late report (a slow request, a GC pause) is not news.
+PIPELINE_MISSED_REPORTS_OFFLINE = 3
 
 
 class AppState:
@@ -60,6 +73,42 @@ class AppState:
         # unknown environment value leaves auto-approval off.
         self.auto_mode: AutoMode = self.settings_store.load_auto_mode(
             default=coerce_auto_mode(config.AUTO_MODE)
+        )
+        # The audio pipeline's latest health report and when it arrived
+        # (time.monotonic()), or None until the first one.
+        self.pipeline_report: PipelineHeartbeat | None = None
+        self.pipeline_reported_at: float | None = None
+
+    def record_pipeline_report(self, report: PipelineHeartbeat, now: float | None = None) -> None:
+        """Keep the audio pipeline's latest health report."""
+        self.pipeline_report = report
+        self.pipeline_reported_at = time.monotonic() if now is None else now
+
+    def pipeline_status(self, now: float | None = None) -> PipelineStatusResponse:
+        """Summarize the pipeline's health for the operator console.
+
+        The pipeline cannot report that it has died, so silence is the signal:
+        once more than ``PIPELINE_MISSED_REPORTS_OFFLINE`` of its own report
+        intervals pass without a report, it is offline, whatever it said last.
+        """
+        report, reported_at = self.pipeline_report, self.pipeline_reported_at
+        if report is None or reported_at is None:
+            return PipelineStatusResponse(status="unknown")
+
+        age = max(0.0, (time.monotonic() if now is None else now) - reported_at)
+        status: Literal["ok", "degraded", "offline"]
+        if age > report.interval_s * PIPELINE_MISSED_REPORTS_OFFLINE:
+            status = "offline"
+        elif report.problems:
+            status = "degraded"
+        else:
+            status = "ok"
+        return PipelineStatusResponse(
+            status=status,
+            language=report.language,
+            # Problems from a pipeline that has gone quiet are history, not state.
+            problems=[] if status == "offline" else list(report.problems),
+            seconds_since_report=round(age, 1),
         )
 
     async def _send_pending_update(self) -> None:

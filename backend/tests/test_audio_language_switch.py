@@ -118,7 +118,11 @@ def _processor(language: str = "en") -> BibleLiveAudioProcessor:
     proc._pending_language = None
     proc._pending_language_lock = threading.Lock()
     proc._local = threading.local()
+    proc.heartbeat = None
     proc.sender = _RecordingSender()
+    proc._capture_down = False
+    proc._consecutive_transcription_errors = 0
+    proc._parser_problems = []
     return proc
 
 

@@ -35,6 +35,8 @@ from .models import (
     LanguageResponse,
     OperatorAction,
     PassageResponse,
+    PipelineHeartbeat,
+    PipelineStatusResponse,
     ReferenceSubmitRequest,
     ReferenceSubmitResponse,
     StateResponse,
@@ -839,6 +841,49 @@ def create_app(bible_lookup: BibleLookup | None = None) -> FastAPI:
             display_settings=app_state.display_settings,
             auto_mode=app_state.auto_mode,
         )
+
+    @app.post(
+        "/api/pipeline/heartbeat",
+        status_code=204,
+        responses={
+            204: {"description": "Report recorded"},
+            401: {"model": ErrorResponse, "description": "Unauthorized"},
+            422: {"model": ErrorResponse, "description": "Invalid report"},
+        },
+        dependencies=[Depends(verify_operator_token)],
+    )
+    async def receive_pipeline_heartbeat(report: PipelineHeartbeat) -> None:
+        """Record the audio pipeline's periodic health report.
+
+        Token-protected like ``/api/reference``, so only the pipeline can tell
+        the operator that detection is healthy. Requires authentication if
+        BIBLELIVE_REQUIRE_AUTH is enabled.
+        """
+        previous = app_state.pipeline_status().status
+        app_state.record_pipeline_report(report)
+        current = app_state.pipeline_status()
+        if current.status != previous:
+            if current.problems:
+                logger.warning(f"Audio pipeline {current.status}: {'; '.join(current.problems)}")
+            else:
+                logger.info(f"Audio pipeline {current.status}")
+
+    @app.get(
+        "/api/pipeline/status",
+        response_model=PipelineStatusResponse,
+        responses={
+            200: {"description": "Audio pipeline health as last reported"},
+            401: {"model": ErrorResponse, "description": "Unauthorized"},
+        },
+        dependencies=[Depends(verify_operator_token)],
+    )
+    async def get_pipeline_status() -> PipelineStatusResponse:
+        """Whether the audio pipeline is reporting, and what it says is broken.
+
+        Polled by the operator console. Requires authentication if
+        BIBLELIVE_REQUIRE_AUTH is enabled.
+        """
+        return app_state.pipeline_status()
 
     # Serve static files (CSS/JS, and the built frontend bundle under /static/frontend).
     # static/ is generated and gitignored, so it is absent on a fresh checkout (and in CI)
