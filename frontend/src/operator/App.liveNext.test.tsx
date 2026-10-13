@@ -226,7 +226,7 @@ describe('NEXT panel', () => {
 
     selectCard(/Romans 8:28/)
     act(() => {
-      screen.getByRole('button', { name: 'Show' }).click()
+      screen.getByRole('button', { name: 'Show on display' }).click()
     })
     expect(lastSent()).toEqual({ action: 'approve', reference_id: 'p-2' })
 
@@ -272,6 +272,6 @@ describe('NEXT panel', () => {
     })
     selectCard(/Romans 8:28/)
 
-    expect(screen.getByRole('button', { name: 'Show' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Show on display' })).toBeDisabled()
   })
 })

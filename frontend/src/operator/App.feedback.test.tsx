@@ -127,7 +127,7 @@ describe('server-confirmed feedback', () => {
       screen.getByRole('button', { name: /John 1:1/ }).click()
     })
     act(() => {
-      screen.getByRole('button', { name: /approve and show/i }).click()
+      screen.getByRole('button', { name: 'Show on display' }).click()
     })
 
     // The request is on the wire but nothing has come back: no success yet.

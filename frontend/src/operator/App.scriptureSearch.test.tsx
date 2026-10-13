@@ -254,7 +254,7 @@ function clickResult(name: string | RegExp) {
 
 function showNext() {
   act(() => {
-    screen.getByRole('button', { name: 'Show' }).click()
+    screen.getByRole('button', { name: 'Show on display' }).click()
   })
 }
 
@@ -625,7 +625,7 @@ describe('Find Scripture', () => {
     expect(
       within(screen.getByTestId('live-verses')).getByText('Romans 8:28 text')
     ).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Show' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Show on display' })).toBeDisabled()
 
     push({ type: 'display_confirmed', data: { reference: manualReference('John', 3, 16, 17) } })
 
@@ -662,7 +662,7 @@ describe('Find Scripture', () => {
     ).toBeInTheDocument()
     // Still staged, so the operator can fix the passage or retry.
     expect(within(screen.getByTestId('next-preview')).getByText('John 3:16-17')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Show' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Show on display' })).toBeEnabled()
   })
 
   it('returns to a queue selection when a pending reference is chosen instead', async () => {

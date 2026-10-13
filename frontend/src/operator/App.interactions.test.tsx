@@ -104,7 +104,7 @@ function press(key: string) {
 }
 
 function approveButton() {
-  return screen.getByRole('button', { name: /approve and show/i })
+  return screen.getByRole('button', { name: 'Show on display' })
 }
 
 /**

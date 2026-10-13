@@ -97,87 +97,247 @@
   border-color: var(--color-text-secondary);
 }
 
-/* Operator Console - Redesigned with Design System */
+/* Operator Console
+
+   The console has its own palette: warm neutrals with one amber accent, set by
+   overriding the semantic tokens on the console root. Everything built on those
+   tokens (buttons, the settings dialog, badges) follows without knowing, and the
+   audience display keeps its own tokens untouched. The stages inside the console
+   carry a `data-theme` attribute of their own, which re-applies the display's
+   tokens to them, so a preview is drawn in exactly the colours the projector
+   uses. Amber is reserved for "this is on air or staged" and for the primary
+   action; statuses that do not need a colour (connected, confidence) stay
+   neutral so the accent keeps its meaning. */
+.operator-app,
+.operator-auth-container {
+  --app-bg: #f1efeb;
+  --panel-bg: #fbfaf8;
+  --card-bg: #f4f2ee;
+  --selected-bg: #e9e6df;
+  --accent-text: #8f5200;
+
+  --font-sans:
+    'Segoe UI Variable Text', 'Segoe UI', system-ui, -apple-system, Roboto, 'Helvetica Neue', Arial,
+    sans-serif;
+
+  --color-surface: #fbfaf8;
+  --color-surface-raised: #f4f2ee;
+  --color-surface-overlay: #fbfaf8;
+  --color-surface-muted: #e9e6df;
+  --color-text: #1d1c1a;
+  --color-text-secondary: #4a4843;
+  --color-text-muted: #625f59;
+  --color-text-inverse: #ffffff;
+  --color-border: #e0ddd6;
+  --color-border-strong: #c9c5bc;
+  --color-border-focus: #a35f00;
+  --color-primary: #a35f00;
+  --color-primary-hover: #8f5200;
+  --color-primary-active: #7d4700;
+  --color-primary-subtle: #f4e7d1;
+  --color-info-bg: #e9e6df;
+  --color-info-text: #4a4843;
+}
+
+[data-theme='dark'] .operator-app,
+[data-theme='dark'] .operator-auth-container {
+  --app-bg: #0e0f11;
+  --panel-bg: #15171a;
+  --card-bg: #1b1e22;
+  --selected-bg: #252a30;
+  --accent-text: #e0a63a;
+
+  --color-surface: #15171a;
+  --color-surface-raised: #1b1e22;
+  --color-surface-overlay: #1f2227;
+  --color-surface-muted: #252a30;
+  --color-text: #ecebe8;
+  --color-text-secondary: #b9b8b3;
+  --color-text-muted: #9a9993;
+  --color-text-inverse: #1a1204;
+  --color-border: #2a2e34;
+  --color-border-strong: #3a3f47;
+  --color-border-focus: #e0a63a;
+  --color-primary: #e0a63a;
+  --color-primary-hover: #eab354;
+  --color-primary-active: #f0c070;
+  --color-primary-subtle: #3a2c12;
+  --color-info-bg: #252a30;
+  --color-info-text: #b9b8b3;
+}
 
 .operator-app {
   display: flex;
   flex-direction: column;
   /* Dynamic viewport height with the classic unit as the fallback: on a phone
      100vh includes the space behind the browser's own bars, which pushes the
-     bottom of the console (and its action row) out of reach. */
+     bottom of the console out of reach. */
   height: 100vh;
   height: 100dvh;
-  background: var(--color-surface-canvas);
+  background: var(--app-bg);
   color: var(--color-text);
 }
 
-/* Header - one slim bar. It carries identity, connection health and the way
-   into settings; the theme buttons it used to hold are in the dialog now, so
-   the padding came down to what the row's own controls need. */
+/* Header - one slim bar in three parts: identity, the Find Scripture command bar,
+   and connection health with the way into settings. The bar is a positioning
+   context for two things that hang off it: the action feedback and the search
+   results. `z-index` stays `auto` on purpose: the bar is a flex item, so any
+   z-index here would make it a stacking context, and the feedback inside it has
+   to keep painting above the settings dialog's overlay (1070 against 1050). */
 .operator-header {
-  display: flex;
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 520px) minmax(0, 1fr);
   align-items: center;
-  justify-content: space-between;
-  gap: var(--space-4);
-  padding: var(--space-2) var(--space-5);
-  background: var(--color-surface);
+  gap: var(--space-5);
+  height: 56px;
+  flex-shrink: 0;
+  padding: 0 var(--space-5);
+  background: var(--panel-bg);
   border-bottom: 1px solid var(--color-border);
-  box-shadow: var(--shadow-sm);
-  /* Explicitly `auto`: this bar is a flex item, so any z-index here would make
-     it a stacking context — and the action feedback inside it has to keep
-     painting above the settings dialog's overlay (1070 against 1050), which is
-     how a change made in the dialog is confirmed with the dialog still open. */
   z-index: auto;
 }
 
 .operator-header-left {
   display: flex;
-  align-items: baseline;
-  gap: var(--space-2);
+  align-items: center;
+  gap: var(--space-3);
   min-width: 0;
+}
+
+/* The brand mark: the product's own book glyph on an accent tile, so the bar
+   reads as a product and not a page title. */
+.operator-brand-mark {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+  color: var(--color-text-inverse);
+  background: var(--color-primary);
+  border-radius: var(--radius-lg);
+}
+
+.operator-brand-mark svg {
+  width: 17px;
+  height: 17px;
 }
 
 .operator-title {
   font-size: var(--font-size-lg);
-  font-weight: 600;
+  font-weight: 650;
+  letter-spacing: -0.01em;
   margin: 0;
   color: var(--color-text);
-  white-space: nowrap;
-}
-
-.operator-subtitle {
-  font-size: var(--font-size-sm);
-  color: var(--color-text-muted);
   white-space: nowrap;
 }
 
 .operator-header-right {
   display: flex;
   align-items: center;
-  gap: var(--space-3);
+  justify-content: flex-end;
+  gap: var(--space-4);
 }
 
-/* The gear (and any future header affordance): square, one row tall, and the
-   same size as the other icon controls so the slim bar stays slim. */
+/* Connection and display health are two plain readings, not two pills: a dot and
+   a word. The dot is neutral while things are fine, so the only coloured dot on
+   the bar is the one that means something is wrong. */
+.operator-status-group {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+}
+
+.operator-header .connection-indicator {
+  padding: 0;
+  background: none;
+  border: none;
+  font-weight: 400;
+}
+
+.operator-header .connection-dot-connected {
+  background-color: var(--color-text-secondary);
+}
+
+.operator-header .connection-indicator-connected .connection-label {
+  color: var(--color-text-secondary);
+}
+
+.operator-display-status {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.operator-display-dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: var(--color-text-secondary);
+}
+
+.operator-display-label {
+  color: var(--color-text-secondary);
+}
+
+/* The spoken language, as a reading beside the connection health: a word and a
+   code. It opens Settings, so it is a button, but it is drawn as quietly as the
+   other two readings — the code is what carries weight. */
+.operator-language-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-2);
+  font-family: var(--font-sans);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.operator-language-chip:hover {
+  background: var(--card-bg);
+  border-color: var(--color-border);
+}
+
+.operator-language-chip-value {
+  padding: 0 var(--space-2);
+  font-size: var(--font-size-xs);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--color-text);
+  background: var(--card-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+}
+
+/* The gear (and any future header affordance): square, one row tall. */
 .operator-icon-button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 38px;
-  height: 38px;
+  width: 36px;
+  height: 36px;
   flex-shrink: 0;
   padding: 0;
   color: var(--color-text-secondary);
   background: transparent;
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
   cursor: pointer;
   transition: all var(--transition-fast);
 }
 
 .operator-icon-button:hover {
   color: var(--color-text);
-  border-color: var(--color-text-secondary);
+  border-color: var(--color-border-strong);
+  background: var(--card-bg);
 }
 
 .operator-icon-button svg {
@@ -185,54 +345,20 @@
   height: 18px;
 }
 
-/* Action feedback sits in the header instead of floating over the console.
-   Fixed to the bottom it covered the action row on a laptop (the row is the
-   full width of the working column) and the first queue card on a short
-   landscape window — the two places the operator's next click goes. In the
-   header it is always visible, never over a control, and nothing below it
-   moves when it appears. */
+/* Action feedback hangs from the bottom of the header, under the gear, instead of
+   sitting in it. Fixed to the bottom of the page it covered the actions on a
+   laptop; here it covers only the labels above the stages and the queue's
+   heading, which is not where the operator's next click goes, and nothing below
+   it moves when it appears. It is right-aligned and capped in width so it stays
+   clear of the settings dialog, which is centred: a change made in the dialog is
+   confirmed beside it, not over its title. */
 .operator-header .operator-feedback {
-  flex: 0 1 480px;
-  min-width: 0;
-  box-shadow: var(--shadow-md);
-}
-
-.operator-status-group {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-}
-
-.operator-display-status {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-2) var(--space-3);
-  background: var(--color-surface-raised);
-  border-radius: var(--radius-md);
-  font-size: var(--font-size-sm);
-}
-
-.operator-display-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--color-success);
-  animation: pulse 2s ease-in-out infinite;
-}
-
-@keyframes pulse {
-  0%,
-  100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.5;
-  }
-}
-
-.operator-display-label {
-  color: var(--color-text-secondary);
+  position: absolute;
+  top: calc(100% + var(--space-2));
+  right: var(--space-5);
+  width: max-content;
+  max-width: min(440px, calc(100vw - 2 * var(--space-4)));
+  box-shadow: var(--shadow-lg);
 }
 
 /* Disconnected banner: a closed socket disables every control below it, so the
@@ -264,154 +390,77 @@
   margin: 0;
 }
 
-/* Main Content.
-   The working column runs LIVE, then NEXT, then the pending queue; the utility
-   column sits beside it. Flex rather than grid: the sections must keep their own
-   heights on a short window (the column scrolls) instead of being squeezed. */
+/* Main content: the workspace on the left (what is on the projector, what is
+   next, what was shown) and the pending queue on the right. Flex rather than
+   grid: the sections keep their own heights on a short window (the workspace
+   scrolls) instead of being squeezed. */
 .operator-main {
   display: flex;
-  gap: var(--space-6);
-  padding: var(--space-6);
+  gap: var(--space-5);
   flex: 1;
   min-height: 0;
+  padding: var(--space-5) var(--space-6) var(--space-6);
   overflow: hidden;
 }
 
-.operator-main-column {
+.operator-workspace {
   display: flex;
   flex-direction: column;
-  gap: var(--space-4);
+  gap: var(--space-5);
   flex: 1;
   min-width: 0;
-  /* The running order plus the queue scroll together when the window is short. */
-  overflow-y: auto;
-}
-
-/* Section */
-.operator-section {
-  display: flex;
-  flex-direction: column;
-  background: var(--color-surface);
-  border-radius: var(--radius-lg);
-  border: 1px solid var(--color-border);
-  box-shadow: var(--shadow-sm);
-  overflow: hidden;
-}
-
-.operator-section-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: var(--space-4);
-  border-bottom: 1px solid var(--color-border);
-}
-
-.operator-section-title {
-  font-size: var(--font-size-lg);
-  font-weight: 600;
-  margin: 0;
-  color: var(--color-text);
-}
-
-.operator-section-count {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 24px;
-  height: 24px;
-  padding: 0 var(--space-2);
-  background: var(--color-surface-muted);
-  border-radius: var(--radius-full);
-  font-size: var(--font-size-sm);
-  font-weight: 600;
-  color: var(--color-text-secondary);
-}
-
-.operator-section-content {
-  flex: 1;
-  overflow-y: auto;
-  padding: var(--space-4);
-}
-
-/* Pending Section - the working area, so it takes the leftover height. The floor
-   is low on purpose: with preferences in the settings dialog the whole column
-   fits a short window, so an empty queue should not reserve height the
-   references would need a moment later.
-
-   Bounded, because the action row is the last row of this section: a column that
-   grows with the queue pushed "Approve and Show" to the end of a 2900px list on
-   a busy service. Here the list scrolls inside the section and the row stays at
-   the foot of the console, in reach. (`min-height: 0` is what lets a flex item
-   shrink below its content; the column itself is height-bounded above the tablet
-   breakpoint, which is the half this rule relies on.) */
-.operator-pending {
-  display: flex;
-  flex-direction: column;
-  flex: 1 1 auto;
   min-height: 0;
+  overflow-y: auto;
 }
 
-.operator-pending .operator-section-content {
-  min-height: 150px;
-}
-
-/* The queue is the second thing the operator reads, after what is already on
-   the projector, so it is drawn a step quieter than LIVE and NEXT: a smaller
-   heading, tighter cards, and no badge larger than the reference it names. */
-.operator-pending .operator-section-header {
-  padding: var(--space-3) var(--space-4);
-}
-
-.operator-pending .operator-section-title {
-  font-size: var(--font-size-base);
-}
-
-.operator-pending .operator-section-content {
-  padding: var(--space-3);
-}
-
-.operator-pending .ref-card {
-  padding: var(--space-3);
-}
-
-.operator-pending .ref-card-title {
-  font-size: var(--font-size-base);
-}
-
-/* LIVE and NEXT share one row so the queue below keeps a usable height. LIVE is
-   the wide miniature and gets every pixel the staging panel does not need;
-   NEXT stays a modest, fixed-ish column for preview and Show. */
-.operator-preview-row {
+/* ON DISPLAY and UP NEXT sit side by side at equal width. */
+.operator-stage-row {
   display: flex;
-  align-items: stretch;
-  gap: var(--space-4);
+  align-items: flex-start;
+  gap: var(--space-5);
   flex: 0 0 auto;
 }
 
-/* LIVE Section - a miniature of the audience display */
-.operator-live {
-  flex: 1 1 auto;
+.operator-stage-panel {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 0;
   min-width: 0;
 }
 
-.operator-live-badge {
+.operator-stage-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  height: 28px;
+}
+
+.operator-stage-title {
+  margin: 0;
+  font-size: var(--font-size-xs);
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+
+/* The state words beside the stage labels. Plain text rather than pills: LIVE is
+   the one that takes the accent, and the rest stay as quiet as the label. */
+.operator-live-badge,
+.operator-next-badge {
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);
-  padding: var(--space-1) var(--space-3);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-full);
   font-size: var(--font-size-xs);
-  font-weight: 600;
+  font-weight: 700;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
-  letter-spacing: 0.08em;
   color: var(--color-text-muted);
 }
 
 .operator-live-badge.is-live {
-  color: var(--color-success-text);
-  background: var(--color-success-bg);
-  border-color: transparent;
+  color: var(--accent-text);
 }
 
 .operator-live-dot {
@@ -422,16 +471,52 @@
 }
 
 .operator-live-badge.is-live .operator-live-dot {
-  background: var(--color-success);
+  background: var(--color-primary);
 }
 
-.operator-live-content {
+/* Which door the staged scripture came through. Sentence-weight text: Show sends
+   a different request for each source, so the word has to be there, but it does
+   not need a coloured pill to be read. */
+.operator-next-badge {
+  font-weight: 500;
+  letter-spacing: 0.04em;
+}
+
+/* The stage: a miniature of the projector. It takes the display's own tokens
+   through `data-theme` (see the note at the top), grows with the passage up to
+   about half the window, and only then scrolls inside itself. The floor is tall
+   enough for a four-verse passage, so a long reading is not squeezed into a
+   strip. */
+.operator-stage {
+  box-sizing: border-box;
   display: flex;
-  align-items: center;
+  flex-direction: column;
   justify-content: center;
+  gap: var(--space-4);
+  width: 100%;
+  min-height: clamp(260px, 38vh, 400px);
+  min-height: clamp(260px, 38dvh, 400px);
+  max-height: 55vh;
+  max-height: 55dvh;
+  padding: var(--space-5) var(--space-6);
+  background: var(--color-surface-canvas);
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl);
+  overflow-y: auto;
+  font-family: var(--font-serif);
 }
 
-/* Compact placeholder shared by the LIVE and NEXT panels. */
+/* Nothing on it yet: the stage keeps its size so the row does not jump when the
+   first reference arrives, but it is drawn as a panel, not as a blank screen. */
+.operator-stage.is-empty {
+  align-items: flex-start;
+  background: var(--panel-bg);
+  /* The serif is the projector's; a placeholder is the console talking. */
+  font-family: var(--font-sans);
+}
+
+/* Compact placeholder shared by the LIVE and NEXT stages. */
 .operator-hint {
   display: flex;
   align-items: flex-start;
@@ -473,321 +558,398 @@
   font-size: var(--font-size-xs);
 }
 
-/* Sized like a small projector: the data-theme attribute scopes the display's
-   own theme tokens here, and the stage clips rather than scrolls, exactly as a
-   projector screen does. The verse markup and classes come from the display. */
-.operator-live-stage {
-  width: 100%;
-  /* The stage grows with the displayed passage instead of holding a fixed
-     height, so more of a long reading is visible without leaving the console.
-     Capped at about half the viewport (classic unit first for older browsers);
-     past that the stage scrolls internally and the page itself never stretches.
-     The fitted font size still assumes the nominal 170px box, so growth only
-     ever adds room — the preview keeps matching the projector's own fit. */
-  height: auto;
-  min-height: 170px;
-  max-height: 50vh;
-  max-height: 50dvh;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: var(--space-2);
-  padding: var(--space-3) var(--space-4);
-  background: var(--color-surface-canvas);
-  color: var(--color-text);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  overflow-y: auto;
-  text-align: center;
-  font-family: var(--font-serif);
-}
-
-/* Verse text in the miniature: same order and grouping as the projector (number
-   column plus text), at a console-friendly size set inline by the fit logic. */
-.operator-live-verses {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5em;
-  width: 100%;
-  overflow: hidden;
-}
-
-.operator-live-verse {
-  display: flex;
-  gap: 0.5em;
-  margin: 0;
-  line-height: 1.35;
-}
-
-.operator-live-verse-number {
-  flex-shrink: 0;
-  font-size: 0.7em;
-  font-weight: 600;
-  color: var(--color-text-muted);
-  opacity: 0.8;
-}
-
-.operator-live-reference {
-  font-family: var(--font-sans);
-  font-size: var(--font-size-sm);
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--color-text-secondary);
-}
-
-.operator-live-note {
-  font-family: var(--font-sans);
-  font-size: var(--font-size-xs);
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  color: var(--color-text-muted);
-}
-
-/* NEXT Section - deliberately smaller and plainer than LIVE, and bounded: it
-   previews one passage and offers one action, so it never needs to grow. */
-.operator-next {
-  flex: 0 1 340px;
-  min-width: 0;
-}
-
-.operator-next-badge {
-  padding: var(--space-1) var(--space-3);
-  border: 1px dashed var(--color-border-strong);
-  border-radius: var(--radius-full);
-  font-size: var(--font-size-xs);
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--color-text-muted);
-}
-
-/* Which door the staged scripture came through. Solid rather than dashed once
-   something is staged, and the manual and history ones are tinted: Show sends a
-   different request for each, so the difference has to survive a glance. A
-   history entry keeps its own colour so it is never mistaken for a fresh
-   detection or for a passage just looked up. */
-.operator-next-badge.is-detected {
-  border-style: solid;
-  color: var(--color-text-secondary);
-}
-
-.operator-next-badge.is-manual {
-  border-style: solid;
-  border-color: transparent;
-  color: var(--color-primary);
-  background: var(--color-primary-subtle);
-}
-
-.operator-next-badge.is-history {
-  border-style: solid;
-  border-color: transparent;
-  color: var(--color-info-text);
-  background: var(--color-info-bg);
-}
-
-.operator-next-body {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-}
-
-.operator-next-preview {
-  padding: var(--space-3);
-  background: var(--color-surface-muted);
-  border: 1px dashed var(--color-border-strong);
-  border-radius: var(--radius-md);
-}
-
-.operator-next-reference {
-  margin: 0 0 var(--space-2) 0;
-  font-size: var(--font-size-base);
-  font-weight: 600;
-  color: var(--color-text);
-}
-
+/* Verse text on either stage: the same order and grouping as the projector — a
+   number column and the text — at a console-friendly size set inline by the fit
+   logic. The numbers share one right edge so verse 9 and verse 10 sit against
+   the text they label. */
+.operator-live-verses,
 .operator-next-verses {
-  /* Clamped to three lines with an ellipsis: a long passage must not stretch
-     this panel or push the queue down the page. The legacy box recipe is
-     deliberate: it is the one this panel's browsers actually honor. The rows
-     below are plain blocks with inline content for the same reason — the clamp
-     counts fragmenting lines, and it does not fragment flex or grid children,
-     so a flex row would switch the clamp off entirely. Siblings keep their
-     breathing room with margin because clamped boxes ignore `gap`. */
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 3;
-  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6em;
+  width: 100%;
   margin: 0;
   padding: 0;
   list-style: none;
 }
 
+.operator-live-verse,
 .operator-next-verse {
-  /* Plain block, not flex: the list's line clamp only fragments inline
-     content, and a flex row would silently disable the clamp. The number runs
-     in at the head of the first line; wrapped lines align to the row edge,
-     which is fine for a three-line truncated preview. */
-  display: block;
-  font-family: var(--font-serif);
-  font-size: var(--font-size-sm);
-  line-height: var(--leading-snug);
-  color: var(--color-text-secondary);
+  display: flex;
+  gap: 0.6em;
+  margin: 0;
+  line-height: 1.5;
 }
 
-.operator-next-verses .operator-next-verse + .operator-next-verse {
-  margin-top: var(--space-1);
+.operator-live-verse-number,
+.operator-next-verse-number {
+  flex-shrink: 0;
+  width: 1.8em;
+  padding-top: 0.35em;
+  font-family: var(--font-sans);
+  font-size: 0.7em;
+  font-weight: 600;
+  text-align: right;
+  color: var(--color-text-muted);
 }
 
 .operator-next-verse-text {
   overflow-wrap: anywhere;
 }
 
-.operator-next-verse-number {
-  margin-right: var(--space-2);
+/* The citation under the passage, in the same voice on both stages. */
+.operator-live-reference,
+.operator-next-reference {
+  margin: 0;
   font-family: var(--font-sans);
   font-size: var(--font-size-xs);
   font-weight: 600;
+  letter-spacing: 0.14em;
+  text-align: center;
+  text-transform: uppercase;
+  color: var(--color-text-secondary);
+}
+
+/* In the markup the reference comes first, which is how a screen reader should
+   meet it; on screen it sits under the verses like the projector's. */
+.operator-next-reference {
+  order: 2;
+}
+
+.operator-live-note,
+.operator-next-note {
+  font-family: var(--font-sans);
+  font-size: var(--font-size-xs);
+  text-align: center;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
   color: var(--color-text-muted);
 }
 
 .operator-next-note {
-  margin-top: var(--space-2);
+  order: 3;
+}
+
+/* The row of controls under each stage. Same height on both sides, so the two
+   stages and the history panel below them line up whether or not a button is
+   showing. */
+.operator-stage-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  min-height: 48px;
+  margin-top: var(--space-3);
+}
+
+.operator-stage-footer .btn-danger {
+  color: var(--color-danger-text);
+  background: transparent;
+  border: 1px solid var(--color-border-strong);
+}
+
+.operator-stage-footer .btn-danger:hover:not(:disabled) {
+  background: var(--color-danger-bg);
+  box-shadow: none;
+}
+
+/* Show on display is the one primary action in the console: taller and rounder
+   than any other control, and the only filled one. */
+.operator-stage-footer .operator-show-button {
+  min-height: 48px;
+  padding: 0 var(--space-5) 0 var(--space-4);
+  border-radius: var(--radius-xl);
+  font-size: var(--font-size-base);
+}
+
+.operator-show-hint {
+  margin-left: var(--space-2);
+  padding: 1px 7px;
+  border: 1px solid currentColor;
+  border-radius: 5px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  opacity: 0.7;
+}
+
+.btn-flash {
+  animation: flash var(--transition-fast) ease-out;
+}
+
+@keyframes flash {
+  0% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(0.95);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+/* Panels: the pending queue and the history list. */
+.operator-section {
+  display: flex;
+  flex-direction: column;
+  background: var(--panel-bg);
+  border-radius: var(--radius-xl);
+  border: 1px solid var(--color-border);
+  overflow: hidden;
+}
+
+.operator-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  height: 48px;
+  flex-shrink: 0;
+  padding: 0 var(--space-4);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.operator-section-title {
+  margin: 0;
+  font-size: var(--font-size-base);
+  font-weight: 650;
+  color: var(--color-text);
+}
+
+.operator-section-count {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 var(--space-2);
+  background: var(--card-bg);
+  border-radius: var(--radius-full);
   font-size: var(--font-size-xs);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-secondary);
+}
+
+.operator-section-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--space-2) var(--space-3);
+}
+
+/* The pending queue is the working column: full height, the list scrolling
+   inside it, and its one footer control pinned at the bottom. It is the answer
+   to "what do I do next", so it gets a column of its own beside the stages. */
+.operator-pending {
+  flex: 0 0 336px;
+  width: 336px;
+  min-height: 0;
+}
+
+.operator-queue-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  height: 52px;
+  flex-shrink: 0;
+  padding: 0 var(--space-3);
+  border-top: 1px solid var(--color-border);
+}
+
+.operator-queue-hint {
+  font-size: var(--font-size-xs);
   color: var(--color-text-muted);
 }
 
-.operator-next-actions {
-  display: flex;
-  gap: var(--space-2);
-}
-
-.operator-next-actions .btn:first-child {
+/* The history list takes the height the stages leave. */
+.operator-history {
   flex: 1 1 auto;
+  min-height: 180px;
 }
 
-/* Reference Card List */
+.operator-history .ref-card-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-1) var(--space-3);
+}
+
+/* Confidence is a property of a detection, not of something that was shown, so a
+   history row drops it. */
+.operator-history .ref-card-confidence {
+  display: none;
+}
+
+/* Reference rows: queue and history. No box per row, no colour band — a row is
+   text on the panel, a surface when you point at it, a stronger surface when it
+   is the one staged in Up Next. */
 .ref-card-list {
   display: flex;
   flex-direction: column;
-  gap: var(--space-3);
+  gap: var(--space-1);
 }
 
-/* Reference Card */
 .ref-card {
   position: relative;
   display: flex;
-  gap: var(--space-3);
-  padding: var(--space-4);
-  background: var(--color-surface-raised);
-  border: 2px solid var(--color-border);
-  border-radius: var(--radius-md);
+  box-sizing: border-box;
+  padding: var(--space-3) var(--space-3);
+  background: transparent;
+  border-radius: var(--radius-lg);
   cursor: pointer;
-  transition: all var(--transition-fast);
+  transition: background-color var(--transition-fast);
 }
 
 .ref-card:hover {
-  border-color: var(--color-border-strong);
-  box-shadow: var(--shadow-sm);
-}
-
-/* Confidence is what an operator weighs first when deciding what to show, so it
-   gets a colour stripe down the card edge on top of the badge. The stripe keeps
-   its colour while the card is selected, when the other borders turn primary. */
-.ref-card[data-confidence='high'] {
-  border-left: 4px solid var(--color-success);
-}
-
-.ref-card[data-confidence='medium'] {
-  border-left: 4px solid var(--color-warning);
-}
-
-.ref-card[data-confidence='low'] {
-  border-left: 4px solid var(--color-danger);
+  background: var(--card-bg);
 }
 
 .ref-card:focus-visible {
   outline: 2px solid var(--color-border-focus);
-  outline-offset: 2px;
+  outline-offset: -2px;
 }
 
-.ref-card-selected {
-  border-color: var(--color-primary);
-  background: var(--color-primary-subtle);
-  box-shadow: var(--shadow-md);
-}
-
-.ref-card-check {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 24px;
-  flex-shrink: 0;
-  background: var(--color-primary);
-  /* Inverse text, not hard white: the dark theme's primary is a light blue and
-     a white tick on it is almost invisible. */
-  color: var(--color-text-inverse);
-  border-radius: var(--radius-full);
+.ref-card-selected,
+.ref-card-selected:hover {
+  background: var(--selected-bg);
 }
 
 .ref-card-content {
+  display: flex;
+  flex-direction: column;
   flex: 1;
+  gap: 2px;
   min-width: 0;
 }
 
 .ref-card-header {
   display: flex;
-  align-items: flex-start;
+  align-items: baseline;
   justify-content: space-between;
   gap: var(--space-3);
-  margin-bottom: var(--space-2);
 }
 
 .ref-card-title {
-  font-size: var(--font-size-lg);
-  font-weight: 600;
   margin: 0;
+  font-size: var(--font-size-base);
+  font-weight: 600;
+  overflow-wrap: anywhere;
   color: var(--color-text);
 }
 
 .ref-card-badges {
   display: flex;
+  align-items: center;
   gap: var(--space-2);
   flex-shrink: 0;
 }
 
+/* Confidence, as a three-pip meter and a word. It reads by shape and by the
+   word, not by hue, so it holds up in both themes and for anyone who cannot
+   tell a green from an amber. */
+.ref-card-confidence {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--font-size-xs);
+  white-space: nowrap;
+  color: var(--color-text-muted);
+}
+
+.ref-card-pips {
+  font-size: 10px;
+  letter-spacing: 2px;
+  color: var(--color-text-secondary);
+}
+
+/* One line of the passage: enough to recognise it. The full text is in Up Next
+   once the row is staged. */
 .ref-card-text {
   margin: 0;
+  overflow: hidden;
   font-size: var(--font-size-sm);
+  line-height: var(--leading-normal);
+  text-overflow: ellipsis;
+  white-space: nowrap;
   color: var(--color-text-secondary);
-  line-height: var(--leading-relaxed);
 }
 
 .ref-card-meta {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: var(--space-2) var(--space-3);
-  margin-top: var(--space-2);
+  gap: 0 var(--space-3);
   font-size: var(--font-size-xs);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
+  font-variant-numeric: tabular-nums;
   color: var(--color-text-muted);
 }
 
-/* Which pending card is the one staged in Up Next — the queue and the staging
+/* Which pending row is the one staged in Up Next — the queue and the staging
    panel must never be mistaken for each other. */
 .ref-card-staged {
   margin-left: auto;
-  padding: 2px var(--space-2);
-  border-radius: var(--radius-full);
-  background: var(--color-primary-subtle);
-  color: var(--color-primary);
   font-weight: 600;
+  color: var(--accent-text);
+}
+
+/* The whole of auto-approve on the main screen: a line that names the mode and
+   opens Settings where it is changed. It sits in the footer under ON DISPLAY,
+   because it decides what reaches that screen without the operator. */
+.operator-auto-compact {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-shrink: 0;
+  min-height: 36px;
+  padding: 0 var(--space-3);
+  font-family: var(--font-sans);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  text-align: left;
+}
+
+.operator-auto-compact:hover {
+  background: var(--card-bg);
+  color: var(--color-text);
+}
+
+.operator-auto-compact-icon {
+  display: flex;
+  flex-shrink: 0;
+  color: var(--color-text-muted);
+}
+
+.operator-auto-compact-icon svg {
+  width: 16px;
+  height: 16px;
+}
+
+.operator-auto-compact-text {
+  min-width: 0;
+}
+
+.operator-auto-compact-value {
+  font-weight: 700;
+  color: var(--color-text);
+}
+
+/* A mode that shows detections on its own is a fact worth noticing — but it is
+   still a fact, not an alarm, so it takes the accent tint, not a banner. */
+.operator-auto-compact.is-on {
+  border-color: var(--color-primary);
+  background: var(--color-primary-subtle);
+  color: var(--accent-text);
+}
+
+.operator-auto-compact.is-on .operator-auto-compact-value,
+.operator-auto-compact.is-on .operator-auto-compact-icon {
+  color: var(--accent-text);
 }
 
 /* Display and auto-approve settings, rendered inside the settings dialog. The
@@ -817,11 +979,11 @@
 }
 
 .operator-setting-label {
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-xs);
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  color: var(--color-text-secondary);
+  color: var(--color-text-muted);
 }
 
 /* The active value spelled out, so the mode is legible without reading which
@@ -885,28 +1047,49 @@
   cursor: not-allowed;
 }
 
-/* Find Scripture - one text box in the utility column. Typing a name filters the
-   canon and typing a reference resolves it, so the panel is a single field and
-   a short list instead of a form with three controls. Every lookup is a server
-   request, so the box is inert while the socket is down. */
+/* Find Scripture - a command bar in the header. Typing a name filters the canon
+   and typing a reference resolves it, so the panel is a single field; its hint
+   and results open as a popover under the bar while the field (or anything in
+   the popover) has focus. Every lookup is a server request, so the box is inert
+   while the socket is down.
+
+   The component is still a labelled section with a heading: the heading is
+   visually hidden, since the field names itself, and the "Looking up…" note sits
+   inside the field's right edge. */
 .operator-search {
-  flex-shrink: 0;
+  position: relative;
+  min-width: 0;
+  background: none;
+  border: none;
+  border-radius: 0;
+  overflow: visible;
 }
 
 .operator-search .operator-section-header {
-  padding: var(--space-3) var(--space-4);
+  position: absolute;
+  top: 0;
+  right: var(--space-3);
+  height: 38px;
+  padding: 0;
+  border: none;
+  pointer-events: none;
+  z-index: 1;
 }
 
 .operator-search .operator-section-title {
-  font-size: var(--font-size-base);
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
 }
 
 .operator-search .operator-section-content {
   flex: none;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  padding: var(--space-3) var(--space-4) var(--space-4);
+  overflow: visible;
+  padding: 0;
 }
 
 .operator-search-field {
@@ -930,16 +1113,14 @@
 
 .operator-search-input {
   width: 100%;
-  /* Same comfortable target as the other controls: the operator is watching the
-     service, not the mouse. */
-  min-height: 40px;
-  padding: var(--space-2) var(--space-3) var(--space-2) var(--space-6);
+  height: 38px;
+  padding: 0 var(--space-3) 0 var(--space-6);
   font-family: var(--font-sans);
   font-size: var(--font-size-sm);
   color: var(--color-text);
-  background: var(--color-surface-muted);
+  background: var(--card-bg);
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-lg);
   transition: border-color var(--transition-fast);
 }
 
@@ -959,9 +1140,32 @@
 
 .operator-search-busy {
   font-size: var(--font-size-xs);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
   color: var(--color-text-muted);
+}
+
+/* The popover: hint, results and errors, shown only while the search has focus. */
+.operator-search-drop {
+  position: absolute;
+  top: calc(100% + var(--space-2));
+  left: 0;
+  right: 0;
+  z-index: var(--z-dropdown);
+  display: none;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  background: var(--color-surface-overlay);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-xl);
+}
+
+.operator-search:focus-within .operator-search-drop {
+  display: flex;
+}
+
+.operator-search-drop .operator-setting-hint {
+  padding: var(--space-1) var(--space-2);
 }
 
 /* Results: one row per book or passage, each a real button so the whole list is
@@ -1066,119 +1270,6 @@
   gap: var(--space-3);
 }
 
-/* Actions - one row. The primary action has to stay reachable without scrolling
-   on a short window, so it shares a line with the two clears instead of
-   stacking three full-width buttons below the queue. */
-.operator-actions {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  gap: var(--space-3);
-  padding: var(--space-3) var(--space-4);
-  border-top: 1px solid var(--color-border);
-  background: var(--color-surface-raised);
-}
-
-.operator-actions .btn-primary {
-  flex: 1 1 auto;
-  min-width: 0;
-}
-
-.operator-actions-secondary {
-  display: flex;
-  flex: 0 0 auto;
-  gap: var(--space-2);
-}
-
-.btn-flash {
-  animation: flash var(--transition-fast) ease-out;
-}
-
-@keyframes flash {
-  0% {
-    transform: scale(1);
-  }
-  50% {
-    transform: scale(0.95);
-  }
-  100% {
-    transform: scale(1);
-  }
-}
-
-/* Utility column: search, the auto-approve chip, and history. It is narrower
-   than it was (the settings block left it), which is what gives On Display the
-   extra width. */
-.operator-sidebar {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-4);
-  width: 300px;
-  flex: 0 0 300px;
-  min-height: 0;
-  overflow-y: auto;
-}
-
-/* The whole of auto-approve on the main screen: a chip that names the mode and
-   opens Settings where it is changed. Deliberately no taller than a button, and
-   quieter than every panel around it. */
-.operator-auto-compact {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  flex-shrink: 0;
-  width: 100%;
-  min-height: 38px;
-  padding: var(--space-2) var(--space-3);
-  font-family: var(--font-sans);
-  font-size: var(--font-size-sm);
-  color: var(--color-text-secondary);
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  cursor: pointer;
-  transition: all var(--transition-fast);
-  text-align: left;
-}
-
-.operator-auto-compact:hover {
-  border-color: var(--color-border-strong);
-  color: var(--color-text);
-}
-
-.operator-auto-compact-icon {
-  display: flex;
-  flex-shrink: 0;
-  color: var(--color-text-muted);
-}
-
-.operator-auto-compact-icon svg {
-  width: 16px;
-  height: 16px;
-}
-
-.operator-auto-compact-text {
-  min-width: 0;
-}
-
-.operator-auto-compact-value {
-  font-weight: 700;
-  color: var(--color-text);
-}
-
-/* A mode that shows detections on its own is a fact worth noticing — but it is
-   still a fact, not an alarm, so it gets the warning tint rather than a banner. */
-.operator-auto-compact.is-on {
-  border-color: var(--color-warning);
-  background: var(--color-warning-bg);
-  color: var(--color-warning-text);
-}
-
-.operator-auto-compact.is-on .operator-auto-compact-value,
-.operator-auto-compact.is-on .operator-auto-compact-icon {
-  color: var(--color-warning-text);
-}
-
 /* Settings dialog. Modal, because every control inside it changes what the
    audience or the console itself is using: it takes the page and the keyboard
    until it is closed, then hands both back. */
@@ -1200,9 +1291,9 @@
   width: 100%;
   max-width: 460px;
   max-height: calc(100dvh - 2 * var(--space-4));
-  background: var(--color-surface);
+  background: var(--panel-bg);
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-xl);
   box-shadow: var(--shadow-xl);
   overflow: hidden;
 }
@@ -1263,13 +1354,16 @@
   gap: var(--space-3);
 }
 
+/* A section heading is a heading, in sentence case with a rule under it; the
+   small uppercase labels belong to the individual settings below it. Two levels
+   in the same bold capitals made "Auto-approve" appear twice at equal weight. */
 .operator-dialog-section-title {
   margin: 0;
-  font-size: var(--font-size-sm);
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--color-text-secondary);
+  padding-bottom: var(--space-2);
+  border-bottom: 1px solid var(--color-border);
+  font-size: var(--font-size-base);
+  font-weight: 650;
+  color: var(--color-text);
 }
 
 /* The display settings block carries its own sidebar padding; in the dialog the
@@ -1289,36 +1383,6 @@
   flex: 1 1 0;
   justify-content: center;
   min-height: 40px;
-}
-
-/* History is the part that scrolls: it keeps a floor instead of collapsing to
-   nothing when the sidebar runs out of height (the sidebar itself scrolls). */
-.operator-history {
-  flex: 1 1 auto;
-  min-height: 180px;
-}
-
-/* History cards read as a log, not a work queue: one step quieter than the
-   pending cards — flat surface, a single border — so each entry separates from
-   the next while scrolling. The reference stays the loudest line, then the
-   passage text, then the metadata; long references and long text wrap instead
-   of escaping the card. Replay behavior is untouched: this is paint only. */
-.operator-history .ref-card {
-  background: var(--color-surface);
-  border-width: 1px;
-}
-
-.operator-history .ref-card:hover {
-  border-color: var(--color-border-strong);
-}
-
-.operator-history .ref-card-title {
-  font-size: var(--font-size-base);
-  overflow-wrap: anywhere;
-}
-
-.operator-history .ref-card-text {
-  overflow-wrap: anywhere;
 }
 
 /* Action feedback. One slot only: a new message replaces the previous one, so a
@@ -1441,104 +1505,72 @@
 }
 
 /* Responsive */
-@media (max-width: 1280px) {
-  /* The sidebar drops below the working area: full width, side by side. */
+@media (max-width: 1100px) {
+  /* The queue drops below the workspace and takes the full width; the page
+     scrolls instead of each column. */
   .operator-main {
     flex-wrap: wrap;
     overflow-y: auto;
   }
 
-  .operator-main-column {
+  .operator-workspace {
     flex: 1 1 100%;
     overflow: visible;
   }
 
-  /* Below the working column the utility column becomes a row: search and the
-     auto-approve chip share the first line, history spans the next. */
-  .operator-sidebar {
+  .operator-pending {
     flex: 1 1 100%;
     width: auto;
-    min-height: 0;
-    flex-direction: row;
-    flex-wrap: wrap;
-    overflow: visible;
-  }
-
-  .operator-search {
-    flex: 1 1 300px;
-  }
-
-  /* flex-start keeps the chip as tall as itself instead of stretching to the
-     height of the search panel beside it. */
-  .operator-auto-compact {
-    flex: 1 1 220px;
-    width: auto;
-    align-self: flex-start;
-  }
-
-  .operator-history {
-    flex: 1 1 100%;
+    max-height: 520px;
   }
 }
 
-@media (max-width: 1024px) {
-  /* One stacked column: the sections keep their natural height in DOM order. */
-  .operator-main-column {
-    flex: 1 1 100%;
-  }
-
-  .operator-preview-row {
-    flex-direction: column;
-  }
-
-  /* Stacked, a flex basis is a height: LIVE keeps its content height and NEXT
-     sizes to its own, instead of the width budget they share side by side. */
-  .operator-live,
-  .operator-next {
-    flex: 0 1 auto;
-  }
-
-  /* A tablet header has no spare width between the title and the controls: the
-     notice takes a row of its own there instead of being squeezed into a
-     column of text. It is the last row so the controls stay where they were. */
+@media (max-width: 800px) {
+  /* The command bar takes a row of its own under the brand and the controls. */
   .operator-header {
-    flex-wrap: wrap;
+    grid-template-columns: minmax(0, 1fr) auto;
+    height: auto;
     row-gap: var(--space-2);
+    padding: var(--space-2) var(--space-4);
   }
 
-  .operator-header .operator-feedback {
-    order: 3;
-    flex-basis: 100%;
-    margin: 0;
+  .operator-header-left {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .operator-header-right {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .operator-search {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+
+  /* One stage per row, each at its natural height. */
+  .operator-stage-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .operator-stage-panel {
+    flex: 0 0 auto;
   }
 }
 
 @media (max-width: 640px) {
-  .operator-header {
-    padding: var(--space-2) var(--space-4);
-  }
-
-  /* The gear is the only control in the header that is not a label: give it a
-     full touch target where the bar is at its narrowest. */
-  .operator-icon-button {
-    width: 40px;
-    height: 40px;
-  }
-
+  /* The gear and the dismiss control get a full touch target where the bar is at
+     its narrowest. */
+  .operator-icon-button,
   .operator-feedback-dismiss {
     width: 40px;
     height: 40px;
   }
 
-  .operator-title {
-    font-size: var(--font-size-lg);
-  }
-
-  .operator-subtitle {
-    display: none;
-  }
-
-  .operator-display-label {
+  .operator-display-label,
+  .operator-language-chip-label {
     display: none;
   }
 
@@ -1551,39 +1583,16 @@
     gap: var(--space-4);
   }
 
-  .operator-live-stage {
-    min-height: 140px;
+  .operator-stage {
+    min-height: 200px;
+    padding: var(--space-4);
   }
 
-  /* On a phone the actions go back to stacked, with the two clears side by
-     side beneath the primary button — and one per row when the labels do not
-     fit, rather than overflowing the section. */
-  .operator-actions {
-    flex-direction: column;
-    align-items: stretch;
+  .operator-stage-footer {
+    flex-wrap: wrap;
   }
 
-  .operator-actions-secondary {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
-  }
-
-  /* Column layout needs nowrap: a wrapped column flex grows sideways, which put
-     the history panel and the queue's cards outside the viewport. */
-  .operator-sidebar {
-    flex-direction: column;
-    flex-wrap: nowrap;
-  }
-
-  /* Back to a full-width row of its own: in a column the row-layout flex basis
-     would let the chip grow vertically. */
-  .operator-auto-compact {
-    flex: 0 0 auto;
-    width: 100%;
-    align-self: stretch;
-  }
-
-  .operator-preview-row {
-    gap: var(--space-3);
+  .operator-history .ref-card-list {
+    grid-template-columns: minmax(0, 1fr);
   }
 }

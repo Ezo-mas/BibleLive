@@ -12,7 +12,7 @@ import { SettingsDialog } from './components/SettingsDialog'
 import type { SettingsSection } from './components/SettingsDialog'
 import { OperatorHeader } from './components/OperatorHeader'
 import { LanguageChip } from './components/LanguageChip'
-import { OperatorActions } from './components/OperatorActions'
+import { ClearDisplayButton, QueueFooter } from './components/OperatorActions'
 import { ConnectionBanner } from './components/ConnectionBanner'
 import { FeedbackNotice } from './components/FeedbackNotice'
 import { TokenPrompt } from './components/TokenPrompt'
@@ -27,23 +27,24 @@ import './operator.css'
  * components; all server state and actions live in `useOperatorState` and all
  * keyboard handling in `useOperatorShortcuts`.
  *
- * The working column reads top to bottom as the service runs: LIVE is what the
- * audience is looking at, NEXT is the scripture being prepared for it, then the
- * pending queue with the action row. The utility column on the right holds the
- * three things that are consulted rather than operated: scripture search, the
- * auto-approve mode, and recent history.
+ * The workspace reads like a switcher: ON DISPLAY is what the audience is looking
+ * at, UP NEXT is the scripture being prepared for it (and the one filled button,
+ * Show on display, that sends it), and recent history sits below. The pending
+ * queue of detections has the column on the right. Find Scripture is a command
+ * bar in the header, so it is one keystroke away from anywhere.
  *
  * Preferences — verses shown, display background, app theme, auto-approve — all
  * live in one settings dialog behind the header's gear. Keeping them out of the
- * page is what gives On Display and the queue their space, and the compact
- * auto-approve chip is the single reminder on screen that the server may be
+ * page is what gives the stages and the queue their space, and the auto-approve
+ * line under ON DISPLAY is the single reminder on screen that the server may be
  * displaying detections on its own.
  *
  * Scripture reaches the display by one of two doors, and they stay separate all
  * the way down. A pending reference is approved by ID through the server's
  * approval path; a passage the operator finds by hand — or picks from history to
- * show again — is staged in NEXT and sent as coordinates for the server to
- * resolve itself. Search only ever stages: Show is the operator's own action.
+ * show again — is staged in UP NEXT and sent as coordinates for the server to
+ * resolve itself. Search only ever stages: Show on display is the operator's own
+ * action.
  */
 export default function App() {
   const operator = useOperatorState()
@@ -103,7 +104,16 @@ export default function App() {
             onOpenSettings={() => openSettings('language')}
           />
         }
-        // Action feedback lives in the header so it can never cover the actions
+        search={
+          <ScriptureSearch
+            search={operator.search}
+            disabled={!operator.isConnected}
+            // Shift+Enter in the box shows a passage directly; not from behind
+            // the settings modal.
+            directEnabled={!settingsOpen}
+          />
+        }
+        // Action feedback hangs from the header so it can never cover the stages
         // or the queue; it is still the same single-slot live region.
         feedback={<FeedbackNotice notice={operator.notice} onDismiss={operator.dismissNotice} />}
       />
@@ -112,55 +122,37 @@ export default function App() {
           connected: before that, `needsToken` owns the page. */}
       {operator.status === 'closed' && <ConnectionBanner onReconnect={operator.reconnect} />}
       <main className="operator-main">
-        <div className="operator-main-column">
-          <div className="operator-preview-row">
+        <div className="operator-workspace">
+          <div className="operator-stage-row">
             <LivePanel
               reference={operator.currentDisplay}
               verseLimit={operator.verseLimit}
               displayTheme={operator.displayTheme}
-            />
+            >
+              <div className="operator-stage-footer">
+                <ClearDisplayButton
+                  canClearDisplay={operator.canClearDisplay}
+                  flash={operator.flash}
+                  onClearDisplay={operator.clearDisplay}
+                />
+                <AutoApproveCompact
+                  autoMode={operator.autoMode}
+                  onOpenSettings={() => openSettings('auto')}
+                />
+              </div>
+            </LivePanel>
 
             <NextPanel
               reference={operator.nextReference}
               source={operator.nextSource}
               verseLimit={operator.verseLimit}
+              displayTheme={operator.displayTheme}
               canShow={operator.canShowNext}
+              flashing={operator.flash === 'approve'}
               onShow={operator.showNext}
               onDiscard={operator.clearNext}
             />
           </div>
-
-          <PendingQueue
-            pending={operator.pending}
-            count={operator.pendingCount}
-            selectedId={operator.selectedId}
-            onSelect={operator.selectPending}
-          >
-            <OperatorActions
-              canApprove={operator.canApprove}
-              canClearDisplay={operator.canClearDisplay}
-              canClearPending={operator.canClearPending}
-              flash={operator.flash}
-              onApprove={operator.approveSelected}
-              onClearDisplay={operator.clearDisplay}
-              onClearPending={operator.clearPendingQueue}
-            />
-          </PendingQueue>
-        </div>
-
-        <aside className="operator-sidebar" aria-label="Utilities">
-          <ScriptureSearch
-            search={operator.search}
-            disabled={!operator.isConnected}
-            // Shift+Enter in the box shows a passage directly; not from behind
-            // the settings modal.
-            directEnabled={!settingsOpen}
-          />
-
-          <AutoApproveCompact
-            autoMode={operator.autoMode}
-            onOpenSettings={() => openSettings('auto')}
-          />
 
           <HistoryPanel
             history={operator.history}
@@ -168,7 +160,20 @@ export default function App() {
             selectedId={operator.selectedHistoryId}
             onSelect={operator.selectHistory}
           />
-        </aside>
+        </div>
+
+        <PendingQueue
+          pending={operator.pending}
+          count={operator.pendingCount}
+          selectedId={operator.selectedId}
+          onSelect={operator.selectPending}
+        >
+          <QueueFooter
+            canClearPending={operator.canClearPending}
+            flash={operator.flash}
+            onClearPending={operator.clearPendingQueue}
+          />
+        </PendingQueue>
       </main>
 
       <SettingsDialog
