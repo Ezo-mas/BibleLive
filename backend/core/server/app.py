@@ -656,7 +656,7 @@ def create_app(bible_lookup: BibleLookup | None = None) -> FastAPI:
 
         Requires authentication if BIBLELIVE_REQUIRE_AUTH is enabled.
         """
-        await app_state.clear_display()
+        await app_state.clear_and_notify()
         logger.info("Display cleared")
         return ClearResponse(status="success", message="Display cleared")
 
@@ -674,10 +674,7 @@ def create_app(bible_lookup: BibleLookup | None = None) -> FastAPI:
 
         Requires authentication if BIBLELIVE_REQUIRE_AUTH is enabled.
         """
-        count = len(app_state.pending_references)
-        await app_state.clear_pending()
-        # Notify connected operators of the now-empty queue.
-        await app_state._send_pending_update()
+        count = await app_state.clear_pending_and_notify()
         logger.info(f"Cleared {count} pending references")
         return ClearPendingResponse(status="success", message=f"Cleared {count} pending references")
 
@@ -913,11 +910,29 @@ def main() -> None:
     logger.info(f"Ready check:   http://{config.HOST}:{config.PORT}/readyz")
     logger.info("\nPress Ctrl+C to stop\n")
 
+    if config.RELOAD:
+        # Reload needs an import string so the reloader can re-import the app;
+        # a Config built from an app object silently ignores reload.
+        # Same factory `make dev` uses. Watch backend/ only: the repo root
+        # holds frontend/node_modules, which must not trigger restarts. The
+        # path is absolute because uvicorn quietly falls back to watching the
+        # whole working directory when a relative one does not exist there.
+        uvicorn.run(
+            "core.server.app:create_app",
+            factory=True,
+            host=config.HOST,
+            port=config.PORT,
+            reload=True,
+            reload_dirs=[str(config.backend_root)],
+            log_level=config.LOG_LEVEL.lower(),
+        )
+        return
+
     uvicorn_config = uvicorn.Config(
         create_app(),
         host=config.HOST,
         port=config.PORT,
-        reload=config.RELOAD,
+        reload=False,
         log_level=config.LOG_LEVEL.lower(),
     )
     server = uvicorn.Server(uvicorn_config)

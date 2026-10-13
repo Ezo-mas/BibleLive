@@ -216,14 +216,13 @@ class BibleLiveAudioProcessor:
         if self.transcription_thread and self.transcription_thread.is_alive():
             self.transcription_thread.join(timeout=2.0)
 
-        # Close any thread-local BibleLookup instances
-        if hasattr(self._local, "bible_lookup") and self._local.bible_lookup:
-            try:
-                self._local.bible_lookup.close()
-            except Exception as e:
-                logger.warning(f"Error closing Bible lookup: {e}")
         # Then delivery, once nothing can submit any more
         self.sender.stop()
+
+        # The transcription thread closes its own thread-local BibleLookup on
+        # exit (see _transcription_loop): stop() runs on the main thread whose
+        # threading.local() namespace never holds it, so closing here would be
+        # dead code.
 
         # Log final metrics
         self.metrics.log_summary()
@@ -442,15 +441,40 @@ class BibleLiveAudioProcessor:
         # Initialize thread-local Bible lookup and one parser per language
         self._init_thread_local_parsers()
 
-        while self.is_running:
-            try:
-                # Get speech segment (with the language it was captured in)
-                language, speech_frames = self.vad_queue.get(timeout=0.5)
-            except Empty:
-                continue
+        try:
+            while self.is_running:
+                try:
+                    # Get speech segment (with the language it was captured in)
+                    language, speech_frames = self.vad_queue.get(timeout=0.5)
+                except Empty:
+                    continue
 
-            # Process the utterance
-            self._process_utterance(language, speech_frames)
+                # Process the utterance
+                self._process_utterance(language, speech_frames)
+        finally:
+            # Flush held chapter-only references so stop() does not drop them,
+            # then close the thread-local lookup here, the only thread that can
+            # see it. Bounded gap, accepted: if a Whisper call is still in
+            # flight past stop()'s 2 s join, the sender is already stopped when
+            # this flush lands and the reference is lost. Rare and bounded by
+            # the join timeout; shutdown must not hang on a stuck transcription.
+            try:
+                parsers = getattr(self._local, "streaming_parsers", None) or {}
+                for held_parser in parsers.values():
+                    for ref in held_parser.flush():
+                        logger.info("Flushing held reference on shutdown: %s", ref)
+                        try:
+                            self.sender.submit(ref)
+                        except Exception as e:
+                            logger.warning(f"Error submitting flushed reference: {e}")
+            finally:
+                lookup = getattr(self._local, "bible_lookup", None)
+                if lookup is not None:
+                    try:
+                        lookup.close()
+                    except Exception as e:
+                        logger.warning(f"Error closing Bible lookup: {e}")
+                    self._local.bible_lookup = None
 
     def _init_thread_local_parsers(self):
         """Initialize the thread-local Bible lookup and one parser per language.
@@ -513,9 +537,29 @@ class BibleLiveAudioProcessor:
             logger.warning("No streaming parser available for language '%s'", language)
             return None
 
-        if language != getattr(self._local, "last_parser_language", None):
+        last = getattr(self._local, "last_parser_language", None)
+        if language != last:
+            # A held chapter-only reference waits one utterance for its verse.
+            # A language switch means that verse will never come in the old
+            # language, so flush the previous parser instead of leaving its
+            # held reference to be dropped by a later reset.
+            if last is not None:
+                old_parser = parsers.get(last)
+                if old_parser is not None:
+                    for ref in old_parser.flush():
+                        logger.info(
+                            "Flushing held reference on language switch: %s",
+                            ref,
+                        )
+                        self.sender.submit(ref)
             # Previous-language context (carry tokens + inferred chapter/verse)
             # must not leak across the switch.
+            for ref in parser.flush():
+                logger.info(
+                    "Flushing held reference on language switch: %s",
+                    ref,
+                )
+                self.sender.submit(ref)
             parser.reset()
             self._local.last_parser_language = language
             logger.info("Selected '%s' parser (context reset)", language)

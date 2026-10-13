@@ -543,3 +543,60 @@ def test_start_releases_control_port_when_capture_fails():
         assert rebind.address is not None
     finally:
         rebind.stop()
+
+
+# ---------------------------------------------------------------------------
+# Held chapter-only references are delivered, not dropped
+# ---------------------------------------------------------------------------
+def _install_holding_parsers(proc: BibleLiveAudioProcessor) -> dict[str, StreamingParser]:
+    """Parsers as the live pipeline builds them: chapter-only refs are held."""
+    parsers = {
+        language: StreamingParser(
+            ReferenceParser(language=language), language=language, hold_chapter_only=True
+        )
+        for language in SUPPORTED_LANGUAGES
+    }
+    proc._local.streaming_parsers = parsers
+    proc._local.last_parser_language = None
+    return parsers
+
+
+def test_language_switch_delivers_the_held_chapter_reference():
+    """The verse for a held "Romans 8" can no longer arrive in the old language."""
+    proc = _processor("en")
+    parsers = _install_holding_parsers(proc)
+    assert proc._select_parser("en") is parsers["en"]
+    assert parsers["en"].feed("turn to Romans chapter 8", 0.0) == []  # held
+
+    proc._select_parser("lt")
+
+    assert [str(ref) for ref in proc.sender.sent] == ["Romans 8"]
+    assert parsers["en"].flush() == []  # released exactly once
+
+
+class _ClosableLookup:
+    def __init__(self):
+        self.closed = False
+
+    def close(self) -> None:
+        self.closed = True
+
+
+def test_transcription_thread_exit_delivers_held_reference_and_closes_lookup(monkeypatch):
+    """stop() runs on another thread, so only this thread can do either."""
+    proc = _processor("en")
+    lookup = _ClosableLookup()
+
+    def init():
+        parsers = _install_holding_parsers(proc)
+        parsers["en"].feed("turn to Romans chapter 8", 0.0)
+        proc._local.bible_lookup = lookup
+
+    monkeypatch.setattr(proc, "_init_thread_local_parsers", init)
+    proc.is_running = False  # stopping: the loop exits straight away
+
+    proc._transcription_loop()
+
+    assert [str(ref) for ref in proc.sender.sent] == ["Romans 8"]
+    assert lookup.closed is True
+    assert proc._local.bible_lookup is None
