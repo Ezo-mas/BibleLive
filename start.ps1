@@ -45,20 +45,24 @@ if (-not (Test-Path "backend\audio\cli.py")) {
     exit 1
 }
 # Frontend bundle: static/frontend/ is generated and gitignored, so a pull never
-# updates it, and /readyz only checks the files exist. A missing bundle stops
-# here; a bundle older than frontend/src only warns, and the server still starts.
+# updates it, and /readyz only checks the files exist. A missing or stale bundle
+# only warns: /display and /operator answer 503 with build instructions until
+# the bundle exists, so the server still starts.
 if (-not (Test-Path "static\frontend\display.html")) {
-    Write-Host "Error: static\frontend\display.html not found."
-    Write-Host "Build it first: cd frontend; npm install; npm run build"
-    exit 1
-}
-$bundleTime = (Get-Item "static\frontend\display.html").LastWriteTime
-$stale = Get-ChildItem "frontend\src" -Recurse -File -ErrorAction SilentlyContinue |
-    Where-Object { $_.LastWriteTime -gt $bundleTime } |
-    Select-Object -First 1
-if ($stale) {
-    Write-Host "WARNING: frontend\src is newer than static\frontend\display.html ($($stale.FullName))."
-    Write-Host "The served bundle may be stale. Rebuild: cd frontend; npm run build"
+    Write-Host "WARNING: static\frontend\display.html not found."
+    Write-Host "The pages will answer 503 with build instructions until it exists."
+    Write-Host "Build it: cd frontend; npm install; npm run build"
+} else {
+    # Only with a bundle: Get-Item on a missing file would stop the script
+    # ($ErrorActionPreference = "Stop").
+    $bundleTime = (Get-Item "static\frontend\display.html").LastWriteTime
+    $stale = Get-ChildItem "frontend\src" -Recurse -File -ErrorAction SilentlyContinue |
+        Where-Object { $_.LastWriteTime -gt $bundleTime } |
+        Select-Object -First 1
+    if ($stale) {
+        Write-Host "WARNING: frontend\src is newer than static\frontend\display.html ($($stale.FullName))."
+        Write-Host "The served bundle may be stale. Rebuild: cd frontend; npm run build"
+    }
 }
 
 Write-Host "Starting BibleLive System..."

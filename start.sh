@@ -57,12 +57,13 @@ if [ ! -f "backend/audio/cli.py" ]; then
 fi
 
 # Frontend bundle: static/frontend/ is generated and gitignored, so a pull never
-# updates it, and /readyz only checks the files exist. A missing bundle stops
-# here; a bundle older than frontend/src only warns, and the server still starts.
+# updates it, and /readyz only checks the files exist. A missing or stale bundle
+# only warns: /display and /operator answer 503 with build instructions until
+# the bundle exists, so the server still starts.
 if [ ! -f "static/frontend/display.html" ]; then
-    echo "Error: static/frontend/display.html not found."
-    echo "Build it first: cd frontend && npm install && npm run build"
-    exit 1
+    echo "WARNING: static/frontend/display.html not found."
+    echo "The pages will answer 503 with build instructions until it exists."
+    echo "Build it: cd frontend && npm install && npm run build"
 fi
 if [ -d "frontend/src" ] && [ -n "$(find frontend/src -newer static/frontend/display.html -print -quit 2>/dev/null)" ]; then
     echo "WARNING: frontend/src is newer than static/frontend/display.html."
