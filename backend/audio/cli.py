@@ -4,6 +4,8 @@ import argparse
 import logging
 import time
 
+from core.config import config as server_config
+
 from .capture import list_input_devices
 from .config import AudioPipelineConfig
 from .logging_config import configure_logging
@@ -49,6 +51,15 @@ def build_parser() -> argparse.ArgumentParser:
         "--bible-db", default="bible_data/biblelive.sqlite", help="Path to Bible SQLite database"
     )
     parser.add_argument("--server", default="http://localhost:8000", help="BibleLive server URL")
+    parser.add_argument(
+        "--server-token",
+        default=None,
+        help=(
+            "Operator token sent with each reference; needed when the server requires "
+            "auth. Default: BIBLELIVE_OPERATOR_TOKEN from the environment or .env "
+            "(prefer that: a flag value is visible in the process list)"
+        ),
+    )
     parser.add_argument(
         "--model",
         default="small",
@@ -173,6 +184,8 @@ def main() -> None:
         control_host=args.control_host,
         control_port=args.control_port,
         control_token=args.control_token,
+        # Same source the server reads its token from, so one .env covers both.
+        api_token=args.server_token or server_config.OPERATOR_TOKEN,
     )
     apply_tuning_arguments(config, args)
     processor = BibleLiveAudioProcessor(

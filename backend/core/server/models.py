@@ -57,7 +57,14 @@ class ReferenceSubmitRequest(BaseModel):
         ..., description="Detection confidence level"
     )
     inferred: bool = Field(False, description="Whether context was inferred")
-    text: str = Field("", max_length=1000, description="Optional verse text")
+    text: str = Field(
+        "",
+        max_length=1000,
+        description=(
+            "Ignored: verse text always comes from the server's Bible database. "
+            "Still accepted so older senders keep working."
+        ),
+    )
 
 
 class ReferenceSubmitResponse(BaseModel):

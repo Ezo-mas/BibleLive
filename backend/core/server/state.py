@@ -303,10 +303,17 @@ class AppState:
         a reference label with no text next to it. Requested ranges are capped at
         ``config.MAX_VERSES_PER_REFERENCE`` so a whole-chapter request cannot send
         an unbounded payload.
+
+        Verse text only ever comes from the database. Any text the reference
+        already carries is replaced, so a submitter cannot put words on the
+        display that are not the Bible text, and the label's range end is trimmed
+        to the last verse that exists so label and text agree.
         """
         if ref.verse_start is None:
             ref.verse_start = 1
 
+        ref.text = ""
+        ref.verses = []
         if not self.bible_lookup.is_loaded():
             return
 
@@ -321,19 +328,17 @@ class AppState:
             )
             ref.verse_end = verse_end
 
-        # A caller may have supplied text without verse numbers (audio pipeline).
-        if ref.text and ref.verses:
-            return
-
         verses = self.bible_lookup.get_verse_range(
             ref.book, ref.chapter, ref.verse_start, verse_end
         )
         ref.verses = [VerseText(verse=verse, text=text) for verse, text in verses]
-        if ref.verses:
-            # Trust the database over caller-supplied text: it is validated and cleaned.
-            ref.text = " ".join(verse.text for verse in ref.verses)
-        elif not ref.text:
+        if not ref.verses:
             logger.warning(f"No verse text found for {ref.book} {ref.chapter}:{ref.verse_start}")
+            return
+        ref.text = " ".join(verse.text for verse in ref.verses)
+        # "John 3:30-40": the chapter ends at 36, so the label must too.
+        if ref.verse_end is not None and ref.verses[-1].verse < ref.verse_end:
+            ref.verse_end = ref.verses[-1].verse
 
     async def display_manual_passage(self, passage: ResolvedPassage) -> BibleReference:
         """Display a passage the operator selected by hand.

@@ -17,7 +17,7 @@ from pydantic import TypeAdapter, ValidationError
 from ..bible_lookup import BibleLookup
 from ..books import CANONICAL_BOOKS
 from ..config import config
-from ..passage import PassageError, resolve_passage
+from ..passage import PassageError, resolve_passage, validate_detection
 from .auth import verify_operator_token
 from .models import (
     ApprovalRequest,
@@ -472,14 +472,41 @@ def create_app(bible_lookup: BibleLookup | None = None) -> FastAPI:
         status_code=201,
         responses={
             201: {"description": "Reference successfully queued"},
+            401: {"model": ErrorResponse, "description": "Unauthorized"},
+            404: {"model": ErrorResponse, "description": "No such book, chapter, or verse"},
             422: {"model": ErrorResponse, "description": "Invalid reference data"},
+            503: {"model": ErrorResponse, "description": "No Bible text loaded"},
         },
     )
-    async def receive_reference(reference: ReferenceSubmitRequest) -> ReferenceSubmitResponse:
-        """Receive a validated Bible reference from the parser and add to pending queue."""
+    async def receive_reference(
+        reference: ReferenceSubmitRequest, _: None = Depends(verify_operator_token)
+    ) -> ReferenceSubmitResponse:
+        """Receive a detected Bible reference from the audio pipeline and queue it.
+
+        The reference must name a canonical book and a chapter (or first verse)
+        that exists in the server's Bible text; anything else is rejected before
+        it is queued, because an auto-approve mode can put a queued reference on
+        the display without an operator looking at it. Caller-supplied ``text``
+        is discarded: verse text only ever comes from the database at approval.
+        Requires authentication if BIBLELIVE_REQUIRE_AUTH is enabled.
+        """
+        try:
+            canonical_book = validate_detection(
+                bible_lookup,
+                book=reference.book,
+                chapter=reference.chapter,
+                verse_start=reference.verse_start,
+                verse_end=reference.verse_end,
+            )
+        except PassageError as e:
+            logger.warning(f"Rejected reference submission: {e.message}")
+            raise HTTPException(status_code=e.status_code, detail=e.message)
+
         try:
             # Convert to BibleReference object (will generate ID and timestamp)
-            ref = BibleReference(**reference.model_dump())
+            ref = BibleReference(
+                **reference.model_dump(exclude={"book", "text"}), book=canonical_book
+            )
 
             # Add to pending queue
             await app_state.add_reference(ref)

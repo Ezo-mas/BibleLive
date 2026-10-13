@@ -52,7 +52,9 @@ def test_websocket_operator_accepted_with_valid_token(client, auth_enabled):
 def test_http_approve_rejected_without_token(client, auth_enabled):
     """HTTP approve is rejected with 401 when auth is enabled and no token sent."""
     ref = {"book": "John", "chapter": 3, "verse_start": 16, "confidence": "high", "inferred": False}
-    submit_response = client.post("/api/reference", json=ref)
+    submit_response = client.post(
+        "/api/reference", json=ref, headers={"Authorization": f"Bearer {auth_enabled}"}
+    )
     reference_id = submit_response.json()["reference_id"]
 
     response = client.post("/api/approve", json={"reference_id": reference_id})
@@ -63,7 +65,9 @@ def test_http_approve_rejected_without_token(client, auth_enabled):
 def test_http_approve_rejected_with_invalid_token(client, auth_enabled):
     """HTTP approve is rejected with 401 for a wrong token."""
     ref = {"book": "John", "chapter": 3, "verse_start": 16, "confidence": "high", "inferred": False}
-    reference_id = client.post("/api/reference", json=ref).json()["reference_id"]
+    reference_id = client.post(
+        "/api/reference", json=ref, headers={"Authorization": f"Bearer {auth_enabled}"}
+    ).json()["reference_id"]
 
     response = client.post(
         "/api/approve",
@@ -77,7 +81,9 @@ def test_http_approve_accepted_with_valid_token(client, auth_enabled):
     """HTTP approve is accepted with a valid token."""
     token = auth_enabled
     ref = {"book": "John", "chapter": 3, "verse_start": 16, "confidence": "high", "inferred": False}
-    reference_id = client.post("/api/reference", json=ref).json()["reference_id"]
+    reference_id = client.post(
+        "/api/reference", json=ref, headers={"Authorization": f"Bearer {token}"}
+    ).json()["reference_id"]
 
     response = client.post(
         "/api/approve",
@@ -106,9 +112,28 @@ def test_display_websocket_always_public(client, auth_enabled):
         assert message["type"] == "clear"
 
 
-def test_api_reference_always_public(client, auth_enabled):
-    """POST /api/reference is always public (no auth for ingestion)."""
+def test_api_reference_requires_token_when_auth_enabled(client, auth_enabled, app_state):
+    """POST /api/reference needs the operator token when auth is on.
+
+    Ingestion feeds the queue an auto-approve mode can put on the projector
+    unseen, so it cannot be the one write endpoint left open.
+    """
     ref = {"book": "John", "chapter": 3, "verse_start": 16, "confidence": "high", "inferred": False}
-    response = client.post("/api/reference", json=ref)
+
+    assert client.post("/api/reference", json=ref).status_code == 401
+    wrong = {"Authorization": "Bearer wrong-token"}
+    assert client.post("/api/reference", json=ref, headers=wrong).status_code == 401
+    assert app_state.pending_references == []
+
+    response = client.post(
+        "/api/reference", json=ref, headers={"Authorization": f"Bearer {auth_enabled}"}
+    )
     assert response.status_code == 201
     assert "reference_id" in response.json()
+
+
+def test_api_reference_public_when_auth_disabled(client):
+    """Without auth configured, the audio pipeline needs no token (local setup)."""
+    assert config.REQUIRE_AUTH is False
+    ref = {"book": "John", "chapter": 3, "verse_start": 16, "confidence": "high", "inferred": False}
+    assert client.post("/api/reference", json=ref).status_code == 201

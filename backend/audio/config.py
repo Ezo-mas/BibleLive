@@ -16,6 +16,9 @@ class AudioPipelineConfig:
     api_retry_base_delay: float = 0.5  # seconds
     api_retry_max_delay: float = 5.0  # seconds
     api_timeout: float = 5.0  # seconds
+    # Bearer token for POST /api/reference; required when the server runs with
+    # BIBLELIVE_REQUIRE_AUTH=true. None sends no Authorization header.
+    api_token: str | None = None
 
     # Deduplication window
     dedup_window_seconds: float = 5.0  # Don't send same reference within 5s

@@ -2,10 +2,20 @@
 
 BibleLive supports optional token-based authentication for operator endpoints.
 When enabled, all operator actions (approve, clear, clear queue, settings,
-manual display) require authentication via:
+manual display) and reference ingestion from the audio pipeline require
+authentication via:
 
 - WebSocket: query parameter `?token=YOUR_TOKEN`
 - HTTP: `Authorization: Bearer YOUR_TOKEN` header
+
+The audio pipeline sends the token with every reference. It reads
+`BIBLELIVE_OPERATOR_TOKEN` from the environment or the project `.env` (the same
+place the server reads it), or takes `--server-token`.
+
+Whether or not auth is enabled, `POST /api/reference` only accepts a canonical
+book and a chapter or verse that exists in the loaded Bible text, and ignores
+any submitted `text`: what reaches the display is always the database's verse
+text.
 
 ## Quick Start
 
@@ -39,7 +49,6 @@ BIBLELIVE_OPERATOR_TOKEN=your-generated-token-here
 - `GET /display` — display page
 - `GET /healthz` — health check
 - `GET /readyz` — readiness check
-- `POST /api/reference` — reference ingestion (from the audio pipeline)
 - `GET /api/books` — canonical book list (read-only canon data)
 - `GET /api/lookup` — verse text lookup by coordinates (read-only)
 - `GET /ws/display` — display WebSocket
@@ -47,6 +56,7 @@ BIBLELIVE_OPERATOR_TOKEN=your-generated-token-here
 ### Protected endpoints (authentication required when enabled)
 
 - `GET /operator` — operator console page
+- `POST /api/reference` — reference ingestion (from the audio pipeline)
 - `GET /api/state` — application state
 - `POST /api/approve` — approve pending reference
 - `POST /api/clear` — clear display

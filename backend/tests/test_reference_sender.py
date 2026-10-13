@@ -156,3 +156,35 @@ def test_retry_delay_capped(monkeypatch):
     assert s._retry_delay(0) == pytest.approx(1.1)
     assert s._retry_delay(1) == pytest.approx(2.0)  # capped at max delay
     assert s._retry_delay(5) == 2.0  # capped
+
+
+def test_send_includes_bearer_token_when_configured(monkeypatch):
+    """A server with auth enabled needs the operator token on every reference."""
+    cfg = AudioPipelineConfig(api_token="pipeline-token")
+    sender = ReferenceSender("http://server", cfg, PipelineMetrics())
+    seen = []
+
+    def fake_post(url, json, timeout, headers=None):
+        seen.append(headers)
+        return FakeResponse(201)
+
+    monkeypatch.setattr("audio.sender.requests.post", fake_post)
+    sender.send(make_ref())
+
+    assert seen == [{"Authorization": "Bearer pipeline-token"}]
+
+
+def test_send_does_not_retry_unauthorized(monkeypatch, sender):
+    """A 401 will not fix itself, so it is not retried and is counted as failed."""
+    calls = []
+
+    def fake_post(url, json, timeout):
+        calls.append(url)
+        return FakeResponse(401, "Missing authorization header")
+
+    monkeypatch.setattr("audio.sender.requests.post", fake_post)
+    sender.send(make_ref())
+
+    assert len(calls) == 1
+    assert sender.metrics.references_failed == 1
+    assert sender.metrics.api_retries == 0

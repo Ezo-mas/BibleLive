@@ -4,6 +4,7 @@ import hashlib
 import logging
 import random
 import time
+from typing import Any
 
 import requests
 
@@ -93,6 +94,14 @@ class ReferenceSender:
             "text": "",
         }
 
+        # Only send the header when a token is configured, so a server without
+        # authentication sees exactly the request it always did.
+        auth_kwargs: dict[str, Any] = (
+            {"headers": {"Authorization": f"Bearer {self.config.api_token}"}}
+            if self.config.api_token
+            else {}
+        )
+
         # Retry with exponential backoff
         for attempt in range(self.config.api_max_retries + 1):
             try:
@@ -102,6 +111,7 @@ class ReferenceSender:
                     f"{self.server_url}/api/reference",
                     json=reference_data,
                     timeout=self.config.api_timeout,
+                    **auth_kwargs,
                 )
 
                 duration_ms = (time.time() - start_time) * 1000
@@ -120,6 +130,15 @@ class ReferenceSender:
                     if attempt < self.config.api_max_retries:
                         self._sleep_before_retry(attempt)
                         continue
+                elif response.status_code == 401:
+                    # Every later reference would fail the same way, so say how to fix it.
+                    logger.error(
+                        f"Server rejected reference {ref} as unauthorized: set "
+                        "BIBLELIVE_OPERATOR_TOKEN (or --server-token) to the server's "
+                        "operator token"
+                    )
+                    self.metrics.references_failed += 1
+                    return
                 else:
                     # Client error - don't retry
                     logger.warning(

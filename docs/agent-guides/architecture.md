@@ -20,7 +20,11 @@ easy to break by accident.
    introduce a config knob that defaults elsewhere. Frontend WS URLs use
    `window.location.host`, so they follow whatever port serves the page.
 3. **Operator approval flow**: audio pipeline POSTs references to
-   `/api/reference`; the server queues them and pushes to the operator over
+   `/api/reference` (token-protected when auth is on; the server rejects any
+   book/chapter/verse not in its canon and Bible database, and discards
+   submitted `text` — `_resolve_verses` only ever shows database text, since
+   auto-approve can display a queued reference unseen); the server queues
+   them and pushes to the operator over
    WebSocket; `_send_display_reference` (the only path that pushes a
    reference to display sockets) is called from exactly two
    operator-authorized places: `AppState.approve_pending()`, and

@@ -111,6 +111,9 @@ PYTHONPATH="$PWD/backend" python3 -m audio.cli [options]
 Options:
   --bible-db PATH         Bible SQLite database (default: bible_data/biblelive.sqlite)
   --server URL            BibleLive server URL (default: http://localhost:8000)
+  --server-token TOKEN    Operator token sent with references when the server
+                          requires auth (default: BIBLELIVE_OPERATOR_TOKEN from
+                          the environment or .env; prefer that over the flag)
   --model SIZE            Whisper model: tiny, base, small, medium, large-v2,
                           large-v3, large-v3-turbo, distil-large-v3 (default: small)
   --device DEV            Whisper device: cpu or cuda (default: cuda)
@@ -190,7 +193,7 @@ output, ignored short VAD blips, and skipped duplicates.
 
 | Method | Endpoint            | Description                              |
 |--------|---------------------|------------------------------------------|
-| POST   | `/api/reference`    | Submit a parsed Bible reference (pending) |
+| POST   | `/api/reference`    | Submit a parsed Bible reference (pending; must exist in the loaded Bible; token when auth is on) |
 | POST   | `/api/approve`      | Approve a pending reference (by reference_id) |
 | POST   | `/api/clear`        | Clear the display                        |
 | POST   | `/api/clear-pending`| Clear the pending queue                  |

@@ -41,7 +41,9 @@ def auth_enabled():
     config.OPERATOR_TOKEN = original_token
 
 
-def _submit_reference(client, book="John", chapter=3, verse_start=16, confidence="high"):
+def _submit_reference(
+    client, book="John", chapter=3, verse_start=16, confidence="high", headers=None
+):
     """Queue a detection-like reference and return its ID."""
     response = client.post(
         "/api/reference",
@@ -53,6 +55,7 @@ def _submit_reference(client, book="John", chapter=3, verse_start=16, confidence
             "inferred": False,
             "text": "",
         },
+        headers=headers,
     )
     assert response.status_code == 201
     return response.json()["reference_id"]
@@ -69,7 +72,9 @@ def _display(client, book="John", chapter=3, verse_start=16, headers=None):
     """Queue, approve, and return the history entry that resulted."""
     _approve(
         client,
-        _submit_reference(client, book=book, chapter=chapter, verse_start=verse_start),
+        _submit_reference(
+            client, book=book, chapter=chapter, verse_start=verse_start, headers=headers
+        ),
         headers=headers,
     )
     return client.get("/api/state", headers=headers).json()["history"][0]
