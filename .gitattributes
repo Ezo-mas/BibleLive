@@ -1,2 +1,7 @@
 # Shell scripts must keep LF endings; a CRLF checkout breaks them on Linux.
 *.sh text eol=lf
+# Prettier enforces LF and CI runs format:check: a CRLF checkout on Windows
+# (core.autocrlf=true) fails it on every frontend file.
+*.ts text eol=lf
+*.tsx text eol=lf
+*.css text eol=lf

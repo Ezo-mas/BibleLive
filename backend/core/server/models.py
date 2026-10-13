@@ -57,7 +57,14 @@ class ReferenceSubmitRequest(BaseModel):
         ..., description="Detection confidence level"
     )
     inferred: bool = Field(False, description="Whether context was inferred")
-    text: str = Field("", max_length=1000, description="Optional verse text")
+    text: str = Field(
+        "",
+        max_length=1000,
+        description=(
+            "Ignored: verse text always comes from the server's Bible database. "
+            "Still accepted so older senders keep working."
+        ),
+    )
 
 
 class ReferenceSubmitResponse(BaseModel):
@@ -193,6 +200,35 @@ class PassageResponse(BaseModel):
     text: str
 
 
+class PipelineHeartbeat(BaseModel):
+    """The audio pipeline's periodic health report (``POST /api/pipeline/heartbeat``)."""
+
+    language: str = Field(..., min_length=1, max_length=16, description="Spoken language")
+    interval_s: float = Field(..., gt=0, le=300, description="Seconds until the next report is due")
+    problems: list[Annotated[str, Field(min_length=1, max_length=300)]] = Field(
+        default_factory=list,
+        max_length=10,
+        description="One sentence per thing that has stopped working; empty when healthy",
+    )
+
+
+class PipelineStatusResponse(BaseModel):
+    """What the operator console shows about the audio pipeline."""
+
+    status: Literal["unknown", "ok", "degraded", "offline"] = Field(
+        ...,
+        description=(
+            "'unknown': no report since the server started; 'ok': reporting, no "
+            "problems; 'degraded': reporting problems; 'offline': reports stopped"
+        ),
+    )
+    language: str | None = None
+    problems: list[str] = Field(default_factory=list)
+    seconds_since_report: float | None = Field(
+        default=None, description="Age of the latest report; null when there has been none"
+    )
+
+
 class OperatorApproveAction(BaseModel):
     """Action to approve a pending reference by ID."""
 
@@ -249,10 +285,24 @@ class OperatorDisplayReferenceAction(BaseModel):
     verse_end: int | None = Field(None, gt=0, description="Last verse (inclusive)")
 
 
+class OperatorAuthenticateAction(BaseModel):
+    """The operator token, sent as the first message on ``/ws/operator``.
+
+    A browser cannot set headers on a WebSocket, and a token in the URL ends up
+    in server and proxy logs, so it travels in the socket instead. When auth is
+    on, nothing else is accepted until this arrives; when it is off, or once the
+    socket is authenticated, it is ignored.
+    """
+
+    action: Literal["authenticate"]
+    token: str = Field(..., max_length=512)
+
+
 # Discriminated union of every operator WebSocket action, used by the server to
 # validate incoming messages against the models above.
 OperatorAction = Annotated[
-    OperatorApproveAction
+    OperatorAuthenticateAction
+    | OperatorApproveAction
     | OperatorClearDisplayAction
     | OperatorClearPendingAction
     | OperatorSetVerseLimitAction

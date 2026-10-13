@@ -20,7 +20,11 @@ easy to break by accident.
    introduce a config knob that defaults elsewhere. Frontend WS URLs use
    `window.location.host`, so they follow whatever port serves the page.
 3. **Operator approval flow**: audio pipeline POSTs references to
-   `/api/reference`; the server queues them and pushes to the operator over
+   `/api/reference` (token-protected when auth is on; the server rejects any
+   book/chapter/verse not in its canon and Bible database, and discards
+   submitted `text` — `_resolve_verses` only ever shows database text, since
+   auto-approve can display a queued reference unseen); the server queues
+   them and pushes to the operator over
    WebSocket; `_send_display_reference` (the only path that pushes a
    reference to display sockets) is called from exactly two
    operator-authorized places: `AppState.approve_pending()`, and
@@ -29,7 +33,8 @@ easy to break by accident.
    never sees an unapproved detection, and a manual passage never enters
    the pending queue or carries a confidence (it is `source="manual"`, so
    nothing can auto-approve it). The supported operator actions are
-   `approve`, `clear`, `clear_pending`, `set_verse_limit`,
+   `authenticate` (the token, as the socket's first message; it carries no
+   operation and is ignored once the socket is let in), `approve`, `clear`, `clear_pending`, `set_verse_limit`,
    `set_display_theme`, `set_auto_mode`, `display_reference` — there is no
    `reject` action; discarding a wrong detection is done implicitly by
    approving the next one or via `clear_pending`.

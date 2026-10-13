@@ -207,6 +207,28 @@ def test_http_api_clear_pending(client):
     assert data["message"] == "Cleared 2 pending references"
 
 
+def test_http_clear_display_notifies_operators(client):
+    """HTTP and WebSocket clears must look the same to a connected console."""
+    with client.websocket_connect("/ws/operator") as operator_ws:
+        assert json.loads(operator_ws.receive_text())["type"] == "state_snapshot"
+
+        assert client.post("/api/clear").status_code == 200
+
+        assert json.loads(operator_ws.receive_text()) == {"type": "clear_confirmed", "data": {}}
+
+
+def test_http_clear_pending_notifies_operators(client):
+    _submit_reference(client, book="Joshua", chapter=1, verse_start=8)
+    with client.websocket_connect("/ws/operator") as operator_ws:
+        assert json.loads(operator_ws.receive_text())["type"] == "state_snapshot"
+
+        assert client.post("/api/clear-pending").status_code == 200
+
+        assert json.loads(operator_ws.receive_text())["type"] == "pending_cleared"
+        update = json.loads(operator_ws.receive_text())
+        assert update == {"type": "pending_update", "data": {"pending": [], "count": 0}}
+
+
 def _approve(client, **kwargs):
     """Submit and approve a reference, returning the approved payload."""
     reference_id = _submit_reference(client, **kwargs)

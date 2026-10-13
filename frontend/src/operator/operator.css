@@ -306,6 +306,12 @@
   border-color: var(--color-border);
 }
 
+/* The pipeline stopped reporting: the language is only what it was last set to,
+   so it reads as a remembered value rather than a live one. */
+.operator-language-chip--stale {
+  opacity: 0.5;
+}
+
 .operator-language-chip-value {
   padding: 0 var(--space-2);
   font-size: var(--font-size-xs);
@@ -388,6 +394,43 @@
   flex: 1;
   min-width: 0;
   margin: 0;
+}
+
+/* Speech detection warning: the console still works (manual search, approvals
+   of what is queued), so this is a warning rather than the danger red above. */
+.operator-pipeline-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-6);
+  background: var(--color-warning-bg);
+  color: var(--color-warning-text);
+  border-bottom: 1px solid var(--color-border);
+  font-size: var(--font-size-sm);
+}
+
+.operator-pipeline-banner-icon {
+  display: flex;
+  flex-shrink: 0;
+}
+
+.operator-pipeline-banner-icon svg {
+  width: 18px;
+  height: 18px;
+}
+
+.operator-pipeline-banner-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.operator-pipeline-banner-text p,
+.operator-pipeline-banner-text ul {
+  margin: 0;
+}
+
+.operator-pipeline-banner-text ul {
+  padding-left: var(--space-5);
 }
 
 /* Main content: the workspace on the left (what is on the projector, what is
@@ -1574,7 +1617,8 @@
     display: none;
   }
 
-  .operator-connection-banner {
+  .operator-connection-banner,
+  .operator-pipeline-banner {
     padding: var(--space-3) var(--space-4);
   }
 

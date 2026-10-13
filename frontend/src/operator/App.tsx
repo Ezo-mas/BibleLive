@@ -14,6 +14,7 @@ import { OperatorHeader } from './components/OperatorHeader'
 import { LanguageChip } from './components/LanguageChip'
 import { ClearDisplayButton, QueueFooter } from './components/OperatorActions'
 import { ConnectionBanner } from './components/ConnectionBanner'
+import { PipelineBanner } from './components/PipelineBanner'
 import { FeedbackNotice } from './components/FeedbackNotice'
 import { TokenPrompt } from './components/TokenPrompt'
 import '../styles/tokens.css'
@@ -102,6 +103,7 @@ export default function App() {
           <LanguageChip
             language={operator.spokenLanguage.language}
             onOpenSettings={() => openSettings('language')}
+            stale={operator.pipeline?.status === 'offline'}
           />
         }
         search={
@@ -121,6 +123,8 @@ export default function App() {
           leaving the operator to guess. Reachable once the session has
           connected: before that, `needsToken` owns the page. */}
       {operator.status === 'closed' && <ConnectionBanner onReconnect={operator.reconnect} />}
+      {/* An empty queue cannot tell a quiet sermon from a dead microphone. */}
+      <PipelineBanner status={operator.pipeline} />
       <main className="operator-main">
         <div className="operator-workspace">
           <div className="operator-stage-row">

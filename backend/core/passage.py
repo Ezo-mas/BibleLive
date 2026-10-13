@@ -151,3 +151,50 @@ def resolve_passage(
         verse_end=end,
         verses=verses,
     )
+
+
+def validate_detection(
+    lookup: BibleLookup,
+    book: str,
+    chapter: int,
+    verse_start: int | None = None,
+    verse_end: int | None = None,
+) -> str:
+    """Check a detected reference against the canon and database at ingest.
+
+    A detection may be chapter-only (``verse_start`` is ``None``) and its range
+    end may run past the chapter (approval caps and trims it), so this is looser
+    than :func:`resolve_passage`. What it guarantees is that the book is
+    canonical and the chapter (or first verse) exists in the server's Bible text,
+    so nothing that is not scripture can reach the pending queue or the display.
+
+    Returns:
+        The canonical book name, which the caller stores in place of ``book``.
+
+    Raises:
+        PassageError: with the status convention described in the module docstring.
+    """
+    canonical = find_book(book)
+    if canonical is None:
+        raise PassageError(
+            404,
+            f"Unknown book '{book.strip()}'. Choose one of the 66 canonical book names.",
+        )
+    if chapter > canonical.chapters:
+        raise PassageError(
+            422, f"{canonical.name} has {canonical.chapters} chapters; chapter {chapter} does not."
+        )
+    if verse_end is not None and verse_start is None:
+        raise PassageError(422, "An ending verse needs a starting verse.")
+    if verse_start is not None and verse_end is not None and verse_end < verse_start:
+        raise PassageError(422, "The verse range must start at or before its end.")
+
+    if not lookup.is_loaded():
+        raise PassageError(503, "Bible text is not available on this server.")
+    if not lookup.validate_reference(canonical.name, chapter, verse_start):
+        where = f"{chapter}:{verse_start}" if verse_start is not None else f"{chapter}"
+        raise PassageError(
+            404,
+            f"{canonical.name} {where} is not in the Bible text available on this server.",
+        )
+    return canonical.name

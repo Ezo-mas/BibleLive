@@ -237,6 +237,9 @@ class Transcription:
     text: str | None
     duration_ms: float
     low_confidence_reason: str | None = None
+    # True when Whisper raised, as opposed to hearing nothing worth keeping:
+    # both have no text, but only a failure means detection is broken.
+    failed: bool = False
 
 
 class SpeechToText:
@@ -403,11 +406,11 @@ class SpeechToText:
         except RuntimeError as e:
             duration_ms = (time.time() - start_time) * 1000
             logger.error(f"Whisper runtime error: {e}")
-            return Transcription(None, duration_ms)
+            return Transcription(None, duration_ms, failed=True)
         except Exception as e:
             duration_ms = (time.time() - start_time) * 1000
             logger.error(f"Unexpected transcription error: {e}", exc_info=True)
-            return Transcription(None, duration_ms)
+            return Transcription(None, duration_ms, failed=True)
 
     def _collapse_repetition(self, text: str) -> tuple[str, str | None]:
         """Collapse a degenerate Whisper repetition loop.

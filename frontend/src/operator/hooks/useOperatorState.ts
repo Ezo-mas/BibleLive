@@ -13,16 +13,19 @@ import {
 import type { DisplayTheme, VerseLimit } from '../../shared/verseText'
 import { formatReference } from '../../shared/reference'
 import type {
+  AuthenticateAction,
   AutoMode,
   BibleReference,
   OperatorAction,
   OperatorMessage,
   Passage,
+  PipelineStatus,
 } from '../../shared/types'
 import { passageToReference } from '../passageApi'
 import type { PassageQuery } from '../passageApi'
 import { autoModeOption, coerceAutoMode } from '../autoMode'
 import { useScriptureSearch } from './useScriptureSearch'
+import { usePipelineStatus } from './usePipelineStatus'
 import type { ScriptureSearchState } from './useScriptureSearch'
 import { useSpokenLanguage } from './useSpokenLanguage'
 import type { SpokenLanguageState } from './useSpokenLanguage'
@@ -170,6 +173,8 @@ export interface OperatorState {
   currentDisplay: BibleReference | null
   hasDisplayContent: boolean
   displayConnected: boolean
+  /** Audio pipeline health; null while disconnected or before the first answer. */
+  pipeline: PipelineStatus | null
   /**
    * NEXT: the scripture staged for the projector, whether it came from the
    * pending queue or from a manual selection. Client-side only — staging
@@ -462,21 +467,33 @@ export function useOperatorState(): OperatorState {
     }
   }
 
-  const { status, send, reconnect } = useWebSocket<OperatorMessage>(
-    token ? `/ws/operator?token=${encodeURIComponent(token)}` : '/ws/operator',
-    handleMessage,
-    {
-      onClose: event => {
-        // WebSocket close code 1008 = policy violation (auth failure)
-        if (event.code === 1008) {
+  const { status, send, reconnect } = useWebSocket<OperatorMessage>('/ws/operator', handleMessage, {
+    // The token goes in the socket's first message, not the URL: URLs end up
+    // in server and proxy logs. Always sent, even empty: with auth on and no
+    // token saved, the empty message draws the server's refusal at once
+    // instead of waiting out its 10 s first-message timeout. A server without
+    // auth ignores it.
+    firstMessage: {
+      action: 'authenticate',
+      token: token ?? '',
+    } satisfies AuthenticateAction,
+    onClose: event => {
+      // WebSocket close code 1008 = policy violation (auth failure)
+      if (event.code === 1008) {
+        // A refusal answers the first message, before anything else: with no
+        // token tried there is nothing to call failed, so the prompt opens
+        // without the error text. A 1008 is only ever sent pre-auth, so the
+        // socket behind it was never really connected.
+        if (token !== null) {
           setAuthFailed(true)
           // Clear invalid token
           localStorage.removeItem(TOKEN_STORAGE_KEY)
           setToken(null)
         }
-      },
-    }
-  )
+        setHasConnected(false)
+      }
+    },
+  })
 
   // Remember a successful connection: it is what separates a dropped socket (the
   // console stays, with a reconnect banner) from a server that wants a token.
@@ -690,6 +707,9 @@ export function useOperatorState(): OperatorState {
   // The pipeline's language: read once the socket is up, switched only on request.
   const spokenLanguage = useSpokenLanguage(token, isConnected, showNotice)
 
+  // Speech detection health, asked of the server only while it is reachable.
+  const pipeline = usePipelineStatus(token, isConnected)
+
   const connectionState: ConnectionState = isConnected
     ? 'connected'
     : status === 'connecting'
@@ -724,6 +744,7 @@ export function useOperatorState(): OperatorState {
     currentDisplay,
     hasDisplayContent: currentDisplay !== null,
     displayConnected,
+    pipeline,
     nextReference,
     nextSource,
     showNext,

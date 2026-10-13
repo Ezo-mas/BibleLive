@@ -23,6 +23,10 @@ dependencies = [
 [project.optional-dependencies]
 audio = [
     "faster-whisper>=1.1.0",  # 1.1.0 added "large-v3-turbo"
+    # faster-whisper's inference engine. 4.5+ is built for CUDA 12 and cuDNN 9
+    # (the `cuda` extra below); a 5.x could change that, so it is opted into
+    # deliberately rather than picked up by a fresh install.
+    "ctranslate2>=4.5,<5",
     "numpy>=1.24.0",
     # webrtcvad imports pkg_resources: removed in setuptools 81+, absent from
     # Python 3.12+ venvs. Remove the pin once the VAD package stops importing it.
@@ -31,6 +35,13 @@ audio = [
     # providing the same `webrtcvad` module.
     "webrtcvad>=2.0.10; sys_platform != 'win32'",
     "webrtcvad-wheels>=2.0.10; sys_platform == 'win32'",
+]
+# GPU transcription (`--device cuda`): the CUDA 12 cuBLAS and cuDNN 9 libraries
+# ctranslate2 4.x loads, as pip wheels instead of a system CUDA install. On
+# Windows audio/stt.py finds them itself; on Linux see README (LD_LIBRARY_PATH).
+cuda = [
+    "nvidia-cublas-cu12>=12,<13",
+    "nvidia-cudnn-cu12>=9,<10",
 ]
 dev = [
     "pytest>=7.0.0",

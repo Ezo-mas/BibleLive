@@ -56,19 +56,22 @@ below the fold.
   Post-fix full suite: `337 passed`.
 - **Logged:** 2026-10-10
 
-### Untracked DB snapshot files live in the repo working tree
-- **Where:** `bible_data/biblelive.sqlite.bak-20261011-135608` and
-  `bible_data/biblelive.sqlite.pre-repair-20261011-135608` (untracked).
-- **Problem:** Two one-off SQLite snapshots (a backup and a pre-repair copy,
-  from a 2026-10-11 DB repair) sit permanently in the working tree. They are
-  not referenced by any code or config and will silently grow stale as the
-  real `bible_data/biblelive.sqlite` is re-imported.
-- **Impact:** Disk bloat in a directory operators may mistake for live data;
-  a stale snapshot could be restored or shipped by mistake (e.g. a
+### Stale DB snapshot files sit beside the live database
+- **Where:** `bible_data/*.sqlite.bak-*` and `bible_data/*.sqlite.pre-repair-*`
+  (one-off snapshots from a 2026-10-11 DB repair).
+- **Problem:** The snapshots sit permanently next to the live database with
+  nothing aging or removing them, so they grow silently stale as the real
+  `bible_data/biblelive.sqlite` is re-imported. Since 2026-10-12 the snapshot
+  suffixes are gitignored (`bible_data/*.sqlite.*` in `.gitignore`), so they no
+  longer show as untracked and cannot be committed by accident — the remaining
+  risk is local only.
+- **Impact:** A stale snapshot could be restored or shipped by mistake (e.g. a
   deployment copying the whole `bible_data/` directory), serving outdated
   verse text with no error.
-- **Evidence:** `git status --short` shows `?? bible_data/` containing only
-  these two files; no manifest, script, or code refers to them.
+- **Evidence:** `.gitignore:33-35` (added in `e5e032b`, 2026-10-12, after this
+  entry was logged); a fresh worktree's `git status` is clean of `bible_data/`;
+  no manifest, script, or code refers to the snapshots. Entry revised
+  2026-10-13 (logged 2026-10-11).
 - **Logged:** 2026-10-11
 
 ### Lithuanian 1 and 2 Timothy are missed when spelled "Timotiej-"
@@ -88,3 +91,40 @@ below the fold.
   3:16) and "2 Timotėjaus 4 skyrius 2 eilutė" (2 Timothy 4:2). Found by an
   independent review of PR #7, reproduced 2026-10-12.
 - **Logged:** 2026-10-12
+
+### Approving a reference can display with no verse text
+- **Where:** `backend/core/server/state.py` (`AppState.approve_pending` via
+  `_resolve_verses`).
+- **Problem:** When the range resolves to no verses, `_resolve_verses` logs a
+  warning and returns with empty verses, and `approve_pending` still sets the
+  reference as `current_display` and pushes it to display sockets instead of
+  refusing it. Left unchanged on purpose: refusing there would change the
+  operator-approval flow.
+- **Impact:** The projector shows a reference label with no text. Practically
+  unreachable today: `validate_detection` at ingest guarantees the book and
+  chapter (or first verse) exist in the loaded text, so a queued reference
+  resolves unless the database changed or unloaded between queueing and
+  approval. Low priority.
+- **Evidence:** Code read 2026-10-13: `state.py:384-386` returns empty while
+  `:314` and `:322` display unconditionally. Flagged by the follow-up review
+  of the import/ingest work; logged, not fixed.
+- **Logged:** 2026-10-13
+
+### Capture-restart health reporting flaps, and a hung ffmpeg is never restarted
+- **Where:** `backend/audio/pipeline.py` (`_restart_capture`,
+  `_note_capture_healthy`, `health_report`).
+- **Problem:** (a) `_capture_down` is cleared as soon as the relaunched ffmpeg
+  process starts (`pipeline.py:397`), before it delivers a frame. If the device
+  is still gone, ffmpeg exits at once and the flag flips again, so the operator
+  status flaps between ok and degraded while the restart backoff itself works
+  correctly. (b) The stall detector (`AUDIO_STALL_S`, `health_report`) only
+  reports an ffmpeg that hangs without exiting; nothing restarts capture in
+  that case — `_restart_capture` runs solely on `audio_capture.failed`.
+- **Impact:** (a) Cosmetic status flapping during an outage. (b) A stuck but
+  living ffmpeg ends detection with no recovery until the process is restarted;
+  the operator sees "stalled" but the pipeline never heals itself.
+- **Evidence:** Code read 2026-10-13: `:397` clears the flag at launch,
+  `:329-330` gates restart on `failed`, `:271-278` reports silence only;
+  backoff behavior is covered by `test_capture_recovery.py`. Flagged by the
+  follow-up review; logged, not fixed.
+- **Logged:** 2026-10-13

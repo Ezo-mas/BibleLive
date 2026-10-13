@@ -1,9 +1,9 @@
 """FastAPI app factory for BibleLive server."""
 
 import asyncio
+import contextlib
 import json
 import logging
-import secrets
 from contextlib import asynccontextmanager
 from typing import Any
 
@@ -17,9 +17,10 @@ from pydantic import TypeAdapter, ValidationError
 from ..bible_lookup import BibleLookup
 from ..books import CANONICAL_BOOKS
 from ..config import config
-from ..passage import PassageError, resolve_passage
+from ..passage import PassageError, resolve_passage, validate_detection
 from . import language_control
-from .auth import verify_operator_token
+from .auth import token_matches, verify_operator_token
+from .log_redaction import install_token_redaction
 from .models import (
     ApprovalRequest,
     ApprovalResponse,
@@ -33,6 +34,8 @@ from .models import (
     LanguageResponse,
     OperatorAction,
     PassageResponse,
+    PipelineHeartbeat,
+    PipelineStatusResponse,
     ReferenceSubmitRequest,
     ReferenceSubmitResponse,
     StateResponse,
@@ -248,10 +251,73 @@ async def _handle_set_auto_mode(
     )
 
 
+async def _handle_authenticate(
+    _websocket: WebSocket, _app_state: AppState, _message: dict[str, Any]
+) -> None:
+    """Ignore an ``authenticate`` on a socket that is already let in.
+
+    The console sends its token on every connection without knowing whether the
+    server requires it; with auth off, or after the handshake, there is nothing
+    left to decide.
+    """
+
+
+# Seconds an operator socket may stay open without sending its token.
+OPERATOR_AUTH_TIMEOUT_S = 10.0
+
+
+async def _authenticate_operator(websocket: WebSocket, query_token: str | None) -> bool:
+    """Accept an operator socket and check its token; close it with 1008 if wrong.
+
+    The token arrives as the first message, ``{"action": "authenticate",
+    "token": ...}``. ``?token=`` in the URL is still honoured for consoles built
+    before that change, but it is deprecated: URLs are logged, by uvicorn (which
+    ``log_redaction`` covers) and by any proxy in front (which nothing here can).
+
+    The socket is accepted before the check either way, so a refusal reaches the
+    browser as close code 1008 — a refusal before the handshake surfaces as a
+    generic 1006 and the console cannot tell a wrong token from a dead server.
+    """
+    await websocket.accept()
+
+    if not config.OPERATOR_TOKEN:
+        logger.error("Authentication required but BIBLELIVE_OPERATOR_TOKEN not set")
+        await websocket.close(code=1008, reason="Server misconfiguration")
+        return False
+
+    if query_token is not None:
+        authorized = token_matches(query_token)
+        method = "websocket_query"
+    else:
+        method = "websocket_message"
+        try:
+            raw = await asyncio.wait_for(websocket.receive_text(), OPERATOR_AUTH_TIMEOUT_S)
+            message = json.loads(raw)
+        except (TimeoutError, json.JSONDecodeError, WebSocketDisconnect, RuntimeError):
+            message = None
+        authorized = (
+            isinstance(message, dict)
+            and message.get("action") == "authenticate"
+            and token_matches(message.get("token"))
+        )
+
+    if not authorized:
+        logger.warning(
+            "Unauthorized operator WebSocket connection attempt",
+            extra={"event": "auth_failure", "auth_method": method, "client_type": "operator"},
+        )
+        # RuntimeError: the client already went away.
+        with contextlib.suppress(RuntimeError):
+            await websocket.close(code=1008, reason="Unauthorized")
+        return False
+    return True
+
+
 # Operator WebSocket actions, dispatched by the ``action`` field. Each handler
 # emits exactly the messages (including errors) the previous if/elif chain did;
 # only the organization is new.
 _OPERATOR_ACTIONS: dict[str, Any] = {
+    "authenticate": _handle_authenticate,
     "approve": _handle_approve,
     "clear": _handle_clear,
     "clear_pending": _handle_clear_pending,
@@ -271,6 +337,10 @@ def create_app(bible_lookup: BibleLookup | None = None) -> FastAPI:
     Returns:
         FastAPI: Configured application instance.
     """
+    # The operator console's WebSocket carries its token in the query string,
+    # which uvicorn would otherwise write to the log on every connection.
+    install_token_redaction()
+
     if bible_lookup is None:
         bible_lookup = create_bible_lookup()
 
@@ -380,33 +450,23 @@ def create_app(bible_lookup: BibleLookup | None = None) -> FastAPI:
     ) -> None:
         """WebSocket endpoint for display and operator clients.
 
-        For operator connections when authentication is enabled, provide token as query parameter:
-        /ws/operator?token=YOUR_TOKEN
+        When authentication is enabled, an operator client's first message must
+        be ``{"action": "authenticate", "token": "YOUR_TOKEN"}``; nothing is
+        sent to it before that. (``?token=`` in the URL still works but is
+        deprecated, because URLs are logged.)
         """
         if client_type not in ("display", "operator"):
             await websocket.close(code=4000)
             return
 
         # Authenticate operator connections if required
+        accepted = False
         if client_type == "operator" and config.REQUIRE_AUTH:
-            if not config.OPERATOR_TOKEN:
-                logger.error("Authentication required but BIBLELIVE_OPERATOR_TOKEN not set")
-                await websocket.close(code=1008, reason="Server misconfiguration")
+            if not await _authenticate_operator(websocket, token):
                 return
+            accepted = True
 
-            if not token or not secrets.compare_digest(token, config.OPERATOR_TOKEN):
-                logger.warning(
-                    "Unauthorized operator WebSocket connection attempt",
-                    extra={
-                        "event": "auth_failure",
-                        "auth_method": "websocket_query",
-                        "client_type": "operator",
-                    },
-                )
-                await websocket.close(code=1008, reason="Unauthorized")
-                return
-
-        await app_state.connection_manager.connect(websocket, client_type)
+        await app_state.connection_manager.connect(websocket, client_type, accepted=accepted)
 
         # Send initial state to the newly connected client
         if client_type == "display":
@@ -475,14 +535,41 @@ def create_app(bible_lookup: BibleLookup | None = None) -> FastAPI:
         status_code=201,
         responses={
             201: {"description": "Reference successfully queued"},
+            401: {"model": ErrorResponse, "description": "Unauthorized"},
+            404: {"model": ErrorResponse, "description": "No such book, chapter, or verse"},
             422: {"model": ErrorResponse, "description": "Invalid reference data"},
+            503: {"model": ErrorResponse, "description": "No Bible text loaded"},
         },
     )
-    async def receive_reference(reference: ReferenceSubmitRequest) -> ReferenceSubmitResponse:
-        """Receive a validated Bible reference from the parser and add to pending queue."""
+    async def receive_reference(
+        reference: ReferenceSubmitRequest, _: None = Depends(verify_operator_token)
+    ) -> ReferenceSubmitResponse:
+        """Receive a detected Bible reference from the audio pipeline and queue it.
+
+        The reference must name a canonical book and a chapter (or first verse)
+        that exists in the server's Bible text; anything else is rejected before
+        it is queued, because an auto-approve mode can put a queued reference on
+        the display without an operator looking at it. Caller-supplied ``text``
+        is discarded: verse text only ever comes from the database at approval.
+        Requires authentication if BIBLELIVE_REQUIRE_AUTH is enabled.
+        """
+        try:
+            canonical_book = validate_detection(
+                bible_lookup,
+                book=reference.book,
+                chapter=reference.chapter,
+                verse_start=reference.verse_start,
+                verse_end=reference.verse_end,
+            )
+        except PassageError as e:
+            logger.warning(f"Rejected reference submission: {e.message}")
+            raise HTTPException(status_code=e.status_code, detail=e.message)
+
         try:
             # Convert to BibleReference object (will generate ID and timestamp)
-            ref = BibleReference(**reference.model_dump())
+            ref = BibleReference(
+                **reference.model_dump(exclude={"book", "text"}), book=canonical_book
+            )
 
             # Add to pending queue
             await app_state.add_reference(ref)
@@ -556,7 +643,7 @@ def create_app(bible_lookup: BibleLookup | None = None) -> FastAPI:
 
         Requires authentication if BIBLELIVE_REQUIRE_AUTH is enabled.
         """
-        await app_state.clear_display()
+        await app_state.clear_and_notify()
         logger.info("Display cleared")
         return ClearResponse(status="success", message="Display cleared")
 
@@ -574,10 +661,7 @@ def create_app(bible_lookup: BibleLookup | None = None) -> FastAPI:
 
         Requires authentication if BIBLELIVE_REQUIRE_AUTH is enabled.
         """
-        count = len(app_state.pending_references)
-        await app_state.clear_pending()
-        # Notify connected operators of the now-empty queue.
-        await app_state._send_pending_update()
+        count = await app_state.clear_pending_and_notify()
         logger.info(f"Cleared {count} pending references")
         return ClearPendingResponse(status="success", message=f"Cleared {count} pending references")
 
@@ -742,6 +826,49 @@ def create_app(bible_lookup: BibleLookup | None = None) -> FastAPI:
             auto_mode=app_state.auto_mode,
         )
 
+    @app.post(
+        "/api/pipeline/heartbeat",
+        status_code=204,
+        responses={
+            204: {"description": "Report recorded"},
+            401: {"model": ErrorResponse, "description": "Unauthorized"},
+            422: {"model": ErrorResponse, "description": "Invalid report"},
+        },
+        dependencies=[Depends(verify_operator_token)],
+    )
+    async def receive_pipeline_heartbeat(report: PipelineHeartbeat) -> None:
+        """Record the audio pipeline's periodic health report.
+
+        Token-protected like ``/api/reference``, so only the pipeline can tell
+        the operator that detection is healthy. Requires authentication if
+        BIBLELIVE_REQUIRE_AUTH is enabled.
+        """
+        previous = app_state.pipeline_status().status
+        app_state.record_pipeline_report(report)
+        current = app_state.pipeline_status()
+        if current.status != previous:
+            if current.problems:
+                logger.warning(f"Audio pipeline {current.status}: {'; '.join(current.problems)}")
+            else:
+                logger.info(f"Audio pipeline {current.status}")
+
+    @app.get(
+        "/api/pipeline/status",
+        response_model=PipelineStatusResponse,
+        responses={
+            200: {"description": "Audio pipeline health as last reported"},
+            401: {"model": ErrorResponse, "description": "Unauthorized"},
+        },
+        dependencies=[Depends(verify_operator_token)],
+    )
+    async def get_pipeline_status() -> PipelineStatusResponse:
+        """Whether the audio pipeline is reporting, and what it says is broken.
+
+        Polled by the operator console. Requires authentication if
+        BIBLELIVE_REQUIRE_AUTH is enabled.
+        """
+        return app_state.pipeline_status()
+
     # Serve static files (CSS/JS, and the built frontend bundle under /static/frontend).
     # static/ is generated and gitignored, so it is absent on a fresh checkout (and in CI)
     # until the frontend is built. Mount only when it exists: StaticFiles raises at
@@ -770,11 +897,29 @@ def main() -> None:
     logger.info(f"Ready check:   http://{config.HOST}:{config.PORT}/readyz")
     logger.info("\nPress Ctrl+C to stop\n")
 
+    if config.RELOAD:
+        # Reload needs an import string so the reloader can re-import the app;
+        # a Config built from an app object silently ignores reload.
+        # Same factory `make dev` uses. Watch backend/ only: the repo root
+        # holds frontend/node_modules, which must not trigger restarts. The
+        # path is absolute because uvicorn quietly falls back to watching the
+        # whole working directory when a relative one does not exist there.
+        uvicorn.run(
+            "core.server.app:create_app",
+            factory=True,
+            host=config.HOST,
+            port=config.PORT,
+            reload=True,
+            reload_dirs=[str(config.backend_root)],
+            log_level=config.LOG_LEVEL.lower(),
+        )
+        return
+
     uvicorn_config = uvicorn.Config(
         create_app(),
         host=config.HOST,
         port=config.PORT,
-        reload=config.RELOAD,
+        reload=False,
         log_level=config.LOG_LEVEL.lower(),
     )
     server = uvicorn.Server(uvicorn_config)

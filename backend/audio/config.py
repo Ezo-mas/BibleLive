@@ -16,6 +16,25 @@ class AudioPipelineConfig:
     api_retry_base_delay: float = 0.5  # seconds
     api_retry_max_delay: float = 5.0  # seconds
     api_timeout: float = 5.0  # seconds
+    # Bearer token for POST /api/reference; required when the server runs with
+    # BIBLELIVE_REQUIRE_AUTH=true. None sends no Authorization header.
+    api_token: str | None = None
+    # References wait here for the sender thread while the server is slow; when
+    # full, the oldest waiting one is dropped. One still unsent after
+    # send_max_age_s is dropped too, so a recovered server never receives (and
+    # an auto-approve mode never displays) a reference from minutes ago.
+    send_queue_maxsize: int = 20
+    send_max_age_s: float = 30.0  # longer than one full retry schedule (~23.5s)
+    # How often the pipeline reports its health to the server (seconds; 0
+    # disables). The server treats the pipeline as offline after missing three.
+    heartbeat_interval: float = 5.0
+
+    # Audio capture restart after ffmpeg exits on its own (device unplugged,
+    # driver reset). Delays double from base to max; they fall back to base once
+    # a restarted stream has delivered capture_healthy_s of audio.
+    capture_restart_base_delay: float = 1.0  # seconds
+    capture_restart_max_delay: float = 30.0  # seconds
+    capture_healthy_s: float = 10.0  # seconds of audio
 
     # Deduplication window
     dedup_window_seconds: float = 5.0  # Don't send same reference within 5s

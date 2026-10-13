@@ -2,10 +2,27 @@
 
 BibleLive supports optional token-based authentication for operator endpoints.
 When enabled, all operator actions (approve, clear, clear queue, settings,
-manual display) require authentication via:
+manual display) and reference ingestion from the audio pipeline require
+authentication via:
 
-- WebSocket: query parameter `?token=YOUR_TOKEN`
+- WebSocket: first message `{"action": "authenticate", "token": "YOUR_TOKEN"}`
+  (the deprecated `?token=` query parameter still works)
 - HTTP: `Authorization: Bearer YOUR_TOKEN` header
+
+The audio pipeline sends the token with every reference and health report. It reads
+`BIBLELIVE_OPERATOR_TOKEN` from the environment or the project `.env` (the same
+place the server reads it), or takes `--server-token`.
+
+The pipeline authenticates as the operator: whatever machine runs it holds full
+operator rights (approve, clear, settings, display). That is acceptable when the
+pipeline runs on the same machine as the server. There is no separate
+ingest-only token today — if the pipeline ever moves to another machine, add
+one rather than copying the operator token there.
+
+Whether or not auth is enabled, `POST /api/reference` only accepts a canonical
+book and a chapter or verse that exists in the loaded Bible text, and ignores
+any submitted `text`: what reaches the display is always the database's verse
+text.
 
 ## Quick Start
 
@@ -39,7 +56,6 @@ BIBLELIVE_OPERATOR_TOKEN=your-generated-token-here
 - `GET /display` — display page
 - `GET /healthz` — health check
 - `GET /readyz` — readiness check
-- `POST /api/reference` — reference ingestion (from the audio pipeline)
 - `GET /api/books` — canonical book list (read-only canon data)
 - `GET /api/lookup` — verse text lookup by coordinates (read-only)
 - `GET /ws/display` — display WebSocket
@@ -47,11 +63,15 @@ BIBLELIVE_OPERATOR_TOKEN=your-generated-token-here
 ### Protected endpoints (authentication required when enabled)
 
 - `GET /operator` — operator console page
+- `POST /api/reference` — reference ingestion (from the audio pipeline)
+- `POST /api/pipeline/heartbeat` — audio pipeline health report (so nobody
+  else can tell the operator that detection is healthy)
+- `GET /api/pipeline/status` — pipeline health shown in the operator console
 - `GET /api/state` — application state
 - `POST /api/approve` — approve pending reference
 - `POST /api/clear` — clear display
 - `POST /api/clear-pending` — clear pending queue
-- `GET /ws/operator` — operator WebSocket (requires `?token=...`)
+- `GET /ws/operator` — operator WebSocket (token in the first message)
 
 ## Production Configuration
 
@@ -83,56 +103,35 @@ The full annotated list lives in `.env.example`; deployment walkthroughs
 
 ### Systemd Service
 
-Create `/etc/systemd/system/biblelive.service`:
+The canonical server unit lives in `DEPLOYMENT.md` ("Systemd Service
+(Server)"); use that file so the two docs cannot drift apart. In
+particular: `EnvironmentFile=/opt/biblelive/.env`,
+`ExecStart=/opt/biblelive/venv/bin/python -m core.server`, and hardening with
+`ReadWritePaths=/opt/biblelive/data` (the settings file) while `bible_data/`
+stays read-only.
 
-```ini
-[Unit]
-Description=BibleLive Display System
-After=network.target
-
-[Service]
-Type=simple
-User=biblelive
-Group=biblelive
-WorkingDirectory=/opt/biblelive
-EnvironmentFile=/etc/biblelive/biblelive.env
-Environment=PYTHONPATH=/opt/biblelive/backend
-ExecStart=/opt/biblelive/venv/bin/python -m core.server
-
-# Security hardening
-PrivateTmp=yes
-NoNewPrivileges=yes
-ReadWritePaths=/opt/biblelive/bible_data
-ReadOnlyPaths=/opt/biblelive
-
-Restart=always
-RestartSec=10
-
-[Install]
-WantedBy=multi-user.target
-```
-
-**Create secure environment file:**
+**Create secure environment file (`/opt/biblelive/.env`, as the unit reads):**
 
 ```bash
-sudo mkdir -p /etc/biblelive
-sudo nano /etc/biblelive/biblelive.env
+sudo nano /opt/biblelive/.env
 ```
 
 Add your configuration (`BIBLELIVE_REQUIRE_AUTH`, `BIBLELIVE_OPERATOR_TOKEN`,
 `BIBLELIVE_DB_PATH`, `BIBLELIVE_DB_READONLY`, `BIBLELIVE_HOST`, `BIBLELIVE_PORT`)
-with `0600` permissions:
+with `0640` permissions (root-owned, group-readable):
 
 ```bash
-sudo chown biblelive:biblelive /etc/biblelive/biblelive.env
-sudo chmod 0600 /etc/biblelive/biblelive.env
+sudo chown root:biblelive /opt/biblelive/.env
+sudo chmod 0640 /opt/biblelive/.env
 sudo systemctl daemon-reload
 ```
 
 ### Nginx Configuration with Log Redaction
 
-**Important:** WebSocket tokens appear in URLs. This configuration redacts
-query strings from logs:
+The operator console sends its token inside the WebSocket, not in the URL, and
+the server redacts any `token=` query parameter from its own logs. A client
+still using the deprecated `?token=` form puts the token in the URL a proxy
+sees, so this configuration keeps query strings out of the proxy's logs too:
 
 ```nginx
 # Redact query strings from logs
@@ -170,7 +169,7 @@ server {
 
 - [ ] `BIBLELIVE_REQUIRE_AUTH=true` set
 - [ ] Strong `BIBLELIVE_OPERATOR_TOKEN` generated (32+ bytes)
-- [ ] Token stored securely with `0600` permissions
+- [ ] Token stored in a root-owned file readable by the service group (`0640`)
 - [ ] TLS enabled (HTTPS/WSS)
 - [ ] Server bound to `127.0.0.1`
 - [ ] Database read-only mode enabled

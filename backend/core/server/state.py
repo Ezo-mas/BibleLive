@@ -1,6 +1,8 @@
 """Application state management."""
 
 import logging
+import time
+from typing import Literal
 
 from fastapi import WebSocket
 
@@ -8,7 +10,14 @@ from ..bible_lookup import BibleLookup
 from ..config import config
 from ..passage import ResolvedPassage
 from .connections import ConnectionManager
-from .models import AutoMode, BibleReference, DisplaySettings, VerseText
+from .models import (
+    AutoMode,
+    BibleReference,
+    DisplaySettings,
+    PipelineHeartbeat,
+    PipelineStatusResponse,
+    VerseText,
+)
 from .settings_store import SettingsStore, coerce_auto_mode, is_auto_mode
 
 logger = logging.getLogger(__name__)
@@ -30,6 +39,10 @@ AUTO_APPROVE_CONFIDENCES: dict[AutoMode, frozenset[str]] = {
     "medium_and_up": frozenset({"high", "medium"}),
     "all": frozenset({"high", "medium", "low"}),
 }
+
+# How many report intervals the audio pipeline may miss before the operator is
+# told it is offline. One late report (a slow request, a GC pause) is not news.
+PIPELINE_MISSED_REPORTS_OFFLINE = 3
 
 
 class AppState:
@@ -60,6 +73,42 @@ class AppState:
         # unknown environment value leaves auto-approval off.
         self.auto_mode: AutoMode = self.settings_store.load_auto_mode(
             default=coerce_auto_mode(config.AUTO_MODE)
+        )
+        # The audio pipeline's latest health report and when it arrived
+        # (time.monotonic()), or None until the first one.
+        self.pipeline_report: PipelineHeartbeat | None = None
+        self.pipeline_reported_at: float | None = None
+
+    def record_pipeline_report(self, report: PipelineHeartbeat, now: float | None = None) -> None:
+        """Keep the audio pipeline's latest health report."""
+        self.pipeline_report = report
+        self.pipeline_reported_at = time.monotonic() if now is None else now
+
+    def pipeline_status(self, now: float | None = None) -> PipelineStatusResponse:
+        """Summarize the pipeline's health for the operator console.
+
+        The pipeline cannot report that it has died, so silence is the signal:
+        once more than ``PIPELINE_MISSED_REPORTS_OFFLINE`` of its own report
+        intervals pass without a report, it is offline, whatever it said last.
+        """
+        report, reported_at = self.pipeline_report, self.pipeline_reported_at
+        if report is None or reported_at is None:
+            return PipelineStatusResponse(status="unknown")
+
+        age = max(0.0, (time.monotonic() if now is None else now) - reported_at)
+        status: Literal["ok", "degraded", "offline"]
+        if age > report.interval_s * PIPELINE_MISSED_REPORTS_OFFLINE:
+            status = "offline"
+        elif report.problems:
+            status = "degraded"
+        else:
+            status = "ok"
+        return PipelineStatusResponse(
+            status=status,
+            language=report.language,
+            # Problems from a pipeline that has gone quiet are history, not state.
+            problems=[] if status == "offline" else list(report.problems),
+            seconds_since_report=round(age, 1),
         )
 
     async def _send_pending_update(self) -> None:
@@ -303,10 +352,17 @@ class AppState:
         a reference label with no text next to it. Requested ranges are capped at
         ``config.MAX_VERSES_PER_REFERENCE`` so a whole-chapter request cannot send
         an unbounded payload.
+
+        Verse text only ever comes from the database. Any text the reference
+        already carries is replaced, so a submitter cannot put words on the
+        display that are not the Bible text, and the label's range end is trimmed
+        to the last verse that exists so label and text agree.
         """
         if ref.verse_start is None:
             ref.verse_start = 1
 
+        ref.text = ""
+        ref.verses = []
         if not self.bible_lookup.is_loaded():
             return
 
@@ -321,19 +377,17 @@ class AppState:
             )
             ref.verse_end = verse_end
 
-        # A caller may have supplied text without verse numbers (audio pipeline).
-        if ref.text and ref.verses:
-            return
-
         verses = self.bible_lookup.get_verse_range(
             ref.book, ref.chapter, ref.verse_start, verse_end
         )
         ref.verses = [VerseText(verse=verse, text=text) for verse, text in verses]
-        if ref.verses:
-            # Trust the database over caller-supplied text: it is validated and cleaned.
-            ref.text = " ".join(verse.text for verse in ref.verses)
-        elif not ref.text:
+        if not ref.verses:
             logger.warning(f"No verse text found for {ref.book} {ref.chapter}:{ref.verse_start}")
+            return
+        ref.text = " ".join(verse.text for verse in ref.verses)
+        # "John 3:30-40": the chapter ends at 36, so the label must too.
+        if ref.verse_end is not None and ref.verses[-1].verse < ref.verse_end:
+            ref.verse_end = ref.verses[-1].verse
 
     async def display_manual_passage(self, passage: ResolvedPassage) -> BibleReference:
         """Display a passage the operator selected by hand.

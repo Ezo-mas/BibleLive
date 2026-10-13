@@ -124,6 +124,14 @@ function lastSent() {
   return calls.length ? JSON.parse(calls[calls.length - 1][0]) : null
 }
 
+/** Operator actions sent after the authenticate first-message (empty: no token). */
+function sentActions() {
+  const calls = socket?.send.mock.calls ?? []
+  return calls
+    .map(([text]) => JSON.parse(text))
+    .filter(message => message.action !== 'authenticate')
+}
+
 beforeEach(() => {
   window.localStorage.clear()
   vi.stubGlobal('WebSocket', MockWebSocket)
@@ -175,7 +183,7 @@ describe('pending selection and approval', () => {
     expect(approveButton()).toBeDisabled()
 
     press('Enter')
-    expect(socket?.send).not.toHaveBeenCalled()
+    expect(sentActions()).toEqual([])
   })
 
   it('selects a pending card by clicking it', () => {
@@ -225,7 +233,7 @@ describe('pending selection and approval', () => {
       data: { pending: [reference('p-9', 'Acts', 2, 1)], count: 1 },
     })
     press('Enter')
-    expect(socket?.send).not.toHaveBeenCalled()
+    expect(sentActions()).toEqual([])
   })
 })
 
@@ -240,7 +248,7 @@ describe('keyboard shortcuts while Settings is open', () => {
     // The dialog owns the keyboard while it is open: a keypress sent from
     // behind it must neither reach the server nor move the staged selection.
     press('Enter')
-    expect(socket?.send).not.toHaveBeenCalled()
+    expect(sentActions()).toEqual([])
     expect(screen.getByRole('button', { name: /John 1:1/ })).toHaveAttribute('aria-pressed', 'true')
 
     // Closed, the same keypress approves the staged reference again by ID — the
@@ -280,7 +288,7 @@ describe('clear actions', () => {
       clearQueue.click()
     })
     expect(confirm).toHaveBeenCalled()
-    expect(socket?.send).not.toHaveBeenCalled()
+    expect(sentActions()).toEqual([])
 
     confirm.mockReturnValue(true)
     act(() => {
@@ -323,12 +331,14 @@ describe('display settings', () => {
 })
 
 describe('authentication', () => {
-  it('prompts for a token after the server rejects the connection', () => {
+  it('prompts for a token, without the failure text, when none was tried', () => {
     render(<App />)
     act(() => {
       socket?.onclose?.({ code: 1008 })
     })
-    expect(screen.getByText(/authentication failed/i)).toBeInTheDocument()
+    // A 1008 with no token tried means the server wants one, not that one
+    // failed: the prompt opens but there is nothing to call failed.
+    expect(screen.queryByText(/authentication failed/i)).not.toBeInTheDocument()
     expect(screen.getByLabelText(/operator token/i)).toBeInTheDocument()
   })
 

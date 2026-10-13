@@ -206,3 +206,20 @@ class TestGetVerseRange:
         text = lookup.get_verse_text("John", 3, 16, 17)
         assert "For God so loved" in text
         assert "For God sent" in text
+
+
+def test_validation_cache_stays_bounded(bible_db):
+    """Distinct caller-controlled triples must not grow the cache without limit."""
+    from core.bible_lookup import _VALIDATION_CACHE_MAX_ENTRIES
+
+    bible = BibleLookup(str(bible_db))
+    try:
+        for i in range(_VALIDATION_CACHE_MAX_ENTRIES + 500):
+            assert not bible.validate_reference(f"NoSuchBook{i}", 1, 1)
+        assert len(bible._validation_cache) <= _VALIDATION_CACHE_MAX_ENTRIES
+        # Eviction only drops entries; answers stay right either way.
+        assert bible.validate_reference("Genesis", 1, 1)
+        assert not bible.validate_reference("Genesis", 1, 50)
+        assert len(bible._validation_cache) <= _VALIDATION_CACHE_MAX_ENTRIES
+    finally:
+        bible.close()

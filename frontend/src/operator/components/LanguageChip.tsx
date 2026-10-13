@@ -5,6 +5,11 @@ export interface LanguageChipProps {
   language: string | null
   /** Open the settings dialog on the language control. */
   onOpenSettings: () => void
+  /**
+   * True while the audio pipeline is not reporting: the language is the last one
+   * confirmed, not one anything is listening in, so the chip is dimmed.
+   */
+  stale?: boolean
 }
 
 /**
@@ -16,17 +21,25 @@ export interface LanguageChipProps {
  * value (nothing is assumed while it is unknown) and opens Settings, where it is
  * changed.
  */
-export function LanguageChip({ language, onOpenSettings }: LanguageChipProps) {
+export function LanguageChip({ language, onOpenSettings, stale = false }: LanguageChipProps) {
   if (!language) return null
 
   return (
     <button
       type="button"
-      className="operator-language-chip"
+      className={`operator-language-chip${stale ? ' operator-language-chip--stale' : ''}`}
       onClick={onOpenSettings}
       aria-haspopup="dialog"
-      aria-label={`Spoken language: ${spokenLanguageLabel(language)}. Change in settings`}
-      title="Spoken language — open settings"
+      aria-label={
+        stale
+          ? `Spoken language: ${spokenLanguageLabel(language)}, but speech detection is not running. Change in settings`
+          : `Spoken language: ${spokenLanguageLabel(language)}. Change in settings`
+      }
+      title={
+        stale
+          ? 'Last spoken language — speech detection is not running'
+          : 'Spoken language — open settings'
+      }
     >
       <span className="operator-language-chip-label">Speech</span>
       <strong className="operator-language-chip-value">{language.toUpperCase()}</strong>

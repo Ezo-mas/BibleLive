@@ -43,6 +43,13 @@ def clean_verse_text(text: str) -> str:
     return re.sub(r"\s+", " ", cleaned).strip()
 
 
+# Upper bound on cached validation results. Cache keys are caller-controlled
+# (any book string with any chapter/verse ints), so without a bound anyone who
+# can reach the server could grow the dict without limit. 4096 entries is far
+# beyond the working set; evicted entries are cheap to recompute.
+_VALIDATION_CACHE_MAX_ENTRIES = 4096
+
+
 class BibleLookup:
     """Runtime Bible text lookup and validation.
 
@@ -177,6 +184,15 @@ class BibleLookup:
             logger.error(f"Failed to load KJV from JSON: {e}")
             raise
 
+    def _remember_validation(self, cache_key: tuple[str, int, int | None], result: bool) -> None:
+        """Cache a validation result, evicting the oldest entry when full."""
+        if (
+            cache_key not in self._validation_cache
+            and len(self._validation_cache) >= _VALIDATION_CACHE_MAX_ENTRIES
+        ):
+            self._validation_cache.pop(next(iter(self._validation_cache)))
+        self._validation_cache[cache_key] = result
+
     def validate_reference(self, book: str, chapter: int, verse: int | None = None) -> bool:
         """
         Validate that a book:chapter[:verse] reference exists in the Bible.
@@ -195,7 +211,7 @@ class BibleLookup:
         cursor = self.conn.execute("SELECT id FROM books WHERE name = ?", (book,))
         book_row = cursor.fetchone()
         if not book_row:
-            self._validation_cache[cache_key] = False
+            self._remember_validation(cache_key, False)
             return False
         book_id = book_row[0]
 
@@ -205,7 +221,7 @@ class BibleLookup:
             (book_id, chapter),
         )
         if not cursor.fetchone():
-            self._validation_cache[cache_key] = False
+            self._remember_validation(cache_key, False)
             return False
 
         # If verse specified, check if it exists
@@ -215,11 +231,11 @@ class BibleLookup:
                 (book_id, chapter, verse),
             )
             result = cursor.fetchone() is not None
-            self._validation_cache[cache_key] = result
+            self._remember_validation(cache_key, result)
             return result
 
         result = True
-        self._validation_cache[cache_key] = result
+        self._remember_validation(cache_key, result)
         return result
 
     def get_validator_hook(self) -> Callable:

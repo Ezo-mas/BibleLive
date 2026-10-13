@@ -141,12 +141,16 @@ def test_reference_submit_rejects_oversized_payloads(client):
 
 
 def test_reference_submit_accepts_values_at_the_limits(client):
-    """P2-1: inputs exactly at the configured limits are still accepted."""
+    """P2-1: inputs exactly at the size limits are still accepted.
+
+    The longest real chapter number (Psalm 150) and a 1000-character ``text``
+    pass the size checks; the text itself is ignored (see the ingest tests below).
+    """
     response = client.post(
         "/api/reference",
         json={
-            "book": "A" * 100,
-            "chapter": 200,
+            "book": "Psalms",
+            "chapter": 150,
             "verse_start": 1,
             "confidence": "high",
             "text": "x" * 1000,
@@ -154,6 +158,81 @@ def test_reference_submit_accepts_values_at_the_limits(client):
     )
     assert response.status_code == 201
     assert "reference_id" in response.json()
+
+
+# --- Ingest validation: only real scripture can enter the queue ----------------
+
+
+def _submit(client, **fields):
+    body = {"book": "John", "chapter": 3, "verse_start": 16, "confidence": "high", **fields}
+    return client.post("/api/reference", json=body)
+
+
+def test_reference_submit_rejects_unknown_book(client, app_state):
+    response = _submit(client, book="URGENT NOTICE", chapter=1, verse_start=1)
+    assert response.status_code == 404
+    assert "Unknown book" in response.json()["detail"]
+    assert app_state.pending_references == []
+
+
+def test_reference_submit_rejects_chapters_and_verses_not_in_the_bible(client, app_state):
+    assert _submit(client, chapter=22, verse_start=1).status_code == 422  # John has 21
+    assert _submit(client, chapter=3, verse_start=99).status_code == 404  # John 3 has 36
+    assert app_state.pending_references == []
+
+
+def test_reference_submit_rejects_malformed_ranges(client, app_state):
+    assert _submit(client, verse_start=16, verse_end=2).status_code == 422
+    assert _submit(client, verse_start=None, verse_end=5).status_code == 422
+    assert app_state.pending_references == []
+
+
+def test_reference_submit_accepts_chapter_only_and_canonicalizes_book(client, app_state):
+    assert _submit(client, book="  john ", verse_start=None).status_code == 201
+    assert app_state.pending_references[0].book == "John"
+    assert app_state.pending_references[0].verse_start is None
+
+
+def test_reference_submit_discards_caller_text(client, app_state):
+    """Submitted text never reaches the queue or the display; the DB's does."""
+    with client.websocket_connect("/ws/display") as display:
+        display.receive_json()  # initial clear
+        display.receive_json()  # display settings
+
+        reference_id = _submit(client, text="Words that are not scripture").json()["reference_id"]
+        assert app_state.pending_references[0].text == ""
+
+        assert client.post("/api/approve", json={"reference_id": reference_id}).status_code == 200
+        shown = display.receive_json()["data"]
+
+    assert "not scripture" not in shown["text"]
+    assert shown["text"].startswith("For God so loved the world")
+    assert [v["verse"] for v in shown["verses"]] == [16]
+
+
+def test_range_running_past_the_chapter_is_trimmed_in_the_label(client):
+    """John 3 ends at verse 36, so "John 3:30-40" is shown as 3:30-36."""
+    reference_id = _submit(client, verse_start=30, verse_end=40).json()["reference_id"]
+    shown = client.post("/api/approve", json={"reference_id": reference_id}).json()["reference"]
+    assert shown["verse_end"] == 36
+    assert [v["verse"] for v in shown["verses"]] == list(range(30, 37))
+
+
+def test_auto_approve_cannot_display_a_rejected_submission(client, app_state):
+    """With auto-approve on, a bad submission still never reaches a projector."""
+    app_state.auto_mode = "all"
+    with client.websocket_connect("/ws/display") as display:
+        display.receive_json()  # initial clear
+        display.receive_json()  # display settings
+        assert _submit(client, book="Announcements", chapter=1, verse_start=1).status_code == 404
+        assert app_state.current_display is None
+
+        # A valid one is still auto-approved, showing database text.
+        assert _submit(client, text="injected").status_code == 201
+        shown = display.receive_json()
+    assert shown["type"] == "reference"
+    assert shown["data"]["book"] == "John"
+    assert "injected" not in shown["data"]["text"]
 
 
 def test_api_response_models(client):

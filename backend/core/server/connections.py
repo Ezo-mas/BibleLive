@@ -22,14 +22,19 @@ class ConnectionManager:
         self.display_connections: set[WebSocket] = set()
         self.operator_connections: set[WebSocket] = set()
 
-    async def connect(self, websocket: WebSocket, client_type: str = "display"):
+    async def connect(
+        self, websocket: WebSocket, client_type: str = "display", accepted: bool = False
+    ):
         """Accept a websocket connection and register it based on client type.
 
         Args:
             websocket: The WebSocket connection.
             client_type: Either "display" or "operator". Defaults to "display".
+            accepted: True when the caller already accepted the socket (an
+                operator socket is accepted before its token is checked).
         """
-        await websocket.accept()
+        if not accepted:
+            await websocket.accept()
         self.active_connections.append(websocket)
         if client_type == "display":
             self.display_connections.add(websocket)

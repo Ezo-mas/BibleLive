@@ -67,6 +67,16 @@ function stubFetch() {
   release = null
   hold = false
   fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    // The console also polls the pipeline's health once connected; that has its
+    // own tests (App.pipeline.test.tsx) and is answered as "unknown" here.
+    if (String(input).startsWith('/api/pipeline/')) {
+      return jsonResponse({
+        status: 'unknown',
+        language: null,
+        problems: [],
+        seconds_since_report: null,
+      })
+    }
     expect(String(input)).toBe('/api/language')
     if (fail) {
       const { status, detail } = fail
@@ -123,7 +133,9 @@ function languageButton(name: string) {
 
 /** Calls the console made to the language endpoint, by HTTP method. */
 function calls(method: 'GET' | 'POST') {
-  return fetchMock.mock.calls.filter(([, init]) => (init?.method ?? 'GET') === method)
+  return fetchMock.mock.calls.filter(
+    ([url, init]) => String(url) === '/api/language' && (init?.method ?? 'GET') === method
+  )
 }
 
 beforeEach(() => {
@@ -196,7 +208,7 @@ describe('the spoken language in the header', () => {
     openWith()
 
     await screen.findByRole('button', { name: /^Spoken language/ })
-    expect(fetchMock.mock.calls[0][1]?.headers).toEqual({ Authorization: 'Bearer secret-token' })
+    expect(calls('GET')[0][1]?.headers).toEqual({ Authorization: 'Bearer secret-token' })
   })
 })
 

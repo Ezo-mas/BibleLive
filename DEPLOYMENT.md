@@ -16,7 +16,8 @@ nano .env  # Configure production settings (see below)
 # 3. Install Python dependencies
 python3 -m venv venv
 source venv/bin/activate
-pip install -e ./backend
+# -c holds every package to the tested versions (see backend/constraints.txt)
+pip install -e ./backend -c backend/constraints.txt
 
 # 4. Import Bible database
 PYTHONPATH="$PWD/backend" python -m core.import_bible --translation kjv --source data/kjv2.json
@@ -104,8 +105,13 @@ fetch('/api/approve', {
 
 **WebSocket Connection:**
 ```javascript
-const ws = new WebSocket(`ws://localhost:8000/ws/operator?token=${token}`)
+const ws = new WebSocket('ws://localhost:8000/ws/operator')
+// The token is the first message, not part of the URL (URLs get logged).
+ws.onopen = () => ws.send(JSON.stringify({ action: 'authenticate', token }))
 ```
+
+The server closes the socket with code 1008 if the token is wrong or does not
+arrive within 10 seconds. `?token=` in the URL still works but is deprecated.
 
 ### Token Storage
 
@@ -238,10 +244,11 @@ Requires=biblelive.service
 [Service]
 Type=simple
 User=biblelive
+Group=biblelive
 WorkingDirectory=/opt/biblelive
 EnvironmentFile=/opt/biblelive/.env
 Environment=PYTHONPATH=/opt/biblelive/backend
-ExecStart=/usr/bin/python3 -m audio.cli
+ExecStart=/opt/biblelive/venv/bin/python -m audio.cli
 Restart=always
 RestartSec=10
 
@@ -288,7 +295,10 @@ NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=true
-ReadWritePaths=/opt/biblelive/bible_data
+# Writable: data/ holds server_settings.json (auto-approve persistence).
+# bible_data/ stays read-only under strict (the DB opens read-only); do not
+# add it here.
+ReadWritePaths=/opt/biblelive/data
 
 # Restart policy
 Restart=on-failure
@@ -327,13 +337,15 @@ BIBLELIVE_REQUIRE_AUTH=true
 BIBLELIVE_OPERATOR_TOKEN=your-secure-token-here
 EOF
 
-# Set secure permissions
-sudo chown biblelive:biblelive /opt/biblelive/.env
-sudo chmod 0600 /opt/biblelive/.env
+# Set secure permissions: root owns the secrets, the service group can read
+# them, and the service itself cannot rewrite them.
+sudo chown root:biblelive /opt/biblelive/.env
+sudo chmod 0640 /opt/biblelive/.env
 
 # Set up Python environment
 sudo -u biblelive python3 -m venv /opt/biblelive/venv
-sudo -u biblelive /opt/biblelive/venv/bin/pip install -e /opt/biblelive/backend
+sudo -u biblelive /opt/biblelive/venv/bin/pip install -e /opt/biblelive/backend \
+    -c /opt/biblelive/backend/constraints.txt
 
 # Import Bible data
 sudo -u biblelive env PYTHONPATH=/opt/biblelive/backend \
@@ -345,6 +357,11 @@ cd /opt/biblelive/frontend
 sudo -u biblelive npm install
 sudo -u biblelive npm run build
 ```
+
+> After every `git pull`, re-run `npm run build` and restart the service:
+> `static/frontend/` is generated and gitignored, so the served bundle goes
+> stale otherwise. `/readyz` only checks the files exist; `start.sh` /
+> `start.ps1` warn when `frontend/src` is newer than the bundle.
 
 ### Enable and Start Service
 
@@ -426,7 +443,7 @@ Use for:
 - [ ] Firewall allows only reverse proxy to access port 8000
 - [ ] Service runs as non-root user with minimal permissions
 - [ ] Database file has appropriate permissions (readable/writable only by service user)
-- [ ] `.env` file has restricted permissions (`chmod 600 .env`)
+- [ ] `.env` file owned by root, readable by the service group (`chown root:biblelive`, `chmod 640 .env`)
 - [ ] Operator tokens not committed to version control
 - [ ] CORS configured restrictively (no wildcard `*` in production)
 - [ ] Regular security updates applied to OS and dependencies
@@ -450,7 +467,7 @@ Common issues:
   / `--no-control`
 - Database not found: Run import command
 - Frontend not built: `cd frontend && npm run build`
-- Missing dependencies: `pip install -e ./backend`
+- Missing dependencies: `pip install -e ./backend -c backend/constraints.txt`
 
 ### WebSocket Connection Fails
 

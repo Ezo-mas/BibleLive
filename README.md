@@ -41,20 +41,36 @@ On Windows use `python` instead of `python3` in the commands below (and
 
 ```bash
 # Backend as an editable install (core server + parser + dev/test tools)
-pip install -e ./backend
+pip install -e ./backend -c backend/constraints.txt
 
 # Optional: audio pipeline extras (faster-whisper, webrtcvad, numpy)
-pip install -e "./backend[audio]"
+pip install -e "./backend[audio]" -c backend/constraints.txt
+
+# Optional: GPU transcription (--device cuda): CUDA 12 cuBLAS + cuDNN 9 wheels
+pip install -e "./backend[audio,cuda]" -c backend/constraints.txt
 ```
+
+`-c backend/constraints.txt` holds every package, direct or indirect, to the
+exact version the test suite was last run against, so a new machine gets a
+known-working set instead of whatever is newest that day. (`make install`,
+`install-audio`, `install-cuda`, `install-dev`, CI, and `scripts/setup-linux.sh`
+all use it.) The file's header explains how to move the pins forward.
 
 On Windows, `webrtcvad-wheels` is installed automatically (no C++ build tools
 needed). The audio extras also pin `setuptools<81`, because the VAD package
 imports `pkg_resources` at runtime.
 
+With the `cuda` extra on Windows, `audio/stt.py` finds the NVIDIA libraries by
+itself. On Linux, point the loader at them before starting the pipeline:
+
+```bash
+export LD_LIBRARY_PATH="$(python3 -c 'import os, nvidia.cublas.lib, nvidia.cudnn.lib; print(os.path.dirname(nvidia.cublas.lib.__file__) + ":" + os.path.dirname(nvidia.cudnn.lib.__file__))')"
+```
+
 ```bash
 # Optional: plain requirements files instead of an install
-pip install -r backend/requirements.txt
-pip install -r backend/requirements-audio.txt
+pip install -r backend/requirements.txt -c backend/constraints.txt
+pip install -r backend/requirements-audio.txt -c backend/constraints.txt
 
 # Required: build the frontend (once after cloning; also re-run after frontend changes)
 cd frontend && npm install && npm run build
@@ -111,6 +127,9 @@ PYTHONPATH="$PWD/backend" python3 -m audio.cli [options]
 Options:
   --bible-db PATH         Bible SQLite database (default: bible_data/biblelive.sqlite)
   --server URL            BibleLive server URL (default: http://localhost:8000)
+  --server-token TOKEN    Operator token sent with references when the server
+                          requires auth (default: BIBLELIVE_OPERATOR_TOKEN from
+                          the environment or .env; prefer that over the flag)
   --model SIZE            Whisper model: tiny, base, small, medium, large-v2,
                           large-v3, large-v3-turbo, distil-large-v3 (default: small)
   --device DEV            Whisper device: cpu or cuda (default: cuda)
@@ -201,13 +220,15 @@ output, ignored short VAD blips, and skipped duplicates.
 
 | Method | Endpoint            | Description                              |
 |--------|---------------------|------------------------------------------|
-| POST   | `/api/reference`    | Submit a parsed Bible reference (pending) |
+| POST   | `/api/reference`    | Submit a parsed Bible reference (pending; must exist in the loaded Bible; token when auth is on) |
 | POST   | `/api/approve`      | Approve a pending reference (by reference_id) |
 | POST   | `/api/clear`        | Clear the display                        |
 | POST   | `/api/clear-pending`| Clear the pending queue                  |
 | GET    | `/api/books`        | List canonical books (for Find Scripture) |
 | GET    | `/api/lookup`       | Look up verse text by coordinates        |
 | GET    | `/api/state`        | Current server state snapshot (requires auth if enabled) |
+| POST   | `/api/pipeline/heartbeat` | Audio pipeline health report, sent every 5 s (token when auth is on) |
+| GET    | `/api/pipeline/status` | Pipeline health for the operator console: `unknown`, `ok`, `degraded` (with problems), or `offline` after three missed reports (requires auth if enabled) |
 | GET    | `/healthz`          | Liveness probe                           |
 | GET    | `/readyz`           | Readiness probe (database + frontend built checks) |
 
@@ -219,6 +240,8 @@ output, ignored short VAD blips, and skipped duplicates.
   `approval_confirmed`, `clear_confirmed`, `pending_cleared`, `state_snapshot`,
   `auto_mode_confirmed`, `display_settings_confirmed`, and `connection_status`
   events; they send these actions:
+  - `{action: 'authenticate', token}` — first, when authentication is enabled
+    (ignored otherwise)
   - `{action: 'approve', reference_id: 'uuid'}`
   - `{action: 'clear'}`
   - `{action: 'clear_pending'}`
@@ -228,7 +251,10 @@ output, ignored short VAD blips, and skipped duplicates.
   - `{action: 'display_reference', book, chapter, verse_start?, verse_end?}` —
     show a passage the operator picked by hand (coordinates only; the server
     re-resolves them). Also used for Show Again from display history.
-- Operator WebSocket requires `?token=xxx` query parameter when authentication is enabled
+- With authentication enabled, the operator WebSocket's first message must be
+  `{action: 'authenticate', token}`; the server sends nothing before it and
+  closes with code 1008 on a wrong or missing token (`?token=` in the URL still
+  works but is deprecated, because URLs are logged)
 
 ## Auto-approve mode
 

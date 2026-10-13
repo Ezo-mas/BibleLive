@@ -10,6 +10,18 @@ from ..config import config
 logger = logging.getLogger(__name__)
 
 
+def token_matches(candidate: object) -> bool:
+    """Constant-time check against the operator token.
+
+    Compared as bytes: ``secrets.compare_digest`` raises on non-ASCII ``str``,
+    which would turn a stray character into a server error instead of a refusal.
+    """
+    expected = config.OPERATOR_TOKEN
+    if not isinstance(candidate, str) or not expected:
+        return False
+    return secrets.compare_digest(candidate.encode("utf-8"), expected.encode("utf-8"))
+
+
 async def verify_operator_token(authorization: str | None = Header(None)) -> None:
     """Verify operator authentication token.
 
@@ -47,8 +59,10 @@ async def verify_operator_token(authorization: str | None = Header(None)) -> Non
 
     token = parts[1]
 
-    # Validate token using constant-time comparison to prevent timing attacks
-    if not secrets.compare_digest(token, config.OPERATOR_TOKEN):
+    # Validate token using constant-time comparison to prevent timing attacks.
+    # Compared as bytes via token_matches: compare_digest raises on non-ASCII
+    # str, which must read as a wrong token (401), not a server error.
+    if not token_matches(token):
         logger.warning(
             "Invalid operator token attempted",
             extra={
