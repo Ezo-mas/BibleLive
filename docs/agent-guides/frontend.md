@@ -41,6 +41,7 @@ frontend/
 | Change shared WS hook / message types | `frontend/src/shared/useWebSocket.ts`, `types.ts` (mirror of `backend/core/server/models.py`) |
 | History / Show Again staging UI | `frontend/src/operator/components/HistoryPanel.tsx`, `frontend/src/operator/hooks/useOperatorState.ts` |
 | Manual scripture search (Find Scripture) | `frontend/src/operator/components/ScriptureSearch.tsx` |
+| Spoken-language switch (Settings → Audio, header chip) | `frontend/src/operator/languageApi.ts`, `hooks/useSpokenLanguage.ts`, `components/LanguageSettings.tsx`, `components/LanguageChip.tsx` — plain HTTP to `/api/language`, not the WebSocket |
 | Change WS message protocol or approval flow | **stop — ask the user first** (Behavior rules) |
 
 ## Related docs

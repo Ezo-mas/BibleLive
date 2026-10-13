@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { ConnectionIndicator, SettingsIcon } from '../../components'
+import { BookIcon, ConnectionIndicator, SettingsIcon } from '../../components'
 import type { ConnectionState } from '../../components'
 
 export interface OperatorHeaderProps {
@@ -11,8 +11,12 @@ export interface OperatorHeaderProps {
   onLogout: () => void
   /** Open the settings dialog (display, theme, and auto-approve). */
   onOpenSettings: () => void
+  /** The Find Scripture command bar, rendered in the middle of the bar. */
+  search?: ReactNode
+  /** The spoken-language reading, shown beside the connection health. */
+  language?: ReactNode
   /**
-   * Action feedback, rendered between the title and the controls.
+   * Action feedback, which hangs from the bottom edge of the bar.
    *
    * The notice belongs here rather than floating over the console: an overlay
    * sat on the action row on a laptop and on the first queue card on a short
@@ -22,12 +26,13 @@ export interface OperatorHeaderProps {
 }
 
 /**
- * Top bar: identity, connection health, display status, settings, logout.
+ * Top bar: identity, the Find Scripture command bar, connection health, display
+ * status, settings, logout.
  *
- * One slim row. The theme buttons this used to carry now live in the settings
- * dialog with every other preference, so the bar holds only what the operator
- * needs while the service is running: that the console is connected, that the
- * projector is live, and one way into the settings.
+ * One slim row. The theme buttons this used to carry live in the settings dialog
+ * with every other preference, so the bar holds only what the operator needs
+ * while the service is running: a way to find a passage, that the console is
+ * connected, that the projector is live, and one way into the settings.
  */
 export function OperatorHeader({
   connectionState,
@@ -35,19 +40,26 @@ export function OperatorHeader({
   showLogout,
   onLogout,
   onOpenSettings,
+  search,
+  language,
   feedback,
 }: OperatorHeaderProps) {
   return (
     <header className="operator-header">
       <div className="operator-header-left">
+        <span className="operator-brand-mark" aria-hidden="true">
+          <BookIcon />
+        </span>
         <h1 className="operator-title">BibleLive</h1>
-        <span className="operator-subtitle">Operator Console</span>
       </div>
+
+      {search}
 
       {feedback}
 
       <div className="operator-header-right">
         <div className="operator-status-group">
+          {language}
           <ConnectionIndicator state={connectionState} />
           {displayConnected && (
             <div className="operator-display-status">

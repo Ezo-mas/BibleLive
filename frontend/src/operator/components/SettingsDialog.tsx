@@ -3,12 +3,17 @@ import type { KeyboardEvent } from 'react'
 import { ThemeToggle, XIcon } from '../../components'
 import { DisplaySettings } from './DisplaySettings'
 import { AutoApproveControls } from './AutoApproveControls'
+import { LanguageSettings } from './LanguageSettings'
+import type { SpokenLanguageState } from '../hooks/useSpokenLanguage'
 import type { Theme } from '../../hooks/useTheme'
 import type { DisplayTheme, VerseLimit } from '../../shared/verseText'
 import type { AutoMode } from '../../shared/types'
 
-/** Which half of the dialog to open on: the display or the auto-approve block. */
-export type SettingsSection = 'display' | 'auto'
+/**
+ * Which part of the dialog to open on: the display, the spoken language, or the
+ * auto-approve block.
+ */
+export type SettingsSection = 'display' | 'language' | 'auto'
 
 export interface SettingsDialogProps {
   open: boolean
@@ -21,6 +26,8 @@ export interface SettingsDialogProps {
   disabled: boolean
   onVerseLimitChange: (next: VerseLimit) => void
   onThemeChange: (next: DisplayTheme) => void
+  /** The audio pipeline's spoken language: read and switched through the server. */
+  spokenLanguage: SpokenLanguageState
   autoMode: AutoMode
   onAutoModeChange: (next: AutoMode) => void
   /**
@@ -68,6 +75,7 @@ export function SettingsDialog({
   disabled,
   onVerseLimitChange,
   onThemeChange,
+  spokenLanguage,
   autoMode,
   onAutoModeChange,
   appTheme,
@@ -75,9 +83,11 @@ export function SettingsDialog({
 }: SettingsDialogProps) {
   const titleId = useId()
   const displaySectionId = useId()
+  const languageSectionId = useId()
   const autoSectionId = useId()
   const shortcutsSectionId = useId()
   const dialogRef = useRef<HTMLDivElement>(null)
+  const languageSectionRef = useRef<HTMLElement>(null)
   const autoSectionRef = useRef<HTMLElement>(null)
 
   // Move focus into the dialog while it is open and put it back afterwards, so
@@ -86,15 +96,21 @@ export function SettingsDialog({
     if (!open) return
     const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null
     const dialog = dialogRef.current
-    const target =
+    const sectionSelector =
       section === 'auto'
-        ? dialog?.querySelector<HTMLElement>('.operator-dialog-auto [aria-pressed="true"]')
-        : dialog?.querySelector<HTMLElement>('[data-dialog-close]')
+        ? '.operator-dialog-auto [aria-pressed="true"]'
+        : section === 'language'
+          ? '.operator-dialog-language [aria-pressed="true"]'
+          : null
+    // The control for the section asked for, or the close button when it has
+    // nothing to focus yet (the language buttons are off until the pipeline answers).
+    const target =
+      (sectionSelector ? dialog?.querySelector<HTMLElement>(sectionSelector) : null) ??
+      dialog?.querySelector<HTMLElement>('[data-dialog-close]')
     target?.focus()
-    if (section === 'auto') {
-      // jsdom has no scrollIntoView; the shortcut is what keeps the tests honest.
-      autoSectionRef.current?.scrollIntoView?.({ block: 'nearest' })
-    }
+    // jsdom has no scrollIntoView; the optional call is what keeps the tests honest.
+    if (section === 'auto') autoSectionRef.current?.scrollIntoView?.({ block: 'nearest' })
+    if (section === 'language') languageSectionRef.current?.scrollIntoView?.({ block: 'nearest' })
     return () => previous?.focus()
   }, [open, section])
 
@@ -175,6 +191,17 @@ export function SettingsDialog({
                 console only.
               </p>
             </div>
+          </section>
+
+          <section
+            className="operator-dialog-section operator-dialog-language"
+            aria-labelledby={languageSectionId}
+            ref={languageSectionRef}
+          >
+            <h3 className="operator-dialog-section-title" id={languageSectionId}>
+              Audio
+            </h3>
+            <LanguageSettings state={spokenLanguage} disabled={disabled} />
           </section>
 
           <section

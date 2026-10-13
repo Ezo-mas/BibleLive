@@ -37,7 +37,10 @@ function authHeaders(token: string | null): HeadersInit {
  * from the passage resolver) and a list of issues for parameter validation;
  * both are worth showing as-is rather than replacing with a generic failure.
  */
-async function readFailure(response: Response): Promise<string> {
+export async function readFailure(
+  response: Response,
+  fallback = `Lookup failed (HTTP ${response.status}).`
+): Promise<string> {
   try {
     const body: unknown = await response.json()
     const detail = (body as { detail?: unknown } | null)?.detail
@@ -52,7 +55,7 @@ async function readFailure(response: Response): Promise<string> {
     // Not JSON (a proxy error page, an empty body): fall through to the status.
   }
   if (response.status === 401) return 'Not authorized. Sign in again with your operator token.'
-  return `Lookup failed (HTTP ${response.status}).`
+  return fallback
 }
 
 /** Load the canonical book list the search form is built from. */

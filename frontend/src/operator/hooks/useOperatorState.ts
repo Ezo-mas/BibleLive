@@ -24,6 +24,8 @@ import type { PassageQuery } from '../passageApi'
 import { autoModeOption, coerceAutoMode } from '../autoMode'
 import { useScriptureSearch } from './useScriptureSearch'
 import type { ScriptureSearchState } from './useScriptureSearch'
+import { useSpokenLanguage } from './useSpokenLanguage'
+import type { SpokenLanguageState } from './useSpokenLanguage'
 import type { ConnectionState } from '../../components'
 
 /** How long the button "pressed" feedback lasts after a confirmation. */
@@ -188,6 +190,13 @@ export interface OperatorState {
 
   /** Manual passage search: the book list and the lookup the form calls. */
   search: ScriptureSearchState
+
+  /**
+   * The audio pipeline's spoken language, read and switched through the server.
+   * Not part of the WebSocket protocol: it is a plain HTTP request to the
+   * server, which forwards it to the pipeline.
+   */
+  spokenLanguage: SpokenLanguageState
 
   /** Reference ID of the selected pending item, or null when nothing is selected. */
   selectedId: string | null
@@ -677,6 +686,10 @@ export function useOperatorState(): OperatorState {
   const search = useScriptureSearch(token, stageManualPassage, showManualDirect)
 
   const isConnected = status === 'open'
+
+  // The pipeline's language: read once the socket is up, switched only on request.
+  const spokenLanguage = useSpokenLanguage(token, isConnected, showNotice)
+
   const connectionState: ConnectionState = isConnected
     ? 'connected'
     : status === 'connecting'
@@ -719,6 +732,7 @@ export function useOperatorState(): OperatorState {
     showManualDirect,
 
     search,
+    spokenLanguage,
 
     selectedId,
     selectPending,

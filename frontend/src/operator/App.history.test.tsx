@@ -166,7 +166,7 @@ function selectHistory(name: RegExp) {
 
 function show() {
   act(() => {
-    screen.getByRole('button', { name: 'Show' }).click()
+    screen.getByRole('button', { name: 'Show on display' }).click()
   })
 }
 
@@ -330,7 +330,7 @@ describe('Show again', () => {
       within(screen.getByTestId('live-verses')).getByText('Luke 2:11 text')
     ).toBeInTheDocument()
     expect(screen.queryByText(/^Shown:/)).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Show' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Show on display' })).toBeDisabled()
 
     push({ type: 'display_confirmed', data: { reference: entry('m-1', 'John', 3, 16, 'manual') } })
 
@@ -396,7 +396,7 @@ describe('Show again', () => {
     expect(screen.queryByText(/^Shown:/)).not.toBeInTheDocument()
     // Still staged, so the operator can retry or discard it deliberately.
     expect(screen.getByTestId('next-preview')).toHaveTextContent('John 3:16')
-    expect(screen.getByRole('button', { name: 'Show' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Show on display' })).toBeEnabled()
   })
 
   it('does not clear a different entry staged while the request was in flight', () => {
@@ -452,7 +452,7 @@ describe('Show again', () => {
     })
 
     expect(screen.getByText(/Not connected to the server/)).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Show' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Show on display' })).toBeDisabled()
     expect(screen.getByTestId('next-preview')).toHaveTextContent('John 3:16')
 
     act(() => {
@@ -463,7 +463,7 @@ describe('Show again', () => {
     })
     openWithSnapshot({ currentDisplay: live, entries: history })
 
-    expect(screen.getByRole('button', { name: 'Show' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Show on display' })).toBeEnabled()
     expect(screen.getByTestId('next-preview')).toHaveTextContent('John 3:16')
   })
 })

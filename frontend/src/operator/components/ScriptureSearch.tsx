@@ -148,67 +148,70 @@ export function ScriptureSearch({ search, disabled, directEnabled = true }: Scri
           />
         </div>
 
-        {listUnavailable ? (
-          <div className="operator-scripture-unavailable">
-            <p className="operator-scripture-error" role="alert">
-              <AlertCircleIcon aria-hidden="true" />
-              {booksError}
-            </p>
-            <Button variant="secondary" size="sm" onClick={reloadBooks}>
-              Retry
-            </Button>
-          </div>
-        ) : (
-          <>
-            {results.length > 0 && (
-              <ul className="operator-search-results" aria-label="Scripture search results">
-                {results.map(result => (
-                  <li key={result.id}>
-                    <button
-                      type="button"
-                      className={`operator-search-result is-${result.kind}`}
-                      onClick={() => pick(result)}
-                      disabled={disabled}
-                      // Both rows name what picking them does. The book row needs
-                      // the label more than it looks: its name is split by the
-                      // highlight element, and the accessible name computed from
-                      // the parts drops the marked half ("nesis" for a "ge"
-                      // match), so the label states the whole name instead.
-                      aria-label={
-                        result.kind === 'reference'
-                          ? `${result.label} — stage in Up Next`
-                          : `${result.label}${result.detail ? `, ${result.detail}` : ''} — select this book`
-                      }
-                    >
-                      <span className="operator-search-result-label">{highlighted(result)}</span>
-                      {result.kind === 'reference' && (
-                        <span className="operator-search-result-chip">Complete reference</span>
-                      )}
-                      {result.detail && (
-                        <span className="operator-search-result-detail">{result.detail}</span>
-                      )}
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-
-            {hiddenCount > 0 && (
-              <Button variant="ghost" size="sm" fullWidth onClick={showMore}>
-                Show {hiddenCount} more
-              </Button>
-            )}
-
-            {error ? (
+        {/* Hint, results and errors open under the bar while it has focus. */}
+        <div className="operator-search-drop">
+          {listUnavailable ? (
+            <div className="operator-scripture-unavailable">
               <p className="operator-scripture-error" role="alert">
                 <AlertCircleIcon aria-hidden="true" />
-                {error}
+                {booksError}
               </p>
-            ) : (
-              <p className="operator-setting-hint">{hint}</p>
-            )}
-          </>
-        )}
+              <Button variant="secondary" size="sm" onClick={reloadBooks}>
+                Retry
+              </Button>
+            </div>
+          ) : (
+            <>
+              {results.length > 0 && (
+                <ul className="operator-search-results" aria-label="Scripture search results">
+                  {results.map(result => (
+                    <li key={result.id}>
+                      <button
+                        type="button"
+                        className={`operator-search-result is-${result.kind}`}
+                        onClick={() => pick(result)}
+                        disabled={disabled}
+                        // Both rows name what picking them does. The book row needs
+                        // the label more than it looks: its name is split by the
+                        // highlight element, and the accessible name computed from
+                        // the parts drops the marked half ("nesis" for a "ge"
+                        // match), so the label states the whole name instead.
+                        aria-label={
+                          result.kind === 'reference'
+                            ? `${result.label} — stage in Up Next`
+                            : `${result.label}${result.detail ? `, ${result.detail}` : ''} — select this book`
+                        }
+                      >
+                        <span className="operator-search-result-label">{highlighted(result)}</span>
+                        {result.kind === 'reference' && (
+                          <span className="operator-search-result-chip">Complete reference</span>
+                        )}
+                        {result.detail && (
+                          <span className="operator-search-result-detail">{result.detail}</span>
+                        )}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+
+              {hiddenCount > 0 && (
+                <Button variant="ghost" size="sm" fullWidth onClick={showMore}>
+                  Show {hiddenCount} more
+                </Button>
+              )}
+
+              {error ? (
+                <p className="operator-scripture-error" role="alert">
+                  <AlertCircleIcon aria-hidden="true" />
+                  {error}
+                </p>
+              ) : (
+                <p className="operator-setting-hint">{hint}</p>
+              )}
+            </>
+          )}
+        </div>
       </div>
     </section>
   )

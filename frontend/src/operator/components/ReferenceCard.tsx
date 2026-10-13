@@ -1,5 +1,5 @@
 import { formatReference } from '../../shared/reference'
-import { CheckIcon, StatusBadge } from '../../components'
+import { StatusBadge } from '../../components'
 import type { BibleReference } from '../../shared/types'
 
 export interface ReferenceCardProps {
@@ -14,11 +14,21 @@ export interface ReferenceCardProps {
   ariaLabel?: string
 }
 
-/** Confidence in plain words; the badge is uppercased by the shared styles. */
+/** Confidence in plain words. */
 const CONFIDENCE_LABELS: Record<'high' | 'medium' | 'low', string> = {
   high: 'High',
   medium: 'Medium',
   low: 'Low',
+}
+
+/**
+ * The same confidence as a three-pip meter. Shape carries the level, so it reads
+ * without colour; the word beside it is what a screen reader gets.
+ */
+const CONFIDENCE_PIPS: Record<'high' | 'medium' | 'low', string> = {
+  high: '●●●',
+  medium: '●●○',
+  low: '●○○',
 }
 
 /**
@@ -57,13 +67,6 @@ export function ReferenceCard({
   const selectable = onSelect !== undefined
   const time = arrivalTime(reference.created_at)
 
-  const confidenceVariant =
-    reference.confidence === 'high'
-      ? 'success'
-      : reference.confidence === 'medium'
-        ? 'warning'
-        : 'danger'
-
   return (
     <div
       className={`ref-card ${selected ? 'ref-card-selected' : ''}`}
@@ -84,21 +87,18 @@ export function ReferenceCard({
           : undefined
       }
     >
-      {selected && (
-        <div className="ref-card-check" aria-hidden="true">
-          <CheckIcon />
-        </div>
-      )}
-
       <div className="ref-card-content">
         <div className="ref-card-header">
           <h3 className="ref-card-title">{formatReference(reference)}</h3>
           <div className="ref-card-badges">
             {reference.confidence !== null && reference.source !== 'manual' ? (
-              <StatusBadge variant={confidenceVariant}>
+              <span className="ref-card-confidence" data-confidence={reference.confidence}>
+                <span className="ref-card-pips" aria-hidden="true">
+                  {CONFIDENCE_PIPS[reference.confidence]}
+                </span>
                 <span className="sr-only">Detection confidence: </span>
                 {CONFIDENCE_LABELS[reference.confidence]}
-              </StatusBadge>
+              </span>
             ) : (
               <StatusBadge variant="neutral">
                 <span className="sr-only">Source: </span>
