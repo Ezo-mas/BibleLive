@@ -13,6 +13,12 @@ The audio pipeline sends the token with every reference and health report. It re
 `BIBLELIVE_OPERATOR_TOKEN` from the environment or the project `.env` (the same
 place the server reads it), or takes `--server-token`.
 
+The pipeline authenticates as the operator: whatever machine runs it holds full
+operator rights (approve, clear, settings, display). That is acceptable when the
+pipeline runs on the same machine as the server. There is no separate
+ingest-only token today — if the pipeline ever moves to another machine, add
+one rather than copying the operator token there.
+
 Whether or not auth is enabled, `POST /api/reference` only accepts a canonical
 book and a chapter or verse that exists in the loaded Bible text, and ignores
 any submitted `text`: what reaches the display is always the database's verse
