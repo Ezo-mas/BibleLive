@@ -469,17 +469,28 @@ export function useOperatorState(): OperatorState {
 
   const { status, send, reconnect } = useWebSocket<OperatorMessage>('/ws/operator', handleMessage, {
     // The token goes in the socket's first message, not the URL: URLs end up
-    // in server and proxy logs. A server without auth ignores it.
-    firstMessage: token
-      ? ({ action: 'authenticate', token } satisfies AuthenticateAction)
-      : undefined,
+    // in server and proxy logs. Always sent, even empty: with auth on and no
+    // token saved, the empty message draws the server's refusal at once
+    // instead of waiting out its 10 s first-message timeout. A server without
+    // auth ignores it.
+    firstMessage: {
+      action: 'authenticate',
+      token: token ?? '',
+    } satisfies AuthenticateAction,
     onClose: event => {
       // WebSocket close code 1008 = policy violation (auth failure)
       if (event.code === 1008) {
-        setAuthFailed(true)
-        // Clear invalid token
-        localStorage.removeItem(TOKEN_STORAGE_KEY)
-        setToken(null)
+        // A refusal answers the first message, before anything else: with no
+        // token tried there is nothing to call failed, so the prompt opens
+        // without the error text. A 1008 is only ever sent pre-auth, so the
+        // socket behind it was never really connected.
+        if (token !== null) {
+          setAuthFailed(true)
+          // Clear invalid token
+          localStorage.removeItem(TOKEN_STORAGE_KEY)
+          setToken(null)
+        }
+        setHasConnected(false)
       }
     },
   })

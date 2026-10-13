@@ -109,6 +109,14 @@ function lastSent() {
   return calls.length ? JSON.parse(calls[calls.length - 1][0]) : null
 }
 
+/** Operator actions sent after the authenticate first-message (empty: no token). */
+function sentActions() {
+  const calls = socket?.send.mock.calls ?? []
+  return calls
+    .map(([text]) => JSON.parse(text))
+    .filter(message => message.action !== 'authenticate')
+}
+
 beforeEach(() => {
   window.localStorage.clear()
   vi.stubGlobal('WebSocket', MockWebSocket)
@@ -211,7 +219,7 @@ describe('NEXT panel', () => {
       within(screen.getByTestId('live-verses')).getByText('Psalms 23:1 text')
     ).toBeInTheDocument()
     expect(screen.queryByText('Nothing staged')).not.toBeInTheDocument()
-    expect(socket?.send).not.toHaveBeenCalled()
+    expect(sentActions()).toEqual([])
   })
 
   it('reports verses hidden by the current limit', () => {
@@ -252,7 +260,7 @@ describe('NEXT panel', () => {
     expect(
       within(screen.getByTestId('live-verses')).getByText('Psalms 23:1 text')
     ).toBeInTheDocument()
-    expect(socket?.send).not.toHaveBeenCalled()
+    expect(sentActions()).toEqual([])
   })
 
   it('disables Show while the socket is not open', () => {

@@ -50,6 +50,14 @@ function lastSent() {
   return calls.length ? JSON.parse(calls[calls.length - 1][0]) : null
 }
 
+/** Operator actions sent after the authenticate first-message (empty: no token). */
+function sentActions() {
+  const calls = socket?.send.mock.calls ?? []
+  return calls
+    .map(([text]) => JSON.parse(text))
+    .filter(message => message.action !== 'authenticate')
+}
+
 function reference(id: string, book: string, chapter: number, verses: number[]): BibleReference {
   return {
     id,
@@ -504,7 +512,7 @@ describe('Find Scripture', () => {
       )
     )
     expect(screen.queryByTestId('next-preview')).not.toBeInTheDocument()
-    expect(socket?.send).not.toHaveBeenCalled()
+    expect(sentActions()).toEqual([])
   })
 
   it('stages a clicked passage in Up Next with its verse text', async () => {
@@ -536,7 +544,7 @@ describe('Find Scripture', () => {
     expect(
       within(screen.getByTestId('live-verses')).getByText('Romans 8:28 text')
     ).toBeInTheDocument()
-    expect(socket?.send).not.toHaveBeenCalled()
+    expect(sentActions()).toEqual([])
   })
 
   it('stages the best result on Enter', async () => {
@@ -555,7 +563,7 @@ describe('Find Scripture', () => {
     expect(
       within(screen.getByTestId('live-verses')).getByText('Romans 8:28 text')
     ).toBeInTheDocument()
-    expect(socket?.send).not.toHaveBeenCalled()
+    expect(sentActions()).toEqual([])
   })
 
   it('completes the text when Enter picks a book, and stages nothing', async () => {
@@ -595,7 +603,7 @@ describe('Find Scripture', () => {
     expect(queue.getByText('Romans 8:28')).toBeInTheDocument()
     expect(within(screen.getByTestId('next-preview')).getByText('John 3:16-17')).toBeInTheDocument()
     expect(screen.getByText('Manual')).toBeInTheDocument()
-    expect(socket?.send).not.toHaveBeenCalled()
+    expect(sentActions()).toEqual([])
   })
 
   it('reports verses the display limit hides', async () => {
@@ -780,7 +788,7 @@ describe('Shift+Enter direct display', () => {
 
     // One request with the parsed coordinates — the same action Show sends —
     // and no lookup, no staging, nothing else.
-    expect(socket?.send).toHaveBeenCalledTimes(1)
+    expect(sentActions()).toHaveLength(1)
     expect(lastSent()).toEqual({
       action: 'display_reference',
       book: 'John',
@@ -827,7 +835,7 @@ describe('Shift+Enter direct display', () => {
       expect(screen.getByRole('button', { name: /^Genesis/ })).toBeInTheDocument()
     )
     pressShiftEnter()
-    expect(socket?.send).not.toHaveBeenCalled()
+    expect(sentActions()).toEqual([])
 
     // An errored query is answered, not displayed.
     type('gen 51')
@@ -835,7 +843,7 @@ describe('Shift+Enter direct display', () => {
       expect(screen.getByRole('alert')).toHaveTextContent('Genesis has 50 chapters.')
     )
     pressShiftEnter()
-    expect(socket?.send).not.toHaveBeenCalled()
+    expect(sentActions()).toEqual([])
   })
 
   it('sends nothing while Settings is open', async () => {
@@ -854,6 +862,6 @@ describe('Shift+Enter direct display', () => {
     expect(screen.getByRole('dialog')).toBeInTheDocument()
 
     pressShiftEnter()
-    expect(socket?.send).not.toHaveBeenCalled()
+    expect(sentActions()).toEqual([])
   })
 })

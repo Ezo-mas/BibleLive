@@ -104,13 +104,44 @@ describe('operator socket authentication', () => {
     expect(sent(replacement)).toEqual([{ action: 'authenticate', token: 'secret' }])
   })
 
-  it('sends nothing on open when there is no token', () => {
+  it('sends an empty authenticate when there is no token', () => {
     render(<App />)
     act(() => {
       latest().onopen?.()
     })
 
-    expect(latest().send).not.toHaveBeenCalled()
+    // The empty message draws the server's refusal at once instead of waiting
+    // out its first-message timeout; a server without auth ignores it.
+    expect(sent(latest())).toEqual([{ action: 'authenticate', token: '' }])
+  })
+
+  it('opens the token prompt at once, without the failure text, when no token was tried', () => {
+    render(<App />)
+    act(() => {
+      latest().onopen?.()
+    })
+    // An auth-on server answers the empty first message with 1008 right away.
+    act(() => {
+      latest().onclose?.({ code: 1008 })
+    })
+
+    expect(screen.getByLabelText('Operator Token')).toBeInTheDocument()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('shows the failure text when the server rejects a saved token', () => {
+    window.localStorage.setItem('biblelive_operator_token', 'wrong')
+    render(<App />)
+    act(() => {
+      latest().onopen?.()
+    })
+    act(() => {
+      latest().onclose?.({ code: 1008 })
+    })
+
+    expect(screen.getByLabelText('Operator Token')).toBeInTheDocument()
+    expect(screen.getByRole('alert')).toHaveTextContent(/authentication failed/i)
+    expect(window.localStorage.getItem('biblelive_operator_token')).toBeNull()
   })
 
   it('opens a new socket with the token the operator enters', () => {

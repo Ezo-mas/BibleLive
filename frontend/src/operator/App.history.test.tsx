@@ -50,6 +50,14 @@ function lastSent() {
   return calls.length ? JSON.parse(calls[calls.length - 1][0]) : null
 }
 
+/** Operator actions sent after the authenticate first-message (empty: no token). */
+function sentActions() {
+  const calls = socket?.send.mock.calls ?? []
+  return calls
+    .map(([text]) => JSON.parse(text))
+    .filter(message => message.action !== 'authenticate')
+}
+
 /** A reference as the server reports one, whether queued, live, or in history. */
 function entry(
   id: string,
@@ -264,7 +272,7 @@ describe('staging a history entry', () => {
       within(screen.getByTestId('live-verses')).getByText('Luke 2:11 text')
     ).toBeInTheDocument()
     expect(screen.queryByText(/^Shown:/)).not.toBeInTheDocument()
-    expect(socket?.send).not.toHaveBeenCalled()
+    expect(sentActions()).toEqual([])
   })
 
   it('discards the staged entry without touching LIVE', () => {
@@ -280,7 +288,7 @@ describe('staging a history entry', () => {
       within(screen.getByTestId('live-verses')).getByText('Luke 2:11 text')
     ).toBeInTheDocument()
     expect(historyCard(/John 3:16/)).toHaveAttribute('aria-pressed', 'false')
-    expect(socket?.send).not.toHaveBeenCalled()
+    expect(sentActions()).toEqual([])
   })
 
   it('keeps duplicate entries individually selectable', () => {
@@ -374,7 +382,7 @@ describe('Show again', () => {
     show()
     show()
 
-    expect(socket?.send).toHaveBeenCalledTimes(1)
+    expect(sentActions()).toHaveLength(1)
   })
 
   it('reports a rejected Show and leaves the display and the staged entry alone', () => {
@@ -508,6 +516,6 @@ describe('switching between the lists', () => {
     expect(queued).toEqual(['John 1:1'])
     // It appears in Up Next and as a history entry, and nowhere else.
     expect(screen.getAllByText('Romans 8:28')).toHaveLength(2)
-    expect(socket?.send).not.toHaveBeenCalled()
+    expect(sentActions()).toEqual([])
   })
 })
