@@ -19,6 +19,12 @@ class AudioPipelineConfig:
     # Bearer token for POST /api/reference; required when the server runs with
     # BIBLELIVE_REQUIRE_AUTH=true. None sends no Authorization header.
     api_token: str | None = None
+    # References wait here for the sender thread while the server is slow; when
+    # full, the oldest waiting one is dropped. One still unsent after
+    # send_max_age_s is dropped too, so a recovered server never receives (and
+    # an auto-approve mode never displays) a reference from minutes ago.
+    send_queue_maxsize: int = 20
+    send_max_age_s: float = 30.0  # longer than one full retry schedule (~23.5s)
 
     # Audio capture restart after ffmpeg exits on its own (device unplugged,
     # driver reset). Delays double from base to max; they fall back to base once

@@ -74,8 +74,14 @@ class _RecordingSender:
     def __init__(self):
         self.sent = []
 
-    def send(self, ref) -> None:  # noqa: ARG002 - recorded for assertions
+    def submit(self, ref) -> None:  # noqa: ARG002 - recorded for assertions
         self.sent.append(ref)
+
+    def start(self) -> None:
+        pass
+
+    def stop(self) -> None:
+        pass
 
 
 class _FailingCapture:
@@ -112,6 +118,7 @@ def _processor(language: str = "en") -> BibleLiveAudioProcessor:
     proc._pending_language = None
     proc._pending_language_lock = threading.Lock()
     proc._local = threading.local()
+    proc.sender = _RecordingSender()
     return proc
 
 

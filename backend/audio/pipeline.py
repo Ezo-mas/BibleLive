@@ -123,6 +123,9 @@ class BibleLiveAudioProcessor:
             # Start audio capture
             self.audio_capture.start_capture(self.config.input_device)
 
+            # Start reference delivery before anything can detect a reference
+            self.sender.start()
+
             # Start VAD processing thread
             vad_thread = threading.Thread(target=self._vad_loop, daemon=True, name="vad-processor")
             self.vad_thread = vad_thread
@@ -158,6 +161,7 @@ class BibleLiveAudioProcessor:
         for thread in (self.vad_thread, self.transcription_thread):
             if thread is not None and thread.is_alive():
                 thread.join(timeout=2.0)
+        self.sender.stop()
 
     def stop(self):
         """Stop the audio processing pipeline"""
@@ -186,6 +190,8 @@ class BibleLiveAudioProcessor:
                 self._local.bible_lookup.close()
             except Exception as e:
                 logger.warning(f"Error closing Bible lookup: {e}")
+        # Then delivery, once nothing can submit any more
+        self.sender.stop()
 
         # Log final metrics
         self.metrics.log_summary()
@@ -508,5 +514,5 @@ class BibleLiveAudioProcessor:
                 f"  - {ref} [{ref.confidence}]" + (" (from context)" if ref.inferred else "")
             )
 
-            # Send to BibleLive server with deduplication
-            self.sender.send(ref)
+            # Queue for the sender thread (deduplicated); never blocks on the server
+            self.sender.submit(ref)

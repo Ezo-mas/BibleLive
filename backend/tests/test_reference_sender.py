@@ -1,5 +1,7 @@
 """Tests for audio.ReferenceSender (dedup + retry/backoff)."""
 
+import threading
+import time
 from types import SimpleNamespace
 
 import pytest
@@ -188,3 +190,200 @@ def test_send_does_not_retry_unauthorized(monkeypatch, sender):
     assert len(calls) == 1
     assert sender.metrics.references_failed == 1
     assert sender.metrics.api_retries == 0
+
+
+def test_delivery_problem_set_when_retries_run_out_and_cleared_by_a_success(monkeypatch, sender):
+    """The heartbeat reports this, so it must describe the latest send only."""
+    responses = iter([FakeResponse(503)] * 3 + [FakeResponse(201)])
+    monkeypatch.setattr("audio.sender.requests.post", lambda *a, **k: next(responses))
+
+    sender.send(make_ref())
+    assert sender.delivery_problem == "the server kept failing or did not answer"
+
+    sender.send(make_ref(chapter=4))
+    assert sender.delivery_problem is None
+
+
+def test_delivery_problem_set_on_unauthorized(monkeypatch, sender):
+    monkeypatch.setattr("audio.sender.requests.post", lambda *a, **k: FakeResponse(401))
+
+    sender.send(make_ref())
+
+    assert sender.delivery_problem == "the server rejected the pipeline's token"
+
+
+def test_rejected_reference_is_not_a_delivery_problem(monkeypatch, sender):
+    """A 404 for a verse that does not exist is the server doing its job."""
+    monkeypatch.setattr("audio.sender.requests.post", lambda *a, **k: FakeResponse(404, "No such"))
+
+    sender.send(make_ref())
+
+    assert sender.metrics.references_failed == 1
+    assert sender.delivery_problem is None
+
+
+# ---------------------------------------------------------------------------
+# Background delivery: submit() never blocks the transcription thread
+# ---------------------------------------------------------------------------
+def _background_sender(**config) -> ReferenceSender:
+    settings = {"api_retry_base_delay": 0.0, "api_retry_max_delay": 0.0, **config}
+    return ReferenceSender("http://server", AudioPipelineConfig(**settings), PipelineMetrics())
+
+
+def _wait_for(condition, timeout: float = 3.0) -> None:
+    deadline = time.monotonic() + timeout
+    while not condition():
+        assert time.monotonic() < deadline, "timed out waiting for the sender thread"
+        time.sleep(0.01)
+
+
+def test_submit_returns_at_once_while_the_server_is_slow(monkeypatch):
+    """The reason for the thread: a hung POST must not hold transcription."""
+    release = threading.Event()
+    posted = []
+
+    def slow_post(url, json, timeout, **kwargs):
+        posted.append(json["book"])
+        release.wait(5)
+        return FakeResponse(201)
+
+    monkeypatch.setattr("audio.sender.requests.post", slow_post)
+    sender = _background_sender()
+    sender.start()
+    try:
+        started = time.monotonic()
+        sender.submit(make_ref())
+        assert time.monotonic() - started < 0.1
+
+        _wait_for(lambda: posted == ["John"])
+        release.set()
+        _wait_for(lambda: sender.metrics.references_sent == 1)
+    finally:
+        release.set()
+        sender.stop()
+
+
+def test_queued_references_are_sent_in_order(monkeypatch):
+    posted = []
+    monkeypatch.setattr(
+        "audio.sender.requests.post",
+        lambda url, json, timeout, **kw: posted.append(json["chapter"]) or FakeResponse(201),
+    )
+    sender = _background_sender()
+    for chapter in (1, 2, 3):
+        sender.submit(make_ref(chapter=chapter))
+
+    sender.start()
+    try:
+        _wait_for(lambda: len(posted) == 3)
+    finally:
+        sender.stop()
+    assert posted == [1, 2, 3]
+
+
+def test_submit_deduplicates_before_queueing():
+    sender = _background_sender()
+
+    sender.submit(make_ref())
+    sender.submit(make_ref())
+
+    assert sender._queue.qsize() == 1
+    assert sender.metrics.references_deduplicated == 1
+
+
+def test_full_queue_drops_the_oldest_reference():
+    sender = _background_sender(send_queue_maxsize=2)
+
+    for chapter in (1, 2, 3):
+        sender.submit(make_ref(chapter=chapter))
+
+    waiting = [sender._queue.get_nowait()[1].chapter for _ in range(2)]
+    assert waiting == [2, 3]
+    assert sender.metrics.references_dropped == 1
+    assert sender.delivery_problem == "it was discarded because the send queue is full"
+
+
+def test_reference_too_old_to_matter_is_dropped_not_sent(monkeypatch):
+    """With auto-approve on, a late reference would go straight onto the screen."""
+    posted = []
+    monkeypatch.setattr(
+        "audio.sender.requests.post", lambda *a, **k: posted.append(1) or FakeResponse(201)
+    )
+    sender = _background_sender(send_max_age_s=0.05)
+    sender.submit(make_ref())
+    time.sleep(0.1)
+
+    sender.start()
+    try:
+        _wait_for(lambda: sender.metrics.references_dropped == 1)
+    finally:
+        sender.stop()
+    assert posted == []
+    assert sender.delivery_problem.startswith("it was discarded because it could not be sent")
+
+
+def test_retries_stop_once_the_reference_is_stale(monkeypatch):
+    posted = []
+
+    def failing_post(*args, **kwargs):
+        posted.append(1)
+        time.sleep(0.06)
+        return FakeResponse(503)
+
+    monkeypatch.setattr("audio.sender.requests.post", failing_post)
+    sender = _background_sender(send_max_age_s=0.1, api_max_retries=10)
+    sender.submit(make_ref())
+    sender.start()
+    try:
+        _wait_for(lambda: sender.metrics.references_dropped == 1)
+    finally:
+        sender.stop()
+    assert 1 <= len(posted) < 11
+
+
+def test_stop_cuts_a_retry_backoff_short(monkeypatch):
+    posted = threading.Event()
+    monkeypatch.setattr(
+        "audio.sender.requests.post", lambda *a, **k: posted.set() or FakeResponse(503)
+    )
+    sender = _background_sender(api_retry_base_delay=30.0, api_retry_max_delay=30.0)
+    sender.submit(make_ref())
+    sender.start()
+    assert posted.wait(3)
+
+    started = time.monotonic()
+    sender.stop()
+
+    assert time.monotonic() - started < 1.0
+    assert sender.metrics.references_failed == 1
+
+
+def test_stop_delivers_what_is_already_queued(monkeypatch):
+    """The pipeline flushes held references on shutdown, right before stop()."""
+    posted = []
+    monkeypatch.setattr(
+        "audio.sender.requests.post",
+        lambda url, json, timeout, **kw: posted.append(json["chapter"]) or FakeResponse(201),
+    )
+    sender = _background_sender()
+    sender.submit(make_ref(chapter=7))
+    sender.submit(make_ref(chapter=8))
+
+    # Stop straight after starting: the worker sees the stop request before it
+    # has taken anything off the queue, and must still empty it.
+    sender.start()
+    sender.stop()
+
+    assert posted == [7, 8]
+    assert sender._queue.qsize() == 0
+
+
+def test_send_still_delivers_on_the_calling_thread(monkeypatch):
+    """The benchmark replays through send(); it must stay synchronous."""
+    monkeypatch.setattr("audio.sender.requests.post", lambda *a, **k: FakeResponse(201))
+    sender = _background_sender()
+
+    sender.send(make_ref())
+
+    assert sender.metrics.references_sent == 1
+    assert sender._thread is None
