@@ -1,4 +1,4 @@
-.PHONY: help install install-audio install-dev test test-integration lint format typecheck clean dev frontend-install frontend-dev frontend-build frontend-lint frontend-format frontend-test check check-frontend
+.PHONY: help install install-audio install-cuda install-dev test test-integration lint format typecheck clean dev frontend-install frontend-dev frontend-build frontend-lint frontend-format frontend-test check check-frontend
 
 BACKEND := backend
 export PYTHONPATH := $(CURDIR)/$(BACKEND):$(PYTHONPATH)
@@ -9,6 +9,7 @@ help:
 	@echo "Setup:"
 	@echo "  make install          Install backend core dependencies"
 	@echo "  make install-audio    Install backend + audio dependencies"
+	@echo "  make install-cuda     Install backend + audio + CUDA libraries (GPU STT)"
 	@echo "  make install-dev      Install all backend deps including dev tools"
 	@echo "  make frontend-install Install frontend npm dependencies"
 	@echo ""
@@ -31,14 +32,22 @@ help:
 	@echo "Cleanup:"
 	@echo "  make clean            Remove build artifacts and caches"
 
+# Installs are held to the exact versions in backend/constraints.txt (the set
+# the test suite was last run against), so a fresh machine gets what works
+# rather than whatever is newest that day. See that file to update them.
+CONSTRAINTS := -c $(BACKEND)/constraints.txt
+
 install:
-	pip install -e ./$(BACKEND)
+	pip install -e ./$(BACKEND) $(CONSTRAINTS)
 
 install-audio:
-	pip install -e "./$(BACKEND)[audio]"
+	pip install -e "./$(BACKEND)[audio]" $(CONSTRAINTS)
+
+install-cuda:
+	pip install -e "./$(BACKEND)[audio,cuda]" $(CONSTRAINTS)
 
 install-dev:
-	pip install -e "./$(BACKEND)[dev,audio]"
+	pip install -e "./$(BACKEND)[dev,audio]" $(CONSTRAINTS)
 
 # Lint/format scope matches CI (.github/workflows/ci.yml): the whole repo.
 # Ruff's extend-exclude in pyproject.toml skips frontend, static, data, bible_data.

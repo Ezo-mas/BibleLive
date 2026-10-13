@@ -8,6 +8,9 @@
 
 # 1.1.0 added the "large-v3-turbo" model name.
 faster-whisper>=1.1.0
+# faster-whisper's inference engine; 4.5+ is built for CUDA 12 and cuDNN 9
+# (requirements-cuda.txt). A 5.x is opted into deliberately.
+ctranslate2>=4.5,<5
 numpy>=1.24.0
 
 # webrtcvad imports pkg_resources, which was removed from setuptools 81+ and is

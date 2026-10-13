@@ -16,7 +16,8 @@ nano .env  # Configure production settings (see below)
 # 3. Install Python dependencies
 python3 -m venv venv
 source venv/bin/activate
-pip install -e ./backend
+# -c holds every package to the tested versions (see backend/constraints.txt)
+pip install -e ./backend -c backend/constraints.txt
 
 # 4. Import Bible database
 PYTHONPATH="$PWD/backend" python -m core.import_bible --translation kjv --source data/kjv2.json
@@ -338,7 +339,8 @@ sudo chmod 0600 /opt/biblelive/.env
 
 # Set up Python environment
 sudo -u biblelive python3 -m venv /opt/biblelive/venv
-sudo -u biblelive /opt/biblelive/venv/bin/pip install -e /opt/biblelive/backend
+sudo -u biblelive /opt/biblelive/venv/bin/pip install -e /opt/biblelive/backend \
+    -c /opt/biblelive/backend/constraints.txt
 
 # Import Bible data
 sudo -u biblelive env PYTHONPATH=/opt/biblelive/backend \
@@ -455,7 +457,7 @@ Common issues:
   / `--no-control`
 - Database not found: Run import command
 - Frontend not built: `cd frontend && npm run build`
-- Missing dependencies: `pip install -e ./backend`
+- Missing dependencies: `pip install -e ./backend -c backend/constraints.txt`
 
 ### WebSocket Connection Fails
 

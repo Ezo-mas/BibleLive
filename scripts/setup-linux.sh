@@ -120,7 +120,7 @@ fi
 
 say "Installing Python dependencies (backend + audio extras)"
 .venv/bin/python -m pip install --quiet --upgrade pip
-.venv/bin/python -m pip install -e "./backend[dev,audio]"
+.venv/bin/python -m pip install -e "./backend[dev,audio]" -c backend/constraints.txt
 
 # ---------------------------------------------------------------- verify
 say "Verifying imports"

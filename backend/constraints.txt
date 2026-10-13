@@ -1,0 +1,97 @@
+# Exact versions for every Python package BibleLive installs, direct or indirect.
+#
+#   pip install -e "./backend[dev,audio]" -c backend/constraints.txt
+#
+# backend/pyproject.toml says what BibleLive needs (ranges); this file says which
+# versions were actually tested together. Without it a fresh install takes the
+# newest release of everything on the day, so two machines set up a week apart
+# can behave differently and a broken upstream release reaches production the
+# next time someone reinstalls. A constraint only applies when the package is
+# installed, so one file serves every platform and extra; the few lines that
+# differ by platform or Python version carry markers.
+#
+# Verified (2026-10-13):
+#   - the full backend suite and mypy pass against these versions on Windows,
+#     Python 3.12 (with the audio extras and the CUDA wheels);
+#   - every pin resolves with Linux x86_64 wheels on Python 3.11, 3.12 and 3.13
+#     (the CI matrix), apart from webrtcvad, which only ships as source there.
+#   The Linux-only lines (uvloop, webrtcvad) and the Python 3.11 lines (numpy,
+#   av) were not exercised by that local run; CI exercises them.
+#
+# Updating (deliberately, not as a side effect of an install):
+#   1. In a fresh venv: pip install -e "./backend[dev,audio,cuda]" --upgrade
+#      (no -c), or upgrade only the package you mean to move.
+#   2. Run the Definition of Done checks (AGENTS.md). If faster-whisper,
+#      ctranslate2, onnxruntime, tokenizers, av, numpy, or webrtcvad changed,
+#      that can change what is detected: run the benchmark before and after.
+#   3. pip list --format=freeze --exclude-editable, and copy the new versions in
+#      here, keeping the marker lines. Leave out pip itself.
+#   4. Let CI confirm Python 3.11-3.13 on Linux.
+
+annotated-doc==0.0.5
+annotated-types==0.8.0
+anyio==4.15.1
+ast_serialize==0.12.1
+av==19.0.1; python_version >= "3.12"
+av==18.1.0; python_version < "3.12"
+certifi==2026.7.22
+charset-normalizer==3.5.2
+click==8.5.0
+colorama==0.4.6
+coverage==7.16.2
+ctranslate2==4.8.2
+fastapi==0.143.0
+faster-whisper==1.2.1
+filelock==4.0.12
+flatbuffers==25.12.19
+fsspec==2026.9.0
+h11==0.16.0
+hf-xet==1.7.0
+httpcore==1.0.9
+httptools==0.8.0
+httpx==0.28.1
+huggingface_hub==1.33.0
+idna==3.20
+iniconfig==2.3.1
+librt==0.16.0
+mypy==2.4.0
+mypy_extensions==1.1.0
+numpy==2.5.3; python_version >= "3.12"
+numpy==2.4.6; python_version < "3.12"
+onnxruntime==1.30.0
+opentelemetry-api==1.45.1
+packaging==26.3
+pathspec==1.1.1
+pluggy==1.6.0
+protobuf==7.36.2
+pydantic==2.14.0
+pydantic-settings==2.15.0
+pydantic_core==2.50.0
+Pygments==2.21.0
+pytest==9.1.1
+pytest-asyncio==1.4.0
+pytest-cov==7.1.0
+python-dotenv==1.2.4
+PyYAML==6.0.3
+requests==2.34.2
+ruff==0.16.10
+setuptools==80.10.2
+starlette==1.7.0
+tokenizers==0.23.2
+tqdm==4.70.1
+types-requests==2.33.0.20261006
+typing-inspection==0.4.4
+typing_extensions==4.16.0
+urllib3==2.8.0
+uvicorn==0.54.0
+uvloop==0.23.0; sys_platform != "win32"
+watchfiles==1.3.0
+webrtcvad==2.0.10; sys_platform != "win32"
+webrtcvad-wheels==2.0.14.post1; sys_platform == "win32"
+websockets==17.2
+
+# GPU transcription (the `cuda` extra): CUDA 12 cuBLAS and cuDNN 9, the line
+# ctranslate2 4.x is built against. nvrtc comes in as a cuDNN dependency.
+nvidia-cublas-cu12==12.9.2.10
+nvidia-cuda-nvrtc-cu12==12.9.86
+nvidia-cudnn-cu12==9.27.0.42

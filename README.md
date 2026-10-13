@@ -41,20 +41,36 @@ On Windows use `python` instead of `python3` in the commands below (and
 
 ```bash
 # Backend as an editable install (core server + parser + dev/test tools)
-pip install -e ./backend
+pip install -e ./backend -c backend/constraints.txt
 
 # Optional: audio pipeline extras (faster-whisper, webrtcvad, numpy)
-pip install -e "./backend[audio]"
+pip install -e "./backend[audio]" -c backend/constraints.txt
+
+# Optional: GPU transcription (--device cuda): CUDA 12 cuBLAS + cuDNN 9 wheels
+pip install -e "./backend[audio,cuda]" -c backend/constraints.txt
 ```
+
+`-c backend/constraints.txt` holds every package, direct or indirect, to the
+exact version the test suite was last run against, so a new machine gets a
+known-working set instead of whatever is newest that day. (`make install`,
+`install-audio`, `install-cuda`, `install-dev`, CI, and `scripts/setup-linux.sh`
+all use it.) The file's header explains how to move the pins forward.
 
 On Windows, `webrtcvad-wheels` is installed automatically (no C++ build tools
 needed). The audio extras also pin `setuptools<81`, because the VAD package
 imports `pkg_resources` at runtime.
 
+With the `cuda` extra on Windows, `audio/stt.py` finds the NVIDIA libraries by
+itself. On Linux, point the loader at them before starting the pipeline:
+
+```bash
+export LD_LIBRARY_PATH="$(python3 -c 'import os, nvidia.cublas.lib, nvidia.cudnn.lib; print(os.path.dirname(nvidia.cublas.lib.__file__) + ":" + os.path.dirname(nvidia.cudnn.lib.__file__))')"
+```
+
 ```bash
 # Optional: plain requirements files instead of an install
-pip install -r backend/requirements.txt
-pip install -r backend/requirements-audio.txt
+pip install -r backend/requirements.txt -c backend/constraints.txt
+pip install -r backend/requirements-audio.txt -c backend/constraints.txt
 
 # Required: build the frontend (once after cloning; also re-run after frontend changes)
 cd frontend && npm install && npm run build
