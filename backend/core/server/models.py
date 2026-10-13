@@ -256,10 +256,24 @@ class OperatorDisplayReferenceAction(BaseModel):
     verse_end: int | None = Field(None, gt=0, description="Last verse (inclusive)")
 
 
+class OperatorAuthenticateAction(BaseModel):
+    """The operator token, sent as the first message on ``/ws/operator``.
+
+    A browser cannot set headers on a WebSocket, and a token in the URL ends up
+    in server and proxy logs, so it travels in the socket instead. When auth is
+    on, nothing else is accepted until this arrives; when it is off, or once the
+    socket is authenticated, it is ignored.
+    """
+
+    action: Literal["authenticate"]
+    token: str = Field(..., max_length=512)
+
+
 # Discriminated union of every operator WebSocket action, used by the server to
 # validate incoming messages against the models above.
 OperatorAction = Annotated[
-    OperatorApproveAction
+    OperatorAuthenticateAction
+    | OperatorApproveAction
     | OperatorClearDisplayAction
     | OperatorClearPendingAction
     | OperatorSetVerseLimitAction

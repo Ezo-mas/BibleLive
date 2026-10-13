@@ -222,6 +222,8 @@ output, ignored short VAD blips, and skipped duplicates.
   `approval_confirmed`, `clear_confirmed`, `pending_cleared`, `state_snapshot`,
   `auto_mode_confirmed`, `display_settings_confirmed`, and `connection_status`
   events; they send these actions:
+  - `{action: 'authenticate', token}` — first, when authentication is enabled
+    (ignored otherwise)
   - `{action: 'approve', reference_id: 'uuid'}`
   - `{action: 'clear'}`
   - `{action: 'clear_pending'}`
@@ -231,7 +233,10 @@ output, ignored short VAD blips, and skipped duplicates.
   - `{action: 'display_reference', book, chapter, verse_start?, verse_end?}` —
     show a passage the operator picked by hand (coordinates only; the server
     re-resolves them). Also used for Show Again from display history.
-- Operator WebSocket requires `?token=xxx` query parameter when authentication is enabled
+- With authentication enabled, the operator WebSocket's first message must be
+  `{action: 'authenticate', token}`; the server sends nothing before it and
+  closes with code 1008 on a wrong or missing token (`?token=` in the URL still
+  works but is deprecated, because URLs are logged)
 
 ## Auto-approve mode
 

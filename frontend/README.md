@@ -67,8 +67,9 @@ return a 503 with build instructions.
 - Display client connects to `/ws/display` and receives:
   `{"type": "reference", "data": {book, chapter, verse_start, verse_end, confidence, inferred, text}}`
   and `{"type": "clear"}`.
-- Operator client connects to `/ws/operator?token=xxx` (token required if auth enabled),
-  receives `state_snapshot` on connect, `pending_update`, `approval_confirmed`, `display_confirmed`,
+- Operator client connects to `/ws/operator` and, when it has a token, sends
+  `{"action": "authenticate", "token": "xxx"}` as its first message (required if
+  auth is enabled; never in the URL, which gets logged), then receives `state_snapshot` on connect, `pending_update`, `approval_confirmed`, `display_confirmed`,
   `clear_confirmed`, `pending_cleared`, and sends `{"action": "approve", "reference_id": "uuid"}`,
   `{"action": "clear"}`, `{"action": "clear_pending"}`, plus the display/settings actions
   (`set_verse_limit`, `set_display_theme`, `set_auto_mode`).

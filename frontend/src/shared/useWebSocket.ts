@@ -5,6 +5,12 @@ export type WsStatus = 'connecting' | 'open' | 'closed'
 interface UseWebSocketOptions {
   maxReconnectAttempts?: number
   onClose?: (event: CloseEvent) => void
+  /**
+   * Sent as soon as each connection opens, before anything else (the operator
+   * console's token goes here rather than in the URL, where it would be
+   * logged). A different value opens a new connection.
+   */
+  firstMessage?: unknown
 }
 
 interface UseWebSocketResult {
@@ -36,7 +42,10 @@ export function useWebSocket<T>(
   onMessage: (message: T) => void,
   options: UseWebSocketOptions = {}
 ): UseWebSocketResult {
-  const { maxReconnectAttempts = 10, onClose } = options
+  const { maxReconnectAttempts = 10, onClose, firstMessage } = options
+  // Serialized once: it is what goes on the wire, and comparing the string lets
+  // a caller pass a fresh object every render without reconnecting.
+  const firstMessageText = firstMessage === undefined ? null : JSON.stringify(firstMessage)
 
   const [status, setStatus] = useState<WsStatus>('connecting')
   const wsRef = useRef<WebSocket | null>(null)
@@ -63,6 +72,7 @@ export function useWebSocket<T>(
         // A socket that was replaced (manual reconnect) or unmounted must not
         // report its own state any more.
         if (ws !== wsRef.current) return
+        if (firstMessageText !== null) ws.send(firstMessageText)
         attemptsRef.current = 0
         setStatus('open')
       }
@@ -115,7 +125,7 @@ export function useWebSocket<T>(
       wsRef.current = null
       ws?.close()
     }
-  }, [path, maxReconnectAttempts])
+  }, [path, maxReconnectAttempts, firstMessageText])
 
   const reconnect = useCallback(() => {
     if (unmountedRef.current || !connectRef.current) return

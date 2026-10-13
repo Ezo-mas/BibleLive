@@ -33,20 +33,89 @@ def test_websocket_operator_without_auth_disabled(client):
         assert message["type"] == "state_snapshot"
 
 
-def test_websocket_operator_rejected_without_token(client, auth_enabled):
-    """Operator WebSocket is rejected without token when auth is enabled."""
+def _closed_with(client, path: str, first_message: dict | None = None) -> int:
+    """Connect, optionally send one message, and return the server's close code."""
     from starlette.websockets import WebSocketDisconnect
 
-    with pytest.raises(WebSocketDisconnect), client.websocket_connect("/ws/operator") as websocket:
+    with pytest.raises(WebSocketDisconnect) as closed, client.websocket_connect(path) as websocket:
+        if first_message is not None:
+            websocket.send_text(json.dumps(first_message))
         websocket.receive_text()
+    return closed.value.code
 
 
-def test_websocket_operator_accepted_with_valid_token(client, auth_enabled):
-    """Operator WebSocket is accepted with a valid token."""
+def test_websocket_operator_rejected_without_token(client, auth_enabled):
+    """An operator socket whose first message is not the token is closed with 1008."""
+    assert _closed_with(client, "/ws/operator", {"action": "clear"}) == 1008
+
+
+def test_websocket_operator_accepted_with_token_message(client, auth_enabled):
+    """The token travels in the socket, not the URL, and nothing comes before it."""
+    with client.websocket_connect("/ws/operator") as websocket:
+        websocket.send_text(json.dumps({"action": "authenticate", "token": auth_enabled}))
+        message = json.loads(websocket.receive_text())
+        assert message["type"] == "state_snapshot"
+
+
+@pytest.mark.parametrize(
+    "first_message",
+    [
+        {"action": "authenticate", "token": "wrong-token"},
+        {"action": "authenticate", "token": 12345},
+        {"action": "authenticate"},
+        {"token": "test-token-12345"},
+    ],
+)
+def test_websocket_operator_rejects_bad_token_message(client, auth_enabled, first_message):
+    assert _closed_with(client, "/ws/operator", first_message) == 1008
+
+
+def test_websocket_operator_rejects_non_json_first_message(client, auth_enabled):
+    from starlette.websockets import WebSocketDisconnect
+
+    with (
+        pytest.raises(WebSocketDisconnect) as closed,
+        client.websocket_connect("/ws/operator") as websocket,
+    ):
+        websocket.send_text("not json")
+        websocket.receive_text()
+    assert closed.value.code == 1008
+
+
+def test_websocket_operator_closed_when_token_never_arrives(client, auth_enabled, monkeypatch):
+    monkeypatch.setattr("core.server.app.OPERATOR_AUTH_TIMEOUT_S", 0.1)
+    assert _closed_with(client, "/ws/operator") == 1008
+
+
+def test_websocket_operator_accepted_with_valid_query_token(client, auth_enabled):
+    """The deprecated ?token= form keeps working for consoles built before the change."""
     token = auth_enabled
     with client.websocket_connect(f"/ws/operator?token={token}") as websocket:
         message = json.loads(websocket.receive_text())
         assert message["type"] == "state_snapshot"
+
+
+def test_websocket_operator_rejects_wrong_query_token(client, auth_enabled):
+    assert _closed_with(client, "/ws/operator?token=wrong") == 1008
+
+
+def test_websocket_operator_non_ascii_token_is_refused_not_an_error(client, auth_enabled):
+    """compare_digest raises on non-ASCII str; that must read as a wrong token."""
+    assert _closed_with(client, "/ws/operator?token=t%C3%B6ken") == 1008
+    assert (
+        _closed_with(client, "/ws/operator", {"action": "authenticate", "token": "tökén"}) == 1008
+    )
+
+
+def test_authenticate_message_is_ignored_when_auth_is_disabled(client):
+    """The console always sends its token; a server without auth just moves on."""
+    assert config.REQUIRE_AUTH is False
+    with client.websocket_connect("/ws/operator") as websocket:
+        assert json.loads(websocket.receive_text())["type"] == "state_snapshot"
+        websocket.send_text(json.dumps({"action": "authenticate", "token": "anything"}))
+        websocket.send_text(json.dumps({"action": "clear"}))
+        # The next message answers the clear: no error came back for authenticate.
+        assert json.loads(websocket.receive_text())["type"] == "clear_confirmed"
 
 
 def test_http_approve_rejected_without_token(client, auth_enabled):

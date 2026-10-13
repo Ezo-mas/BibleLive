@@ -158,6 +158,17 @@ export interface DisplayReferenceAction {
   verse_end: number | null
 }
 
+/**
+ * The operator token, sent as the first message on every operator socket.
+ *
+ * Not in the URL: URLs are written to server and proxy logs. A server with auth
+ * on accepts nothing else first; one without auth ignores it.
+ */
+export interface AuthenticateAction {
+  action: 'authenticate'
+  token: string
+}
+
 export type OperatorAction =
   | ApproveAction
   | ClearAction

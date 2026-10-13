@@ -104,8 +104,13 @@ fetch('/api/approve', {
 
 **WebSocket Connection:**
 ```javascript
-const ws = new WebSocket(`ws://localhost:8000/ws/operator?token=${token}`)
+const ws = new WebSocket('ws://localhost:8000/ws/operator')
+// The token is the first message, not part of the URL (URLs get logged).
+ws.onopen = () => ws.send(JSON.stringify({ action: 'authenticate', token }))
 ```
+
+The server closes the socket with code 1008 if the token is wrong or does not
+arrive within 10 seconds. `?token=` in the URL still works but is deprecated.
 
 ### Token Storage
 

@@ -1,6 +1,7 @@
 """FastAPI app factory for BibleLive server."""
 
 import asyncio
+import contextlib
 import json
 import logging
 import secrets
@@ -20,6 +21,7 @@ from ..config import config
 from ..passage import PassageError, resolve_passage, validate_detection
 from . import language_control
 from .auth import verify_operator_token
+from .log_redaction import install_token_redaction
 from .models import (
     ApprovalRequest,
     ApprovalResponse,
@@ -248,10 +250,85 @@ async def _handle_set_auto_mode(
     )
 
 
+async def _handle_authenticate(
+    _websocket: WebSocket, _app_state: AppState, _message: dict[str, Any]
+) -> None:
+    """Ignore an ``authenticate`` on a socket that is already let in.
+
+    The console sends its token on every connection without knowing whether the
+    server requires it; with auth off, or after the handshake, there is nothing
+    left to decide.
+    """
+
+
+# Seconds an operator socket may stay open without sending its token.
+OPERATOR_AUTH_TIMEOUT_S = 10.0
+
+
+def _token_matches(candidate: object) -> bool:
+    """Constant-time check against the operator token.
+
+    Compared as bytes: ``secrets.compare_digest`` raises on non-ASCII ``str``,
+    which would turn a stray character into a server error instead of a refusal.
+    """
+    expected = config.OPERATOR_TOKEN
+    if not isinstance(candidate, str) or not expected:
+        return False
+    return secrets.compare_digest(candidate.encode("utf-8"), expected.encode("utf-8"))
+
+
+async def _authenticate_operator(websocket: WebSocket, query_token: str | None) -> bool:
+    """Accept an operator socket and check its token; close it with 1008 if wrong.
+
+    The token arrives as the first message, ``{"action": "authenticate",
+    "token": ...}``. ``?token=`` in the URL is still honoured for consoles built
+    before that change, but it is deprecated: URLs are logged, by uvicorn (which
+    ``log_redaction`` covers) and by any proxy in front (which nothing here can).
+
+    The socket is accepted before the check either way, so a refusal reaches the
+    browser as close code 1008 — a refusal before the handshake surfaces as a
+    generic 1006 and the console cannot tell a wrong token from a dead server.
+    """
+    await websocket.accept()
+
+    if not config.OPERATOR_TOKEN:
+        logger.error("Authentication required but BIBLELIVE_OPERATOR_TOKEN not set")
+        await websocket.close(code=1008, reason="Server misconfiguration")
+        return False
+
+    if query_token is not None:
+        authorized = _token_matches(query_token)
+        method = "websocket_query"
+    else:
+        method = "websocket_message"
+        try:
+            raw = await asyncio.wait_for(websocket.receive_text(), OPERATOR_AUTH_TIMEOUT_S)
+            message = json.loads(raw)
+        except (TimeoutError, json.JSONDecodeError, WebSocketDisconnect, RuntimeError):
+            message = None
+        authorized = (
+            isinstance(message, dict)
+            and message.get("action") == "authenticate"
+            and _token_matches(message.get("token"))
+        )
+
+    if not authorized:
+        logger.warning(
+            "Unauthorized operator WebSocket connection attempt",
+            extra={"event": "auth_failure", "auth_method": method, "client_type": "operator"},
+        )
+        # RuntimeError: the client already went away.
+        with contextlib.suppress(RuntimeError):
+            await websocket.close(code=1008, reason="Unauthorized")
+        return False
+    return True
+
+
 # Operator WebSocket actions, dispatched by the ``action`` field. Each handler
 # emits exactly the messages (including errors) the previous if/elif chain did;
 # only the organization is new.
 _OPERATOR_ACTIONS: dict[str, Any] = {
+    "authenticate": _handle_authenticate,
     "approve": _handle_approve,
     "clear": _handle_clear,
     "clear_pending": _handle_clear_pending,
@@ -271,6 +348,10 @@ def create_app(bible_lookup: BibleLookup | None = None) -> FastAPI:
     Returns:
         FastAPI: Configured application instance.
     """
+    # The operator console's WebSocket carries its token in the query string,
+    # which uvicorn would otherwise write to the log on every connection.
+    install_token_redaction()
+
     if bible_lookup is None:
         bible_lookup = create_bible_lookup()
 
@@ -380,33 +461,23 @@ def create_app(bible_lookup: BibleLookup | None = None) -> FastAPI:
     ) -> None:
         """WebSocket endpoint for display and operator clients.
 
-        For operator connections when authentication is enabled, provide token as query parameter:
-        /ws/operator?token=YOUR_TOKEN
+        When authentication is enabled, an operator client's first message must
+        be ``{"action": "authenticate", "token": "YOUR_TOKEN"}``; nothing is
+        sent to it before that. (``?token=`` in the URL still works but is
+        deprecated, because URLs are logged.)
         """
         if client_type not in ("display", "operator"):
             await websocket.close(code=4000)
             return
 
         # Authenticate operator connections if required
+        accepted = False
         if client_type == "operator" and config.REQUIRE_AUTH:
-            if not config.OPERATOR_TOKEN:
-                logger.error("Authentication required but BIBLELIVE_OPERATOR_TOKEN not set")
-                await websocket.close(code=1008, reason="Server misconfiguration")
+            if not await _authenticate_operator(websocket, token):
                 return
+            accepted = True
 
-            if not token or not secrets.compare_digest(token, config.OPERATOR_TOKEN):
-                logger.warning(
-                    "Unauthorized operator WebSocket connection attempt",
-                    extra={
-                        "event": "auth_failure",
-                        "auth_method": "websocket_query",
-                        "client_type": "operator",
-                    },
-                )
-                await websocket.close(code=1008, reason="Unauthorized")
-                return
-
-        await app_state.connection_manager.connect(websocket, client_type)
+        await app_state.connection_manager.connect(websocket, client_type, accepted=accepted)
 
         # Send initial state to the newly connected client
         if client_type == "display":

@@ -5,7 +5,8 @@ When enabled, all operator actions (approve, clear, clear queue, settings,
 manual display) and reference ingestion from the audio pipeline require
 authentication via:
 
-- WebSocket: query parameter `?token=YOUR_TOKEN`
+- WebSocket: first message `{"action": "authenticate", "token": "YOUR_TOKEN"}`
+  (the deprecated `?token=` query parameter still works)
 - HTTP: `Authorization: Bearer YOUR_TOKEN` header
 
 The audio pipeline sends the token with every reference. It reads
@@ -61,7 +62,7 @@ BIBLELIVE_OPERATOR_TOKEN=your-generated-token-here
 - `POST /api/approve` — approve pending reference
 - `POST /api/clear` — clear display
 - `POST /api/clear-pending` — clear pending queue
-- `GET /ws/operator` — operator WebSocket (requires `?token=...`)
+- `GET /ws/operator` — operator WebSocket (token in the first message)
 
 ## Production Configuration
 
@@ -141,8 +142,10 @@ sudo systemctl daemon-reload
 
 ### Nginx Configuration with Log Redaction
 
-**Important:** WebSocket tokens appear in URLs. This configuration redacts
-query strings from logs:
+The operator console sends its token inside the WebSocket, not in the URL, and
+the server redacts any `token=` query parameter from its own logs. A client
+still using the deprecated `?token=` form puts the token in the URL a proxy
+sees, so this configuration keeps query strings out of the proxy's logs too:
 
 ```nginx
 # Redact query strings from logs

@@ -33,7 +33,8 @@ easy to break by accident.
    never sees an unapproved detection, and a manual passage never enters
    the pending queue or carries a confidence (it is `source="manual"`, so
    nothing can auto-approve it). The supported operator actions are
-   `approve`, `clear`, `clear_pending`, `set_verse_limit`,
+   `authenticate` (the token, as the socket's first message; it carries no
+   operation and is ignored once the socket is let in), `approve`, `clear`, `clear_pending`, `set_verse_limit`,
    `set_display_theme`, `set_auto_mode`, `display_reference` — there is no
    `reject` action; discarding a wrong detection is done implicitly by
    approving the next one or via `clear_pending`.

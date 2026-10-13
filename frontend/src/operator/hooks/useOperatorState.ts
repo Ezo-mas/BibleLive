@@ -13,6 +13,7 @@ import {
 import type { DisplayTheme, VerseLimit } from '../../shared/verseText'
 import { formatReference } from '../../shared/reference'
 import type {
+  AuthenticateAction,
   AutoMode,
   BibleReference,
   OperatorAction,
@@ -462,21 +463,22 @@ export function useOperatorState(): OperatorState {
     }
   }
 
-  const { status, send, reconnect } = useWebSocket<OperatorMessage>(
-    token ? `/ws/operator?token=${encodeURIComponent(token)}` : '/ws/operator',
-    handleMessage,
-    {
-      onClose: event => {
-        // WebSocket close code 1008 = policy violation (auth failure)
-        if (event.code === 1008) {
-          setAuthFailed(true)
-          // Clear invalid token
-          localStorage.removeItem(TOKEN_STORAGE_KEY)
-          setToken(null)
-        }
-      },
-    }
-  )
+  const { status, send, reconnect } = useWebSocket<OperatorMessage>('/ws/operator', handleMessage, {
+    // The token goes in the socket's first message, not the URL: URLs end up
+    // in server and proxy logs. A server without auth ignores it.
+    firstMessage: token
+      ? ({ action: 'authenticate', token } satisfies AuthenticateAction)
+      : undefined,
+    onClose: event => {
+      // WebSocket close code 1008 = policy violation (auth failure)
+      if (event.code === 1008) {
+        setAuthFailed(true)
+        // Clear invalid token
+        localStorage.removeItem(TOKEN_STORAGE_KEY)
+        setToken(null)
+      }
+    },
+  })
 
   // Remember a successful connection: it is what separates a dropped socket (the
   // console stays, with a reconnect banner) from a server that wants a token.
