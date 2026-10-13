@@ -632,9 +632,7 @@ def run_single_recording(
         vad_events.append((t_start, event.kind))
         if event.kind == "blip":
             return
-        for f in event.frames:
-            stt.add_audio_frame(f)
-        text, _ms = stt.transcribe_buffer(rec.language)
+        text = stt.transcribe_utterance(b"".join(event.frames), rec.language).text
         if text is None:
             transcripts.append((t_start, "<none>"))
             return
@@ -783,9 +781,9 @@ def _transcribe_window_segments(
 ) -> list[tuple[float | None, str]]:
     """Transcribe one window and return ``(segment_start_s, text)`` pieces.
 
-    ``SpeechToText.transcribe_buffer`` joins Whisper's segments and discards
+    ``SpeechToText.transcribe_utterance`` joins Whisper's segments and discards
     their timestamps, so this calls ``stt.model.transcribe`` directly with the
-    same decoding kwargs as ``transcribe_buffer`` in ``backend/audio/stt.py``.
+    same decoding kwargs as ``transcribe_utterance`` in ``backend/audio/stt.py``.
     The text post-processing (``_fix_common_transcription_errors`` and
     ``_collapse_repetition``) is the production code, called read-only.
 
@@ -793,7 +791,7 @@ def _transcribe_window_segments(
     loop was trimmed, the timestamps are no longer reliable and ``None`` is
     returned for the single remaining piece.
     """
-    if chunk.size < SAMPLE_RATE * 0.5:  # same minimum as transcribe_buffer
+    if chunk.size < SAMPLE_RATE * 0.5:  # same minimum as transcribe_utterance
         return []
     segments, _info = stt.model.transcribe(
         chunk,
