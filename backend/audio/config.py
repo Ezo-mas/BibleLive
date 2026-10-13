@@ -20,6 +20,13 @@ class AudioPipelineConfig:
     # BIBLELIVE_REQUIRE_AUTH=true. None sends no Authorization header.
     api_token: str | None = None
 
+    # Audio capture restart after ffmpeg exits on its own (device unplugged,
+    # driver reset). Delays double from base to max; they fall back to base once
+    # a restarted stream has delivered capture_healthy_s of audio.
+    capture_restart_base_delay: float = 1.0  # seconds
+    capture_restart_max_delay: float = 30.0  # seconds
+    capture_healthy_s: float = 10.0  # seconds of audio
+
     # Deduplication window
     dedup_window_seconds: float = 5.0  # Don't send same reference within 5s
 

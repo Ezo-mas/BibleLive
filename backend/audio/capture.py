@@ -65,6 +65,11 @@ class AudioCapture:
         # reported at ERROR instead of being visible only at DEBUG.
         self._stderr_tail: deque[str] = deque(maxlen=5)
 
+        # Set when the audio stream ends without stop_capture() asking it to
+        # (ffmpeg exited: device unplugged, driver reset, device taken). The
+        # owner polls it to restart capture; get_audio_frame() stops waiting.
+        self.failed = False
+
     @property
     def captured_seconds(self) -> float:
         """Total audio seconds received from the input device."""
@@ -88,6 +93,16 @@ class AudioCapture:
         else:
             raise ValueError(f"Unsupported platform: {sys.platform}")
 
+        # A restart begins a new stream: a partial frame left over from the dead
+        # one is not contiguous with the new audio, so it is discarded here (and
+        # only here; between frames of one stream carry-over is always kept).
+        self._frame_buffer.clear()
+        while True:
+            try:
+                self.audio_queue.get_nowait()
+            except Empty:
+                break
+        self.failed = False
         self.is_running = True
 
         ffmpeg_cmd = [
@@ -109,8 +124,10 @@ class AudioCapture:
                 ffmpeg_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, bufsize=0
             )
         except FileNotFoundError:
+            self.is_running = False
             raise RuntimeError("ffmpeg not found. Please install ffmpeg and ensure it's in PATH")
-        except subprocess.SubprocessError as e:
+        except (OSError, subprocess.SubprocessError) as e:
+            self.is_running = False
             raise RuntimeError(f"Failed to start ffmpeg: {e}")
 
         # Start thread to consume stderr (prevents blocking)
@@ -189,6 +206,10 @@ class AudioCapture:
         except Exception as e:
             logger.error(f"Unexpected error reading audio data: {e}", exc_info=True)
         finally:
+            # Leaving the read loop while capture is still meant to run means no
+            # audio will ever arrive on this stream again.
+            if self.is_running:
+                self.failed = True
             logger.info(
                 f"Audio capture thread stopped "
                 f"({self.captured_seconds:.1f}s of audio captured, "
@@ -263,7 +284,12 @@ class AudioCapture:
         logger.info("Audio capture stopped")
 
     def get_audio_frame(self, frame_duration_ms: int = 30) -> bytes | None:
-        """Get audio frame of specified duration"""
+        """Get audio frame of specified duration.
+
+        Returns ``None`` when capture is stopped, or when the stream has failed
+        and the audio it already delivered has been used up; the caller checks
+        :attr:`failed` to tell the two apart.
+        """
         # Calculate bytes needed for frame duration
         bytes_per_sample = 2  # 16-bit
         samples_per_frame = int(self.sample_rate * frame_duration_ms / 1000)
@@ -277,7 +303,9 @@ class AudioCapture:
             try:
                 self._frame_buffer.extend(self.audio_queue.get(timeout=0.1))
             except Empty:
-                if not self.is_running:
+                # A failed stream sends nothing more: return instead of waiting
+                # forever, once the queued audio is drained.
+                if not self.is_running or self.failed:
                     break
                 continue
 

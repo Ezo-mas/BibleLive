@@ -80,6 +80,13 @@ class BibleLiveAudioProcessor:
         self._pending_language_lock = threading.Lock()
         self.control_server: LanguageControlServer | None = None
 
+        # Capture restart after an unrequested ffmpeg exit (VAD thread). The lock
+        # keeps stop() and a restart from interleaving, which could otherwise
+        # start a new ffmpeg after stop() has already shut capture down.
+        self._capture_lock = threading.Lock()
+        self._capture_restart_attempt = 0
+        self._capture_restarted_at_s: float | None = None
+
         # Worker threads
         self.vad_thread: threading.Thread | None = None
         self.transcription_thread: threading.Thread | None = None
@@ -157,8 +164,10 @@ class BibleLiveAudioProcessor:
         logger.info("Stopping audio pipeline...")
         self.is_running = False
 
-        # Stop audio capture
-        self.audio_capture.stop_capture()
+        # Stop audio capture (after any restart in progress has finished, so it
+        # cannot start ffmpeg again behind our back)
+        with self._capture_lock:
+            self.audio_capture.stop_capture()
 
         # Stop the runtime language-control server
         if self.control_server is not None:
@@ -240,9 +249,13 @@ class BibleLiveAudioProcessor:
             # Get audio frame
             frame = self.audio_capture.get_audio_frame(frame_duration_ms)
             if frame is None:
-                time.sleep(0.01)
+                if self.audio_capture.failed and self.is_running:
+                    self._restart_capture()
+                else:
+                    time.sleep(0.01)
                 continue
 
+            self._note_capture_healthy()
             self.metrics.audio_chunks_captured += 1
 
             event = self.segmenter.push(frame)
@@ -260,6 +273,67 @@ class BibleLiveAudioProcessor:
             if time.time() - self.last_metrics_log > self.config.metrics_log_interval:
                 self.metrics.log_summary()
                 self.last_metrics_log = time.time()
+
+    def _restart_capture(self) -> None:
+        """Restart capture after ffmpeg exited on its own (VAD thread only).
+
+        Without this, an unplugged microphone or a driver reset ended detection
+        for the rest of the service while the process kept running, so neither
+        the operator nor a supervisor could tell. The utterance in progress is
+        closed and queued (it is real speech up to the failure), then ffmpeg is
+        restarted with doubling delays until it starts or the pipeline stops.
+        The delays carry over between failures until a restarted stream has
+        delivered ``capture_healthy_s`` of audio, so a flapping device backs off.
+        """
+        self.metrics.capture_failures += 1
+        event = self.segmenter.flush()
+        if event is not None:
+            self._queue_speech_segment(event)
+
+        while self.is_running:
+            delay = min(
+                self.config.capture_restart_base_delay * 2**self._capture_restart_attempt,
+                self.config.capture_restart_max_delay,
+            )
+            self._capture_restart_attempt += 1
+            logger.error(
+                f"Audio capture stopped unexpectedly; no references can be detected "
+                f"until it restarts. Restarting in {delay:.0f}s "
+                f"(attempt {self._capture_restart_attempt})"
+            )
+            if not self._wait_while_running(delay):
+                return
+
+            with self._capture_lock:
+                if not self.is_running:
+                    return
+                self.audio_capture.stop_capture()
+                try:
+                    self.audio_capture.start_capture(self.config.input_device)
+                except Exception as e:
+                    logger.error(f"Audio capture restart failed: {e}")
+                    continue
+
+            self.metrics.capture_restarts += 1
+            self._capture_restarted_at_s = self.audio_capture.captured_seconds
+            logger.warning("Audio capture restarted; listening for Bible references again")
+            return
+
+    def _note_capture_healthy(self) -> None:
+        """Reset the restart backoff once a restarted stream has proven stable."""
+        if self._capture_restarted_at_s is None:
+            return
+        streamed = self.audio_capture.captured_seconds - self._capture_restarted_at_s
+        if streamed >= self.config.capture_healthy_s:
+            self._capture_restart_attempt = 0
+            self._capture_restarted_at_s = None
+
+    def _wait_while_running(self, seconds: float) -> bool:
+        """Sleep up to ``seconds``, waking early on stop; return whether still running."""
+        deadline = time.monotonic() + seconds
+        while self.is_running and time.monotonic() < deadline:
+            time.sleep(min(0.1, max(0.0, deadline - time.monotonic())))
+        return self.is_running
 
     def _queue_speech_segment(self, event: SegmentEvent) -> None:
         """Queue a closed utterance tagged with the capture language."""

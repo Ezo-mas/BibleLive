@@ -22,6 +22,8 @@ class PipelineMetrics:
     references_failed: int = 0
     references_deduplicated: int = 0
     api_retries: int = 0
+    capture_failures: int = 0  # ffmpeg exits that capture did not ask for
+    capture_restarts: int = 0  # successful restarts after such an exit
 
     # Latency tracking (moving averages)
     transcription_duration_ms: list[float] = field(default_factory=list)
@@ -63,6 +65,9 @@ class PipelineMetrics:
         """Log metrics summary."""
         logger.info("=== Pipeline Metrics ===")
         logger.info(f"  Audio chunks: {self.audio_chunks_captured}")
+        logger.info(
+            f"  Capture failures: {self.capture_failures} ({self.capture_restarts} restarted)"
+        )
         logger.info(f"  VAD segments: {self.vad_segments_detected}")
         logger.info(
             f"  Transcriptions: {self.transcription_successes}/{self.transcription_attempts} "
