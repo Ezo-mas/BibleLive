@@ -112,12 +112,22 @@ Options:
   --bible-db PATH         Bible SQLite database (default: bible_data/biblelive.sqlite)
   --server URL            BibleLive server URL (default: http://localhost:8000)
   --model SIZE            Whisper model: tiny, base, small, medium, large-v2,
-                          large-v3, distil-large-v3 (default: small)
+                          large-v3, large-v3-turbo, distil-large-v3 (default: small)
   --device DEV            Whisper device: cpu or cuda (default: cuda)
   --compute-type TYPE     Whisper compute type: float16, float32, int8,
                           int8_float16 (default: int8; use float16 on RTX 20xx+)
   --language LANG         Spoken language: en or lt (default: en)
   --vad-aggressiveness N  WebRTC VAD aggressiveness 0-3 (default: 2)
+  --beam-size N           Whisper beam width; lower is faster (default: 5)
+  --cpu-threads N         Whisper CPU threads, 0 = library default (default: 0)
+  --end-of-speech-s S     Silence that ends an utterance (default: 1.5)
+  --min-speech-s S        Shorter utterances are dropped (default: 0.3)
+  --soft-utterance-s S    Past this, end the utterance at the next pause (default: 8)
+  --max-utterance-s S     Hard utterance length cap (default: 12)
+  --input-device NAME     Microphone: exact DirectShow name on Windows, PulseAudio
+                          source on Linux, avfoundation index on macOS (default:
+                          first Windows input, system default elsewhere)
+  --list-input-devices    Print the Windows audio inputs and exit
   --control-host HOST     Runtime language-control server host (default: 127.0.0.1)
   --control-port PORT     Runtime language-control server port (default: 8001)
   --control-token TOKEN   Bearer token the control server requires when set
@@ -125,6 +135,16 @@ Options:
   --log-level LEVEL       DEBUG, INFO, WARNING, ERROR (default: INFO, or
                           $BIBLELIVE_AUDIO_LOG_LEVEL)
 ```
+
+**Choosing a model.** On an NVIDIA GPU, use
+`--model large-v3-turbo --compute-type float16`, especially for Lithuanian.
+On the two Lithuanian benchmark services (25 references), replayed through
+the live segmentation (`run_benchmark.py --mode offline`), it reported 20
+of them against 5 for `small`, counting a detection within 30 s of the
+spoken reference (live detections arrive about 12 s after the words). It
+also decoded faster than `small` int8 on an RTX 5070 Ti (about 0.06x real
+time). The `distil-*` models are English-only. On a CPU-only machine
+`small` (int8) is the practical ceiling.
 
 #### Runtime language switching
 

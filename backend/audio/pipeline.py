@@ -12,6 +12,7 @@ from .capture import AudioCapture
 from .config import AudioPipelineConfig
 from .control import LanguageControlServer
 from .metrics import PipelineMetrics
+from .segmenter import FRAME_DURATION_MS, Segmenter, SegmentEvent
 from .sender import ReferenceSender
 from .stt import SUPPORTED_LANGUAGES, SpeechToText
 from .vad import VoiceActivityDetector
@@ -41,6 +42,8 @@ class BibleLiveAudioProcessor:
             device=self.config.whisper_device,
             language=self.config.language,
             compute_type=self.config.whisper_compute_type,
+            beam_size=self.config.beam_size,
+            cpu_threads=self.config.cpu_threads,
         )
 
         # VAD queue for speech segments (bounded). Each item is
@@ -52,12 +55,10 @@ class BibleLiveAudioProcessor:
 
         # State tracking
         self.is_running = False
-        self.speech_frames: list[bytes] = []
-        self.silent_frames = 0
-        self.frame_duration_ms = 30  # WebRTC VAD frame size (10/20/30ms)
+        self.frame_duration_ms = FRAME_DURATION_MS
         self._frame_duration_s = self.frame_duration_ms / 1000
-        self.max_silent_frames = 50  # ~1.5 seconds of silence to end utterance
-        self.min_speech_frames = 10  # Minimum frames to consider as speech (~300ms)
+        # Utterance assembly, shared with the benchmark (owned by the VAD thread).
+        self.segmenter = Segmenter.from_config(self.vad.is_speech, self.config)
 
         # Metrics
         self.metrics = PipelineMetrics()
@@ -113,7 +114,7 @@ class BibleLiveAudioProcessor:
             self.is_running = True
 
             # Start audio capture
-            self.audio_capture.start_capture()
+            self.audio_capture.start_capture(self.config.input_device)
 
             # Start VAD processing thread
             vad_thread = threading.Thread(target=self._vad_loop, daemon=True, name="vad-processor")
@@ -208,9 +209,9 @@ class BibleLiveAudioProcessor:
     def _consume_pending_language_switch(self) -> None:
         """Apply a pending language switch (VAD thread only).
 
-        The VAD thread owns ``speech_frames``/``silent_frames``, so only it may
-        discard a partial utterance; the control thread merely records the
-        request. Queued utterances are left alone.
+        The VAD thread owns the segmenter, so only it may discard a partial
+        utterance; the control thread merely records the request. Queued
+        utterances are left alone.
         """
         with self._pending_language_lock:
             pending = self._pending_language
@@ -219,14 +220,13 @@ class BibleLiveAudioProcessor:
         if pending is None or pending == self._capture_language:
             return
 
-        if self.speech_frames:
+        dropped = self.segmenter.reset()
+        if dropped:
             logger.info(
                 "Language switched to '%s': discarding partial utterance (%d frames)",
                 pending,
-                len(self.speech_frames),
+                dropped,
             )
-        self.speech_frames = []
-        self.silent_frames = 0
         self._capture_language = pending
 
     def _vad_loop(self):
@@ -245,29 +245,12 @@ class BibleLiveAudioProcessor:
 
             self.metrics.audio_chunks_captured += 1
 
-            # Check for voice activity
-            is_speech = self.vad.is_speech(frame)
-
-            if is_speech:
-                # Speech detected
-                if not self.speech_frames:
+            event = self.segmenter.push(frame)
+            if event is not None:
+                if event.kind == "start":
                     logger.info("Voice activity detected, capturing utterance...")
-                self.silent_frames = 0
-                self.speech_frames.append(frame)
-            else:
-                # Silence detected
-                if self.speech_frames:
-                    # We were in speech, now silent - check if utterance ended
-                    self.silent_frames += 1
-
-                    if self.silent_frames > self.max_silent_frames:
-                        # End of utterance detected - send to transcription queue
-                        self._queue_speech_segment()
-                        self.speech_frames = []
-                        self.silent_frames = 0
                 else:
-                    # Still in silence
-                    self.silent_frames = 0
+                    self._queue_speech_segment(event)
 
             # Update queue depth metrics
             self.metrics.audio_queue_depth = self.audio_capture.audio_queue.qsize()
@@ -278,16 +261,17 @@ class BibleLiveAudioProcessor:
                 self.metrics.log_summary()
                 self.last_metrics_log = time.time()
 
-    def _queue_speech_segment(self) -> None:
-        """Queue the current speech frames tagged with the capture language."""
-        utterance_seconds = self._frame_duration_s * len(self.speech_frames)
-        if len(self.speech_frames) >= self.min_speech_frames:
+    def _queue_speech_segment(self, event: SegmentEvent) -> None:
+        """Queue a closed utterance tagged with the capture language."""
+        frames = event.frames
+        utterance_seconds = self._frame_duration_s * len(frames)
+        if event.kind == "end":
             try:
-                self.vad_queue.put((self._capture_language, self.speech_frames.copy()), timeout=0.1)
+                self.vad_queue.put((self._capture_language, frames), timeout=0.1)
                 self.metrics.vad_segments_detected += 1
                 logger.info(
-                    f"Utterance ended: {utterance_seconds:.2f}s of speech "
-                    f"({len(self.speech_frames)} frames, {self._capture_language}) "
+                    f"Utterance ended ({event.reason}): {utterance_seconds:.2f}s of speech "
+                    f"({len(frames)} frames, {self._capture_language}) "
                     f"queued for transcription"
                 )
             except Full:
@@ -295,7 +279,7 @@ class BibleLiveAudioProcessor:
         else:
             logger.debug(
                 f"Ignoring {utterance_seconds:.2f}s blip "
-                f"({len(self.speech_frames)} frames < {self.min_speech_frames} minimum)"
+                f"({len(frames)} frames < {self.segmenter.min_speech_frames} minimum)"
             )
 
     def _transcription_loop(self):
@@ -339,7 +323,10 @@ class BibleLiveAudioProcessor:
         for language in SUPPORTED_LANGUAGES:
             try:
                 parser = ReferenceParser(validator=validator, language=language)
-                parsers[language] = StreamingParser(parser, language=language)
+                # Hold a chapter-only ref one utterance in case the verse follows.
+                parsers[language] = StreamingParser(
+                    parser, language=language, hold_chapter_only=True
+                )
             except Exception as e:
                 logger.error(f"Failed to initialize '{language}' parser: {e}")
 
@@ -375,14 +362,11 @@ class BibleLiveAudioProcessor:
             f"language={language})..."
         )
 
-        # Add all frames to STT buffer
-        for frame in speech_frames:
-            self.stt.add_audio_frame(frame)
-
         # Transcribe with the language this utterance was captured in, so a
         # runtime switch cannot re-language a segment that was already queued.
         self.metrics.transcription_attempts += 1
-        transcript, duration_ms = self.stt.transcribe_buffer(language)
+        result = self.stt.transcribe_utterance(b"".join(speech_frames), language)
+        transcript, duration_ms = result.text, result.duration_ms
 
         if transcript is None:
             self.metrics.transcription_failures += 1
@@ -430,6 +414,18 @@ class BibleLiveAudioProcessor:
                 f"Collapsed {len(references) - len(unique)} duplicate reference(s) "
                 f"within this utterance"
             )
+
+        # A shaky decode (probably silence, unsure tokens, or a trimmed loop)
+        # is exactly where prompt-echo hallucinations come from. Its references
+        # still reach the operator, but as "low" so auto-approve won't show them.
+        if result.low_confidence_reason is not None:
+            self.metrics.references_low_confidence += len(unique)
+            logger.warning(
+                f"Low-confidence transcription ({result.low_confidence_reason}): "
+                f"marking {len(unique)} reference(s) as low confidence"
+            )
+            for ref in unique:
+                ref.confidence = "low"
 
         self.metrics.references_detected += len(unique)
         logger.info(f"Found {len(unique)} Bible reference(s):")

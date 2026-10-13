@@ -6,6 +6,7 @@ import os
 import re
 import sys
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 
 
@@ -60,28 +61,36 @@ from core.books import CANONICAL_BOOKS  # noqa: E402 (deferred: see above)
 
 logger = logging.getLogger(__name__)
 
-# Per-language Whisper initial prompts: bias the decoder toward Bible
-# vocabulary and "chapter/verse" number patterns for each supported language.
+# Per-language Whisper initial prompts: bias the decoder toward Bible book
+# spellings for each supported language.
+#
+# Book names only — never a citation or a number. Whisper reuses the prompt on
+# every window and, over silence or music, can emit it as the transcript; an
+# example like "Romans 8:28" then reaches the operator as a detected reference
+# (the loop guard below exists because of "Romans 8, or Romans 8, ..."). The
+# parsers read spelled-out numbers, so no digit-format example is needed.
+#
+# Keep each prompt under 223 tokens: faster-whisper keeps only the last 223
+# prompt tokens, so a longer prompt silently loses its start (the previous
+# 261-token Lithuanian prompt dropped the first books of the list).
 WHISPER_INITIAL_PROMPTS: dict[str, str] = {
     "en": (
-        "The sermon references Bible books such as Genesis, Exodus, Leviticus, "
-        "Numbers, Deuteronomy, Joshua, Judges, Ruth, Samuel, Kings, Chronicles, "
-        "Ezra, Nehemiah, Esther, Job, Psalms, Proverbs, Ecclesiastes, Isaiah, "
-        "Jeremiah, Ezekiel, Daniel, Matthew, Mark, Luke, John, Acts, Romans, "
-        "Corinthians, Galatians, Ephesians, Philippians, Colossians, Thessalonians, "
-        "Timothy, Titus, Philemon, Hebrews, James, Peter, Jude, and Revelation. "
-        "For example: turn to John chapter three verse sixteen, or Romans 8:28."
+        "Genesis, Exodus, Leviticus, Numbers, Deuteronomy, Joshua, Judges, Ruth, "
+        "Samuel, Kings, Chronicles, Ezra, Nehemiah, Esther, Job, Psalms, Proverbs, "
+        "Ecclesiastes, Isaiah, Jeremiah, Ezekiel, Daniel, Matthew, Mark, Luke, "
+        "John, Acts, Romans, Corinthians, Galatians, Ephesians, Philippians, "
+        "Colossians, Thessalonians, Timothy, Titus, Philemon, Hebrews, James, "
+        "Peter, Jude, Revelation."
     ),
     "lt": (
-        "Pamokslas mini Rašto knygas: Pradžios, Išėjimo, Kunigų, Skaičių, "
-        "Pakartoto Įstatymo, Jozuės, Teisėjų, Rūtos, Samuelio, Karalių, "
-        "Metraščių, Ezros, Nehemijo, Esteros, Jobo, Psalmynas, Psalmės, "
-        "Patarlių, Mokytojo, Izaijo, Jeremijo, Ezechielio, Danielės, Mato, "
-        "Morkaus, Luko, Jono evangelija, Apaštalų darbai, Romiečiams, "
-        "Korintiečiams, Galatams, Efeziečiams, Filipiečiams, Kolosiečiams, "
-        "Tesalonikiečiams, Timotėjui, Titui, Filemonui, Hebrėjams, Jokūbo, "
-        "Petro, Judo, Apreiškimas Jonui. Pavyzdžiui: Jono evangelija "
-        "trečias skyrius, šešiolikta eilutė."
+        "Pradžios, Išėjimo, Kunigų, Skaičių, Pakartoto Įstatymo, Jozuės, "
+        "Teisėjų, Rūtos, Samuelio, Karalių, Metraščių, Ezros, Nehemijo, "
+        "Esteros, Jobo, Psalmės, Patarlių, Mokytojo, Izaijo, "
+        "Jeremijo, Ezechielio, Danielės, Mato, Morkaus, Luko, Jono evangelija, "
+        "Apaštalų darbai, Romiečiams, Korintiečiams, Galatams, Efeziečiams, "
+        "Filipiečiams, Kolosiečiams, Tesalonikiečiams, Timotėjui, Titui, "
+        "Filemonui, Hebrėjams, Jokūbo, Petro, Judo, Apreiškimas Jonui. "
+        "Skyrius, eilutė."
     ),
 }
 
@@ -135,11 +144,53 @@ def _language_state(language: str) -> _LanguageState:
 # ("1samuel", "songofsolomon").
 _BOOK_NAMES_PATTERN = "|".join(r"\s?".join(book.name.lower().split()) for book in CANONICAL_BOOKS)
 
-_REFERENCE_CORRECTIONS: dict[str, str] = {
-    # "mark112" -> "mark 1 12"
-    rf"\b({_BOOK_NAMES_PATTERN})\s*(\d+)\s*(\d+)\b": r"\1 \2:\3",
-    # "mark 1:12 5" -> "mark 1:12-5"
-    rf"\b({_BOOK_NAMES_PATTERN})\s*(\d+):(\d+)\s*(\d+)\b": r"\1 \2:\3-\4",
+# Chapter count per book, keyed by the lowercased name with whitespace removed
+# so a merged match ("1timothy") finds its book.
+_BOOK_CHAPTERS: dict[str, int] = {
+    "".join(book.name.lower().split()): book.chapters for book in CANONICAL_BOOKS
+}
+
+# Longest chapter in the canon (Psalm 119). Verse counts per chapter live only
+# in the DB, so this is the upper bound used when splitting merged digits.
+_MAX_VERSE = 176
+
+
+def _split_merged_digits(match: re.Match[str]) -> str:
+    """Split merged "book<chapter><verse>" digits when only one split is valid.
+
+    "John 316" -> "John 3:16" (John has 21 chapters, so 31:6 is impossible).
+    The text is left unchanged when the whole number is itself a valid chapter
+    ("Romans 12" is a chapter reference) or when more than one split fits
+    ("Mark 112" could be 1:12 or 11:2) — guessing would put a wrong verse on
+    screen.
+    """
+    book, digits = match.group(1), match.group(2)
+    chapters = _BOOK_CHAPTERS.get("".join(book.lower().split()))
+    if chapters is None or int(digits) <= chapters:
+        return match.group(0)
+    splits = [
+        (digits[:i], digits[i:])
+        for i in range(1, len(digits))
+        if not digits[i:].startswith("0")
+        and 1 <= int(digits[:i]) <= chapters
+        and int(digits[i:]) <= _MAX_VERSE
+    ]
+    if len(splits) != 1:
+        return match.group(0)
+    chapter, verse = splits[0]
+    return f"{book} {chapter}:{verse}"
+
+
+# Number groups must be separated by real whitespace: with optional whitespace
+# the regex split Whisper's own "John 3:16" into "John 3:1-6" and
+# "Psalms 119:105" into "Psalms 11:9:105". Patterns run in order.
+_REFERENCE_CORRECTIONS: dict[str, str | Callable[[re.Match[str]], str]] = {
+    # "john 316" -> "john 3:16" (only when exactly one split is valid)
+    rf"\b({_BOOK_NAMES_PATTERN})\s*(\d{{2,4}})\b(?!\s*:)": _split_merged_digits,
+    # "mark 1 12" -> "mark 1:12"
+    rf"\b({_BOOK_NAMES_PATTERN})\s+(\d+)\s+(\d+)\b(?!\s*:)": r"\1 \2:\3",
+    # "mark 1:12 15" -> "mark 1:12-15"
+    rf"\b({_BOOK_NAMES_PATTERN})\s+(\d+):(\d+)\s+(\d+)\b": r"\1 \2:\3-\4",
 }
 
 # Whisper hallucination guard. On low-energy or tonal input the decoder can
@@ -151,6 +202,42 @@ MIN_REPEAT_BLOCK_WORDS = 2  # shortest phrase that can be the repeated block
 MIN_REPEAT_COUNT = 3  # repetitions of that block before we call it a loop
 MIN_REPEAT_WORDS = 8  # total repeated words before we call it a loop
 
+# Whisper's own per-segment quality thresholds, passed to ``transcribe`` and
+# reused by :func:`segment_low_confidence_reason`. With a single temperature
+# faster-whisper has nothing to fall back to, so a segment failing them is
+# still returned; it is flagged here instead of passing as trusted text.
+LOG_PROB_THRESHOLD = -1.0  # mean token log-probability below this: unsure decode
+COMPRESSION_RATIO_THRESHOLD = 2.4  # gzip ratio above this: repetitive text
+NO_SPEECH_THRESHOLD = 0.6  # no-speech probability above this: probably silence
+
+
+def segment_low_confidence_reason(
+    avg_logprob: float, no_speech_prob: float, compression_ratio: float
+) -> str | None:
+    """Why a Whisper segment is untrustworthy, or ``None`` if it looks sound."""
+    if no_speech_prob > NO_SPEECH_THRESHOLD:
+        return f"no_speech_prob {no_speech_prob:.2f} > {NO_SPEECH_THRESHOLD}"
+    if avg_logprob < LOG_PROB_THRESHOLD:
+        return f"avg_logprob {avg_logprob:.2f} < {LOG_PROB_THRESHOLD}"
+    if compression_ratio > COMPRESSION_RATIO_THRESHOLD:
+        return f"compression_ratio {compression_ratio:.2f} > {COMPRESSION_RATIO_THRESHOLD}"
+    return None
+
+
+@dataclass(frozen=True)
+class Transcription:
+    """One utterance's transcript and whether it can be trusted.
+
+    ``low_confidence_reason`` is set when any Whisper segment of the utterance
+    failed a quality threshold or a repetition loop was trimmed. References
+    parsed from such a transcript must not reach the operator as confident
+    detections (confidence drives auto-approve).
+    """
+
+    text: str | None
+    duration_ms: float
+    low_confidence_reason: str | None = None
+
 
 class SpeechToText:
     """Handles speech-to-text transcription using faster-whisper"""
@@ -161,7 +248,10 @@ class SpeechToText:
         device: str = "cuda",
         language: str = "en",
         compute_type: str | None = None,
+        beam_size: int = 5,
+        cpu_threads: int = 0,
     ):
+        self.beam_size = beam_size
         # Language + prompt live in one immutable value (see _LanguageState);
         # set_language() swaps the pair atomically at runtime.
         self._state = _language_state(language)
@@ -187,14 +277,14 @@ class SpeechToText:
             f"(compute_type={compute_type}, language={language})..."
         )
         try:
-            self.model = WhisperModel(model_size, device=device, compute_type=compute_type)
+            self.model = WhisperModel(
+                model_size, device=device, compute_type=compute_type, cpu_threads=cpu_threads
+            )
             logger.info("Whisper model loaded successfully")
         except Exception as e:
             logger.error(f"Failed to load Whisper model: {e}")
             raise
 
-        # Audio buffer for accumulating speech
-        self.audio_buffer: list[float] = []
         self.sample_rate = 16000
 
     @property
@@ -216,7 +306,7 @@ class SpeechToText:
         """Switch the transcription language and its initial prompt.
 
         Safe to call from another thread: the language/prompt pair is replaced
-        atomically, and :meth:`transcribe_buffer` reads it once before calling
+        atomically, and :meth:`transcribe_utterance` reads it once before calling
         Whisper, so an in-flight transcription keeps the pair it started with.
         The Whisper model itself is language-agnostic and is not reloaded.
 
@@ -226,45 +316,33 @@ class SpeechToText:
         self._state = _language_state(language)
         logger.info("Speech-to-text language set to '%s'", language)
 
-    def add_audio_frame(self, frame: bytes):
-        """Add audio frame to buffer for transcription"""
-        # Convert bytes to numpy array
-        audio_np = np.frombuffer(frame, dtype=np.int16).astype(np.float32) / 32768.0
-        self.audio_buffer.extend(audio_np)
-
-    def transcribe_buffer(self, language: str | None = None) -> tuple[str | None, float]:
+    def transcribe_utterance(self, pcm: bytes, language: str | None = None) -> Transcription:
         """
-        Transcribe accumulated audio buffer and clear it.
+        Transcribe one utterance.
 
         Args:
+            pcm: the utterance's audio as 16 kHz mono signed 16-bit PCM.
             language: the language this utterance was captured in. ``None``
                 uses the current global language. Passing the utterance's own
                 language keeps a segment queued before a runtime switch paired
                 with the language (and initial prompt) it was captured under.
 
         Returns:
-            Tuple of (transcribed_text, duration_ms)
+            The transcript, its duration, and why it is low-confidence (if it is).
 
         Raises:
             ValueError: if an explicit ``language`` is not supported.
         """
-        if not self.audio_buffer:
-            return None, 0.0
-
-        # Resolve the language/prompt pair once, before consuming audio:
-        # set_language() may swap the global pair from another thread, and the
-        # two must never be mixed. No lock is held during transcription.
+        # Resolve the language/prompt pair once: set_language() may swap the
+        # global pair from another thread, and the two must never be mixed.
+        # No lock is held during transcription.
         state = self._state if language is None else _language_state(language)
 
-        # Convert buffer to numpy array
-        audio_np = np.array(self.audio_buffer, dtype=np.float32)
-
-        # Clear buffer for next utterance
-        self.audio_buffer = []
+        audio_np = np.frombuffer(pcm, dtype=np.int16).astype(np.float32) / 32768.0
 
         # Skip if audio is too short (less than 0.5 seconds)
         if len(audio_np) < self.sample_rate * 0.5:
-            return None, 0.0
+            return Transcription(None, 0.0)
 
         start_time = time.time()
 
@@ -274,16 +352,16 @@ class SpeechToText:
                 audio_np,
                 language=state.language,
                 initial_prompt=state.initial_prompt,
-                # Only sent when set: older faster-whisper releases (the pin
-                # allows >=0.9.0) reject the argument, and the broad except
-                # below would then turn every utterance into "no transcript".
+                # Only sent when set: faster-whisper releases before 1.0
+                # reject the argument, and the broad except below would then
+                # turn every utterance into "no transcript".
                 **({"hotwords": state.hotwords} if state.hotwords else {}),
-                beam_size=5,
+                beam_size=self.beam_size,
                 best_of=5,
                 temperature=0.0,
-                compression_ratio_threshold=2.4,
-                log_prob_threshold=-1.0,
-                no_speech_threshold=0.6,
+                compression_ratio_threshold=COMPRESSION_RATIO_THRESHOLD,
+                log_prob_threshold=LOG_PROB_THRESHOLD,
+                no_speech_threshold=NO_SPEECH_THRESHOLD,
                 condition_on_previous_text=False,
                 # Decoder-side loop guards (post-processing in
                 # _collapse_repetition is the backstop if these are ever hit).
@@ -291,8 +369,19 @@ class SpeechToText:
                 no_repeat_ngram_size=6,
             )
 
-            # Combine all segments
-            text = " ".join([segment.text.strip() for segment in segments]).strip()
+            # Combine all segments, keeping the first quality problem seen
+            texts: list[str] = []
+            low_confidence_reason: str | None = None
+            for segment in segments:
+                segment_text = segment.text.strip()
+                if not segment_text:
+                    continue
+                texts.append(segment_text)
+                if low_confidence_reason is None:
+                    low_confidence_reason = segment_low_confidence_reason(
+                        segment.avg_logprob, segment.no_speech_prob, segment.compression_ratio
+                    )
+            text = " ".join(texts).strip()
 
             # Apply post-processing fixes for common transcription errors
             text = self._fix_common_transcription_errors(text)
@@ -304,17 +393,21 @@ class SpeechToText:
 
             if loop:
                 logger.warning(f"Discarded Whisper repetition loop ({loop})")
+                # What survives the trim came out of a degenerate decode.
+                low_confidence_reason = low_confidence_reason or f"repetition loop: {loop}"
 
-            return text if text else None, duration_ms
+            if not text:
+                return Transcription(None, duration_ms)
+            return Transcription(text, duration_ms, low_confidence_reason)
 
         except RuntimeError as e:
             duration_ms = (time.time() - start_time) * 1000
             logger.error(f"Whisper runtime error: {e}")
-            return None, duration_ms
+            return Transcription(None, duration_ms)
         except Exception as e:
             duration_ms = (time.time() - start_time) * 1000
             logger.error(f"Unexpected transcription error: {e}", exc_info=True)
-            return None, duration_ms
+            return Transcription(None, duration_ms)
 
     def _collapse_repetition(self, text: str) -> tuple[str, str | None]:
         """Collapse a degenerate Whisper repetition loop.

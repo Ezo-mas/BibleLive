@@ -4,12 +4,42 @@ import argparse
 import logging
 import time
 
+from .capture import list_input_devices
 from .config import AudioPipelineConfig
 from .logging_config import configure_logging
 from .pipeline import BibleLiveAudioProcessor
 from .stt import SUPPORTED_LANGUAGES
 
 logger = logging.getLogger(__name__)
+
+
+_TUNING_DEFAULTS = AudioPipelineConfig()
+
+# (flag, config field, type, help) — shared with benchmarks/run_benchmark.py so
+# every live tuning knob can be swept there under the same name.
+TUNING_ARGUMENTS: list[tuple[str, str, type, str]] = [
+    ("--beam-size", "beam_size", int, "Whisper beam width; lower is faster"),
+    ("--cpu-threads", "cpu_threads", int, "Whisper CPU threads (0 = library default)"),
+    ("--end-of-speech-s", "end_of_speech_s", float, "silence that ends an utterance"),
+    ("--min-speech-s", "min_speech_s", float, "shorter utterances are dropped"),
+    ("--soft-utterance-s", "soft_utterance_s", float, "past this, end at the next pause"),
+    ("--max-utterance-s", "max_utterance_s", float, "hard utterance length cap"),
+]
+
+
+def add_tuning_arguments(parser: argparse.ArgumentParser) -> None:
+    """Add the speech-tuning flags; each defaults to None (= config default)."""
+    for flag, field_name, kind, help_text in TUNING_ARGUMENTS:
+        default = getattr(_TUNING_DEFAULTS, field_name)
+        parser.add_argument(flag, type=kind, default=None, help=f"{help_text} (default: {default})")
+
+
+def apply_tuning_arguments(config: AudioPipelineConfig, args: argparse.Namespace) -> None:
+    """Copy any tuning flags that were given onto ``config``."""
+    for _flag, field_name, _kind, _help in TUNING_ARGUMENTS:
+        value = getattr(args, field_name)
+        if value is not None:
+            setattr(config, field_name, value)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -22,8 +52,21 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--model",
         default="small",
-        choices=["tiny", "base", "small", "medium", "large-v2", "large-v3", "distil-large-v3"],
-        help="Whisper model size (default: small)",
+        choices=[
+            "tiny",
+            "base",
+            "small",
+            "medium",
+            "large-v2",
+            "large-v3",
+            "large-v3-turbo",
+            "distil-large-v3",
+        ],
+        help=(
+            "Whisper model size (default: small). On a GPU, large-v3-turbo with "
+            "--compute-type float16 is far more accurate for Lithuanian at similar speed; "
+            "distil-* models are English-only"
+        ),
     )
     parser.add_argument(
         "--device", default="cuda", choices=["cpu", "cuda"], help="Device for Whisper model"
@@ -46,6 +89,21 @@ def build_parser() -> argparse.ArgumentParser:
         default=2,
         choices=[0, 1, 2, 3],
         help="WebRTC VAD aggressiveness (0=least, 3=most aggressive)",
+    )
+    add_tuning_arguments(parser)
+    parser.add_argument(
+        "--input-device",
+        default=None,
+        help=(
+            "Microphone to capture: the exact DirectShow name on Windows (see "
+            "--list-input-devices), a PulseAudio source on Linux, an avfoundation index "
+            "on macOS. Default: the first Windows input, or the system default elsewhere."
+        ),
+    )
+    parser.add_argument(
+        "--list-input-devices",
+        action="store_true",
+        help="Print the audio inputs ffmpeg can open (Windows) and exit",
     )
     parser.add_argument(
         "--control-host",
@@ -84,6 +142,20 @@ def main() -> None:
     """Main function to run the BibleLive audio pipeline"""
     args = build_parser().parse_args()
 
+    if args.list_input_devices:
+        devices = list_input_devices()
+        if devices:
+            print("Audio inputs (pass one to --input-device, quoted):")
+            for name in devices:
+                print(f"  {name}")
+        else:
+            print(
+                "No DirectShow audio inputs found. Listing is Windows-only; on Linux use "
+                "`pactl list short sources`, on macOS "
+                '`ffmpeg -f avfoundation -list_devices true -i ""`.'
+            )
+        return
+
     # Configure logging before any component starts so audio capture, VAD,
     # transcription and reference sending all report progress.
     level = configure_logging(args.log_level)
@@ -96,11 +168,13 @@ def main() -> None:
         whisper_compute_type=args.compute_type,
         language=args.language,
         vad_aggressiveness=args.vad_aggressiveness,
+        input_device=args.input_device,
         control_enabled=not args.no_control,
         control_host=args.control_host,
         control_port=args.control_port,
         control_token=args.control_token,
     )
+    apply_tuning_arguments(config, args)
     processor = BibleLiveAudioProcessor(
         bible_db_path=args.bible_db, server_url=args.server, config=config
     )

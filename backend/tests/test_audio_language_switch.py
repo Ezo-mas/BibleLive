@@ -21,7 +21,8 @@ from audio.config import AudioPipelineConfig
 from audio.control import LanguageControlServer
 from audio.metrics import PipelineMetrics
 from audio.pipeline import BibleLiveAudioProcessor
-from audio.stt import SUPPORTED_LANGUAGES, WHISPER_INITIAL_PROMPTS, SpeechToText
+from audio.segmenter import Segmenter, SegmentEvent
+from audio.stt import SUPPORTED_LANGUAGES, WHISPER_INITIAL_PROMPTS, SpeechToText, Transcription
 from core.verse_parser import ReferenceParser, StreamingParser
 
 # Requires the optional audio extras (faster-whisper, webrtcvad, numpy).
@@ -33,7 +34,9 @@ pytestmark = pytest.mark.audio
 # ---------------------------------------------------------------------------
 def _bare_stt() -> SpeechToText:
     """``SpeechToText`` without loading a Whisper model."""
-    return SpeechToText.__new__(SpeechToText)
+    stt = SpeechToText.__new__(SpeechToText)
+    stt.beam_size = 5
+    return stt
 
 
 class _FakeSTT:
@@ -47,24 +50,24 @@ class _FakeSTT:
             raise ValueError(f"Unsupported language '{language}'")
         self.language = language
 
-    def add_audio_frame(self, frame: bytes) -> None:
-        pass
-
-    def transcribe_buffer(self, language=None):  # noqa: ARG002 - signature parity
-        return None, 0.0
+    def transcribe_utterance(self, pcm, language=None):  # noqa: ARG002 - signature parity
+        return Transcription(None, 0.0)
 
 
 class _StaticSTT(_FakeSTT):
     """Returns a fixed transcript and records the language it was called with."""
 
-    def __init__(self, transcript: str, language: str = "en"):
+    def __init__(
+        self, transcript: str, language: str = "en", low_confidence_reason: str | None = None
+    ):
         super().__init__(language)
         self._transcript = transcript
+        self._low_confidence_reason = low_confidence_reason
         self.transcribe_languages = []
 
-    def transcribe_buffer(self, language=None):
+    def transcribe_utterance(self, pcm, language=None):  # noqa: ARG002 - signature parity
         self.transcribe_languages.append(language)
-        return self._transcript, 1.0
+        return Transcription(self._transcript, 1.0, self._low_confidence_reason)
 
 
 class _RecordingSender:
@@ -82,7 +85,7 @@ class _FailingCapture:
         self.started = False
         self.stopped = False
 
-    def start_capture(self, device_index=None):  # noqa: ARG002 - signature parity
+    def start_capture(self, device=None):  # noqa: ARG002 - signature parity
         self.started = True
         raise RuntimeError("capture boom")
 
@@ -100,14 +103,11 @@ def _processor(language: str = "en") -> BibleLiveAudioProcessor:
     proc.control_server = None
     proc.vad_thread = None
     proc.transcription_thread = None
-    proc.speech_frames = []
-    proc.silent_frames = 0
+    proc.segmenter = Segmenter(lambda frame: True)
     proc.vad_queue = Queue(maxsize=10)
     proc.metrics = PipelineMetrics()
     proc.frame_duration_ms = 30
     proc._frame_duration_s = 0.03
-    proc.max_silent_frames = 50
-    proc.min_speech_frames = 10
     proc._capture_language = language
     proc._pending_language = None
     proc._pending_language_lock = threading.Lock()
@@ -157,6 +157,16 @@ def test_set_language_always_uses_the_matching_initial_prompt():
         assert stt.initial_prompt == WHISPER_INITIAL_PROMPTS[language]
 
 
+@pytest.mark.parametrize("language", SUPPORTED_LANGUAGES)
+def test_initial_prompt_contains_no_citation_numbers(language):
+    """Regression: Whisper echoes the prompt over silence, so a citation in it
+    ("Romans 8:28") became a detected reference. Book names only."""
+    prompt = WHISPER_INITIAL_PROMPTS[language]
+    assert not any(ch.isdigit() for ch in prompt)
+    for example_word in ("example", "pavyzd", "sixteen", "šešiolikt", "trečias"):
+        assert example_word not in prompt.lower()
+
+
 def test_set_language_rejects_invalid_language():
     stt = _bare_stt()
     stt.set_language("lt")
@@ -167,11 +177,14 @@ def test_set_language_rejects_invalid_language():
     assert stt.initial_prompt == WHISPER_INITIAL_PROMPTS["lt"]
 
 
+# One second of 16 kHz int16 silence: long enough to clear the 0.5 s minimum.
+_ONE_SECOND = bytes(2 * 16000)
+
+
 def test_transcribe_reads_language_and_prompt_as_one_snapshot():
     """A switch mid-transcription must not mix a language with the other prompt."""
     stt = _bare_stt()
     stt.set_language("en")
-    stt.audio_buffer = [0.0] * 16000
     stt.sample_rate = 16000
 
     calls = []
@@ -184,9 +197,9 @@ def test_transcribe_reads_language_and_prompt_as_one_snapshot():
 
     stt.model = _Model()
 
-    transcript, _ = stt.transcribe_buffer()
+    result = stt.transcribe_utterance(_ONE_SECOND)
 
-    assert transcript is None
+    assert result.text is None
     assert calls == [("en", WHISPER_INITIAL_PROMPTS["en"])]
     assert stt.language == "lt"
     assert stt.initial_prompt == WHISPER_INITIAL_PROMPTS["lt"]
@@ -196,7 +209,6 @@ def test_transcribe_uses_explicit_language_over_global_state():
     """An 'en' utterance is transcribed in English even after a switch to lt."""
     stt = _bare_stt()
     stt.set_language("lt")  # switch happened after the utterance was queued
-    stt.audio_buffer = [0.0] * 16000
     stt.sample_rate = 16000
 
     calls = []
@@ -208,7 +220,7 @@ def test_transcribe_uses_explicit_language_over_global_state():
 
     stt.model = _Model()
 
-    stt.transcribe_buffer("en")
+    stt.transcribe_utterance(_ONE_SECOND, "en")
 
     assert calls == [("en", WHISPER_INITIAL_PROMPTS["en"])]
     # The global state is only for un-tagged calls; it is left untouched.
@@ -234,8 +246,7 @@ def test_transcribe_passes_hotwords_with_the_matching_language(monkeypatch):
     stt.sample_rate = 16000
     for language in ("lt", "en"):
         stt.set_language(language)
-        stt.audio_buffer = [0.0] * 16000
-        stt.transcribe_buffer()
+        stt.transcribe_utterance(_ONE_SECOND)
 
     # Empty hotwords must not be sent at all (older faster-whisper rejects the kwarg).
     assert calls == [("lt", "skyrius, eilutė"), ("en", "<absent>")]
@@ -248,17 +259,14 @@ def test_hotwords_default_off():
     assert not any(stt_module.WHISPER_HOTWORDS.values())
 
 
-def test_transcribe_rejects_invalid_explicit_language_without_consuming_audio():
+def test_transcribe_rejects_invalid_explicit_language():
     stt = _bare_stt()
     stt.set_language("en")
-    stt.audio_buffer = [0.0] * 16000
     stt.sample_rate = 16000
     stt.model = None  # must not be reached
 
     with pytest.raises(ValueError):
-        stt.transcribe_buffer("fr")
-
-    assert len(stt.audio_buffer) == 16000  # audio not dropped by a bad tag
+        stt.transcribe_utterance(_ONE_SECOND, "fr")
 
 
 # ---------------------------------------------------------------------------
@@ -294,37 +302,35 @@ def test_consume_pending_switch_updates_capture_language():
 
 def test_consume_pending_switch_discards_partial_speech():
     proc = _processor()
-    proc.speech_frames = [b"frame"] * 5
-    proc.silent_frames = 12
+    proc.segmenter.speech_frames = [b"frame"] * 5
+    proc.segmenter.silent_frames = 12
     proc.set_language("lt")
 
     proc._consume_pending_language_switch()
 
-    assert proc.speech_frames == []
-    assert proc.silent_frames == 0
+    assert proc.segmenter.speech_frames == []
+    assert proc.segmenter.silent_frames == 0
     assert proc._capture_language == "lt"
 
 
 def test_consume_switch_is_noop_without_a_request():
     proc = _processor()
-    proc.speech_frames = [b"frame"]
-    proc.silent_frames = 3
+    proc.segmenter.speech_frames = [b"frame"]
+    proc.segmenter.silent_frames = 3
 
     proc._consume_pending_language_switch()
 
-    assert proc.speech_frames == [b"frame"]
-    assert proc.silent_frames == 3
+    assert proc.segmenter.speech_frames == [b"frame"]
+    assert proc.segmenter.silent_frames == 3
     assert proc._capture_language == "en"
 
 
 def test_new_utterances_receive_the_new_language_tag():
     proc = _processor()
-    proc.min_speech_frames = 1
     proc.set_language("lt")
     proc._consume_pending_language_switch()
 
-    proc.speech_frames = [b"a", b"b", b"c"]
-    proc._queue_speech_segment()
+    proc._queue_speech_segment(SegmentEvent("end", [b"a", b"b", b"c"]))
 
     language, frames = proc.vad_queue.get_nowait()
     assert language == "lt"
@@ -414,6 +420,31 @@ def test_process_utterance_uses_the_speaking_languages_parser():
     # The Lithuanian parser does not recognise the English book name.
     proc._process_utterance("lt", [b""])
     assert len(proc.sender.sent) == 1
+
+
+def test_low_confidence_transcription_marks_references_low():
+    """A shaky decode must not send a reference that auto-approve would show."""
+    proc = _processor()
+    _install_parsers(proc)
+    proc.stt = _StaticSTT("Romans 8:28", low_confidence_reason="no_speech_prob 0.91 > 0.6")
+    proc.sender = _RecordingSender()
+
+    proc._process_utterance("en", [b""])
+
+    assert [(str(ref), ref.confidence) for ref in proc.sender.sent] == [("Romans 8:28", "low")]
+    assert proc.metrics.references_low_confidence == 1
+
+
+def test_sound_transcription_keeps_parser_confidence():
+    proc = _processor()
+    _install_parsers(proc)
+    proc.stt = _StaticSTT("Romans chapter 8 verse 28")
+    proc.sender = _RecordingSender()
+
+    proc._process_utterance("en", [b""])
+
+    assert [ref.confidence for ref in proc.sender.sent] == ["high"]
+    assert proc.metrics.references_low_confidence == 0
 
 
 # ---------------------------------------------------------------------------

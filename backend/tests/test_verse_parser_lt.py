@@ -364,3 +364,84 @@ class TestBenchmarkMicroGaps:
         assert refs("Psalmė 16 skyrius 8 eilutė") == ["Psalms 16:8"]
         assert refs("Psalmė 16") == ["Psalms 16"]
         assert refs("Psalmė 16 skyrius") == ["Psalms 16"]
+
+
+class TestWhisperMergedAndGluedWords:
+    """Misses read off the small-model transcripts of 09-13 / 07-05: Whisper
+    merged chapter and verse into one number, or glued two words together."""
+
+    def test_merged_chapter_and_verse_number(self):
+        # Philippians has 4 chapters, so 46 can only be 4:6.
+        assert refs("Filipiečiams, 46. rašo") == ["Philippians 4:6"]
+        assert refs("pirmas Jono 56. Jis") == ["1 John 5:6"]
+        # Ephesians has 6 chapters: 42:5 is impossible, 4:25 is the reading.
+        assert refs("Efeziečiams 425, sako") == ["Ephesians 4:25"]
+        assert refs("Jono 316") == ["John 3:16"]
+
+    def test_merged_number_is_a_low_confidence_guess(self):
+        assert one("Filipiečiams 46").confidence == "low"
+
+    def test_merged_number_with_two_readings_is_not_guessed(self):
+        # Psalm 1191: 11:91 and 119:1 are both valid, so nothing is invented.
+        assert refs("Psalmė 1191") == []
+
+    def test_spoken_chapter_word_blocks_the_split(self):
+        assert refs("Filipiečiams 46 skyrius") == []
+
+    def test_valid_chapter_is_never_split(self):
+        assert refs("Romiečiams 12") == ["Romans 12"]
+
+    def test_nuo_glued_to_a_number_word(self):
+        assert refs("išėjimo 20. Skyrius nuotrėčios, nedarik") == ["Exodus 20:3"]
+
+    def test_no_is_whisper_for_nuo(self):
+        # Without it "no" split the chapter from its verse range and an extra
+        # chapter-only "Exodus 16" was reported.
+        assert refs("išėjimo šešioliką, no šešioliktos iki 20. eilutės") == ["Exodus 16:16-20"]
+
+    def test_pagal_glued_to_a_book_name(self):
+        assert refs("evangelija pagaluką 12 skyrius 29 eilutė") == ["Luke 12:29"]
+
+    def test_ordinary_words_starting_with_nuo_or_pagal_stay_whole(self):
+        assert refs("nuodėmės ir nuosprendis, pagalba 3 skyrius") == []
+
+
+class TestChapterOnlyDuplicates:
+    """A bare "Romans 5" next to "Romans 5:6" is a duplicate the operator has to
+    discard. Seen in every benchmark run (Romans 5, John 10, Luke 12)."""
+
+    @staticmethod
+    def _held():
+        return StreamingParser(language="lt", hold_chapter_only=True)
+
+    def test_same_text_drops_the_chapter_only_twin(self):
+        # The stray "k." splits chapter from verse: "John 10" plus a verse that
+        # context resolves to "John 10:37". Only the full one is kept.
+        assert refs("Jono, 10. k. 37. eilutė.") == ["John 10:37"]
+
+    def test_same_text_keeps_a_different_chapter(self):
+        assert refs("Jono 10 skyrius, o Jono 11 skyrius 3 eilutė") == ["John 10", "John 11:3"]
+
+    def test_held_chapter_is_dropped_when_the_verse_follows(self):
+        sp = self._held()
+        assert sp.feed("Romiečiams, 5. Skyrius, mes po truputį") == []
+        assert [str(r) for r in sp.feed("6 eilutė sako")] == ["Romans 5:6"]
+
+    def test_held_chapter_is_released_when_no_verse_follows(self):
+        sp = self._held()
+        assert sp.feed("Romiečiams 5 skyrius") == []
+        assert [str(r) for r in sp.feed("ir tada meldėmės")] == ["Romans 5"]
+
+    def test_held_chapter_is_released_before_an_unrelated_reference(self):
+        sp = self._held()
+        sp.feed("Romiečiams 5 skyrius")
+        assert [str(r) for r in sp.feed("Jono 3 skyrius 16 eilutė")] == ["Romans 5", "John 3:16"]
+
+    def test_flush_releases_at_end_of_stream(self):
+        sp = self._held()
+        sp.feed("Psalmė 23")
+        assert [str(r) for r in sp.flush()] == ["Psalms 23"]
+        assert sp.flush() == []
+
+    def test_full_references_are_never_held(self):
+        assert [str(r) for r in self._held().feed("Jono 3 skyrius 16 eilutė")] == ["John 3:16"]

@@ -50,10 +50,13 @@ easy to break by accident.
    that has aged out of the server's 20-entry snapshot window can still
    be shown again, because the canon and the Bible database — not the
    history list — are the authority.
-4. **VAD frame discipline**: WebRTC VAD requires exact 10/20/30 ms frames
-   at 16 kHz. `AudioCapture.get_audio_frame()` must return exactly that
-   many bytes and must not drop carry-over bytes between calls (it keeps
-   a `_frame_buffer`).
+4. **VAD frame discipline**: frames must be exactly the size the active
+   VAD requires at 16 kHz — WebRTC VAD (current): 10/20/30 ms. The
+   load-bearing part is that no audio is lost: `AudioCapture.get_audio_frame()`
+   must return exactly that many bytes and must not drop carry-over bytes
+   between calls (it keeps a `_frame_buffer`). Swapping the VAD (e.g. to
+   one with a different chunk size) is allowed, but is a detection-accuracy
+   change: benchmark it (see `testing.md`).
 5. **No StrictMode in the frontend entry points** — it double-mounts in
    dev and would open two WebSockets. The shared `shared/renderApp.tsx`
    helper documents this; keep both `main.tsx` files using it.

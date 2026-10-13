@@ -9,8 +9,11 @@ quality is explicitly a hypothesis until a run against real sermons happens.
 - Capture: ffmpeg mic → 10ms s16le chunks in a bounded queue (1000 ≈ 10s);
   `get_audio_frame()` re-frames to 30ms (960 B) frames with a carry-over
   buffer (`_frame_buffer`) so no bytes are dropped between frames.
-- VAD thread: WebRTC VAD (aggressiveness 2). An utterance accumulates speech
-  frames until > 50 consecutive silent 30ms frames (~1.5s). Utterances of
+- VAD thread: WebRTC VAD (aggressiveness 2) into `audio/segmenter.py`. An
+  utterance accumulates speech frames until > 50 consecutive silent 30ms
+  frames (~1.5s); past ~8s it ends at the next unvoiced frame, and at ~12s
+  it ends regardless (ungated full-mix audio rarely gives 1.5s of silence:
+  uncapped, the 07-05 service produced 6 utterances in 40 min). Utterances of
   < 10 speech frames (~300ms) are discarded as blips. Full `vad_queue`
   (> 100 segments) drops utterances silently (metric only).
 - STT thread: faster-whisper `small`, cuda/int8 (falls back to int8 if the
@@ -95,3 +98,32 @@ and timestamped evidence. No entries yet: no real-audio corpus has been run.]
    failure counts confirm.
 5. MIN-SPEECH-FRAME GATE (300ms): short inter-phrase mentions ("verse 5")
    without surrounding speech may be discarded; needs measured examples.
+
+## Tried and not adopted (2026-10-12)
+
+Measured on the two Lithuanian services (25 gold references), TP/FP/FN at
+a 20 s tolerance unless noted. Check here before re-running one of these.
+
+- **Rolling-window transcription instead of VAD utterances** (tests
+  hypothesis 1 above). Every 5 s, transcribe the last 15 s with word
+  timestamps and commit each word once (2 s lookahead). With `small` it
+  matched the utterance cap's recall at about 3x the GPU time and no
+  latency gain: rolling 5/4/20 at ~11.6 s vs cap 5/3/20 at ~12 s. Code:
+  branch `proto/rolling-window` (`audio/rolling.py`, `--mode rolling`),
+  closed PR #17. Worth re-testing only with a larger model or a much
+  shorter hop.
+- **Longer utterance cap (15 s soft / 25 s hard).** No recall gain over
+  8/12 s, twice the false positives, ~6 s more latency (4/7/21).
+- **Demucs vocal isolation of 09-13** (`htdemucs --two-stems=vocals`, an
+  upper bound for a clean pulpit feed). The VAD found more real pauses
+  (77% vs 85% of frames voiced), but detection did not improve
+  (windowed 5/1/8 for both; capped offline 2/3/11 vs 3/1/10). Recognition,
+  not noise, was the limit.
+- **ffmpeg `afftdn` denoise, and denoise + `agate` (-30 dB) on 07-05.**
+  Denoise: same hits, more false positives. Denoise + gate: no hits at
+  all; the gate clips word onsets and mangles numbers. Do not gate the
+  pipeline input.
+
+What did help, for contrast: the utterance cap (live path 0/10/25 ->
+5/3/20) and `large-v3-turbo` float16 (live path 20/2/5 at 30 s with the
+Lithuanian parser fixes, against 5 for `small`).

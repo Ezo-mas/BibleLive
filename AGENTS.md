@@ -39,11 +39,18 @@ Before reporting done:
 - **Backend changes**: run `make check` (ruff lint + format-check + pytest)
   and `make typecheck` (mypy — separate from `check`).
 - **Frontend changes**: from `frontend/` run `npm run lint && npm run typecheck && npm test -- --run`.
+- **Detection-accuracy changes** (Whisper prompt/hotwords/beam/model, VAD
+  tuning, utterance segmentation, transcript post-processing, parser
+  patterns): unit tests are not enough — run the benchmark before and after
+  on the same corpus and report TP/FP/FN and runtime for both
+  ([testing guide](docs/agent-guides/testing.md#detection-accuracy-benchmark)).
 - Report failures honestly, including which check failed and why; don't
   report "done" with a failing or unrun check (see Behavior rules on
   skipped tests).
 - If a check fails with "command not found", run `make install-dev` once
-  (permitted) and retry before reporting.
+  (permitted) and retry before reporting. On Windows `make` itself is
+  missing: run the same tools via `.venv\Scripts\python.exe -m ...` (exact
+  commands in the testing guide) instead of stopping.
 - Full command reference and caveats (incl. audio-test skips):
   [testing guide](docs/agent-guides/testing.md).
 
@@ -81,7 +88,8 @@ WebSocket → operator approval → display page`.
 3. `_send_display_reference` is called only from operator-authorized
    server paths (`approve_pending` / `display_manual_passage`); `display_reference`
    carries coordinates only and the server re-resolves them. No third door.
-4. VAD frames must be exact 10/20/30 ms at 16 kHz with no dropped carry-over.
+4. VAD frames must be exactly the size the active VAD requires at 16 kHz
+   (WebRTC: 10/20/30 ms) with no dropped carry-over.
 5. No StrictMode in frontend entry points (two WebSockets); both `main.tsx`
    files go through `shared/renderApp.tsx`.
 6. Pages live at `/display` and `/operator`; the bundle at `/static/frontend/`
@@ -96,6 +104,9 @@ frontend/   React UI (operator/, display/, shared/), built into static/frontend/
 static/frontend/  Prebuilt bundle served by FastAPI — generated, don't hand-edit
 bible_data/ SQLite Bible database — ask before changing anything under it
 data/       Source JSON for Bible imports
+benchmarks/ Detection-accuracy benchmark: runner, manifests, gold annotations
+results/    Local benchmark outputs + transcript cache — not committed
+bench_audio/  Local sermon recordings for the benchmark — not committed, read-only
 ```
 
 Commands, conventions, and the task → files mapping live in the guides;

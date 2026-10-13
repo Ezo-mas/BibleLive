@@ -20,7 +20,60 @@ Python tests need `backend/` on the import path — the Makefile and root
 `python -m ...` invocations need `export PYTHONPATH="$PWD/backend"`.
 
 On Windows there is no `make`: use `.venv\Scripts\python.exe -m ...` with
-`$env:PYTHONPATH = "$PWD/backend"`.
+`$env:PYTHONPATH = "$PWD/backend"`. The `check` + `typecheck` equivalents:
+
+```bash
+.venv/Scripts/python.exe -m ruff check .
+.venv/Scripts/python.exe -m ruff format --check .
+.venv/Scripts/python.exe -m pytest backend/tests -q
+.venv/Scripts/python.exe -m mypy backend/core backend/audio --install-types --non-interactive
+```
+
+## Detection-accuracy benchmark
+
+Unit tests prove the code does what it says, not that it detects more
+references. Any change that can move detection quality — Whisper prompt,
+hotwords, beam size, model or compute type, VAD choice or tuning, utterance
+segmentation, transcript post-processing, parser patterns — needs a
+before/after run on the same corpus and settings. Before proposing one,
+check "Tried and not adopted" in `benchmarks/BASELINE_NOTES.md` (rolling
+windows, longer caps, vocal isolation, denoise/gate already measured):
+
+```bash
+python benchmarks/run_benchmark.py \
+    --manifest benchmarks/corpus/manifest-07-05-lt.json \
+    --audio-dir bench_audio --mode windowed --model small --device cuda \
+    --out results/<change>-before.json      # then -after.json with the change
+```
+
+- The canonical corpus is two Lithuanian services, 25 gold references.
+  There is no English gold corpus yet: say so when an English-only change
+  is unmeasured instead of implying it was.
+- `--mode windowed` cuts fixed 30 s windows and never runs the VAD or the
+  segmenter. VAD or segmentation changes need `--mode offline`, which
+  replays frames through `audio/segmenter.py` exactly as the live pipeline
+  does.
+- Report `total_tp` / `total_fp` / `total_fn` and runtime (`rtf`) for both
+  runs. Fewer false positives matters as much as more true positives — every
+  FP is a wrong verse offered to the operator.
+- Like the live pipeline, the benchmark drops references to verses that do
+  not exist, using `--bible-db` (default `bible_data/biblelive.sqlite`). The
+  DB is not in git, so from a worktree pass the main checkout's path; without
+  it the run warns and over-counts false positives.
+- Name outputs uniquely under `results/`; never overwrite an earlier run.
+- Tuning knobs are flags shared with the live CLI (`--beam-size`,
+  `--end-of-speech-s`, `--soft-utterance-s`, `--max-utterance-s`, ...), so a
+  sweep needs no code edit.
+- The transcript cache (`results/.bench-cache`) is keyed on audio hash,
+  model/device/compute type, beam size, prompt + hotwords, mode/window
+  settings and (offline/rt) the segmentation settings — **not** on any code
+  change (STT post-processing, parser, VAD). For those, pass `--no-cache`
+  (or a fresh `--cache-dir`) to the "after" run, or it silently replays the
+  old transcripts.
+- `bench_audio/` is the user's recordings: read-only. If it or CUDA is
+  unavailable, report the benchmark as not run — don't substitute a
+  smaller or synthetic run and call it a result.
+- `benchmarks/README.md` covers modes, the matching rule, and gold format.
 
 ## Frontend (from `frontend/`)
 
@@ -42,6 +95,15 @@ npm run screenshots   # visual regression (needs the stack running)
   `pyproject.toml`).
 - If a check fails with "command not found", run `make install-dev` once
   (permitted) and retry before reporting.
+- Tests for transcript post-processing (`audio/stt.py` corrections, parser
+  inputs) must use realistic Whisper output: already-formatted `John 3:16`,
+  multi-digit chapters and verses (`Psalms 119:105`), merged digits
+  (`John 316`). A correction regex once rewrote `John 3:16` to `John 3:1-6`
+  while its single-digit tests stayed green.
+- The language-control server tests bind real local ports; on Windows a
+  test logging from the control server failed once in five full runs
+  (2026-10-12) and did not reproduce. Rerun once before blaming an
+  unrelated change, and report the flake either way.
 - A check failure is reported, never suppressed. Don't skip tests,
   weaken assertions, or silence errors to make verification pass; fix
   the cause instead.

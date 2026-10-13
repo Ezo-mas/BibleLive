@@ -6,7 +6,8 @@
 # or as an install with extras:
 #   pip install -e "./backend[audio]"
 
-faster-whisper>=0.9.0
+# 1.1.0 added the "large-v3-turbo" model name.
+faster-whisper>=1.1.0
 numpy>=1.24.0
 
 # webrtcvad imports pkg_resources, which was removed from setuptools 81+ and is

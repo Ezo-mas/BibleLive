@@ -115,6 +115,9 @@ _WORD_FORMS: dict[str, set[str]] = {
     },
 }
 _NORMALIZE: dict[str, str] = {form: canon for canon, forms in _WORD_FORMS.items() for form in forms}
+# Whisper drops the "u" of "nuo" ("no šešioliktos iki 20"); "no" is not a
+# Lithuanian word, so reading it as "nuo" cannot hide a real one.
+_NORMALIZE["no"] = "nuo"
 
 CHAPTER_WORDS = frozenset({CHAPTER})
 VERSE_WORDS = frozenset({VERSE})
@@ -413,6 +416,23 @@ def book_stem(word: str) -> str:
 # --------------------------------------------------------------------------
 # Tokenizing
 # --------------------------------------------------------------------------
+def _unglue(word: str) -> list[str]:
+    """Split two words Whisper wrote as one.
+
+    "nuotrecios" (nuo tre\u010dios) -> ["nuo", "trecios"]: "nuo" + a number word.
+    "pagaluka" (pagal Luk\u0105) -> ["pagal", "luka"]: "pagal" + a book name; the
+    shared "l" may be written once.
+    Only when the remainder is unambiguous, so ordinary words stay whole.
+    """
+    if word.startswith("nuo") and len(word) >= 6 and number_word(word[3:]):
+        return ["nuo", word[3:]]
+    if word.startswith("pagal"):
+        for tail in (word[5:], word[4:]):  # "pagalluka", "pagaluka"
+            if len(tail) >= 3 and book_stem(tail) != tail:
+                return ["pagal", tail]
+    return [word]
+
+
 def tokenize(text: str) -> list[Token]:
     """Lithuanian text -> list of ints (digits or number words) and words.
 
@@ -422,6 +442,7 @@ def tokenize(text: str) -> list[Token]:
     text = fold(text).replace("\u2013", "-").replace("\u2014", "-")
     # "3-iasis", "16-oji" (ordinal written with digits) -> one number token
     raw = re.findall(r"\d+(?:-[^\W\d_]{1,7}(?![^\W\d_]))?|[^\W\d_]+|[:\-]", text)
+    raw = [part for t in raw for part in (_unglue(t) if t.isalpha() else [t])]
     words: list[Token] = []
     for t in raw:
         if t[0].isdigit():

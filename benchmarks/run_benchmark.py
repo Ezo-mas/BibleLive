@@ -36,6 +36,7 @@ import re
 import sys
 import time
 import wave
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -47,11 +48,14 @@ sys.path.insert(0, str(REPO_ROOT / "backend"))
 
 from audio import stt as stt_module  # noqa: E402  (prompt/hotwords fingerprint for the cache key)
 from audio.capture import AudioCapture  # noqa: E402  (frame sizing reference)
+from audio.cli import add_tuning_arguments, apply_tuning_arguments  # noqa: E402
 from audio.config import AudioPipelineConfig  # noqa: E402
 from audio.metrics import PipelineMetrics  # noqa: E402
+from audio.segmenter import FRAME_DURATION_MS, Segmenter, SegmentEvent  # noqa: E402
 from audio.sender import ReferenceSender  # noqa: E402
 from audio.stt import SpeechToText  # noqa: E402
 from audio.vad import VoiceActivityDetector  # noqa: E402
+from core.bible_lookup import BibleLookup  # noqa: E402
 from core.verse_parser import Reference as ParsedReference  # noqa: E402
 from core.verse_parser import ReferenceParser, StreamingParser  # noqa: E402
 
@@ -313,6 +317,11 @@ class RunResult:
 
 CACHE_VERSION = 2
 
+# Like the live pipeline, drop references to verses that do not exist
+# (BibleLookup's validator hook); set in main() from --bible-db. Parsing is
+# not part of the transcript cache key, so cached runs validate too.
+_VALIDATOR: Callable[[ParsedReference], bool] | None = None
+
 
 def parse_t_range(spec: str | None) -> tuple[float, float] | None:
     """Parse 'START:END' seconds (empty END = file end). None disables."""
@@ -378,14 +387,16 @@ def feed_cache_key(
     device: str,
     compute_type: str | None,
     mode: str,
+    beam_size: int = 5,
     window_s: float | None = None,
     hop_s: float | None = None,
     skip_silent: bool = False,
     silence_rms: float | None = None,
     context_ttl_s: float | None = 60.0,
     t_range: tuple[float, float] | None = None,
+    segmentation: dict[str, int] | None = None,
 ) -> dict[str, Any]:
-    return {
+    key = {
         "cache_version": CACHE_VERSION,
         "record_id": record_id,
         "audio_sha256": audio_sha256,
@@ -394,6 +405,7 @@ def feed_cache_key(
         "whisper_device": device,
         "whisper_compute_type": compute_type,
         "stt_prompt": stt_prompt_fingerprint(language),
+        "beam_size": beam_size,
         "mode": mode,
         "window_s": window_s,
         "hop_s": hop_s,
@@ -402,6 +414,10 @@ def feed_cache_key(
         "context_ttl_s": context_ttl_s,
         "t_range": list(t_range) if t_range else None,
     }
+    # VAD modes only; omitted for windowed so its existing cache entries stay valid.
+    if segmentation is not None:
+        key["segmentation"] = segmentation
+    return key
 
 
 def feed_cache_path(cache_dir: Path, key: dict[str, Any]) -> Path:
@@ -482,6 +498,21 @@ def register_feeds(
                 sender.send(ref)
 
 
+def release_held(
+    parser: StreamingParser,
+    sender: BenchmarkingSender | None,
+    units: list[Any],
+    detections: list[Detection],
+) -> None:
+    """End of recording: report a chapter-only ref the parser is still holding.
+
+    An empty feed releases it (nothing in it can name the verse), timed at the
+    last feed. Live and cache-replay paths both call this, so they stay equal.
+    """
+    last_t = float(units[-1][-1][0]) if units and units[-1] else 0.0
+    register_feeds(parser, sender, [(last_t, "")], detections)
+
+
 def run_single_recording(
     rec: Recording,
     audio_path: Path,
@@ -505,6 +536,16 @@ def run_single_recording(
     coordinates; iteration-only, gold outside the span simply misses.
     """
     audio_sha = verified_audio_sha(rec, audio_path)
+    # The live segmenter's settings; part of the cache key, since changing any
+    # of them changes which audio Whisper sees.
+    segmentation = {
+        "vad_aggressiveness": config.vad_aggressiveness,
+        "frame_duration_ms": FRAME_DURATION_MS,
+        "end_of_speech_s": config.end_of_speech_s,
+        "min_speech_s": config.min_speech_s,
+        "soft_utterance_s": config.soft_utterance_s,
+        "max_utterance_s": config.max_utterance_s,
+    }
     key = feed_cache_key(
         record_id=rec.id,
         audio_sha256=audio_sha,
@@ -513,30 +554,31 @@ def run_single_recording(
         device=config.whisper_device,
         compute_type=config.whisper_compute_type,
         mode=mode,
+        beam_size=config.beam_size,
         context_ttl_s=context_ttl_s,
         t_range=t_range,
+        segmentation=segmentation,
     )
     cpath = feed_cache_path(cache_dir, key) if cache_dir is not None and use_cache else None
 
-    parser = StreamingParser(ReferenceParser(language=rec.language), context_ttl_s=context_ttl_s)
+    parser = StreamingParser(
+        ReferenceParser(language=rec.language, validator=_VALIDATOR),
+        context_ttl_s=context_ttl_s,
+        hold_chapter_only=True,  # as live
+    )
     metrics = PipelineMetrics()
     stub = StubReceiver(t0=time.time())
     sender = BenchmarkingSender(stub, config, metrics)
     detections: list[Detection] = []
     transcripts: list[tuple[float, str]] = []
     vad_events: list[tuple[float, str]] = []
-    frame_duration_ms = 30  # matches pipeline.py
-    min_speech_frames = 10
-    max_silent_frames = 50
+    frame_duration_ms = FRAME_DURATION_MS
     frame_bytes = AudioCapture().sample_rate * 2 * frame_duration_ms // 1000  # 960 bytes
     config_snapshot = {
         "whisper_model": config.whisper_model,
         "whisper_device": config.whisper_device,
         "whisper_compute_type": config.whisper_compute_type,
-        "vad_aggressiveness": config.vad_aggressiveness,
-        "frame_duration_ms": frame_duration_ms,
-        "min_speech_frames": min_speech_frames,
-        "max_silent_frames": max_silent_frames,
+        **segmentation,
         "dedup_window_seconds": config.dedup_window_seconds,
         "mode": mode,
         "context_ttl_s": context_ttl_s,
@@ -550,6 +592,7 @@ def run_single_recording(
             t0 = time.time()
             for unit in cached["units"]:
                 register_feeds(parser, sender, [(float(t), txt) for t, txt in unit], detections)
+            release_held(parser, sender, cached["units"], detections)
             transcripts.extend((float(t), txt) for t, txt in cached["transcripts"])
             runtime_s = time.time() - t0
             config_snapshot["transcripts_cached"] = True
@@ -576,23 +619,20 @@ def run_single_recording(
         device=config.whisper_device,
         language=rec.language,
         compute_type=config.whisper_compute_type,
+        beam_size=config.beam_size,
+        cpu_threads=config.cpu_threads,
     )
 
-    # Iterate frames from the PCM buffer, replicating _vad_loop's utterance
-    # assembly logic (speech_frames / silent_frames bookkeeping).
-    speech_frames: list[bytes] = []
-    silent_frames = 0
+    # The live pipeline's segmenter, so benchmark and live segmentation cannot drift.
+    segmenter = Segmenter.from_config(vad.is_speech, config)
     units: list[list[tuple[float, str]]] = []
 
-    def utterance_end(t_start: float, frames: list[bytes]) -> None:
+    def utterance_end(t_start: float, event: SegmentEvent) -> None:
         # Mirrors pipeline._queue_speech_segment + _process_utterance.
-        if len(frames) < min_speech_frames:
-            vad_events.append((t_start, "blip"))
+        vad_events.append((t_start, event.kind))
+        if event.kind == "blip":
             return
-        vad_events.append((t_start, "end"))
-        for f in frames:
-            stt.add_audio_frame(f)
-        text, _ms = stt.transcribe_buffer(rec.language)
+        text = stt.transcribe_utterance(b"".join(event.frames), rec.language).text
         if text is None:
             transcripts.append((t_start, "<none>"))
             return
@@ -626,21 +666,18 @@ def run_single_recording(
         # when slicing (iteration-only) so gold still matches.
         t_s = audio_t if (mode != "rt" or t_range is not None) else time.time() - t0
 
-        if vad.is_speech(frame):
-            if not speech_frames:
-                vad_events.append((t_s, "start"))
-            silent_frames = 0
-            speech_frames.append(frame)
+        event = segmenter.push(frame)
+        if event is None:
+            continue
+        if event.kind == "start":
+            vad_events.append((t_s, "start"))
         else:
-            if speech_frames:
-                silent_frames += 1
-                if silent_frames > max_silent_frames:
-                    utterance_end(t_s - silent_frames * frame_duration_ms / 1000.0, speech_frames)
-                    speech_frames = []
-                    silent_frames = 0
+            utterance_end(t_s - event.trailing_silent_frames * frame_duration_ms / 1000.0, event)
 
-    if speech_frames:
-        utterance_end(last_frame * frame_s, speech_frames)
+    final = segmenter.flush()
+    if final is not None:
+        utterance_end(last_frame * frame_s, final)
+    release_held(parser, sender, units, detections)
 
     runtime_s = time.time() - t0
     if cache_dir is not None:
@@ -744,9 +781,9 @@ def _transcribe_window_segments(
 ) -> list[tuple[float | None, str]]:
     """Transcribe one window and return ``(segment_start_s, text)`` pieces.
 
-    ``SpeechToText.transcribe_buffer`` joins Whisper's segments and discards
+    ``SpeechToText.transcribe_utterance`` joins Whisper's segments and discards
     their timestamps, so this calls ``stt.model.transcribe`` directly with the
-    same decoding kwargs as ``transcribe_buffer`` in ``backend/audio/stt.py``.
+    same decoding kwargs as ``transcribe_utterance`` in ``backend/audio/stt.py``.
     The text post-processing (``_fix_common_transcription_errors`` and
     ``_collapse_repetition``) is the production code, called read-only.
 
@@ -754,19 +791,19 @@ def _transcribe_window_segments(
     loop was trimmed, the timestamps are no longer reliable and ``None`` is
     returned for the single remaining piece.
     """
-    if chunk.size < SAMPLE_RATE * 0.5:  # same minimum as transcribe_buffer
+    if chunk.size < SAMPLE_RATE * 0.5:  # same minimum as transcribe_utterance
         return []
     segments, _info = stt.model.transcribe(
         chunk,
         language=language,
         initial_prompt=stt.initial_prompt,
         **({"hotwords": stt.hotwords} if stt.hotwords else {}),
-        beam_size=5,
+        beam_size=stt.beam_size,
         best_of=5,
         temperature=0.0,
-        compression_ratio_threshold=2.4,
-        log_prob_threshold=-1.0,
-        no_speech_threshold=0.6,
+        compression_ratio_threshold=stt_module.COMPRESSION_RATIO_THRESHOLD,
+        log_prob_threshold=stt_module.LOG_PROB_THRESHOLD,
+        no_speech_threshold=stt_module.NO_SPEECH_THRESHOLD,
         condition_on_previous_text=False,
         repetition_penalty=1.05,
         no_repeat_ngram_size=6,
@@ -819,6 +856,7 @@ def run_windowed_recording(
         device=config.whisper_device,
         compute_type=config.whisper_compute_type,
         mode="windowed",
+        beam_size=config.beam_size,
         window_s=window_s,
         hop_s=hop_s,
         skip_silent=skip_silent,
@@ -828,7 +866,11 @@ def run_windowed_recording(
     )
     cpath = feed_cache_path(cache_dir, key) if cache_dir is not None and use_cache else None
 
-    parser = StreamingParser(ReferenceParser(language=rec.language), context_ttl_s=context_ttl_s)
+    parser = StreamingParser(
+        ReferenceParser(language=rec.language, validator=_VALIDATOR),
+        context_ttl_s=context_ttl_s,
+        hold_chapter_only=True,  # as live
+    )
     raw: list[Detection] = []
     transcripts: list[tuple[float, str]] = []
     config_snapshot = {
@@ -853,6 +895,7 @@ def run_windowed_recording(
             t0 = time.time()
             for unit in cached["units"]:
                 register_feeds(parser, None, [(float(t), txt) for t, txt in unit], raw)
+            release_held(parser, None, cached["units"], raw)
             transcripts.extend((float(t), txt) for t, txt in cached["transcripts"])
             cached_stats = cached.get("stats", {})
             stats = WindowStats(
@@ -896,6 +939,8 @@ def run_windowed_recording(
         device=config.whisper_device,
         language=rec.language,
         compute_type=config.whisper_compute_type,
+        beam_size=config.beam_size,
+        cpu_threads=config.cpu_threads,
     )
     bounds = window_bounds(len(samples), SAMPLE_RATE, window_s, hop_s)
     if t_range is not None:
@@ -909,6 +954,7 @@ def run_windowed_recording(
     units: list[list[tuple[float, str]]] = []
 
     t0 = time.time()
+    window_times_s: list[float] = []  # wall time per transcribed window (throttling check)
     for start, end in bounds:
         w_start_s = start / SAMPLE_RATE
         chunk = samples[start:end]
@@ -917,7 +963,9 @@ def run_windowed_recording(
             transcripts.append((w_start_s, "<silent>"))
             continue
         try:
+            w_t0 = time.time()
             pieces = _transcribe_window_segments(stt, chunk, rec.language)
+            window_times_s.append(round(time.time() - w_t0, 3))
         except Exception as e:  # keep the run going; the failure is counted and printed
             stats.windows_failed += 1
             print(f"       [window {w_start_s:.1f}s] transcription failed: {e}", file=sys.stderr)
@@ -932,6 +980,7 @@ def run_windowed_recording(
         ]
         units.append(feeds)
         register_feeds(parser, None, feeds, raw)
+    release_held(parser, None, units, raw)
     runtime_s = time.time() - t0
 
     detections = dedupe_detections(raw, window_s)
@@ -942,6 +991,7 @@ def run_windowed_recording(
             "windows_skipped_silent": stats.windows_skipped_silent,
             "windows_failed": stats.windows_failed,
             "raw_detections_before_dedup": stats.raw_detections,
+            "window_times_s": window_times_s,
         }
     )
     if cache_dir is not None:
@@ -1110,6 +1160,11 @@ def main() -> int:
         default=None,
         help="restrict processing to START:END seconds, e.g. 0:600 (iteration-only)",
     )
+    ap.add_argument(
+        "--bible-db",
+        default=str(REPO_ROOT / "bible_data" / "biblelive.sqlite"),
+        help="Bible SQLite DB for the live pipeline's verse-exists check (skipped if missing)",
+    )
     ap.add_argument("--out", required=True)
     ap.add_argument("--records", default=None, help="comma-separated subset of record ids")
     ap.add_argument(
@@ -1118,10 +1173,21 @@ def main() -> int:
         help="Whisper device override (e.g. cpu when CUDA BLAS DLLs are unavailable)",
     )
     ap.add_argument("--model", default=None, help="Whisper model size override")
+    add_tuning_arguments(ap)  # the live CLI's tuning flags, e.g. --max-utterance-s
     ap.add_argument(
         "--compute-type", default=None, help="Whisper compute type override (e.g. int8 on cpu)"
     )
     args = ap.parse_args()
+
+    global _VALIDATOR
+    if Path(args.bible_db).is_file():
+        _VALIDATOR = BibleLookup(args.bible_db, readonly=True).get_validator_hook()
+    else:
+        print(
+            f"[warn] {args.bible_db} not found: references to non-existent verses are kept "
+            "(the live pipeline drops them)",
+            file=sys.stderr,
+        )
 
     audio_dir_env = Path(__import__("os").environ.get("BIBLELIVE_BENCH_AUDIO_DIR", ""))
     audio_dir = Path(args.audio_dir) if args.audio_dir else audio_dir_env
@@ -1134,6 +1200,7 @@ def main() -> int:
         config.whisper_model = args.model
     if args.compute_type:
         config.whisper_compute_type = args.compute_type
+    apply_tuning_arguments(config, args)
     tmp_dir = audio_dir / ".bench-16k" if audio_dir else Path("bench_audio/.bench-16k")
     tmp_dir.mkdir(parents=True, exist_ok=True)
     cache_dir = Path(args.cache_dir)
@@ -1214,6 +1281,7 @@ def main() -> int:
         "audio_dir": str(audio_dir) if audio_dir else None,
         "created_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "tolerance_s": LATENCY_TOLERANCE_S,
+        "verse_validator": _VALIDATOR is not None,
         "dependency_versions": {"ctranslate2": ct2_version},
         "aggregate": aggregate(results),
         "recordings": results,
