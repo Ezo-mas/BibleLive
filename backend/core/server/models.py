@@ -148,6 +148,23 @@ class ErrorResponse(BaseModel):
     detail: str
 
 
+class LanguageRequest(BaseModel):
+    """Request body for switching the audio pipeline's spoken language."""
+
+    language: str = Field(
+        ...,
+        min_length=1,
+        max_length=16,
+        description="Language code the pipeline should transcribe in, e.g. 'en' or 'lt'",
+    )
+
+
+class LanguageResponse(BaseModel):
+    """The language the audio pipeline is transcribing in."""
+
+    language: str
+
+
 class BookInfo(BaseModel):
     """One book of the canonical canon, for the operator's passage search.
 

@@ -1,66 +1,64 @@
-import { Button, CheckIcon, XIcon } from '../../components'
+import { Button, XIcon } from '../../components'
 import type { FlashTarget } from '../hooks/useOperatorState'
 
-export interface OperatorActionsProps {
-  canApprove: boolean
+export interface ClearDisplayButtonProps {
   canClearDisplay: boolean
+  flash: FlashTarget | null
+  onClearDisplay: () => void
+}
+
+/**
+ * Clear Display: take the projector back to its waiting screen.
+ *
+ * It lives under ON DISPLAY, next to what it clears, and only does anything while
+ * the display has content.
+ */
+export function ClearDisplayButton({
+  canClearDisplay,
+  flash,
+  onClearDisplay,
+}: ClearDisplayButtonProps) {
+  return (
+    <Button
+      variant="danger"
+      size="md"
+      icon={<XIcon />}
+      onClick={onClearDisplay}
+      disabled={!canClearDisplay}
+      className={flash === 'clear' ? 'btn-flash' : ''}
+    >
+      Clear Display
+    </Button>
+  )
+}
+
+export interface QueueFooterProps {
   canClearPending: boolean
   flash: FlashTarget | null
-  onApprove: () => void
-  onClearDisplay: () => void
   onClearPending: () => void
 }
 
 /**
- * The three operator actions. "Approve and Show" is the only path from the
- * pending queue to the display, and it is disabled unless an item is selected.
+ * The foot of the pending queue: Clear Queue, and a reminder of the keys that
+ * move through it.
+ *
+ * There is no approve button here. Showing a queued detection is Show on display
+ * under UP NEXT — the same request the old Approve button sent — so the console
+ * has one primary action instead of two that did the same thing.
  */
-export function OperatorActions({
-  canApprove,
-  canClearDisplay,
-  canClearPending,
-  flash,
-  onApprove,
-  onClearDisplay,
-  onClearPending,
-}: OperatorActionsProps) {
+export function QueueFooter({ canClearPending, flash, onClearPending }: QueueFooterProps) {
   return (
-    <div className="operator-actions">
+    <div className="operator-queue-footer">
       <Button
-        variant="primary"
-        size="lg"
-        fullWidth
-        icon={<CheckIcon />}
-        onClick={onApprove}
-        disabled={!canApprove}
-        className={flash === 'approve' ? 'btn-flash' : ''}
+        variant="ghost"
+        size="sm"
+        onClick={onClearPending}
+        disabled={!canClearPending}
+        className={flash === 'clearPending' ? 'btn-flash' : ''}
       >
-        Approve and Show
+        Clear Queue
       </Button>
-
-      <div className="operator-actions-secondary">
-        <Button
-          variant="danger"
-          size="md"
-          icon={<XIcon />}
-          onClick={onClearDisplay}
-          disabled={!canClearDisplay}
-          className={flash === 'clear' ? 'btn-flash' : ''}
-        >
-          Clear Display
-        </Button>
-
-        <Button
-          variant="secondary"
-          size="md"
-          icon={<XIcon />}
-          onClick={onClearPending}
-          disabled={!canClearPending}
-          className={flash === 'clearPending' ? 'btn-flash' : ''}
-        >
-          Clear Queue
-        </Button>
-      </div>
+      <span className="operator-queue-hint">↑ ↓ to move</span>
     </div>
   )
 }

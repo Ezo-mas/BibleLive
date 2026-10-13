@@ -139,10 +139,16 @@ function jsonResponse(body: unknown, status = 200): Response {
   } as unknown as Response
 }
 
-/** The mocked fetch: routes the two endpoints the search panel calls. */
+/**
+ * The mocked fetch: routes the two endpoints the search panel calls, and answers
+ * the console's own spoken-language read the way the server would.
+ */
 function createFetchMock() {
   return vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) => {
     const url = String(input)
+    if (url.startsWith('/api/language')) {
+      return jsonResponse({ language: 'en' })
+    }
     if (url.startsWith('/api/books')) {
       return jsonResponse(BOOKS)
     }
@@ -158,6 +164,14 @@ type FetchMock = ReturnType<typeof createFetchMock>
 let fetchMock: FetchMock
 let lookupStatus = 200
 let lookupErrorDetail = ''
+
+/**
+ * Requests the search made. The console reads the spoken language itself when it
+ * connects, which is not the search's doing, so those calls are set aside.
+ */
+function searchCalls() {
+  return fetchMock.mock.calls.filter(([url]) => !String(url).startsWith('/api/language'))
+}
 
 function stubFetch() {
   lookupStatus = 200
@@ -240,7 +254,7 @@ function clickResult(name: string | RegExp) {
 
 function showNext() {
   act(() => {
-    screen.getByRole('button', { name: 'Show' }).click()
+    screen.getByRole('button', { name: 'Show on display' }).click()
   })
 }
 
@@ -298,7 +312,7 @@ describe('Find Scripture', () => {
     expect(screen.queryByLabelText('Chapter')).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Find' })).not.toBeInTheDocument()
     // An unused console does not fetch the canon.
-    expect(fetchMock).not.toHaveBeenCalled()
+    expect(searchCalls()).toEqual([])
   })
 
   it('waits for typing to settle before matching', async () => {
@@ -313,7 +327,7 @@ describe('Find Scripture', () => {
       expect(screen.getByRole('button', { name: /^Genesis/ })).toBeInTheDocument()
     )
     // The book list came from the server, with the operator's token.
-    expect(fetchMock.mock.calls[0][0]).toBe('/api/books')
+    expect(searchCalls()[0][0]).toBe('/api/books')
   })
 
   it('matches a partial book name by substring and marks the matched text', async () => {
@@ -611,7 +625,7 @@ describe('Find Scripture', () => {
     expect(
       within(screen.getByTestId('live-verses')).getByText('Romans 8:28 text')
     ).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Show' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Show on display' })).toBeDisabled()
 
     push({ type: 'display_confirmed', data: { reference: manualReference('John', 3, 16, 17) } })
 
@@ -648,7 +662,7 @@ describe('Find Scripture', () => {
     ).toBeInTheDocument()
     // Still staged, so the operator can fix the passage or retry.
     expect(within(screen.getByTestId('next-preview')).getByText('John 3:16-17')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Show' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Show on display' })).toBeEnabled()
   })
 
   it('returns to a queue selection when a pending reference is chosen instead', async () => {

@@ -98,7 +98,7 @@ describe('connection recovery', () => {
 
     expect(screen.getByText(/not connected to the server/i)).toBeInTheDocument()
     // Every action is paused while the socket is down.
-    expect(screen.getByRole('button', { name: /approve and show/i })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Show on display' })).toBeDisabled()
   })
 
   it('reconnects on request and ignores the replaced socket', () => {

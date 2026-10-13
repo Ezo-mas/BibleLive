@@ -94,10 +94,31 @@ class Config(BaseSettings):
     # at most 3 by default anyway.
     MAX_VERSES_PER_REFERENCE: int = 50
 
+    # Runtime language switching. The audio pipeline is a separate process that
+    # owns the microphone and serves a small control API of its own (see
+    # audio/control.py). The server forwards the operator's language choice to
+    # it, so the console never talks to that port directly. The URL default is the
+    # pipeline's own --control-host/--control-port default, not a port of this
+    # server's: change both together, and set the token here when the pipeline
+    # runs with --control-token.
+    AUDIO_CONTROL_URL: str = "http://127.0.0.1:8001"
+    AUDIO_CONTROL_TOKEN: str | None = None
+    # Seconds to wait for the pipeline before reporting it unreachable. Short on
+    # purpose: a request that hangs would hold the operator's Settings dialog.
+    AUDIO_CONTROL_TIMEOUT: float = 3.0
+
     @field_validator("LOG_LEVEL")
     @classmethod
     def _upper_log_level(cls, value: str) -> str:
         return value.upper()
+
+    @field_validator("AUDIO_CONTROL_URL")
+    @classmethod
+    def _audio_control_url(cls, value: str) -> str:
+        value = value.strip().rstrip("/")
+        if not value.lower().startswith(("http://", "https://")):
+            raise ValueError("BIBLELIVE_AUDIO_CONTROL_URL must start with http:// or https://")
+        return value
 
     @property
     def project_root(self) -> Path:

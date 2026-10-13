@@ -1,5 +1,15 @@
 /* Audience Display - Modern, Typography-First Design */
 
+/* The one accent on the projector: the short rule above the citation. It matches
+   the operator console's accent, so the two pages read as one product. */
+:root {
+  --display-accent: #a35f00;
+}
+
+[data-theme='dark'] {
+  --display-accent: #e0a63a;
+}
+
 /* Override global body styles for display-specific full-screen layout */
 body {
   margin: 0;
@@ -112,13 +122,29 @@ body {
 
 /* Reference - Elegant Label Below */
 .display-reference {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: clamp(0.6rem, 1.6vh, 1.25rem);
   font-size: clamp(1.25rem, 2.5vw, 2.5rem);
   font-weight: 600;
   font-family: var(--font-sans);
   color: var(--color-text-secondary);
   text-transform: uppercase;
-  letter-spacing: 0.05em;
-  opacity: 0.85;
+  letter-spacing: 0.12em;
+  opacity: 0.9;
+}
+
+/* A short rule between the passage and its citation: it separates the two
+   without a box, and gives the slide a finished edge the audience reads from the
+   back of the room. */
+.display-reference::before {
+  content: '';
+  width: clamp(2.5rem, 5vw, 5rem);
+  height: 3px;
+  border-radius: var(--radius-full);
+  background: var(--display-accent);
+  opacity: 0.8;
 }
 
 /* Optional Translation Indicator */
@@ -146,7 +172,7 @@ body {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: var(--space-6);
+  gap: var(--space-5);
   opacity: 0.5;
 }
 
@@ -155,9 +181,14 @@ body {
   opacity: 0.5;
 }
 
+/* The idle and connection messages are for the operator, who is the only person
+   looking at this screen before a reference appears. They stay readable but
+   small, so the audience sees a calm blank slide and not a status line. */
 .display-waiting-text {
-  font-size: clamp(1.5rem, 3vw, 2.5rem);
+  font-size: clamp(0.875rem, 1.4vw, 1.25rem);
   font-family: var(--font-sans);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
   color: var(--color-text-muted);
   margin: 0;
 }

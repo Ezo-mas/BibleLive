@@ -9,7 +9,7 @@ export interface PendingQueueProps {
   count: number
   selectedId: string | null
   onSelect: (id: string) => void
-  /** Display settings and action buttons, rendered under the queue. */
+  /** The queue's footer (Clear Queue), pinned under the list. */
   children?: ReactNode
 }
 
