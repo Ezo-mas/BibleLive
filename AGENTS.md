@@ -38,7 +38,7 @@ Before reporting done:
 
 - **Backend changes**: run `make check` (ruff lint + format-check + pytest)
   and `make typecheck` (mypy — separate from `check`).
-- **Frontend changes**: from `frontend/` run `npm run lint && npm run typecheck && npm test -- --run`.
+- **Frontend changes**: from `frontend/` run `npm run lint && npm run typecheck && npm run format:check && npm test -- --run`.
 - **Detection-accuracy changes** (Whisper prompt/hotwords/beam/model, VAD
   tuning, utterance segmentation, transcript post-processing, parser
   patterns): unit tests are not enough — run the benchmark before and after
