@@ -170,6 +170,7 @@ export interface AuthenticateAction {
 }
 
 export type OperatorAction =
+  | AuthenticateAction
   | ApproveAction
   | ClearAction
   | ClearPendingAction
