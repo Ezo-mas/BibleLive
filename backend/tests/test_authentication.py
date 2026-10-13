@@ -107,6 +107,16 @@ def test_websocket_operator_non_ascii_token_is_refused_not_an_error(client, auth
     )
 
 
+def test_http_bearer_non_ascii_token_is_refused_not_an_error(client, auth_enabled):
+    """compare_digest raises on non-ASCII str; over HTTP that must read as a 401."""
+    ref = {"book": "John", "chapter": 3, "verse_start": 16, "confidence": "high", "inferred": False}
+    # Raw UTF-8 bytes on the wire: httpx will not encode non-ASCII str headers,
+    # but a real client can send the bytes, which Starlette decodes as latin-1.
+    raw = "Bearer tökén".encode()
+    response = client.post("/api/reference", json=ref, headers=[(b"Authorization", raw)])
+    assert response.status_code == 401
+
+
 def test_authenticate_message_is_ignored_when_auth_is_disabled(client):
     """The console always sends its token; a server without auth just moves on."""
     assert config.REQUIRE_AUTH is False

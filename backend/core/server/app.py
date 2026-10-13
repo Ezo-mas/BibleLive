@@ -4,7 +4,6 @@ import asyncio
 import contextlib
 import json
 import logging
-import secrets
 from contextlib import asynccontextmanager
 from typing import Any
 
@@ -20,7 +19,7 @@ from ..books import CANONICAL_BOOKS
 from ..config import config
 from ..passage import PassageError, resolve_passage, validate_detection
 from . import language_control
-from .auth import verify_operator_token
+from .auth import token_matches, verify_operator_token
 from .log_redaction import install_token_redaction
 from .models import (
     ApprovalRequest,
@@ -267,18 +266,6 @@ async def _handle_authenticate(
 OPERATOR_AUTH_TIMEOUT_S = 10.0
 
 
-def _token_matches(candidate: object) -> bool:
-    """Constant-time check against the operator token.
-
-    Compared as bytes: ``secrets.compare_digest`` raises on non-ASCII ``str``,
-    which would turn a stray character into a server error instead of a refusal.
-    """
-    expected = config.OPERATOR_TOKEN
-    if not isinstance(candidate, str) or not expected:
-        return False
-    return secrets.compare_digest(candidate.encode("utf-8"), expected.encode("utf-8"))
-
-
 async def _authenticate_operator(websocket: WebSocket, query_token: str | None) -> bool:
     """Accept an operator socket and check its token; close it with 1008 if wrong.
 
@@ -299,7 +286,7 @@ async def _authenticate_operator(websocket: WebSocket, query_token: str | None) 
         return False
 
     if query_token is not None:
-        authorized = _token_matches(query_token)
+        authorized = token_matches(query_token)
         method = "websocket_query"
     else:
         method = "websocket_message"
@@ -311,7 +298,7 @@ async def _authenticate_operator(websocket: WebSocket, query_token: str | None) 
         authorized = (
             isinstance(message, dict)
             and message.get("action") == "authenticate"
-            and _token_matches(message.get("token"))
+            and token_matches(message.get("token"))
         )
 
     if not authorized:
