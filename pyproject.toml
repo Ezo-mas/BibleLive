@@ -25,6 +25,11 @@ filterwarnings = [
     # Starlette's TestClient currently warns when httpx2 is unavailable;
     # keep strict warning handling for everything else until TestClient is migrated.
     "ignore::starlette.exceptions.StarletteDeprecationWarning",
+    # webrtcvad (Linux) does `import pkg_resources` at top level; setuptools 80
+    # deprecates that API while the setuptools<81 pin keeps it importable.
+    # Scoped to the importing module (stacklevel=2 attributes it to webrtcvad)
+    # so the same message still errors anywhere else.
+    "ignore:pkg_resources is deprecated:UserWarning:webrtcvad",
 ]
 
 [tool.coverage.run]
