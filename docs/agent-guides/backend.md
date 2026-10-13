@@ -54,6 +54,7 @@ On Windows there is no `make`: use `.venv\Scripts\python.exe -m ...` with
 | Change manual scripture selection (Find Scripture) | `backend/core/passage.py` (validation + resolution) over `backend/core/books.py` (canon); endpoints and the `display_reference` action in `backend/core/server/app.py` |
 | Change display history source / Show Again state | `backend/core/server/state.py` (`AppState.reference_history`, newest first, `MAX_HISTORY_REFERENCES`, 20-entry snapshot window) |
 | Change audio capture/VAD/STT/sending | the matching module in `backend/audio/` |
+| Change runtime language switching | the pipeline side is `backend/audio/control.py` (loopback API) + `pipeline.py`/`stt.py`; the server's proxy for the console is `backend/core/server/language_control.py` and `/api/language` in `app.py` (config: `AUDIO_CONTROL_*`); the console side is `frontend/src/operator/languageApi.ts`, `hooks/useSpokenLanguage.ts`, `components/LanguageSettings.tsx` |
 | Change authentication or WS connection management | `backend/core/server/auth.py`, `connections.py` |
 | Change WS message protocol or approval flow | **stop — ask the user first** (Behavior rules) |
 

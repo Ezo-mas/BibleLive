@@ -145,6 +145,17 @@ being captured in the old language; utterances already queued keep the language
 they were captured in — they are transcribed and parsed with their original
 language and prompt.
 
+The operator console does the same from **Settings → Audio → Spoken language**,
+and shows the active language (`EN` / `LT`) in the header. A browser cannot call
+the loopback control port itself, so the console goes through the server:
+`GET`/`POST /api/language` (operator-authenticated like the other operator
+endpoints) forwards to the pipeline and answers `503` when the pipeline is not
+running or was started with `--no-control`. The server finds the pipeline at
+`BIBLELIVE_AUDIO_CONTROL_URL` (default `http://127.0.0.1:8001`, the pipeline's
+own default) and sends `BIBLELIVE_AUDIO_CONTROL_TOKEN` as the bearer token when
+the pipeline runs with `--control-token`. If you change `--control-host` or
+`--control-port`, change the URL to match.
+
 #### Pipeline logging
 
 The CLI configures logging once at startup (library modules never touch the root

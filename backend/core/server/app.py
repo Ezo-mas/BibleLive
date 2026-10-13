@@ -18,6 +18,7 @@ from ..bible_lookup import BibleLookup
 from ..books import CANONICAL_BOOKS
 from ..config import config
 from ..passage import PassageError, resolve_passage
+from . import language_control
 from .auth import verify_operator_token
 from .models import (
     ApprovalRequest,
@@ -28,6 +29,8 @@ from .models import (
     ClearPendingResponse,
     ClearResponse,
     ErrorResponse,
+    LanguageRequest,
+    LanguageResponse,
     OperatorAction,
     PassageResponse,
     ReferenceSubmitRequest,
@@ -657,6 +660,62 @@ def create_app(bible_lookup: BibleLookup | None = None) -> FastAPI:
             verses=[VerseText(verse=verse, text=text) for verse, text in passage.verses],
             text=passage.text,
         )
+
+    @app.get(
+        "/api/language",
+        response_model=LanguageResponse,
+        responses={
+            200: {"description": "The language the audio pipeline is transcribing in"},
+            401: {"model": ErrorResponse, "description": "Unauthorized"},
+            403: {"model": ErrorResponse, "description": "Forbidden"},
+            502: {"model": ErrorResponse, "description": "The pipeline answered wrongly"},
+            503: {"model": ErrorResponse, "description": "The audio pipeline is not reachable"},
+        },
+        dependencies=[Depends(verify_operator_token)],
+    )
+    async def get_spoken_language() -> LanguageResponse:
+        """Report the language the audio pipeline is transcribing in.
+
+        The pipeline is a separate process, so this asks it (see
+        ``language_control``): a pipeline that is not running is a 503, not a
+        guess. Requires authentication if BIBLELIVE_REQUIRE_AUTH is enabled.
+        """
+        try:
+            language = await language_control.get_language()
+        except language_control.LanguageControlError as e:
+            raise HTTPException(status_code=e.status_code, detail=e.message)
+        return LanguageResponse(language=language)
+
+    @app.post(
+        "/api/language",
+        response_model=LanguageResponse,
+        responses={
+            200: {"description": "The pipeline switched; this is the language it confirmed"},
+            400: {"model": ErrorResponse, "description": "The pipeline does not support it"},
+            401: {"model": ErrorResponse, "description": "Unauthorized"},
+            403: {"model": ErrorResponse, "description": "Forbidden"},
+            422: {"model": ErrorResponse, "description": "Invalid request"},
+            502: {"model": ErrorResponse, "description": "The pipeline answered wrongly"},
+            503: {"model": ErrorResponse, "description": "The audio pipeline is not reachable"},
+        },
+        dependencies=[Depends(verify_operator_token)],
+    )
+    async def set_spoken_language(request: LanguageRequest) -> LanguageResponse:
+        """Switch the language the audio pipeline transcribes in, without a restart.
+
+        Forwarded to the pipeline, which validates the value against the
+        languages it has models and parsers for and owns the switch itself: the
+        utterance being spoken when it flips is discarded, and audio already
+        queued keeps the language it was captured in. The reply is the language
+        the pipeline confirms, never an echo of the request. Requires
+        authentication if BIBLELIVE_REQUIRE_AUTH is enabled.
+        """
+        try:
+            language = await language_control.set_language(request.language)
+        except language_control.LanguageControlError as e:
+            raise HTTPException(status_code=e.status_code, detail=e.message)
+        logger.info(f"Spoken language set to {language!r}")
+        return LanguageResponse(language=language)
 
     @app.get(
         "/api/state",

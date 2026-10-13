@@ -9,8 +9,10 @@ export interface OperatorHeaderProps {
   /** Only offer logout when a token is actually in use. */
   showLogout: boolean
   onLogout: () => void
-  /** Open the settings dialog (display, theme, and auto-approve). */
+  /** Open the settings dialog (display, language, theme, and auto-approve). */
   onOpenSettings: () => void
+  /** The spoken-language reading, shown beside the connection health. */
+  language?: ReactNode
   /**
    * Action feedback, rendered between the title and the controls.
    *
@@ -35,6 +37,7 @@ export function OperatorHeader({
   showLogout,
   onLogout,
   onOpenSettings,
+  language,
   feedback,
 }: OperatorHeaderProps) {
   return (
@@ -48,6 +51,7 @@ export function OperatorHeader({
 
       <div className="operator-header-right">
         <div className="operator-status-group">
+          {language}
           <ConnectionIndicator state={connectionState} />
           {displayConnected && (
             <div className="operator-display-status">

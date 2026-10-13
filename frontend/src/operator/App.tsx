@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useTheme } from '../hooks/useTheme'
 import { useOperatorState } from './hooks/useOperatorState'
 import { useOperatorShortcuts } from './hooks/useOperatorShortcuts'
@@ -11,6 +11,7 @@ import { AutoApproveCompact } from './components/AutoApproveCompact'
 import { SettingsDialog } from './components/SettingsDialog'
 import type { SettingsSection } from './components/SettingsDialog'
 import { OperatorHeader } from './components/OperatorHeader'
+import { LanguageChip } from './components/LanguageChip'
 import { OperatorActions } from './components/OperatorActions'
 import { ConnectionBanner } from './components/ConnectionBanner'
 import { FeedbackNotice } from './components/FeedbackNotice'
@@ -63,6 +64,15 @@ export default function App() {
     onDeselect: operator.deselect,
   })
 
+  // The pipeline can be started, restarted, or switched from a terminal while the
+  // console is open, so look again whenever the dialog that shows and changes the
+  // language is opened — the reading the operator acts on is then current.
+  const { refresh: refreshSpokenLanguage } = operator.spokenLanguage
+  const isConnected = operator.isConnected
+  useEffect(() => {
+    if (settingsOpen && isConnected) refreshSpokenLanguage()
+  }, [settingsOpen, isConnected, refreshSpokenLanguage])
+
   function openSettings(section: SettingsSection) {
     setSettingsSection(section)
     setSettingsOpen(true)
@@ -87,6 +97,12 @@ export default function App() {
         showLogout={operator.isAuthenticated}
         onLogout={operator.logout}
         onOpenSettings={() => openSettings('display')}
+        language={
+          <LanguageChip
+            language={operator.spokenLanguage.language}
+            onOpenSettings={() => openSettings('language')}
+          />
+        }
         // Action feedback lives in the header so it can never cover the actions
         // or the queue; it is still the same single-slot live region.
         feedback={<FeedbackNotice notice={operator.notice} onDismiss={operator.dismissNotice} />}
@@ -164,6 +180,7 @@ export default function App() {
         disabled={!operator.isConnected}
         onVerseLimitChange={operator.setDisplayVerseLimit}
         onThemeChange={operator.setDisplayBackground}
+        spokenLanguage={operator.spokenLanguage}
         autoMode={operator.autoMode}
         onAutoModeChange={operator.setAutoApproveMode}
         appTheme={theme}

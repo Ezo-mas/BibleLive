@@ -58,6 +58,13 @@ BIBLELIVE_DB_READONLY=true
 
 # Logging
 BIBLELIVE_LOG_LEVEL=INFO
+
+# Spoken-language switch in the operator console (optional). Only needed when
+# the audio pipeline's control API is not on its default address, or when the
+# pipeline runs with --control-token. Keep the pipeline's control port on
+# loopback; the server forwards to it so browsers never have to.
+# BIBLELIVE_AUDIO_CONTROL_URL=http://127.0.0.1:8001
+# BIBLELIVE_AUDIO_CONTROL_TOKEN=<same value as the pipeline's --control-token>
 ```
 
 ### Generate Secure Token
