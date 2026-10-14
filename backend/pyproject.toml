@@ -55,4 +55,4 @@ dev = [
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["core*", "audio*"]
+include = ["core*", "audio*", "launcher*"]
