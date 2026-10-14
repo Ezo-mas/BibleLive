@@ -66,6 +66,29 @@ On Windows there is no `make`: use `.venv\Scripts\python.exe -m ...` with
 | Change authentication or WS connection management | `backend/core/server/auth.py`, `connections.py` |
 | Change WS message protocol or approval flow | **stop — ask the user first** (Behavior rules) |
 
+## Windows launcher (`backend/launcher/`)
+
+`python -m launcher` (PYTHONPATH=backend) starts the server on 127.0.0.1 and
+the audio pipeline, waits for `/readyz`, and kills both process trees on exit.
+Defaults: `large-v3-turbo`, device `auto` (CUDA if present, else CPU `int8`
+with a warning), compute type `auto` (float16 > int8_float16 > int8). Settings
+live in `%APPDATA%\BibleLive\launcher.json` (server settings and `logs\`
+beside it); CLI flags override them and `--save` persists them. Useful flags:
+`--list-mics`, `--mic`, `--language`, `--port`, `--open operator|display`,
+`--dry-run` (print resolved commands/env). Args after `--` go to `audio.cli`.
+A `ffmpeg/` dir next to the app is prepended to PATH if present.
+`start.ps1` is unchanged. Modules: `settings.py` (incl. allowed enum values,
+shared with `cli.py`), `gpu.py`, `process.py` (UI-agnostic `Launcher`, thread-safe
+`stop()`, `on_event` callback, `error_code` for translation), `cli.py`.
+GUI: `python -m launcher --gui` (default when there is no console, e.g.
+`pythonw`); Tk code is thin in `gui.py`, testable logic in `viewmodel.py`,
+strings in `i18n.py` (en/lt, `ui_language` setting, default from the Windows UI
+language). `monitors.py` finds the projector (first non-primary monitor unless
+`projector_monitor` is saved); `projector.py` opens `/display` in an Edge (else
+Chrome) kiosk window on it and never falls back to the operator's screen.
+
+Installer commands (`commands.py`): `--check-gpu` (exit 0, or 3 without a CUDA GPU), `--download-model`, `--gpu-self-test` (exit 0/1). Models are cached under `HF_HOME=%LOCALAPPDATA%\BibleLive\models` (set by `build_plan`). The portable Windows build is `scripts/windows/build-portable.ps1` (see its README).
+
 ## Database lookup / import pointers
 
 - Verse-text lookup: `backend/core/bible_lookup.py` over the SQLite DB at
