@@ -128,3 +128,22 @@ below the fold.
   backoff behavior is covered by `test_capture_recovery.py`. Flagged by the
   follow-up review; logged, not fixed.
 - **Logged:** 2026-10-13
+
+### The audio pipeline keeps the startup Bible and ignores a version switch
+- **Where:** `backend/audio/pipeline.py` (the `BibleLookup` it builds at startup,
+  used to validate parsed references before they are sent).
+- **Problem:** The pipeline is a separate process with its own database
+  connection, so the runtime Bible-version switch (`/api/bible-version`, the
+  language default) changes the server's text but not what the pipeline checks
+  detections against. The pipeline keeps validating against the translation it
+  started with.
+- **Impact:** With another translation active, references that exist only there
+  (LTB has 1 Samuel 24:23 and Ecclesiastes 4:17; KJV lacks both) are dropped in
+  the pipeline and never reach the operator; the reverse is caught later by the
+  server's own check at ingest. It only affects verse-level edges, but it
+  contradicts the feature's implication that everything follows the switch.
+- **Evidence:** Code read 2026-10-14 (reviewer finding): the lookup is created
+  once at pipeline startup and never reopened; the server's switch lives in
+  `AppState.bible_lookup` and is not visible to it. Logged, not fixed.
+- **Logged:** 2026-10-14
+

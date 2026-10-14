@@ -195,6 +195,37 @@ own default) and sends `BIBLELIVE_AUDIO_CONTROL_TOKEN` as the bearer token when
 the pipeline runs with `--control-token`. If you change `--control-host` or
 `--control-port`, change the URL to match.
 
+#### Bible version (translation) switching
+
+Each translation is its own SQLite file in the same folder as
+`BIBLELIVE_DB_PATH` (`bible_data/`), with a `translation` row in its
+`bible_metadata` table (`kjv`, `ltb`, `web`, ...). The server offers every
+`*.sqlite` file there that has that metadata and the `books`/`verses` tables;
+backups, raw source dumps and unlabelled files are ignored. To add a translation,
+convert it to this schema (see `backend/scripts/convert_sqlite_bibles.py` and
+`DATABASE_SETUP.md`) and drop it in the folder.
+
+The operator console switches translation from **Settings → Audio → Bible
+version**: `GET`/`POST /api/bible-version` (operator-authenticated), body
+`{"version": "ltb"}`. The change applies to all verse text from then on, is saved
+in `BIBLELIVE_SETTINGS_PATH`, and is restored on the next start (a saved version
+that is gone falls back to `BIBLELIVE_DB_PATH`). The choice is saved together
+with the `BIBLELIVE_DB_PATH` it was made under; if you later change that path, the
+saved choice is ignored (with a warning in the log) and the configured database
+is used. Detections and the display carry
+coordinates only, but translations differ in which verses exist (KJV Acts 8:37 is
+absent from WEB) and how they number them, so a switch that changes the version
+**clears the pending queue** rather than let a detection validated under one
+translation show another's text. The passage already on screen is not
+re-rendered. Every operator console is told over the WebSocket
+(`bible_version_confirmed`, then `pending_cleared`/`pending_update`).
+
+Switching the spoken language to a *different* language also switches to that language's default
+translation (`BIBLELIVE_LANGUAGE_BIBLE_VERSIONS`, default English → `kjv`,
+Lithuanian → `ltb`). A default that is not installed is skipped. The operator can
+pick another translation afterwards; it stays until the language changes again.
+Set `BIBLELIVE_AUTO_BIBLE_VERSION=false` to turn the automatic switch off.
+
 #### Pipeline logging
 
 The CLI configures logging once at startup (library modules never touch the root
@@ -238,7 +269,8 @@ output, ignored short VAD blips, and skipped duplicates.
   `display_settings`, and `connection_status` events
 - `ws://<host>/ws/operator` — operator clients receive `pending_update`,
   `approval_confirmed`, `clear_confirmed`, `pending_cleared`, `state_snapshot`,
-  `auto_mode_confirmed`, `display_settings_confirmed`, and `connection_status`
+  `auto_mode_confirmed`, `display_settings_confirmed`,
+  `bible_version_confirmed` (`{version, available}`), and `connection_status`
   events; they send these actions:
   - `{action: 'authenticate', token}` — first, when authentication is enabled
     (ignored otherwise)
@@ -281,6 +313,8 @@ invalid log a warning and fall back to that default; an invalid
 | `BIBLELIVE_RELOAD`        | `true`                      | Uvicorn auto-reload (dev)|
 | `BIBLELIVE_AUTO_MODE`     | `off`                       | Default auto-approve mode (no persisted setting) |
 | `BIBLELIVE_SETTINGS_PATH` | `data/server_settings.json` | Persisted operator settings |
+| `BIBLELIVE_AUTO_BIBLE_VERSION` | `true`                 | Switch Bible version with the spoken language |
+| `BIBLELIVE_LANGUAGE_BIBLE_VERSIONS` | `{"en":"kjv","lt":"ltb"}` | Default translation per spoken language (JSON) |
 | `BIBLELIVE_REQUIRE_AUTH`  | `false`                     | Protect operator endpoints with a token |
 | `BIBLELIVE_OPERATOR_TOKEN`| unset                       | Operator token (required if auth enabled) |
 | `BIBLELIVE_CORS_ORIGINS`  | empty                       | Comma-separated allowed origins (empty = same-origin only) |
