@@ -78,6 +78,36 @@ class SettingsStore:
         """Return the persisted auto-approve mode, or ``default``."""
         return coerce_auto_mode(self._read().get("auto_mode"), default=default)
 
+    def load_bible_version(self, db_path: str) -> str | None:
+        """Return the persisted Bible translation id, or None if none applies.
+
+        The choice is saved with the ``DB_PATH`` it was made under. If that path
+        has since been changed, the new configuration wins and the saved choice
+        is ignored, so editing ``BIBLELIVE_DB_PATH`` for a deployment takes
+        effect instead of being silently overridden.
+        """
+        settings = self._read()
+        value = settings.get("bible_version")
+        if not isinstance(value, str) or not value:
+            return None
+        if settings.get("bible_version_db_path") != db_path:
+            logger.warning(
+                f"Ignoring saved Bible version {value!r}: BIBLELIVE_DB_PATH is no longer "
+                "the one it was chosen under"
+            )
+            return None
+        return value
+
+    def save_bible_version(self, version: str, db_path: str) -> bool:
+        """Persist the chosen Bible translation id; returns False when the write failed."""
+        settings = self._read()
+        settings["bible_version"] = version
+        settings["bible_version_db_path"] = db_path
+        if not self._write(settings):
+            return False
+        logger.info(f"Persisted Bible version '{version}' to {self.path}")
+        return True
+
     def save_auto_mode(self, auto_mode: AutoMode) -> bool:
         """Persist ``auto_mode`` atomically; returns False when the write failed.
 
@@ -87,7 +117,13 @@ class SettingsStore:
         """
         settings = self._read()
         settings["auto_mode"] = auto_mode
+        if not self._write(settings):
+            return False
+        logger.info(f"Persisted auto-approve mode '{auto_mode}' to {self.path}")
+        return True
 
+    def _write(self, settings: dict[str, Any]) -> bool:
+        """Write ``settings`` atomically; returns False when the write failed."""
         tmp_path: Path | None = None
         try:
             self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -112,6 +148,4 @@ class SettingsStore:
                 with contextlib.suppress(OSError):
                     tmp_path.unlink()
             return False
-
-        logger.info(f"Persisted auto-approve mode '{auto_mode}' to {self.path}")
         return True

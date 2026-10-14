@@ -190,10 +190,17 @@ python3 -m core.import_bible --translation kjv --source data/kjv2.json --output 
 python3 -m core.import_bible --translation niv --source data/niv.json --output bible_data/niv.sqlite
 ```
 
-Configure which database to use:
+Configure which database the server starts with:
 ```bash
 export BIBLELIVE_DB_PATH=bible_data/niv.sqlite
 ```
+
+Every `*.sqlite` file in the same folder whose `bible_metadata` has a
+`translation` row (and the `books`/`verses` tables) is also available for
+**runtime switching** from the operator console (Settings → Audio → Bible
+version), so installing a translation is just adding its file there. Keep the
+English canonical book names in `books.name` (a local-name column is fine): verse
+lookup is by that name. See `README.md` → "Bible version (translation) switching".
 
 ## Troubleshooting
 

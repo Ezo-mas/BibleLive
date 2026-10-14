@@ -66,6 +66,12 @@ BIBLELIVE_LOG_LEVEL=INFO
 # loopback; the server forwards to it so browsers never have to.
 # BIBLELIVE_AUDIO_CONTROL_URL=http://127.0.0.1:8001
 # BIBLELIVE_AUDIO_CONTROL_TOKEN=<same value as the pipeline's --control-token>
+
+# Bible version switching (optional). Translations are the *.sqlite files next to
+# BIBLELIVE_DB_PATH. By default a spoken-language switch also selects that
+# language's translation; set false to leave the version to the operator.
+# BIBLELIVE_AUTO_BIBLE_VERSION=true
+# BIBLELIVE_LANGUAGE_BIBLE_VERSIONS={"en":"kjv","lt":"ltb"}
 ```
 
 ### Generate Secure Token

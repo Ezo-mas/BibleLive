@@ -5,6 +5,8 @@ import { DisplaySettings } from './DisplaySettings'
 import { AutoApproveControls } from './AutoApproveControls'
 import { LanguageSettings } from './LanguageSettings'
 import type { SpokenLanguageState } from '../hooks/useSpokenLanguage'
+import { BibleVersionSettings } from './BibleVersionSettings'
+import type { BibleVersionState } from '../hooks/useBibleVersion'
 import type { Theme } from '../../hooks/useTheme'
 import type { DisplayTheme, VerseLimit } from '../../shared/verseText'
 import type { AutoMode } from '../../shared/types'
@@ -28,6 +30,8 @@ export interface SettingsDialogProps {
   onThemeChange: (next: DisplayTheme) => void
   /** The audio pipeline's spoken language: read and switched through the server. */
   spokenLanguage: SpokenLanguageState
+  /** The Bible translation verse text comes from: read and switched through the server. */
+  bibleVersion: BibleVersionState
   autoMode: AutoMode
   onAutoModeChange: (next: AutoMode) => void
   /**
@@ -76,6 +80,7 @@ export function SettingsDialog({
   onVerseLimitChange,
   onThemeChange,
   spokenLanguage,
+  bibleVersion,
   autoMode,
   onAutoModeChange,
   appTheme,
@@ -202,6 +207,7 @@ export function SettingsDialog({
               Audio
             </h3>
             <LanguageSettings state={spokenLanguage} disabled={disabled} />
+            <BibleVersionSettings state={bibleVersion} disabled={disabled} />
           </section>
 
           <section

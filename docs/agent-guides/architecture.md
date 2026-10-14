@@ -38,6 +38,11 @@ easy to break by accident.
    `set_display_theme`, `set_auto_mode`, `display_reference` — there is no
    `reject` action; discarding a wrong detection is done implicitly by
    approving the next one or via `clear_pending`.
+   `bible_version_confirmed` (server → operators only) announces a
+   translation change; it never reaches display sockets, and
+   `AppState.bible_lookup` is the one live lookup — read it through
+   `app_state`, never a reference captured at startup, or a switch will not
+   reach you.
    Covered by `backend/tests/test_websocket_approval.py` and
    `backend/tests/test_manual_reference.py`.
    Both doors resolve a passage the same way: `display_reference` carries

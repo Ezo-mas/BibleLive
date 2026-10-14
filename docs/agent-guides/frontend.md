@@ -42,6 +42,7 @@ frontend/
 | History / Show Again staging UI | `frontend/src/operator/components/HistoryPanel.tsx`, `frontend/src/operator/hooks/useOperatorState.ts` |
 | Manual scripture search (Find Scripture) | `frontend/src/operator/components/ScriptureSearch.tsx` |
 | Spoken-language switch (Settings → Audio, header chip) | `frontend/src/operator/languageApi.ts`, `hooks/useSpokenLanguage.ts`, `components/LanguageSettings.tsx`, `components/LanguageChip.tsx` — plain HTTP to `/api/language`, not the WebSocket |
+| Bible-version switch (Settings → Audio) | `frontend/src/operator/bibleVersionApi.ts`, `hooks/useBibleVersion.ts`, `components/BibleVersionSettings.tsx` — HTTP to `/api/bible-version`; changes made elsewhere arrive as `bible_version_confirmed` on the operator socket |
 | Change WS message protocol or approval flow | **stop — ask the user first** (Behavior rules) |
 
 ## Related docs

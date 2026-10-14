@@ -158,6 +158,9 @@ function createFetchMock() {
     if (url.startsWith('/api/language')) {
       return jsonResponse({ language: 'en' })
     }
+    if (url.startsWith('/api/bible-version')) {
+      return jsonResponse({ version: 'kjv', available: ['kjv'] })
+    }
     if (url.startsWith('/api/pipeline/')) {
       return jsonResponse({
         status: 'unknown',
@@ -190,7 +193,11 @@ let lookupErrorDetail = ''
 function searchCalls() {
   return fetchMock.mock.calls.filter(([url]) => {
     const path = String(url)
-    return !path.startsWith('/api/language') && !path.startsWith('/api/pipeline/')
+    return (
+      !path.startsWith('/api/language') &&
+      !path.startsWith('/api/bible-version') &&
+      !path.startsWith('/api/pipeline/')
+    )
   })
 }
 
