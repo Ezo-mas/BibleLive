@@ -28,6 +28,8 @@ import { useScriptureSearch } from './useScriptureSearch'
 import { usePipelineStatus } from './usePipelineStatus'
 import type { ScriptureSearchState } from './useScriptureSearch'
 import { useSpokenLanguage } from './useSpokenLanguage'
+import { useBibleVersion } from './useBibleVersion'
+import type { BibleVersionState } from './useBibleVersion'
 import type { SpokenLanguageState } from './useSpokenLanguage'
 import type { ConnectionState } from '../../components'
 
@@ -203,6 +205,12 @@ export interface OperatorState {
    */
   spokenLanguage: SpokenLanguageState
 
+  /**
+   * The Bible translation verse text comes from. Read and switched over HTTP; a
+   * change made elsewhere arrives as `bible_version_confirmed` on the socket.
+   */
+  bibleVersion: BibleVersionState
+
   /** Reference ID of the selected pending item, or null when nothing is selected. */
   selectedId: string | null
   selectPending: (id: string) => void
@@ -339,6 +347,9 @@ export function useOperatorState(): OperatorState {
     )
   }, [])
 
+  // Filled in once the hook below exists; the socket handler is declared before it.
+  const applyBibleVersionRef = useRef<(data: unknown) => void>(() => {})
+
   const handleMessage = (message: OperatorMessage) => {
     switch (message.type) {
       case 'state_snapshot': {
@@ -439,6 +450,9 @@ export function useOperatorState(): OperatorState {
         if (changed) showNotice('info', `Auto-approve: ${autoModeOption(autoMode).label}`)
         break
       }
+      case 'bible_version_confirmed':
+        applyBibleVersionRef.current(message.data)
+        break
       case 'error': {
         const { action, message: reason } = message.data
         console.error('Server error:', reason)
@@ -707,6 +721,9 @@ export function useOperatorState(): OperatorState {
   // The pipeline's language: read once the socket is up, switched only on request.
   const spokenLanguage = useSpokenLanguage(token, isConnected, showNotice)
 
+  const bibleVersion = useBibleVersion(token, isConnected, showNotice)
+  applyBibleVersionRef.current = bibleVersion.applyConfirmed
+
   // Speech detection health, asked of the server only while it is reachable.
   const pipeline = usePipelineStatus(token, isConnected)
 
@@ -754,6 +771,7 @@ export function useOperatorState(): OperatorState {
 
     search,
     spokenLanguage,
+    bibleVersion,
 
     selectedId,
     selectPending,

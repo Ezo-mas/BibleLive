@@ -110,6 +110,8 @@ export type OperatorMessage =
   | { type: 'connection_status'; data: { display: number; operator: number } }
   | { type: 'display_settings_confirmed'; data: DisplaySettings }
   | { type: 'auto_mode_confirmed'; data: { auto_mode: AutoMode } }
+  /** The Bible translation changed (an operator's choice, or a language switch). */
+  | { type: 'bible_version_confirmed'; data: { version: string | null; available: string[] } }
   /** Confirms a manual passage reached the display (action `display_reference`). */
   | { type: 'display_confirmed'; data: { reference: BibleReference } }
   | { type: 'error'; data: { message: string; action: string } }
