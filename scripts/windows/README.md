@@ -36,3 +36,49 @@ Produces `build\BibleLive\` and `dist\BibleLive-portable-<version>.zip` (version
 - `-SkipCuda` leaves out the NVIDIA wheels (quick test builds; no GPU transcription).
 - The Whisper model is not bundled: `BibleLive-console.cmd --download-model`, then
   `--gpu-self-test` (installer steps). Models live in `%LOCALAPPDATA%\BibleLive\models`.
+
+# Windows installer
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\windows\build-installer.ps1 `
+    [-SkipPortableBuild] [-Iscc <ISCC.exe>] [-BibleDb <path>] [-SkipFrontendBuild]
+```
+
+Builds `dist\BibleLive-Setup-<version>.exe` from `build\BibleLive\` (runs `build-portable.ps1 -NoZip`
+first unless `-SkipPortableBuild`). Needs **Inno Setup 6.5.0 or newer** (`ExecAndLogOutput` 6.3,
+`ExecAndCaptureOutput` 6.4, the vendored Lithuanian translation 6.5); ISCC is searched in `-Iscc`,
+`$env:ISCC`, then `Program Files (x86)`, `Program Files` and `%LOCALAPPDATA%\Programs`
+`\Inno Setup 6`. Compression is `lzma2/ultra64` (~750 MB RAM per compression thread, 2 threads), so
+compiling ~2.5 GB takes a while; use `lzma2/max` in `installer\BibleLive.iss` on a small machine.
+The result (~1.4 GB) is far below Inno's 4.2 GB single-file limit, so no disk spanning.
+
+What the installer does:
+
+- Per-user (no admin), default `%LOCALAPPDATA%\Programs\BibleLive`; English or Lithuanian.
+  Same `AppId` upgrades in place (running app closed; `python\`, `app\backend`, `app\static`,
+  `app\ffmpeg`, `licenses\` are wiped before copying).
+- Checks `nvidia-smi` (best GPU if several): refuses to install without an NVIDIA GPU, driver 525.60+,
+  compute capability 7.0+ (GTX 1660 / RTX 2060 or newer) and 4 GB VRAM; under 6 GB it asks whether to
+  continue (OBS streaming may stutter; silent installs just log it). A driver too old to report
+  `compute_cap` falls back to the name + driver check (the self-test below still catches problems).
+  `/SKIPGPUCHECK` bypasses. `BibleLive-console.cmd --check-gpu` applies the same limits (exit 3).
+- After copying files, runs `python -m launcher --download-model` (live progress) and
+  `--gpu-self-test`; on failure offers Retry / Continue anyway. `/SKIPMODEL` skips both. Rerun later:
+  `BibleLive-console.cmd --download-model` / `--gpu-self-test`.
+- Start Menu: BibleLive, BibleLive (console), Logs folder, Uninstall; optional desktop icon.
+- Uninstall removes the install folder (ends processes running from it; a browser window is not
+  touched) and asks whether to delete settings, logs (`%APPDATA%\BibleLive`) and the model
+  (`%LOCALAPPDATA%\BibleLive`). Default No; silent uninstall keeps them unless `/DELETEUSERDATA`.
+- `installer\Lithuanian.isl` is the official translation from jrsoftware/issrc (commit
+  `4b7b877a12d90dc36fd30393035d6b8cbf70c5c7`, Files/Languages/Lithuanian.isl, unmodified, Inno Setup
+  license); it is not in the 6.x releases. `installer\make_icon.py` regenerates `biblelive.ico`.
+
+## CI
+
+`.github/workflows/windows-installer.yml` (manual run or `v*` tag, `windows-latest`): builds
+`bible_data\biblelive.sqlite` from the tracked `data\kjv2.json` (`core.import_bible`), runs
+`build-portable.ps1`, then `build-installer.ps1 -SkipPortableBuild` (Inno Setup is preinstalled on
+the runner image; the workflow installs it with Chocolatey if missing). The exe is uploaded as an
+artifact and, on tags, attached to the release (GitHub allows 2 GiB per release asset; the exe is
+~1.4 GB). Optional signing with `signtool` runs only when the secrets `WINDOWS_CERT_PFX` (base64 PFX)
+and `WINDOWS_CERT_PASSWORD` exist; otherwise the exe is unsigned and SmartScreen will warn.
