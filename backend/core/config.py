@@ -107,6 +107,15 @@ class Config(BaseSettings):
     # purpose: a request that hangs would hold the operator's Settings dialog.
     AUDIO_CONTROL_TIMEOUT: float = 3.0
 
+    # When the spoken language is switched, also switch to that language's default
+    # Bible translation (ids as in bible_metadata, see core/bible_versions.py). A
+    # language or translation that is not available is skipped, so a partial
+    # install never breaks the language switch. The operator can still pick another
+    # translation afterwards; it stays until the language changes again. Env
+    # override for the map is JSON, e.g. BIBLELIVE_LANGUAGE_BIBLE_VERSIONS='{"lt":"ltb"}'.
+    AUTO_BIBLE_VERSION: bool = True
+    LANGUAGE_BIBLE_VERSIONS: dict[str, str] = {"en": "kjv", "lt": "ltb"}
+
     @field_validator("LOG_LEVEL")
     @classmethod
     def _upper_log_level(cls, value: str) -> str:

@@ -1,12 +1,14 @@
 """Application state management."""
 
 import logging
+import sqlite3
 import time
 from typing import Literal
 
 from fastapi import WebSocket
 
 from ..bible_lookup import BibleLookup
+from ..bible_versions import BibleVersion, discover_versions
 from ..config import config
 from ..passage import ResolvedPassage
 from .connections import ConnectionManager
@@ -254,6 +256,96 @@ class AppState:
                 },
             }
         )
+
+    def available_bible_versions(self) -> dict[str, BibleVersion]:
+        """Translations that can be switched to, found next to the configured database."""
+        return discover_versions(config.resolve_db_path().parent)
+
+    def active_bible_version(self) -> str | None:
+        """The translation id the loaded Bible text reports, if it has metadata."""
+        translation = self.bible_lookup.get_metadata().get("translation")
+        return str(translation).strip().lower() if translation else None
+
+    def switch_bible_version(self, version: str) -> str:
+        """Load another translation and use it for all verse text from now on.
+
+        This only swaps the text source. It does not touch the pending queue: a
+        queued detection was validated against the old translation, so callers must
+        drop it (``change_bible_version`` does, in the same step as the swap). The
+        passage on screen is not re-rendered. The new database
+        is opened and checked before the old one is released, so a bad file leaves
+        the server on the translation it had.
+
+        Raises:
+            KeyError: ``version`` is not an available translation.
+            ValueError: the translation's file loads but holds no verses.
+        """
+        target = self.available_bible_versions().get(version)
+        if target is None:
+            raise KeyError(version)
+
+        new_lookup = BibleLookup(str(target.path), readonly=config.DB_READONLY)
+        if new_lookup.verse_count() == 0:
+            new_lookup.close()
+            raise ValueError(f"Bible translation '{version}' contains no verses.")
+
+        old_lookup, self.bible_lookup = self.bible_lookup, new_lookup
+        old_lookup.close()
+        self.settings_store.save_bible_version(version, str(config.resolve_db_path()))
+        logger.info(f"Bible version switched to '{version}' ({target.path.name})")
+        return version
+
+    async def change_bible_version(self, version: str) -> str:
+        """Switch translation (see ``switch_bible_version``) and tell every operator.
+
+        The broadcast is how a second operator tab, or an automatic switch that
+        followed a language change, shows the new translation without polling.
+        """
+        previous = self.active_bible_version()
+        self.switch_bible_version(version)
+        # A queued detection was validated against the previous translation but is
+        # displayed from this one. Translations differ in which verses exist
+        # (KJV Acts 8:37 is absent from WEB) and in how they number them (LTB
+        # splits 1 Samuel 23-24 differently), so a carried-over reference could
+        # show no text or a different verse's text. Dropping the queue is the only
+        # check that catches both; the audio keeps detecting into a fresh one.
+        # This runs in the same synchronous step as the swap: the broadcast below
+        # awaits, and an approval that lands during it must find the queue empty,
+        # not a reference checked against the old text.
+        dropped = 0
+        if self.pending_references and self.active_bible_version() != previous:
+            dropped = len(self.pending_references)
+            self.pending_references.clear()
+        await self.connection_manager.send_to_operator(
+            {
+                "type": "bible_version_confirmed",
+                "data": {
+                    "version": self.active_bible_version(),
+                    "available": sorted(self.available_bible_versions()),
+                },
+            }
+        )
+        if dropped:
+            await self.connection_manager.send_to_operator({"type": "pending_cleared", "data": {}})
+            await self._send_pending_update()
+            logger.info(f"Cleared {dropped} pending reference(s): Bible version changed")
+        return version
+
+    async def apply_language_default_version(self, language: str) -> None:
+        """After a spoken-language switch, move to that language's default translation.
+
+        Best effort by design: the language switch has already succeeded, so a
+        missing or unreadable translation is logged and skipped, never raised.
+        """
+        if not config.AUTO_BIBLE_VERSION:
+            return
+        target = config.LANGUAGE_BIBLE_VERSIONS.get(language.strip().lower())
+        if not target or target == self.active_bible_version():
+            return
+        try:
+            await self.change_bible_version(target)
+        except (KeyError, ValueError, OSError, sqlite3.Error) as e:
+            logger.warning(f"Not switching Bible version for language {language!r}: {e!r}")
 
     async def shutdown(self) -> None:
         """Perform cleanup on shutdown: close database connection."""

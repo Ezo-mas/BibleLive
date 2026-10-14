@@ -4,6 +4,7 @@ import asyncio
 import contextlib
 import json
 import logging
+import sqlite3
 from contextlib import asynccontextmanager
 from typing import Any
 
@@ -25,6 +26,8 @@ from .models import (
     ApprovalRequest,
     ApprovalResponse,
     BibleReference,
+    BibleVersionRequest,
+    BibleVersionResponse,
     BookInfo,
     BooksResponse,
     ClearPendingResponse,
@@ -341,10 +344,20 @@ def create_app(bible_lookup: BibleLookup | None = None) -> FastAPI:
     # which uvicorn would otherwise write to the log on every connection.
     install_token_redaction()
 
+    injected_lookup = bible_lookup is not None
     if bible_lookup is None:
         bible_lookup = create_bible_lookup()
 
     app_state = AppState(bible_lookup)
+    if not injected_lookup:
+        # Resume the translation the operator last chose. A saved version that is
+        # gone or unreadable falls back to the configured database.
+        saved_version = app_state.settings_store.load_bible_version(str(config.resolve_db_path()))
+        if saved_version and saved_version != app_state.active_bible_version():
+            try:
+                app_state.switch_bible_version(saved_version)
+            except (KeyError, ValueError, OSError, sqlite3.Error) as e:
+                logger.warning(f"Could not restore Bible version {saved_version!r}: {e!r}")
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI):
@@ -386,7 +399,7 @@ def create_app(bible_lookup: BibleLookup | None = None) -> FastAPI:
 
         # Check database connection
         try:
-            if bible_lookup.ping():
+            if app_state.bible_lookup.ping():
                 checks["database"] = "ok"
             else:
                 checks["database"] = "not_loaded"
@@ -555,7 +568,7 @@ def create_app(bible_lookup: BibleLookup | None = None) -> FastAPI:
         """
         try:
             canonical_book = validate_detection(
-                bible_lookup,
+                app_state.bible_lookup,
                 book=reference.book,
                 chapter=reference.chapter,
                 verse_start=reference.verse_start,
@@ -727,7 +740,7 @@ def create_app(bible_lookup: BibleLookup | None = None) -> FastAPI:
         """
         try:
             passage = resolve_passage(
-                bible_lookup,
+                app_state.bible_lookup,
                 book=book,
                 chapter=chapter,
                 verse_start=verse_start,
@@ -794,12 +807,77 @@ def create_app(bible_lookup: BibleLookup | None = None) -> FastAPI:
         the pipeline confirms, never an echo of the request. Requires
         authentication if BIBLELIVE_REQUIRE_AUTH is enabled.
         """
+        # Read the current language first: the translation follows a language
+        # *change*. Re-sending the language already active (a second console tab,
+        # a retry) must not undo a translation the operator chose since.
+        try:
+            previous_language: str | None = await language_control.get_language()
+        except language_control.LanguageControlError:
+            previous_language = None  # the switch below reports an unreachable pipeline
         try:
             language = await language_control.set_language(request.language)
         except language_control.LanguageControlError as e:
             raise HTTPException(status_code=e.status_code, detail=e.message)
         logger.info(f"Spoken language set to {language!r}")
+        if language != previous_language:
+            await app_state.apply_language_default_version(language)
         return LanguageResponse(language=language)
+
+    @app.get(
+        "/api/bible-version",
+        response_model=BibleVersionResponse,
+        responses={
+            401: {"model": ErrorResponse, "description": "Unauthorized"},
+            403: {"model": ErrorResponse, "description": "Forbidden"},
+        },
+        dependencies=[Depends(verify_operator_token)],
+    )
+    async def get_bible_version() -> BibleVersionResponse:
+        """Report the active Bible translation and the ones that can be switched to.
+
+        Requires authentication if BIBLELIVE_REQUIRE_AUTH is enabled.
+        """
+        return BibleVersionResponse(
+            version=app_state.active_bible_version(),
+            available=sorted(app_state.available_bible_versions()),
+        )
+
+    @app.post(
+        "/api/bible-version",
+        response_model=BibleVersionResponse,
+        responses={
+            401: {"model": ErrorResponse, "description": "Unauthorized"},
+            403: {"model": ErrorResponse, "description": "Forbidden"},
+            404: {"model": ErrorResponse, "description": "No such translation"},
+            422: {"model": ErrorResponse, "description": "Invalid request"},
+            500: {"model": ErrorResponse, "description": "The translation could not be loaded"},
+        },
+        dependencies=[Depends(verify_operator_token)],
+    )
+    async def set_bible_version(request: BibleVersionRequest) -> BibleVersionResponse:
+        """Switch the Bible translation used for all verse text, without a restart.
+
+        Pending detections carry coordinates only, so they resolve against the new
+        translation when approved; the passage already on screen is left as is.
+        The choice is persisted and restored on the next start. Requires
+        authentication if BIBLELIVE_REQUIRE_AUTH is enabled.
+        """
+        version = request.version.strip().lower()
+        try:
+            await app_state.change_bible_version(version)
+        except KeyError:
+            raise HTTPException(
+                status_code=404, detail=f"Bible translation '{version}' is not available."
+            )
+        except (ValueError, OSError, sqlite3.Error) as e:
+            logger.error(f"Could not switch Bible version to {version!r}: {e!r}")
+            raise HTTPException(
+                status_code=500, detail=f"Bible translation '{version}' could not be loaded."
+            )
+        return BibleVersionResponse(
+            version=app_state.active_bible_version(),
+            available=sorted(app_state.available_bible_versions()),
+        )
 
     @app.get(
         "/api/state",

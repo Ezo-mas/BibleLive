@@ -165,6 +165,24 @@ class LanguageResponse(BaseModel):
     language: str
 
 
+class BibleVersionRequest(BaseModel):
+    """Request body for switching the Bible translation shown on the display."""
+
+    version: str = Field(
+        ...,
+        min_length=1,
+        max_length=16,
+        description="Translation id from GET /api/bible-version, e.g. 'kjv' or 'ltb'",
+    )
+
+
+class BibleVersionResponse(BaseModel):
+    """The active Bible translation and the ones that can be switched to."""
+
+    version: str | None
+    available: list[str]
+
+
 class BookInfo(BaseModel):
     """One book of the canonical canon, for the operator's passage search.
 
