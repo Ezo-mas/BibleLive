@@ -1,0 +1,8 @@
+Lithuanian.isl
+  Source : https://github.com/jrsoftware/issrc/blob/4b7b877a12d90dc36fd30393035d6b8cbf70c5c7/Files/Languages/Lithuanian.isl
+  Status : official translation shipped with the Inno Setup source tree (Inno Setup 6.5.0+ message set),
+           but not included in the 6.x installer packages. Vendored unmodified.
+  SHA256 : c624a7d6e1fc796278d3506d8bf4ffbd4080724fc55ab2451b51a65171b2bfa6
+  License: Inno Setup License (https://github.com/jrsoftware/issrc/blob/main/license.txt):
+           redistribution of source files is allowed if copyright notices stay in place.
+           Translators: Robertas Rimas, Rolandas Rudomanskis, Dalius Guzauskas.

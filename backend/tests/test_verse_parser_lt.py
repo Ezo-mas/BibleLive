@@ -5,6 +5,8 @@ Bible database and validator work unchanged. Diacritics may be present
 or absent in transcripts; both parse.
 """
 
+import pytest
+
 from core.verse_parser import BOOKS as EN_BOOKS
 from core.verse_parser import Reference, ReferenceParser, StreamingParser
 from core.verse_parser_lt import BOOKS as LT_BOOKS
@@ -1096,3 +1098,76 @@ class TestChapterFilledFromVerseText:
         assert sp.feed("Luko 16 skyrius", 0.0) == []
         [ref] = sp.feed(f"{self.READ_V1} šeimininkas reikalauja sąskaitų atsiskaitymo", 10.0)
         assert (str(ref), ref.from_text) == ("Luke 16:1", True)
+
+
+class TestFineTuneNumberWords:
+    """Number-word shapes the Lithuanian Whisper fine-tunes write (all words,
+    no digits); found by the Ąžuolas / Paprika benchmark runs."""
+
+    @pytest.mark.parametrize(
+        ("text", "expected"),
+        [
+            # "nuo" + two bare ordinals = a range, gap or not
+            ("hebrajams pirmas skyrius nuo pirmos trečios eilutės", ["Hebrews 1:1-3"]),
+            ("Mato penktas skyrius nuo trečios penktos eilutės", ["Matthew 5:3-5"]),
+            # Psalms with a chapter word, then a verse range
+            ("iš psalmių keturiasdešimto skyriaus pirma antra eilutė sako", ["Psalms 40:1-2"]),
+            ("psalmių keturiasdešimto skyriaus trečia ketvirta eilutė", ["Psalms 40:3-4"]),
+            ("psalmių keturiasdešimtas skyrius trečia iki penktos eilutės", ["Psalms 40:3-5"]),
+            ("psalmių keturiasdešimto skyriaus", ["Psalms 40"]),
+            # tens with the final 't' dropped
+            ("devyniasdešim pirmą psalmę", ["Psalms 91"]),
+            ("psalmėje devyniasdešim pirmoje dar kartą ketvirtą eilutę", ["Psalms 91:4"]),
+            ("psalmė septyniasdešim trečia", ["Psalms 73"]),
+            # verse named before the psalm
+            ("paskaitykim tą pirmą eilutę devyniasdešim pirmos psalmės", ["Psalms 91:1"]),
+            ("Paskaitykim tą pirmą eilutę 91 psalmės.", ["Psalms 91:1"]),
+        ],
+    )
+    def test_reads(self, text, expected):
+        assert refs(text) == expected
+
+    @pytest.mark.parametrize("stem", ["trisdesim", "keturiasdesim", "devyniasdesim"])
+    def test_clipped_tens_are_the_full_tens(self, stem):
+        full = number_word(stem + "t")
+        assert full is not None and number_word(stem) == full
+
+    @pytest.mark.parametrize(
+        ("text", "expected"),
+        [
+            ("Romiečiams nuo 8 28 eilutės", "Romans 8:28"),
+            ("Jono evangelija nuo 3 16 eilutės", "John 3:16"),
+            ("Jono evangelijos nuo trečio šešioliktos eilutės", "John 3:16"),
+        ],
+    )
+    def test_nuo_right_after_a_book_is_chapter_and_verse(self, text, expected):
+        assert refs(text) == [expected]
+
+    def test_descending_pair_after_nuo_is_not_a_range(self):
+        assert "Matthew 5:5-3" not in refs("Mato penktas skyrius nuo penktos trečios eilutės")
+
+    def test_verse_before_psalm_needs_a_free_verse_number(self):
+        # "3 16 eilutė" belongs to John; the psalm word after it is a new reference.
+        assert refs("Jono 3 16 eilutė") == ["John 3:16"]
+        assert refs("Jono 3 16 eilutė 23 psalmė")[0] == "John 3:16"
+
+
+class TestLtbBookTitles:
+    """The LTB's own book titles (bible_ltb.sqlite local_name) and their
+    case forms; a sweep over every title found these three missing."""
+
+    @pytest.mark.parametrize(
+        ("text", "expected"),
+        [
+            ("Ezdro knygoje 1 skyrius 1 eilutė", "Ezra 1:1"),
+            ("Ezdro pirmas skyrius pirma eilutė", "Ezra 1:1"),
+            ("Koheleto 3 skyrius 1 eilutė", "Ecclesiastes 3:1"),
+            ("Jonos knygoje 2 skyrius 1 eilutė", "Jonah 2:1"),
+            ("Jonos 2 skyrius", "Jonah 2"),
+        ],
+    )
+    def test_title(self, text, expected):
+        assert refs(text) == [expected]
+
+    def test_jono_stays_john(self):
+        assert refs("Jono 3 skyrius 16 eilutė") == ["John 3:16"]

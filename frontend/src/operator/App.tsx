@@ -70,10 +70,14 @@ export default function App() {
   // console is open, so look again whenever the dialog that shows and changes the
   // language is opened — the reading the operator acts on is then current.
   const { refresh: refreshSpokenLanguage } = operator.spokenLanguage
+  const { refresh: refreshBibleVersion } = operator.bibleVersion
   const isConnected = operator.isConnected
   useEffect(() => {
-    if (settingsOpen && isConnected) refreshSpokenLanguage()
-  }, [settingsOpen, isConnected, refreshSpokenLanguage])
+    if (settingsOpen && isConnected) {
+      refreshSpokenLanguage()
+      refreshBibleVersion()
+    }
+  }, [settingsOpen, isConnected, refreshSpokenLanguage, refreshBibleVersion])
 
   function openSettings(section: SettingsSection) {
     setSettingsSection(section)
@@ -190,6 +194,7 @@ export default function App() {
         onVerseLimitChange={operator.setDisplayVerseLimit}
         onThemeChange={operator.setDisplayBackground}
         spokenLanguage={operator.spokenLanguage}
+        bibleVersion={operator.bibleVersion}
         autoMode={operator.autoMode}
         onAutoModeChange={operator.setAutoApproveMode}
         appTheme={theme}
