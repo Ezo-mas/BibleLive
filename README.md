@@ -237,6 +237,16 @@ Lithuanian → `ltb`). A default that is not installed is skipped. The operator 
 pick another translation afterwards; it stays until the language changes again.
 Set `BIBLELIVE_AUTO_BIBLE_VERSION=false` to turn the automatic switch off.
 
+#### Follow-along
+
+While a passage is on the display, the speaker often reads on into the next
+verses. The pipeline posts each transcript line to `/api/transcript`; the server
+matches it against the verses right after the displayed passage, in the spoken
+language's default translation (`BIBLELIVE_LANGUAGE_BIBLE_VERSIONS`), and offers
+the operator a "Reading now: Luke 16:13-15 · Show" line. Nothing changes on the
+display until the operator clicks Show, which is the same request as picking that
+passage by hand. Set `BIBLELIVE_FOLLOW_ALONG=false` to turn the suggestions off.
+
 #### Pipeline logging
 
 The CLI configures logging once at startup (library modules never touch the root
@@ -269,6 +279,7 @@ output, ignored short VAD blips, and skipped duplicates.
 | GET    | `/api/books`        | List canonical books (for Find Scripture) |
 | GET    | `/api/lookup`       | Look up verse text by coordinates        |
 | GET    | `/api/state`        | Current server state snapshot (requires auth if enabled) |
+| POST   | `/api/transcript`   | Audio pipeline transcript line, used only for follow-along suggestions; not stored (token when auth is on) |
 | POST   | `/api/pipeline/heartbeat` | Audio pipeline health report, sent every 5 s (token when auth is on) |
 | GET    | `/api/pipeline/status` | Pipeline health for the operator console: `unknown`, `ok`, `degraded` (with problems), or `offline` after three missed reports (requires auth if enabled) |
 | GET    | `/healthz`          | Liveness probe                           |
@@ -326,6 +337,7 @@ invalid log a warning and fall back to that default; an invalid
 | `BIBLELIVE_SETTINGS_PATH` | `data/server_settings.json` | Persisted operator settings |
 | `BIBLELIVE_AUTO_BIBLE_VERSION` | `true`                 | Switch Bible version with the spoken language |
 | `BIBLELIVE_LANGUAGE_BIBLE_VERSIONS` | `{"en":"kjv","lt":"ltb"}` | Default translation per spoken language (JSON) |
+| `BIBLELIVE_FOLLOW_ALONG`  | `true`                      | Suggest the next verses as the speaker reads on |
 | `BIBLELIVE_REQUIRE_AUTH`  | `false`                     | Protect operator endpoints with a token |
 | `BIBLELIVE_OPERATOR_TOKEN`| unset                       | Operator token (required if auth enabled) |
 | `BIBLELIVE_CORS_ORIGINS`  | empty                       | Comma-separated allowed origins (empty = same-origin only) |

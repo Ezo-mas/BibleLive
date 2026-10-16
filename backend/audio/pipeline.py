@@ -18,6 +18,7 @@ from .metrics import PipelineMetrics
 from .segmenter import FRAME_DURATION_MS, Segmenter, SegmentEvent
 from .sender import ReferenceSender
 from .stt import SUPPORTED_LANGUAGES, SpeechToText
+from .transcript_sender import TranscriptSender
 from .vad import create_vad
 
 logger = logging.getLogger(__name__)
@@ -81,6 +82,8 @@ class BibleLiveAudioProcessor:
 
         # Reference delivery (dedup + retry-with-backoff)
         self.sender = ReferenceSender(server_url, self.config, self.metrics)
+        # Confident transcripts for follow-along hints (best effort, never blocks).
+        self.transcript_sender = TranscriptSender(server_url, self.config, self.metrics)
 
         # Thread-local storage for BibleLookup + per-language parsers (owned by
         # the transcription thread).
@@ -156,6 +159,7 @@ class BibleLiveAudioProcessor:
 
             # Start reference delivery before anything can detect a reference
             self.sender.start()
+            self.transcript_sender.start()
 
             # Start VAD processing thread
             vad_thread = threading.Thread(target=self._vad_loop, daemon=True, name="vad-processor")
@@ -199,6 +203,7 @@ class BibleLiveAudioProcessor:
             if thread is not None and thread.is_alive():
                 thread.join(timeout=2.0)
         self.sender.stop()
+        self.transcript_sender.stop()
 
     def stop(self):
         """Stop the audio processing pipeline"""
@@ -228,6 +233,7 @@ class BibleLiveAudioProcessor:
 
         # Then delivery, once nothing can submit any more
         self.sender.stop()
+        self.transcript_sender.stop()
 
         # The transcription thread closes its own thread-local BibleLookup on
         # exit (see _transcription_loop): stop() runs on the main thread whose
@@ -625,6 +631,11 @@ class BibleLiveAudioProcessor:
         self.metrics.transcription_successes += 1
         self.metrics.record_transcription_duration(duration_ms)
         logger.info(f"Transcription ({duration_ms:.0f}ms): '{transcript}'")
+
+        # A confident transcript also goes to the server, which may hint the verse the
+        # speaker reads next. A shaky one never does: its words may not be what was said.
+        if transcript and result.low_confidence_reason is None:
+            self.transcript_sender.submit(transcript, language)
 
         # Process with the parser for the utterance's capture language
         parser = self._select_parser(language)

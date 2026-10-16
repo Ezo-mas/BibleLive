@@ -46,6 +46,7 @@ def _processor(stt=None, **config) -> BibleLiveAudioProcessor:
     proc.vad_thread = None
     proc.transcription_thread = None
     proc.sender = SimpleNamespace(delivery_problem=None)
+    proc.transcript_sender = SimpleNamespace(submit=lambda text, language: None)
     proc._capture_down = False
     proc._last_frame_at = time.monotonic()
     proc._consecutive_transcription_errors = 0

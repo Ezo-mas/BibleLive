@@ -22,6 +22,8 @@ class PipelineMetrics:
     references_failed: int = 0
     references_deduplicated: int = 0
     references_dropped: int = 0  # queued but discarded: queue full, or too old to send
+    transcripts_failed: int = 0  # follow-along transcripts the server did not take
+    transcripts_dropped: int = 0  # follow-along transcripts discarded: queue full
     api_retries: int = 0
     capture_failures: int = 0  # ffmpeg exits that capture did not ask for
     capture_restarts: int = 0  # successful restarts after such an exit
@@ -83,6 +85,10 @@ class PipelineMetrics:
             f"  References sent: {self.references_sent} "
             f"({self.references_failed} failed, {self.references_dropped} dropped unsent, "
             f"{self.references_deduplicated} deduplicated)"
+        )
+        logger.info(
+            f"  Follow-along transcripts: {self.transcripts_failed} failed, "
+            f"{self.transcripts_dropped} dropped"
         )
         logger.info(f"  API retries: {self.api_retries}")
         logger.info(f"  Avg API request time: {self.get_avg_api_duration():.1f}ms")

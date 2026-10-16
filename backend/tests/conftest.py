@@ -148,6 +148,7 @@ def reset_app_state(app_state, tmp_path: Path):
     app_state.auto_mode = DEFAULT_AUTO_MODE
     app_state.pipeline_report = None
     app_state.pipeline_reported_at = None
+    app_state.last_follow_along = None
     yield
     app_state.connection_manager = app_state.connection_manager.__class__()
 

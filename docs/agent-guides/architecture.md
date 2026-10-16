@@ -40,11 +40,16 @@ easy to break by accident.
    approving the next one or via `clear_pending`.
    `bible_version_confirmed` (server → operators only) announces a
    translation change; it never reaches display sockets, and
+   `follow_along` (server → operators only, never display sockets) is a
+   suggestion built from `/api/transcript`: coordinates plus the
+   `display_id` it follows on from, no text. Its Show button sends the
+   ordinary `display_reference` action, so it is not a third door.
    `AppState.bible_lookup` is the one live lookup — read it through
    `app_state`, never a reference captured at startup, or a switch will not
    reach you.
-   Covered by `backend/tests/test_websocket_approval.py` and
-   `backend/tests/test_manual_reference.py`.
+   Covered by `backend/tests/test_websocket_approval.py`,
+   `backend/tests/test_manual_reference.py` and (follow-along)
+   `backend/tests/test_follow_along.py`.
    Both doors resolve a passage the same way: `display_reference` carries
    coordinates only (no ID, no confidence, no text) and the server
    re-resolves them through `core/passage.py`, so a client cannot inject

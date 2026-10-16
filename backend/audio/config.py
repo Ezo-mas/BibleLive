@@ -25,6 +25,11 @@ class AudioPipelineConfig:
     # an auto-approve mode never displays) a reference from minutes ago.
     send_queue_maxsize: int = 20
     send_max_age_s: float = 30.0  # longer than one full retry schedule (~23.5s)
+    # Confident transcripts for the server's follow-along hints (see
+    # transcript_sender.py). One attempt each; when the queue is full the oldest
+    # transcript is dropped, and a slow server costs only those hints.
+    transcript_queue_maxsize: int = 8
+    transcript_timeout: float = 2.0  # seconds
     # How often the pipeline reports its health to the server (seconds; 0
     # disables). The server treats the pipeline as offline after missing three.
     heartbeat_interval: float = 5.0

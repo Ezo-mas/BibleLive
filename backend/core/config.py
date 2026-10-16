@@ -116,6 +116,12 @@ class Config(BaseSettings):
     AUTO_BIBLE_VERSION: bool = True
     LANGUAGE_BIBLE_VERSIONS: dict[str, str] = {"en": "kjv", "lt": "ltb"}
 
+    # Follow-along: while a passage is on screen, transcripts from the pipeline are
+    # matched against the verses just after it, and operators are told which verse
+    # the speaker has reached. Nothing reaches a display without an operator click.
+    # When off, POST /api/transcript still succeeds and does nothing.
+    FOLLOW_ALONG: bool = True
+
     @field_validator("LOG_LEVEL")
     @classmethod
     def _upper_log_level(cls, value: str) -> str:

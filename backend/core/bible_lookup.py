@@ -238,6 +238,20 @@ class BibleLookup:
         self._remember_validation(cache_key, result)
         return result
 
+    def last_verse(self, book: str, chapter: int) -> int | None:
+        """The highest verse number stored for ``book`` ``chapter``, or None if there is none."""
+        if self.conn is None:
+            return None
+        try:
+            row = self.conn.execute(
+                "SELECT MAX(v.verse) FROM verses v JOIN books b ON b.id = v.book_id "
+                "WHERE b.name = ? AND v.chapter = ?",
+                (book, chapter),
+            ).fetchone()
+        except sqlite3.Error:
+            return None
+        return int(row[0]) if row and row[0] is not None else None
+
     def get_validator_hook(self) -> Callable:
         """
         Return a validator function that can be used with ReferenceParser.

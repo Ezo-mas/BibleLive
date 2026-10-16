@@ -43,6 +43,7 @@ frontend/
 | Manual scripture search (Find Scripture) | `frontend/src/operator/components/ScriptureSearch.tsx` |
 | Spoken-language switch (Settings → Audio, header chip) | `frontend/src/operator/languageApi.ts`, `hooks/useSpokenLanguage.ts`, `components/LanguageSettings.tsx`, `components/LanguageChip.tsx` — plain HTTP to `/api/language`, not the WebSocket |
 | Bible-version switch (Settings → Audio) | `frontend/src/operator/bibleVersionApi.ts`, `hooks/useBibleVersion.ts`, `components/BibleVersionSettings.tsx` — HTTP to `/api/bible-version`; changes made elsewhere arrive as `bible_version_confirmed` on the operator socket |
+| Follow-along suggestion line (Reading now · Show) | `frontend/src/operator/components/FollowAlongHint.tsx`, `hooks/useOperatorState.ts` (`follow_along` message; Show sends `display_reference`) |
 | Change WS message protocol or approval flow | **stop — ask the user first** (Behavior rules) |
 
 ## Related docs

@@ -5,6 +5,7 @@ import { useOperatorShortcuts } from './hooks/useOperatorShortcuts'
 import { LivePanel } from './components/LivePanel'
 import { NextPanel } from './components/NextPanel'
 import { PendingQueue } from './components/PendingQueue'
+import { FollowAlongHint } from './components/FollowAlongHint'
 import { HistoryPanel } from './components/HistoryPanel'
 import { ScriptureSearch } from './components/ScriptureSearch'
 import { AutoApproveCompact } from './components/AutoApproveCompact'
@@ -161,6 +162,12 @@ export default function App() {
               onDiscard={operator.clearNext}
             />
           </div>
+
+          <FollowAlongHint
+            hint={operator.followAlong}
+            canShow={operator.canShowFollowAlong}
+            onShow={operator.showFollowAlong}
+          />
 
           <HistoryPanel
             history={operator.history}
