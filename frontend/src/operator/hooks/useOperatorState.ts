@@ -16,6 +16,7 @@ import type {
   AuthenticateAction,
   AutoMode,
   BibleReference,
+  FollowAlongHint,
   OperatorAction,
   OperatorMessage,
   Passage,
@@ -195,6 +196,20 @@ export interface OperatorState {
    */
   showManualDirect: (request: PassageQuery) => void
 
+  /**
+   * Follow-along: the verses the speaker seems to be reading on to, or null. Only
+   * set while it still follows on from the passage on screen — a hint for an
+   * earlier display (changed or cleared since) is never offered.
+   */
+  followAlong: FollowAlongHint | null
+  /**
+   * Show the hinted passage: the same `display_reference` request a manual
+   * search sends, coordinates only. The hint goes away when the server confirms
+   * the new display, and stays if the request is refused so the operator can retry.
+   */
+  showFollowAlong: () => void
+  canShowFollowAlong: boolean
+
   /** Manual passage search: the book list and the lookup the form calls. */
   search: ScriptureSearchState
 
@@ -272,6 +287,9 @@ export function useOperatorState(): OperatorState {
   // queue the same passage twice, and a confirmation that never comes (the
   // socket dropped) must not leave Show disabled — see the status effect below.
   const [showInFlight, setShowInFlight] = useState(false)
+  // The latest follow-along hint. Transient: never in a snapshot, and only ever
+  // offered while its `display_id` is still the passage on screen.
+  const [followAlongHint, setFollowAlongHint] = useState<FollowAlongHint | null>(null)
   const [flash, setFlash] = useState<FlashTarget | null>(null)
   const [displayConnected, setDisplayConnected] = useState(false)
   // The display is presentation-only, so this control lives here and the server
@@ -358,6 +376,8 @@ export function useOperatorState(): OperatorState {
         setPendingCount(message.data.pending_count)
         setHistoryCount(message.data.history_count)
         setCurrentDisplay(message.data.current_display)
+        // Hints are not part of a snapshot; one from before a reconnect is stale.
+        setFollowAlongHint(null)
         setDisplayConnected(message.data.display_connections > 0)
         if (message.data.display_settings) {
           const verseLimit = coerceVerseLimit(message.data.display_settings.verse_limit)
@@ -411,8 +431,14 @@ export function useOperatorState(): OperatorState {
         showNotice('success', `Shown: ${formatReference(shown)} (manual)`)
         break
       }
+      case 'follow_along':
+        // Replaces any earlier hint; whether it still applies is decided against
+        // the display at render time, so arrival order cannot matter.
+        setFollowAlongHint(message.data)
+        break
       case 'clear_confirmed':
         setCurrentDisplay(null)
+        setFollowAlongHint(null)
         pulse('clear')
         showNotice('info', 'Display cleared')
         break
@@ -712,6 +738,28 @@ export function useOperatorState(): OperatorState {
     [showInFlight, sendAction]
   )
 
+  // A hint is only meaningful next to the passage it follows on from. Comparing
+  // ids here, not when the hint arrives, means a display that changed or was
+  // cleared simply stops matching — whichever message got here first.
+  const followAlong =
+    followAlongHint !== null &&
+    currentDisplay !== null &&
+    followAlongHint.display_id === currentDisplay.id
+      ? followAlongHint
+      : null
+
+  // Show on a hint is the manual door, nothing newer: the same request Find
+  // Scripture sends with Shift+Enter, coordinates only, re-resolved by the server.
+  const showFollowAlong = useCallback(() => {
+    if (!followAlong) return
+    showManualDirect({
+      book: followAlong.book,
+      chapter: followAlong.chapter,
+      verseStart: followAlong.verse_start,
+      verseEnd: followAlong.verse_end,
+    })
+  }, [followAlong, showManualDirect])
+
   // Manual passage search: the server's canon, the server's text, and staging on
   // success only.
   const search = useScriptureSearch(token, stageManualPassage, showManualDirect)
@@ -768,6 +816,10 @@ export function useOperatorState(): OperatorState {
     clearNext: deselect,
     canShowNext: nextReference !== null && isConnected && !showInFlight,
     showManualDirect,
+
+    followAlong,
+    showFollowAlong,
+    canShowFollowAlong: followAlong !== null && isConnected && !showInFlight,
 
     search,
     spokenLanguage,

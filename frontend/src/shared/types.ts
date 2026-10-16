@@ -86,6 +86,20 @@ export type DisplayMessage =
   | { type: 'clear'; data: Record<string, never> }
   | { type: 'display_settings'; data: DisplaySettings }
 
+/**
+ * Follow-along hint: the speaker appears to be reading on past the passage on
+ * screen. Coordinates only, like `DisplayReferenceAction`; `display_id` is the id
+ * of the `current_display` reference the hint follows on from, so a hint for a
+ * display that has since changed or been cleared can be recognised and dropped.
+ */
+export interface FollowAlongHint {
+  book: string
+  chapter: number
+  verse_start: number
+  verse_end: number
+  display_id: string
+}
+
 /** Messages the server sends to operator clients (ws /ws/operator). */
 export type OperatorMessage =
   | {
@@ -114,6 +128,8 @@ export type OperatorMessage =
   | { type: 'bible_version_confirmed'; data: { version: string | null; available: string[] } }
   /** Confirms a manual passage reached the display (action `display_reference`). */
   | { type: 'display_confirmed'; data: { reference: BibleReference } }
+  /** Transient suggestion to show the verses after the current display (operators only). */
+  | { type: 'follow_along'; data: FollowAlongHint }
   | { type: 'error'; data: { message: string; action: string } }
 
 /** Messages the operator client sends to the server. */
