@@ -5,13 +5,17 @@ dedup). No Whisper model is loaded. The runner module lives in ``benchmarks/``
 at the repo root, which the root ``pythonpath`` setting puts on ``sys.path``.
 """
 
+from dataclasses import replace
+
 import numpy as np
 import pytest
 
+from audio.config import AudioPipelineConfig
 from benchmarks.run_benchmark import (
     BenchmarkingSender,
     Detection,
     GoldItem,
+    Recording,
     SpanTracker,
     StubReceiver,
     dedupe_detections,
@@ -25,6 +29,7 @@ from benchmarks.run_benchmark import (
     pcm_resample,
     read_feed_cache,
     register_feeds,
+    run_single_recording,
     verified_audio_sha,
     window_bounds,
     write_feed_cache,
@@ -468,3 +473,97 @@ class TestPcmResample:
         with pytest.raises(subprocess.CalledProcessError):
             pcm_resample(src, src, tmp_path)
         assert not (tmp_path / "a.16k.wav").exists()
+
+
+class _KeyCaptured(Exception):
+    """Stops run_single_recording right after its cache key is built."""
+
+
+def _segmentation_key(monkeypatch, tmp_path, config) -> dict:
+    """The segmentation dict run_single_recording puts in its cache key.
+
+    feed_cache_key is the first thing that uses it, so a spy there captures the
+    dict before any audio is decoded or Whisper is loaded.
+    """
+    seen: dict = {}
+
+    def spy(**kwargs):
+        seen.update(kwargs)
+        raise _KeyCaptured
+
+    monkeypatch.setattr("benchmarks.run_benchmark.feed_cache_key", spy)
+    audio = tmp_path / "a.wav"
+    audio.write_bytes(b"abc")
+    rec = Recording(
+        id="r",
+        source="s",
+        file="a.wav",
+        duration_s=1.0,
+        sha256=None,
+        language="lt",
+        gold_file="",
+        annotation_provenance="manual",
+    )
+    with pytest.raises(_KeyCaptured):
+        run_single_recording(rec, audio, "offline", config, tmp_path)
+    return seen["segmentation"]
+
+
+class TestSegmentationCacheKey:
+    """Cached transcripts are replayed only under the segmentation that made them.
+
+    The pre-roll and start-window settings are keyed only when they differ from
+    the old behaviour, so transcripts cached before they existed stay valid.
+    """
+
+    LEGACY = {
+        "vad_aggressiveness": 2,
+        "frame_duration_ms": 30,
+        "end_of_speech_s": 1.5,
+        "min_speech_s": 0.3,
+        "soft_utterance_s": 8.0,
+        "max_utterance_s": 12.0,
+    }
+
+    @staticmethod
+    def _old_config() -> AudioPipelineConfig:
+        return AudioPipelineConfig(
+            pre_roll_s=0.0, keep_pauses=False, start_voiced_frames=1, start_window_frames=1
+        )
+
+    def test_old_settings_produce_the_old_key(self, monkeypatch, tmp_path):
+        assert _segmentation_key(monkeypatch, tmp_path, self._old_config()) == self.LEGACY
+
+    @pytest.mark.parametrize(
+        "changed",
+        [
+            {"pre_roll_s": 0.3},
+            {"keep_pauses": True},
+            {"start_voiced_frames": 2, "start_window_frames": 2},
+            {"start_window_frames": 3},
+        ],
+    )
+    def test_each_new_setting_is_keyed_once_it_differs(self, monkeypatch, tmp_path, changed):
+        config = replace(self._old_config(), **changed)
+
+        assert _segmentation_key(monkeypatch, tmp_path, config) == {**self.LEGACY, **changed}
+
+    def test_config_defaults_key_only_the_original_settings(self, monkeypatch, tmp_path):
+        # The new settings default to the old behavior, so none of them is keyed.
+        assert _segmentation_key(monkeypatch, tmp_path, AudioPipelineConfig()) == self.LEGACY
+
+    def test_silero_vad_is_keyed_with_its_threshold(self, monkeypatch, tmp_path):
+        config = replace(self._old_config(), vad="silero", silero_threshold=0.35)
+
+        legacy = {k: v for k, v in self.LEGACY.items() if k != "vad_aggressiveness"}
+        assert _segmentation_key(monkeypatch, tmp_path, config) == {
+            **legacy,
+            "vad": "silero",
+            "silero_threshold": 0.35,
+        }
+
+    def test_silero_threshold_is_not_keyed_under_webrtc(self, monkeypatch, tmp_path):
+        # The threshold changes nothing while WebRTC runs, so it must not split the cache.
+        config = replace(self._old_config(), silero_threshold=0.35)
+
+        assert _segmentation_key(monkeypatch, tmp_path, config) == self.LEGACY

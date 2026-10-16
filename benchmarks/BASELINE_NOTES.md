@@ -10,7 +10,8 @@ quality is explicitly a hypothesis until a run against real sermons happens.
   `get_audio_frame()` re-frames to 30ms (960 B) frames with a carry-over
   buffer (`_frame_buffer`) so no bytes are dropped between frames.
 - VAD thread: WebRTC VAD (aggressiveness 2) into `audio/segmenter.py`. An
-  utterance accumulates speech frames until > 50 consecutive silent 30ms
+  utterance starts at the first voiced frame (pre-roll and a stricter start
+  trigger exist as flags; see "Tried and not adopted"). It accumulates speech frames until > 50 consecutive silent 30ms
   frames (~1.5s); past ~8s it ends at the next unvoiced frame, and at ~12s
   it ends regardless (ungated full-mix audio rarely gives 1.5s of silence:
   uncapped, the 07-05 service produced 6 utterances in 40 min). Utterances of
@@ -168,6 +169,54 @@ a 20 s tolerance unless noted. Check here before re-running one of these.
   to non-gold verses, mostly the speaker reading on through a passage.
   That is a follow-along feature, not a reference detector; only the
   chapter-only fill below was adopted.
+
+- **Lithuanian fine-tuned Whisper models** (2026-10-16, same 13
+  recordings, offline, 5 s span tolerance). Ąžuolas
+  (`akisviete/azuolas-whisper-lt-ct2`, large-v3, float16): 137 TP / 18
+  medium+high FP vs 139 / 10 for turbo, about 2.4x slower, ~4.3 GB VRAM.
+  Paprika v3 (`RobertasTa/paprika-whisper-lt-v3-ct2-int8`, turbo-sized):
+  any initial prompt longer than a few words (even an empty string) makes
+  it return nothing or loop on 8-12 s utterances, so it only runs with no
+  prompt: 126 / 17. For scale, turbo without our prompt: 118 / 14 (the
+  book-name prompt is worth about +21 TP). Both fine-tunes write numbers as
+  words, which exposed parser gaps ("pirma antra eilutė", "nuo pirmos
+  trečios eilutės", "trys dešimt", truncated "devyniasdešim").
+- **Keeping in-utterance pauses** (frames the VAD calls silent between
+  voiced ones; `--keep-pauses on`, 2026-10-16, with 0.3 s pre-roll): 141 /
+  11, and with the 6-of-10 start trigger 137 / 10 against 143 / 9 without
+  it. Lost 10-04's Genesis 22 verses and two chapter-only refs.
+
+- **Pre-roll and a stricter utterance start** (`--pre-roll-s`,
+  `--start-voiced-frames/--start-window-frames`, 2026-10-16; 13 recordings,
+  offline, 5 s span tolerance; baseline 139 TP / 19 FN / 15 low / 10
+  medium+high FP). Pre-roll 0.3 s alone: 140 / 18 / 14 / 10. Pre-roll + 6
+  of 10 voiced, final version (pre-roll contiguous with the onset): 139 /
+  19 / 14 / 10. An earlier version that skipped the 120 ms before the onset
+  scored 143 / 15 / 15 / 9. In all three start-trigger runs the same 5
+  misses were fixed (Ephesians 2:5-6, 1 Peter 5:10, Jude 1:20-21,
+  Ephesians 2:8-9, Luke 7:47), but each change of utterance edges also
+  moved about 5 other references (Matthew 6:1, James 4:13-14,
+  1 Kings 17:8-16, Genesis 22 verses), so no net gain was measurable;
+  defaults unchanged. Runtime was not comparable (a game shared the GPU).
+- **Silero VAD instead of WebRTC** (`--vad silero`, the v6 model bundled
+  with faster-whisper, 30 ms frames re-chunked to 512-sample windows;
+  2026-10-16, same 13 recordings, offline, 5 s span tolerance; baseline
+  139 TP / 19 FN / 15 low / 10 medium+high FP, 3551 utterances). Threshold
+  0.5: 112 / 46 / 18 / 21 (3952 utterances); 0.35: 124 / 34 / 20 / 17
+  (3839); 0.35 with `--keep-pauses on --pre-roll-s 0.3`: 128 / 30 / 15 /
+  22 (3932). Silero cuts the speech into more, shorter utterances and
+  loses references in 11 of 13 recordings. VAD cost is negligible (about
+  0.1 ms per 32 ms window on CPU); about 50 min of STT for 13 recordings
+  run two at a time (not timed side by side with WebRTC). WebRTC stays
+  the default. Not tried yet: Silero the way faster-whisper uses it
+  (end only below threshold - 0.15, ~400 ms padding, longer end silence);
+  this run applied a plain per-frame threshold to WebRTC-tuned settings.
+- **WebRTC aggressiveness** (`--vad-aggressiveness`, 2026-10-17, same 13
+  recordings; default 2 = 139 TP / 19 FN / 15 low / 10 medium+high FP,
+  3551 utterances). 1: 136 / 22 / 18 / 9 (3396 utterances); 3: 121 / 37 /
+  19 / 19 (3970). Level 1 is within noise of 2; level 3 loses clearly.
+  Same pattern as Silero: the stricter the VAD, the more utterances and
+  the fewer references. Default stays 2.
 
 What did help, for contrast: picking the verse read aloud for a Lithuanian
 chapter-only reference (`core/verse_text.py`, 2026-10-16; same 13

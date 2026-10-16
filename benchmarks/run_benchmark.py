@@ -54,7 +54,7 @@ from audio.metrics import PipelineMetrics  # noqa: E402
 from audio.segmenter import FRAME_DURATION_MS, Segmenter, SegmentEvent  # noqa: E402
 from audio.sender import ReferenceSender  # noqa: E402
 from audio.stt import SpeechToText  # noqa: E402
-from audio.vad import VoiceActivityDetector  # noqa: E402
+from audio.vad import create_vad  # noqa: E402
 from core.bible_lookup import BibleLookup  # noqa: E402
 from core.verse_parser import Reference as ParsedReference  # noqa: E402
 from core.verse_parser import ReferenceParser, StreamingParser  # noqa: E402
@@ -625,6 +625,20 @@ def run_single_recording(
         "soft_utterance_s": config.soft_utterance_s,
         "max_utterance_s": config.max_utterance_s,
     }
+    # Added later: keyed only when changed, so caches from before stay valid.
+    for name, default in (
+        ("pre_roll_s", 0.0),
+        ("keep_pauses", False),
+        ("start_voiced_frames", 1),
+        ("start_window_frames", 1),
+    ):
+        if getattr(config, name) != default:
+            segmentation[name] = getattr(config, name)
+    if config.vad != "webrtc":
+        segmentation["vad"] = config.vad
+        del segmentation["vad_aggressiveness"]  # a WebRTC setting
+        if config.vad == "silero":
+            segmentation["silero_threshold"] = config.silero_threshold
     key = feed_cache_key(
         record_id=rec.id,
         audio_sha256=audio_sha,
@@ -699,7 +713,11 @@ def run_single_recording(
     pcm_path = pcm_resample(audio_path, audio_path, tmp_dir)
     pcm, _full_duration = read_wav_16k_mono(pcm_path)
 
-    vad = VoiceActivityDetector(aggressiveness=config.vad_aggressiveness)
+    vad = create_vad(
+        config.vad,
+        aggressiveness=config.vad_aggressiveness,
+        silero_threshold=config.silero_threshold,
+    )
     stt = SpeechToText(
         model_size=config.whisper_model,
         device=config.whisper_device,
@@ -764,8 +782,9 @@ def run_single_recording(
             continue
         if event.kind == "start":
             vad_events.append((t_s, "start"))
-            # t_s is the end of the first voiced frame; the speech began one frame earlier.
-            speech_start = t_s - frame_s
+            # t_s is the end of the frame that met the start trigger; the speech
+            # began at the start window's first voiced frame.
+            speech_start = t_s - event.onset_frames * frame_s
         else:
             utterance_end(t_s - event.trailing_silent_frames * frame_duration_ms / 1000.0, event)
 
@@ -1291,6 +1310,13 @@ def main() -> int:
     ap.add_argument(
         "--compute-type", default=None, help="Whisper compute type override (e.g. int8 on cpu)"
     )
+    ap.add_argument(
+        "--vad-aggressiveness",
+        type=int,
+        default=None,
+        choices=[0, 1, 2, 3],
+        help="WebRTC VAD aggressiveness override (live default: 2)",
+    )
     args = ap.parse_args()
 
     global _VALIDATOR, _VERSE_TEXT
@@ -1322,6 +1348,8 @@ def main() -> int:
         config.whisper_model = args.model
     if args.compute_type:
         config.whisper_compute_type = args.compute_type
+    if args.vad_aggressiveness is not None:
+        config.vad_aggressiveness = args.vad_aggressiveness
     apply_tuning_arguments(config, args)
     tmp_dir = audio_dir / ".bench-16k" if audio_dir else Path("bench_audio/.bench-16k")
     tmp_dir.mkdir(parents=True, exist_ok=True)
