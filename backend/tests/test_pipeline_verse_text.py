@@ -19,6 +19,9 @@ def _parsers(bible_db, verse_text_db_path):
     proc._local = threading.local()
     proc._parser_problems = []
     proc._init_thread_local_parsers()
+    # The tests only inspect the parsers; close the Bible lookup the setup
+    # opened, or Python 3.13 reports the unclosed connection in a later test.
+    proc._local.bible_lookup.close()
     return proc._local.streaming_parsers
 
 
