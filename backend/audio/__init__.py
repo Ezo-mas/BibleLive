@@ -8,6 +8,7 @@ Replaces the former ``audio/biblelive_audio_pipeline.py`` monolith:
 - ``audio.vad``         - ``VoiceActivityDetector`` (WebRTC VAD), ``SileroVoiceActivityDetector``
 - ``audio.stt``         - ``SpeechToText`` (faster-whisper)
 - ``audio.sender``      - ``ReferenceSender`` (dedup + retry/backoff)
+- ``audio.transcript_sender`` - ``TranscriptSender`` (best-effort transcripts for follow-along)
 - ``audio.heartbeat``   - ``HeartbeatSender`` (periodic health report to the server)
 - ``audio.control``     - ``LanguageControlServer`` (runtime language switching)
 - ``audio.pipeline``    - ``BibleLiveAudioProcessor``

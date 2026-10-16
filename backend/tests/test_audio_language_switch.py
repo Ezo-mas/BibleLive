@@ -84,6 +84,22 @@ class _RecordingSender:
         pass
 
 
+class _RecordingTranscripts:
+    """Stands in for the follow-along TranscriptSender; keeps what it was given."""
+
+    def __init__(self):
+        self.sent = []
+
+    def submit(self, text: str, language: str) -> None:
+        self.sent.append((text, language))
+
+    def start(self) -> None:
+        pass
+
+    def stop(self) -> None:
+        pass
+
+
 class _FailingCapture:
     """Capture whose start always fails, as ffmpeg/a thread start can."""
 
@@ -120,6 +136,7 @@ def _processor(language: str = "en") -> BibleLiveAudioProcessor:
     proc._local = threading.local()
     proc.heartbeat = None
     proc.sender = _RecordingSender()
+    proc.transcript_sender = _RecordingTranscripts()
     proc._capture_down = False
     proc._consecutive_transcription_errors = 0
     proc._parser_problems = []
@@ -456,6 +473,34 @@ def test_sound_transcription_keeps_parser_confidence():
 
     assert [ref.confidence for ref in proc.sender.sent] == ["high"]
     assert proc.metrics.references_low_confidence == 0
+
+
+def test_confident_transcript_is_submitted_for_follow_along_with_its_language():
+    proc = _processor()
+    proc.stt = _StaticSTT("šeimininkas reikalauja", language="lt")
+
+    proc._process_utterance("lt", [b""])
+
+    assert proc.transcript_sender.sent == [("šeimininkas reikalauja", "lt")]
+
+
+def test_low_confidence_transcript_is_not_submitted_for_follow_along():
+    """Its words may not be what was said, so it must not steer a hint either."""
+    proc = _processor()
+    proc.stt = _StaticSTT("Romans 8:28", low_confidence_reason="no_speech_prob 0.91 > 0.6")
+
+    proc._process_utterance("en", [b""])
+
+    assert proc.transcript_sender.sent == []
+
+
+def test_empty_transcript_is_not_submitted_for_follow_along():
+    proc = _processor()
+    proc.stt = _StaticSTT("")
+
+    proc._process_utterance("en", [b""])
+
+    assert proc.transcript_sender.sent == []
 
 
 # ---------------------------------------------------------------------------
