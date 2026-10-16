@@ -74,6 +74,26 @@ class TestBestVerse:
         assert match.runner_up == pytest.approx(0.75)
 
 
+class TestScores:
+    def test_every_verse_of_the_chapter_is_scored(self):
+        scores = INDEX.scores("Luke", 16, LUKE_16[2])
+        assert set(scores) == {1, 2, 3}
+        assert scores[3] == pytest.approx(1.0)
+        assert scores[1] == 0.0 and scores[2] == 0.0
+
+    def test_agrees_with_best_verse(self):
+        text = "skolininkams sumažino skolas aliejaus"
+        scores = INDEX.scores("Luke", 16, text)
+        match = INDEX.best_verse("Luke", 16, text)
+        assert match is not None
+        assert scores[match.verse] == pytest.approx(match.score)
+
+    def test_empty_when_nothing_can_match(self):
+        assert INDEX.scores("Luke", 99, LUKE_16[0]) == {}  # unknown chapter
+        assert INDEX.scores("Luke", 16, "ir kaip tai") == {}  # no distinctive word
+        assert INDEX.scores("Luke", 16, "dievas kūrė dangų ir žemę") == {}  # common words only
+
+
 class TestFromSqlite:
     def test_reads_the_import_schema(self, tmp_path):
         db = tmp_path / "bible_ltb.sqlite"

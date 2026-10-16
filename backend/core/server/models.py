@@ -247,6 +247,37 @@ class PipelineStatusResponse(BaseModel):
     )
 
 
+class TranscriptSubmitRequest(BaseModel):
+    """A confident transcript from the audio pipeline, used only for follow-along matching."""
+
+    text: str = Field(..., min_length=1, max_length=2000, description="Transcript of one utterance")
+    language: str = Field(
+        ..., min_length=1, max_length=16, description="Spoken language, e.g. 'en' or 'lt'"
+    )
+
+
+class TranscriptSubmitResponse(BaseModel):
+    """Response after a transcript is received. The text is not stored or echoed back."""
+
+    status: Literal["success"]
+
+
+class FollowAlongHint(BaseModel):
+    """The verses a speaker seems to be reading just after the passage on screen.
+
+    Sent to operators only (``follow_along``), never to displays, and kept neither in
+    the state snapshot nor in history. ``display_id`` is the on-screen reference the
+    hint follows on from; once the display changes or clears, the hint is stale.
+    Mirrored in frontend/src/shared/types.ts.
+    """
+
+    book: str
+    chapter: int
+    verse_start: int
+    verse_end: int
+    display_id: str
+
+
 class OperatorApproveAction(BaseModel):
     """Action to approve a pending reference by ID."""
 

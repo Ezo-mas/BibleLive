@@ -98,6 +98,19 @@ class VerseTextIndex:
             )
         return cls(rows)
 
+    def scores(self, book: str, chapter: int, text: str) -> dict[int, float]:
+        """Score ``text`` against every verse of ``book`` ``chapter`` (0..1 each).
+
+        Empty when the chapter is unknown or ``text`` has no distinctive word.
+        """
+        verses = self._chapters.get((book, chapter))
+        if not verses:
+            return {}
+        heard = {w for w in stems(text) if self._idf.get(w, 0.0) > _MIN_IDF}
+        if not heard:
+            return {}
+        return {verse: sum(self._idf[w] for w in heard & s) / norm for verse, s, norm in verses}
+
     def best_verse(
         self, book: str, chapter: int, text: str, extend_min: float = 0.5
     ) -> VerseMatch | None:
@@ -106,13 +119,9 @@ class VerseTextIndex:
         Reading usually runs on into the next verse: each following verse
         that also scores at least ``extend_min`` extends the match to a range.
         """
-        verses = self._chapters.get((book, chapter))
-        if not verses:
+        scores = self.scores(book, chapter, text)
+        if not scores:
             return None
-        heard = {w for w in stems(text) if self._idf.get(w, 0.0) > _MIN_IDF}
-        if not heard:
-            return None
-        scores = {verse: sum(self._idf[w] for w in heard & s) / norm for verse, s, norm in verses}
         verse = max(scores, key=lambda v: (scores[v], -v))
         if scores[verse] <= 0.0:
             return None

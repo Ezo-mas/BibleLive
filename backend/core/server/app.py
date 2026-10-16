@@ -42,6 +42,8 @@ from .models import (
     ReferenceSubmitRequest,
     ReferenceSubmitResponse,
     StateResponse,
+    TranscriptSubmitRequest,
+    TranscriptSubmitResponse,
     VerseText,
 )
 from .settings_store import ALLOWED_AUTO_MODES
@@ -602,6 +604,33 @@ def create_app(bible_lookup: BibleLookup | None = None) -> FastAPI:
         except Exception as e:
             logger.error(f"Unexpected error receiving reference: {e}", exc_info=True)
             raise HTTPException(status_code=500, detail="Internal server error")
+
+    @app.post(
+        "/api/transcript",
+        response_model=TranscriptSubmitResponse,
+        responses={
+            200: {"description": "Transcript received; any follow-along hint goes to operators"},
+            401: {"model": ErrorResponse, "description": "Unauthorized"},
+            422: {"model": ErrorResponse, "description": "Invalid transcript data"},
+        },
+    )
+    async def receive_transcript(
+        request: TranscriptSubmitRequest, _: None = Depends(verify_operator_token)
+    ) -> TranscriptSubmitResponse:
+        """Match a confident transcript against the verses after the passage on screen.
+
+        Posted by the audio pipeline for each transcript it trusts. The text is used
+        for matching only: it is not stored, logged, or forwarded, and the reply says
+        nothing about the match. With BIBLELIVE_FOLLOW_ALONG off the request succeeds
+        and does nothing. Requires authentication if BIBLELIVE_REQUIRE_AUTH is enabled.
+        """
+        if config.FOLLOW_ALONG:
+            try:
+                await app_state.offer_follow_along(request.text, request.language.strip().lower())
+            except Exception as e:
+                # Best effort: a matching failure must not reach the pipeline as an error.
+                logger.error(f"Follow-along matching failed: {e}", exc_info=True)
+        return TranscriptSubmitResponse(status="success")
 
     @app.post(
         "/api/approve",

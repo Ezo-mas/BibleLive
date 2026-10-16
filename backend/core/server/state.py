@@ -12,10 +12,12 @@ from ..bible_versions import BibleVersion, discover_versions
 from ..config import config
 from ..passage import ResolvedPassage
 from .connections import ConnectionManager
+from .follow_along import VerseIndexes, next_verse_hint
 from .models import (
     AutoMode,
     BibleReference,
     DisplaySettings,
+    FollowAlongHint,
     PipelineHeartbeat,
     PipelineStatusResponse,
     VerseText,
@@ -80,6 +82,10 @@ class AppState:
         # (time.monotonic()), or None until the first one.
         self.pipeline_report: PipelineHeartbeat | None = None
         self.pipeline_reported_at: float | None = None
+        # Follow-along: verse text per spoken language, and the hint last sent, so
+        # an unchanged hint is not sent again and a reconnecting operator gets it.
+        self.verse_indexes = VerseIndexes(self.available_bible_versions)
+        self.last_follow_along: FollowAlongHint | None = None
 
     def record_pipeline_report(self, report: PipelineHeartbeat, now: float | None = None) -> None:
         """Keep the audio pipeline's latest health report."""
@@ -220,10 +226,19 @@ class AppState:
                 "auto_mode": self.auto_mode,
             },
         }
-        if websocket:
-            await self.connection_manager._safe_send(websocket, snapshot)
-        else:
-            await self.connection_manager.send_to_operator(snapshot)
+        # The snapshot replaces the console's state, hint included: resend the
+        # hint that still follows on from the passage on screen.
+        hint = self.last_follow_along
+        if not (hint and self.current_display and hint.display_id == self.current_display.id):
+            hint = None
+        messages = [snapshot]
+        if hint is not None:
+            messages.append({"type": "follow_along", "data": hint.model_dump()})
+        for message in messages:
+            if websocket:
+                await self.connection_manager._safe_send(websocket, message)
+            else:
+                await self.connection_manager.send_to_operator(message)
 
     async def send_display_current_state(self, websocket: WebSocket) -> None:
         """Send current display state to a newly connected display client."""
@@ -520,6 +535,34 @@ class AppState:
             {"type": "display_confirmed", "data": {"reference": ref.model_dump()}}
         )
         return ref
+
+    async def offer_follow_along(self, transcript: str, language: str) -> FollowAlongHint | None:
+        """Tell operators which verse the speaker has reached after the passage on screen.
+
+        Goes to operators only, never to displays, and only when there is a passage
+        on screen. The same verse for the same display is not offered twice. Returns
+        the hint sent, or None.
+        """
+        display = self.current_display
+        if display is None or display.verse_start is None:
+            return None
+        index = await self.verse_indexes.for_language(language)
+        # Loading an index takes a moment; the display may have changed meanwhile.
+        display = self.current_display
+        if index is None or display is None:
+            return None
+        hint = next_verse_hint(index, self.bible_lookup, display, transcript)
+        last = self.last_follow_along
+        if hint is None or (
+            last is not None
+            and (hint.display_id, hint.verse_start) == (last.display_id, last.verse_start)
+        ):
+            return None
+        self.last_follow_along = hint
+        await self.connection_manager.send_to_operator(
+            {"type": "follow_along", "data": hint.model_dump()}
+        )
+        return hint
 
     async def clear_display(self) -> None:
         """Clear the current display"""
