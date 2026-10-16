@@ -65,7 +65,8 @@ python benchmarks/run_benchmark.py \
   without it the run warns and under-counts.
 - Name outputs uniquely under `results/`; never overwrite an earlier run.
 - Tuning knobs are flags shared with the live CLI (`--beam-size`,
-  `--end-of-speech-s`, `--soft-utterance-s`, `--max-utterance-s`, ...), so a
+  `--end-of-speech-s`, `--soft-utterance-s`, `--max-utterance-s`,
+  `--pre-roll-s`, `--start-voiced-frames`, `--vad silero`, ...), so a
   sweep needs no code edit.
 - The transcript cache (`results/.bench-cache`) is keyed on audio hash,
   model/device/compute type, beam size, prompt + hotwords, mode/window

@@ -61,7 +61,10 @@ easy to break by accident.
    be shown again, because the canon and the Bible database — not the
    history list — are the authority.
 4. **VAD frame discipline**: frames must be exactly the size the active
-   VAD requires at 16 kHz — WebRTC VAD (current): 10/20/30 ms. The
+   VAD requires at 16 kHz — WebRTC VAD (the default): 10/20/30 ms. The
+   optional Silero VAD (`--vad silero`) takes the same 30 ms frames and
+   re-chunks them into its 512-sample windows, carrying leftover samples
+   over, so the capture frame size does not change. The
    load-bearing part is that no audio is lost: `AudioCapture.get_audio_frame()`
    must return exactly that many bytes and must not drop carry-over bytes
    between calls (it keeps a `_frame_buffer`). Swapping the VAD (e.g. to

@@ -49,7 +49,10 @@ class AudioPipelineConfig:
     language: str = "en"  # Spoken language: "en" or "lt"
     beam_size: int = 5  # Whisper beam search width; lower is faster
     cpu_threads: int = 0  # Whisper threads on CPU; 0 = library default
-    vad_aggressiveness: int = 2  # 0=least, 3=most aggressive
+    vad_aggressiveness: int = 2  # 0=least, 3=most aggressive (WebRTC only)
+    # VAD engine: "webrtc" or "silero" (Silero v6, bundled with faster-whisper).
+    vad: str = "webrtc"
+    silero_threshold: float = 0.5  # speech probability that counts as voiced
     # Microphone name for ffmpeg (dshow device on Windows, pulse source on Linux,
     # avfoundation index on macOS). None = platform default; see capture.py.
     input_device: str | None = None
@@ -59,6 +62,18 @@ class AudioPipelineConfig:
     min_speech_s: float = 0.3  # shorter utterances are dropped as blips
     soft_utterance_s: float = 8.0  # past this, end at the next pause
     max_utterance_s: float = 12.0  # hard cap, for audio that never pauses
+    # Audio kept from just before the first voiced frame, so a soft first
+    # sound the VAD missed is not cut.
+    pre_roll_s: float = 0.0
+    # Keep the frames the VAD calls silent inside an utterance (soft consonants,
+    # short pauses) instead of only voiced frames; trailing silence is dropped.
+    keep_pauses: bool = False
+    # Start an utterance once this many of the last ``start_window_frames``
+    # VAD frames are voiced (1 of 1 = the first voiced frame).
+    # Pre-roll 0.3 s + 6 of 10 measured level with these defaults (139 / 10,
+    # benchmarks/BASELINE_NOTES.md), so the old behavior stays the default.
+    start_voiced_frames: int = 1
+    start_window_frames: int = 1
 
     # Runtime language-control server (stdlib http.server). Bound to loopback
     # by default; only expose it more widely behind a token.

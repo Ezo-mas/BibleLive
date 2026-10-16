@@ -147,6 +147,13 @@ Options:
   --min-speech-s S        Shorter utterances are dropped (default: 0.3)
   --soft-utterance-s S    Past this, end the utterance at the next pause (default: 8)
   --max-utterance-s S     Hard utterance length cap (default: 12)
+  --pre-roll-s S          Audio kept from before the first voiced frame (default: 0)
+  --keep-pauses on|off    Keep in-utterance frames the VAD calls silent (default: off)
+  --start-voiced-frames N Voiced 30 ms frames needed to start an utterance...
+  --start-window-frames M ...within the last M frames (default: 1 of 1)
+  --vad webrtc|silero     VAD engine (default: webrtc); Silero is the v6 model
+                          bundled with faster-whisper
+  --silero-threshold P    Silero speech probability threshold (default: 0.5)
   --input-device NAME     Microphone: exact DirectShow name on Windows, PulseAudio
                           source on Linux, avfoundation index on macOS (default:
                           first Windows input, system default elsewhere)
@@ -368,7 +375,7 @@ BibleLive/                        # Monorepo root: tooling + shared assets
 │   ├── audio/                    # Audio pipeline (ffmpeg + VAD + Whisper STT)
 │   │   ├── cli.py                # Entry point
 │   │   ├── pipeline.py           # BibleLiveAudioProcessor
-│   │   ├── capture.py, vad.py    # ffmpeg capture + WebRTC VAD
+│   │   ├── capture.py, vad.py    # ffmpeg capture + WebRTC/Silero VAD
 │   │   ├── stt.py                # faster-whisper transcription
 │   │   ├── sender.py             # Reference delivery (dedup + retry/backoff)
 │   │   ├── control.py            # Runtime language-control HTTP server

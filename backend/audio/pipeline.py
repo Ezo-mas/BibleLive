@@ -18,7 +18,7 @@ from .metrics import PipelineMetrics
 from .segmenter import FRAME_DURATION_MS, Segmenter, SegmentEvent
 from .sender import ReferenceSender
 from .stt import SUPPORTED_LANGUAGES, SpeechToText
-from .vad import VoiceActivityDetector
+from .vad import create_vad
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +47,11 @@ class BibleLiveAudioProcessor:
 
         # Initialize components with bounded queues
         self.audio_capture = AudioCapture(queue_maxsize=self.config.audio_queue_maxsize)
-        self.vad = VoiceActivityDetector(aggressiveness=self.config.vad_aggressiveness)
+        self.vad = create_vad(
+            self.config.vad,
+            aggressiveness=self.config.vad_aggressiveness,
+            silero_threshold=self.config.silero_threshold,
+        )
         self.stt = SpeechToText(
             model_size=self.config.whisper_model,
             device=self.config.whisper_device,
@@ -430,7 +434,7 @@ class BibleLiveAudioProcessor:
                 self.vad_queue.put((self._capture_language, frames), timeout=0.1)
                 self.metrics.vad_segments_detected += 1
                 logger.info(
-                    f"Utterance ended ({event.reason}): {utterance_seconds:.2f}s of speech "
+                    f"Utterance ended ({event.reason}): {utterance_seconds:.2f}s of audio "
                     f"({len(frames)} frames, {self._capture_language}) "
                     f"queued for transcription"
                 )
@@ -439,7 +443,7 @@ class BibleLiveAudioProcessor:
         else:
             logger.debug(
                 f"Ignoring {utterance_seconds:.2f}s blip "
-                f"({len(frames)} frames < {self.segmenter.min_speech_frames} minimum)"
+                f"(fewer than {self.segmenter.min_speech_frames} voiced frames)"
             )
 
     def _transcription_loop(self):
