@@ -67,6 +67,7 @@ _WORD_FORMS: dict[str, set[str]] = {
         "skiris",
         "skyris",
         "skyrus",
+        "kyriaus",  # dropped initial s ("20 kyriaus, 21 eilutės")
     },
     VERSE: {
         "eilute",
@@ -82,7 +83,35 @@ _WORD_FORMS: dict[str, set[str]] = {
         # frequent STT mangles of "eilute" ("aštuntai ilutė", "25 lūtė")
         "ilute",
         "ilutes",
+        "iluti",  # "11 12 įlutį": į written for ę
+        # "17 rūtį" for "17 eilutę"; not Ruth, whose forms are rūta/rūtos/rūtai
+        "rute",
+        "rutes",
+        "ruti",
         "lute",
+        "lutes",
+        "lutei",
+        "luteje",
+        "lutej",
+        "luti",
+        "luciu",
+        "lutems",
+        "lutemis",
+        "lutese",
+        # "jūtė" for "eilutė", pervasive with some speakers ("26 jūtė")
+        "jute",
+        "jutes",
+        "jutei",
+        "juteje",
+        "jutej",
+        "juti",
+        # "ūtė": the same mangle with the L dropped too ("Trisdešimtai ūtė")
+        "ute",
+        "utes",
+        "utei",
+        "uteje",
+        "utej",
+        "uti",
         "posmas",
         "posmo",
         "posma",
@@ -98,6 +127,10 @@ _WORD_FORMS: dict[str, set[str]] = {
         "psalmeje",
         "psalmiu",
         "psalmems",
+        "psalmiai",
+        "psalmiais",
+        "psalmiams",
+        "psalmiuose",
         "psalmynas",
         "psalmyno",
         "psalmynui",
@@ -105,7 +138,7 @@ _WORD_FORMS: dict[str, set[str]] = {
         "psalmyne",
     },
     "knyga": {"knyga", "knygos", "knygai", "knygoje", "knygoj", "knygu"},
-    "laiskas": {"laiskas", "laisko", "laiskui", "laiska", "laiske", "laisku"},
+    "laiskas": {"laiskas", "laisko", "laiskui", "laiska", "laiske", "laisku", "laiskio"},
     "evangelija": {
         "evangelija",
         "evangelijos",
@@ -122,8 +155,13 @@ _NORMALIZE["no"] = "nuo"
 CHAPTER_WORDS = frozenset({CHAPTER})
 VERSE_WORDS = frozenset({VERSE})
 RANGE_WORDS = frozenset({"iki", "ligi", "-"})
-AND_WORDS = frozenset({"ir"})  # consecutive-verse range: "4 ir 5" -> 4-5
-FILLERS = frozenset({"ir", "nuo", "is", "pradedant", "pradedame", "skaitome", "skaitykime"})
+AND_WORDS = frozenset({"ir", "i"})  # consecutive-verse range: "4 ir 5" -> 4-5
+# "i" is the unstressed reduced "ir" STT actually writes ("nuo pirmos i
+# trečios" for 1-3). A preposition "į" between numbers ("3 i 16") is rare
+# enough that the gap bound (verse pairs within 5) contains the damage.
+FILLERS = frozenset(
+    {"ir", "nuo", "is", "pradedant", "pradedame", "skaitome", "skaitykime", "pati", "pats"}
+)
 # Filler words that, right after a chapter number, announce a verse
 # ("4 skyrius nuo 16 iki 20") even when "eilute" itself is not spoken.
 VERSE_INTRO_WORDS = frozenset({"nuo"})
@@ -137,6 +175,10 @@ PREFIXES: dict[Token, int] = {1: 1, 2: 2, 3: 3}
 # "Pirmasis laiškas korintiečiams", "Pradžios knyga").
 _LEAD_WORDS = frozenset({"knyga", "laiskas", "evangelija", "pagal"})
 _TRAIL_WORDS = frozenset({"knyga", "laiskas", "evangelija"})
+# Book-label words that may follow a bare book name postpositionally
+# ("Romiečiams laiške, 8 skyrius"): the parser may bridge over one when a
+# chapter/verse word with its number comes right after it.
+LABEL_WORDS = frozenset({"knyga", "laiskas", "evangelija", "pagal"})
 _STRONG_WORDS = frozenset({"knyga", "laiskas", "evangelija"})
 
 # --------------------------------------------------------------------------
@@ -224,6 +266,9 @@ _EXACT_NUMBERS: dict[str, int] = {
     "trimis": 3,
     "trijose": 3,
     "trijuose": 3,
+    # STT drops the 'i' ("ketruoliktojai" for "keturioliktoji"); exact word
+    # to avoid widening every stem's endings for one mangled form.
+    "ketruoliktojai": 14,
 }
 
 # (stem, value, kind, allowed endings). kind: unit | teen | tens | hundred
@@ -240,8 +285,11 @@ _NUMBER_STEMS: list[tuple[str, int, str, frozenset[str]]] = [
     ("sest", 6, "unit", _ADJ_END),
     ("septyn", 7, "unit", _CARD_END),
     ("septint", 7, "unit", _ADJ_END),
+    ("sepint", 7, "unit", _ADJ_END),  # STT drops the 't' ("sepinta" for "septinta")
+    ("septant", 7, "unit", _ADJ_END),  # STT writes 'a' for 'i' ("septantai" for "septintai")
     ("astuon", 8, "unit", _CARD_END),
     ("astunt", 8, "unit", _ADJ_END),
+    ("stunt", 8, "unit", _ADJ_END),  # STT drops the initial A ("štuntos" for "aštuntos")
     ("devyn", 9, "unit", _CARD_END),
     ("devint", 9, "unit", _ADJ_END),
     ("desimt", 10, "teen", _TENS_END),
@@ -249,12 +297,15 @@ _NUMBER_STEMS: list[tuple[str, int, str, frozenset[str]]] = [
     ("dvylik", 12, "teen", _TEEN_END),
     ("trylik", 13, "teen", _TEEN_END),
     ("keturiolik", 14, "teen", _TEEN_END),
+    ("ketrolik", 14, "teen", _TEEN_END),  # STT drops the 'u' ("ketrolika" for "keturiolika")
     ("penkiolik", 15, "teen", _TEEN_END),
     ("sesiolik", 16, "teen", _TEEN_END),
     ("septyniolik", 17, "teen", _TEEN_END),
     ("astuoniolik", 18, "teen", _TEEN_END),
+    ("astiniolik", 18, "teen", _TEEN_END),  # STT drops the 'u' ("Aštiniolika")
     ("devyniolik", 19, "teen", _TEEN_END),
     ("dvidesimt", 20, "tens", _TENS_END),
+    ("dvidesim", 20, "tens", _TENS_END),  # STT drops the final 't' ("dvidešim")
     ("trisdesimt", 30, "tens", _TENS_END),
     ("keturiasdesimt", 40, "tens", _TENS_END),
     ("penkiasdesimt", 50, "tens", _TENS_END),
@@ -270,17 +321,101 @@ _NUMBER_STEMS: list[tuple[str, int, str, frozenset[str]]] = [
 def number_word(word: str) -> tuple[int, str] | None:
     """'aštuntą' / 'astunta' -> (8, 'unit'); 'dvidešimt' -> (20, 'tens')."""
     w = fold(word)
+    # Nominative "viena"/"vienas" is the indefinite article ("dar viena
+    # eilutę" = "one more verse"), not verse/chapter 1; genuine 1s are
+    # "pirma(s)" or digits. Tens still compound with it ("dvidešimt
+    # vienas" = 21, handled in _below_100).
+    if w in ("viena", "vienas"):
+        return None
     if w in _EXACT_NUMBERS:
         return _EXACT_NUMBERS[w], "unit"
     for stem, value, kind, endings in _NUMBER_STEMS:
         if w.startswith(stem) and w[len(stem) :] in endings:
             return value, kind
+    roman = _roman_value(w)
+    if roman is not None:
+        return roman, "unit"
     return None
 
 
+_ROMAN_VALUES = {"i": 1, "v": 5, "x": 10, "l": 50, "c": 100, "d": 500, "m": 1000}
+
+
+def _roman_value(word: str) -> int | None:
+    """Roman numerals speakers read off ("XIX skyrius" for chapter 19).
+
+    Only multi-letter tokens: lone "i" is the preposition "į" and lone
+    "v"/"x" are initials too often. Capped at 150 (Psalms); larger values
+    are years, not citations.
+    """
+    if len(word) < 2 or any(ch not in _ROMAN_VALUES for ch in word):
+        return None
+    total, prev = 0, 0
+    for ch in reversed(word):
+        value = _ROMAN_VALUES[ch]
+        if value < prev:
+            total -= value
+        else:
+            total += value
+            prev = value
+    if not 1 <= total <= 150:
+        return None
+    return total
+
+
+FUZZY_BOOKS = True
+FUZZY_NUMBERS = True
+
+
+def _lev(a: str, b: str, limit: int) -> int:
+    """Levenshtein distance, giving up (returning limit + 1) past ``limit``."""
+    if abs(len(a) - len(b)) > limit:
+        return limit + 1
+    prev = list(range(len(b) + 1))
+    for i, ca in enumerate(a, 1):
+        cur = [i]
+        for j, cb in enumerate(b, 1):
+            cur.append(min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (ca != cb)))
+        if min(cur) > limit:
+            return limit + 1
+        prev = cur
+    return prev[-1]
+
+
+def fuzzy_number_word(word: str) -> tuple[int, str] | None:
+    """A number word STT misspelled by a letter or two ("ketrolika" -> 14).
+
+    Only the stem may differ (1 edit, 2 for stems of 9+ letters); the ending
+    must be a real one. Ambiguous words (two different values) return None.
+    """
+    w = fold(word)
+    if len(w) < 5 or not w.isalpha():
+        return None
+    found: set[tuple[int, str]] = set()
+    for stem, value, kind, endings in _NUMBER_STEMS:
+        if stem == "vien" or len(stem) < 5:
+            continue
+        limit = 2 if len(stem) >= 9 else 1
+        for cut in range(max(1, len(stem) - limit), min(len(w), len(stem) + limit) + 1):
+            if w[cut:] in endings and _lev(w[:cut], stem, limit) <= limit:
+                found.add((value, kind))
+                break
+    return found.pop() if len(found) == 1 else None
+
+
+def _near_citation_word(w: list[Token], j: int) -> bool:
+    return any(0 <= k < len(w) and w[k] in (CHAPTER, VERSE) for k in (j - 2, j - 1, j + 1, j + 2))
+
+
 def _classify(w: list[Token], j: int) -> tuple[int, str] | None:
-    if j < len(w) and isinstance(w[j], str):
-        return number_word(w[j])
+    word = w[j] if j < len(w) else None
+    if isinstance(word, str):
+        hit = number_word(word)
+        if hit is None and FUZZY_NUMBERS and _near_citation_word(w, j):
+            # Only next to "skyrius"/"eilutė": elsewhere a near-number word is
+            # far more likely an ordinary word than a mangled number.
+            hit = fuzzy_number_word(word)
+        return hit
     return None
 
 
@@ -291,6 +426,15 @@ def _below_100(w: list[Token], j: int) -> tuple[int, int] | None:
     value, kind = c
     if kind == "tens":
         nxt = _classify(w, j + 1)
+        following = w[j + 1] if j + 1 < len(w) else None
+        if (
+            nxt is None
+            and isinstance(following, str)
+            # Compounding still works with the article form ("dvidešimt
+            # vienas" = 21) even though it is not a number on its own.
+            and fold(following) in ("viena", "vienas")
+        ):
+            nxt = (1, "unit")
         if nxt and nxt[1] == "unit":
             return value + nxt[0], j + 2
     return value, j + 1
@@ -319,6 +463,43 @@ def read_number(w: list[Token], i: int) -> tuple[int, int] | None:
     return value, j
 
 
+def _split_glued_ordinal(word: str) -> tuple[int, int] | None:
+    """Split two ordinal words STT glued into one.
+
+    "devintadešimtai" (for "devinta dešimta") -> (9, 10); the caller emits
+    them with a dash between so the range rules apply. Only when the whole
+    word is not a number itself (genuine "devyniasdešimt", 90, always wins)
+    and both parts are ordinal-marked units/tens: cardinals ("devynias")
+    never split, so tens stay whole.
+    """
+    w = fold(word)
+    if number_word(w) is not None:
+        return None
+    for i in range(4, len(w) - 4):
+        first = None
+        for stem, value, kind, _endings in _NUMBER_STEMS:
+            if (
+                kind == "unit"
+                and 1 <= value <= 9
+                and w.startswith(stem)
+                and len(stem) < i
+                and w[len(stem) : i] in _ADJ_END
+            ):
+                first = value
+                break
+        if first is None:
+            continue
+        for stem, value, kind, endings in _NUMBER_STEMS:
+            if (
+                kind in ("teen", "tens")
+                and value % 10 == 0
+                and w[i:].startswith(stem)
+                and w[i + len(stem) :] in endings
+            ):
+                return first, value
+    return None
+
+
 # --------------------------------------------------------------------------
 # Book name stems
 # --------------------------------------------------------------------------
@@ -333,9 +514,14 @@ BOOK_STEMS: frozenset[str] = frozenset(
         "agej",
         "amos",
         "apostol",
+        "apastal",  # standard spelling ("apaštalų darbai")
+        "apastol",  # STT writes unstressed 'a' as 'o' ("apaštolų darbai")
+        "pastal",  # STT drops the initial A ("paštalų" for "apaštalų")
         "apreisk",
         "daniel",
         "efeziec",
+        "feziec",  # STT drops the initial E ("Feziečiams laiškio")
+        "afeziec",  # STT writes A for E ("Afeziečiams 4.25")
         "ekleziast",
         "ezr",
         "ester",
@@ -347,9 +533,13 @@ BOOK_STEMS: frozenset[str] = frozenset(
         "giesm",
         "habakuk",
         "hebraj",
+        "hebrej",  # standard spelling ("Hebrėjams"), the one the Whisper prompt uses
         "isej",
         "izaj",
+        "izaij",  # correct spelling ("Izaijo", "Izaijas"); "izaj" kept for the STT variant "Izajo"
+        "jebraj",  # STT writes J for H ("Jebrajams" for "Hebrajams")
         "jeremij",
+        "job",  # "Jobo", "Jobas": BOOKS listed Job but the stem was missing
         "joel",
         "jokub",
         "jona",
@@ -389,15 +579,59 @@ BOOK_STEMS: frozenset[str] = frozenset(
         "teisej",
         "tesalonikiec",
         "timotej",
+        "timotiej",  # correct dative/genitive ("Timotiejui", "Timotiejaus")
         "tito",
         "titui",
+        "vuk",  # STT writes V for L ("Vuko" for "Luko")
         "zacharij",
+        "zaj",  # STT drops the initial I ("Zajo" for "Izaijo")
     }
 )
 _STEMS_BY_LENGTH: tuple[str, ...] = tuple(sorted(BOOK_STEMS, key=len, reverse=True))
 # Verb forms that merely start with a book stem: "skaičiau 24" is "I read 24",
-# not the book of Numbers. Checked before the stem match.
-_NOT_BOOK_PREFIXES = ("skaiciau", "skaiciav", "skaiciuoj", "skaiciuot", "skaiciuod")
+# not the book of Numbers; "mes matom" is "we see", not Matthew.
+# Checked before the stem match.
+_NOT_BOOK_PREFIXES = (
+    "skaiciau",
+    "skaiciav",
+    "skaiciuoj",
+    "skaiciuot",
+    "skaiciuod",
+    "matau",
+    "matai",
+    "matom",
+    "matome",
+    "matote",
+    # "išėjau" (I went out) is not Exodus: present ("išeina"), past
+    # ("išėjo") and participle ("išėjęs") forms. The noun ("išėjimas",
+    # "išėjimo" — the book) starts with "iseji" and still folds.
+    "isejau",
+    "isejai",
+    "isejo",
+    "iseje",
+    "isei",
+)
+
+
+_FUZZY_SKIP_STEMS = frozenset({"pastal", "apastal", "apastol", "apostol", "pradz"})
+
+
+def fuzzy_book_stem(word: str) -> str | None:
+    """The one book stem a misspelled word starts with, at one edit
+    ("vuko" -> no: stems under 4 letters are too short to guess;
+    "afezieciams" -> "efeziec", "zajo" -> "izaj"). None if none or several.
+    """
+    if len(word) < 5 or not word.isalpha() or word.startswith(_NOT_BOOK_PREFIXES):
+        return None
+    found = set()
+    for stem in _STEMS_BY_LENGTH:
+        if len(stem) < 4 or stem in _FUZZY_SKIP_STEMS:
+            continue
+        for cut in (len(stem) - 1, len(stem), len(stem) + 1):
+            if 0 < cut <= len(word) and _lev(word[:cut], stem, 1) <= 1:
+                found.add(stem)
+                break
+    return found.pop() if len(found) == 1 else None
 
 
 def book_stem(word: str) -> str:
@@ -408,6 +642,21 @@ def book_stem(word: str) -> str:
     if word.startswith(_NOT_BOOK_PREFIXES):
         return word
     for stem in _STEMS_BY_LENGTH:
+        # "paštalai" (nominative, the people themselves) must not become
+        # the book: only the genitive "paštalų" (elliptical "Acts ...")
+        # folds onto the stem.
+        if stem == "pastal" and word != "pastalu":
+            continue
+        # Same for the a/o apostle stems: only genitive -ų forms
+        # ("apaštalų", "apaštolų", "apostolų") are book-elliptical;
+        # nominatives ("apaštalas", "apostolas") are people.
+        if stem in ("apastal", "apastol", "apostol") and not word.endswith("u"):
+            continue
+        # "pradžiai" (dative, "for starters") and "pradžioje" (locative,
+        # "in the beginning") are ordinary words, not the book: only the
+        # genitive "pradžios" ("Pradžios knyga") folds onto the stem.
+        if stem == "pradz" and not word.startswith("pradzios"):
+            continue
         if word.startswith(stem):
             return stem
     return word
@@ -428,8 +677,16 @@ def _unglue(word: str) -> list[str]:
         return ["nuo", word[3:]]
     if word.startswith("pagal"):
         for tail in (word[5:], word[4:]):  # "pagalluka", "pagaluka"
-            if len(tail) >= 3 and book_stem(tail) != tail:
+            if len(tail) >= 3 and book_stem(tail) in BOOK_STEMS:
                 return ["pagal", tail]
+    if word.startswith("is") and len(word) >= 5:
+        # "Isozejo" ("Iš Ozėjo" glued) -> ["is", "ozejo"]: the preposition
+        # "iš" glues onto the book name. The remainder must fold onto a
+        # known stem (even unchanged, as "ozejo" does), so ordinary
+        # "is"-words ("istorija", "istrauke") stay whole.
+        tail = word[2:]
+        if len(tail) >= 3 and book_stem(tail) in BOOK_STEMS:
+            return ["is", tail]
     return [word]
 
 
@@ -460,9 +717,51 @@ def tokenize(text: str) -> list[Token]:
             out.append(r[0])
             i = r[1]
         else:
-            out.append(book_stem(t) if isinstance(t, str) else t)
+            # Two ordinal words glued by STT ("devintadešimtai" for
+            # "devinta dešimta"): emit with a dash so the range rules apply.
+            g = _split_glued_ordinal(t) if isinstance(t, str) and t.isalpha() else None
+            if g:
+                out += [g[0], "-", g[1]]
+            elif t in ("viena", "vienas") and _citation_slot(out):
+                out.append(1)
+            else:
+                out.append(book_stem(t) if isinstance(t, str) else t)
             i += 1
     return out
+
+
+def _citation_slot(out: list[Token]) -> bool:
+    """True right after a book name or a book's chapter number: there
+    "viena(s)" is the number 1 ("Jobo vienas", "Kolosiečiams, Tris, Vienas"),
+    not the article it is everywhere else ("dar viena eilutė")."""
+    if out and isinstance(out[-1], str):
+        return any(out[-1].startswith(w) for w in _book_words())
+    return (
+        len(out) >= 2
+        and isinstance(out[-1], int)
+        and isinstance(out[-2], str)
+        and any(out[-2].startswith(w) for w in _book_words())
+    )
+
+
+def _book_words() -> frozenset[str]:
+    global _BOOK_WORDS
+    if _BOOK_WORDS is None:
+        _BOOK_WORDS = (
+            frozenset(
+                word
+                for _canon, _chapters, names in BOOKS
+                for name in names
+                for word in name.split()
+                if len(word) >= 3
+            )
+            - _LEAD_WORDS
+            - _TRAIL_WORDS
+        )
+    return _BOOK_WORDS
+
+
+_BOOK_WORDS: frozenset[str] | None = None
 
 
 _POSTPOSITIONAL = frozenset({CHAPTER, VERSE, PSALM})
@@ -552,6 +851,25 @@ def postprocess(toks: list[Token]) -> list[Token]:
                         i += 6
                         owned = False
                         continue
+                    # [num, CHAPTER, num2, num3, VERSE] ->
+                    # [CHAPTER, num, VERSE, num2, -, num3]
+                    # ("4 skyriuje 9 10 eilute" -> "skyrius 4 eilute 9 - 10").
+                    # Only after an explicit chapter word: a bare
+                    # "Jono 3 16 eilute" is chapter 3 verse 16, not a range.
+                    num2 = toks[i + 2]
+                    num3 = toks[i + 3] if i + 3 < n else None
+                    if (
+                        word == CHAPTER
+                        and i + 4 < n
+                        and isinstance(num2, int)
+                        and isinstance(num3, int)
+                        and num2 < num3
+                        and toks[i + 4] == VERSE
+                    ):
+                        out += [CHAPTER, t, VERSE, num2, "-", num3]
+                        i += 5
+                        owned = False
+                        continue
                     # [num, CHAPTER, num2] -> [CHAPTER, num, num2]  ("3 skyrius 16")
                     out += [word, t, toks[i + 2]]
                     i += 3
@@ -600,7 +918,7 @@ BOOKS: list[tuple[str, int, list[str]]] = [
     ("Proverbs", 31, ["patarl knyga", "patarl"]),
     ("Ecclesiastes", 12, ["mokytoj knyga", "mokytoj", "ekleziast"]),
     ("Song of Solomon", 8, ["giesm giesm"]),
-    ("Isaiah", 66, ["izaj knyga", "izaj"]),
+    ("Isaiah", 66, ["izaj knyga", "izaj", "izaij knyga", "izaij", "zaj", "izaiu"]),
     ("Jeremiah", 52, ["jeremij knyga", "jeremij"]),
     ("Lamentations", 5, ["raud knyga", "raud"]),
     ("Ezekiel", 48, ["ezechiel knyga", "ezechiel"]),
@@ -619,7 +937,11 @@ BOOKS: list[tuple[str, int, list[str]]] = [
     ("Malachi", 4, ["malachij knyga", "malachij"]),
     ("Matthew", 28, ["mato evangelija", "evangelija pagal mata", "pagal mata", "mato", "mata"]),
     ("Mark", 16, ["mork evangelija", "evangelija pagal mork", "pagal mork", "mork"]),
-    ("Luke", 24, ["luk evangelija", "evangelija pagal luk", "pagal luk", "luk"]),
+    (
+        "Luke",
+        24,
+        ["luk evangelija", "evangelija pagal luk", "pagal luk", "luk", "vuk evangelija", "vuk"],
+    ),
     (
         "John",
         21,
@@ -632,27 +954,44 @@ BOOKS: list[tuple[str, int, list[str]]] = [
             "jonas",
         ],
     ),
-    ("Acts", 28, ["apostolu darbai", "apostolu"]),
+    (
+        "Acts",
+        28,
+        [
+            "apostolu darbai",
+            "apostolu",
+            "apastal darbai",
+            "apastal darbu",
+            "apastal",
+            "apastol darbai",
+            "apastol",
+            "pastal",
+        ],
+    ),
     ("Romans", 16, ["laiskas romiec", "romiec"]),
-    ("1 Corinthians", 16, ["laiskas korintiec", "korintiec"]),
-    ("2 Corinthians", 13, ["laiskas korintiec", "korintiec"]),
+    ("1 Corinthians", 16, ["laiskas korintiec", "korintiec laiskas", "korintiec"]),
+    ("2 Corinthians", 13, ["laiskas korintiec", "korintiec laiskas", "korintiec"]),
     ("Galatians", 6, ["laiskas galat", "galat"]),
-    ("Ephesians", 6, ["laiskas efeziec", "efeziec"]),
+    ("Ephesians", 6, ["laiskas efeziec", "efeziec", "laiskas feziec", "feziec", "afeziec"]),
     ("Philippians", 4, ["laiskas filipiec", "filipiec"]),
     ("Colossians", 4, ["laiskas kolosiec", "kolosiec"]),
     ("1 Thessalonians", 5, ["laiskas tesalonikiec", "tesalonikiec"]),
     ("2 Thessalonians", 3, ["laiskas tesalonikiec", "tesalonikiec"]),
-    ("1 Timothy", 6, ["laiskas timotej", "timotej"]),
-    ("2 Timothy", 4, ["laiskas timotej", "timotej"]),
+    ("1 Timothy", 6, ["laiskas timotej", "timotej", "laiskas timotiej", "timotiej"]),
+    ("2 Timothy", 4, ["laiskas timotej", "timotej", "laiskas timotiej", "timotiej"]),
     ("Titus", 3, ["laiskas titui", "titui"]),
     ("Philemon", 1, ["laiskas filemon", "filemon"]),
-    ("Hebrews", 13, ["laiskas hebraj", "hebraj"]),
+    (
+        "Hebrews",
+        13,
+        ["laiskas hebraj", "hebraj", "laiskas hebrej", "hebrej", "laiskas jebraj", "jebraj"],
+    ),
     ("James", 5, ["jokub laiskas", "jokub"]),
     ("1 Peter", 5, ["petr laiskas", "petr"]),
     ("2 Peter", 3, ["petr laiskas", "petr"]),
     ("1 John", 5, ["jono laiskas", "jono"]),
-    ("2 John", 1, ["jono laiskas"]),
-    ("3 John", 1, ["jono laiskas"]),
+    ("2 John", 1, ["jono laiskas", "jono"]),
+    ("3 John", 1, ["jono laiskas", "jono"]),
     ("Jude", 1, ["judo laiskas", "judo"]),
     ("Revelation", 22, ["apreisk jonui", "apreisk"]),
 ]
