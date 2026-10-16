@@ -129,9 +129,17 @@ python benchmarks/run_benchmark.py --manifest benchmarks/corpus/manifest.example
 ## Metrics (definitions)
 
 - **TP**: predicted reference whose normalized (book, chapter, verse_start,
-  verse_end) matches a gold item and whose **detection time falls within
-  ±5.0s** of the gold spoken reference window midpoint (configurable tolerance
-  treats timing jitter of the utterance batching pipeline).
+  verse_end) matches a gold item and whose **spoken time falls within
+  ±5.0s** of the gold spoken reference window midpoint. In offline/rt mode the
+  spoken time is the speech span of the utterance the reference came from
+  (VAD start to end of speech; for a held chapter-only ref, the utterance
+  before the one that reported it), so a reference said early in a 12 s
+  utterance is not penalized for being reported at its end. Windowed mode,
+  and caches written before spans were recorded, use the detection time.
+  `latency_s` in the output is still report time minus gold midpoint.
+- **Confidence** (per match/FP in the output) mirrors the live pipeline in
+  offline/rt mode: references from a Whisper decode flagged low-confidence
+  are marked `low`, as `audio/pipeline.py` does before auto-approve.
 - **FP**: prediction matched to nothing in gold (within tolerance).
 - **FN**: gold item matched by nothing.
 - **Exact book/chapter/verse accuracy** = TP where all of book/chapter/verse

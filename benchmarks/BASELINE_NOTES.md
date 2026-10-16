@@ -123,6 +123,44 @@ a 20 s tolerance unless noted. Check here before re-running one of these.
   Denoise: same hits, more false positives. Denoise + gate: no hits at
   all; the gate clips word onsets and mangles numbers. Do not gate the
   pipeline input.
+- **End of speech 2.0 s instead of 1.5 s** (2026-10-15, large-v3-turbo
+  offline, 13 Lithuanian recordings, 158 gold references, 5 s span
+  tolerance, TTL 600 s). 126/34/32 vs 131/31/27 with 1.5 s; median report
+  latency unchanged (4.8 vs 4.9 s). Longer pauses did not keep split
+  citations together; 10-04 lost 3 Genesis 22 verses.
+- **End of speech 1.0 s** (same setup, gold timestamps fixed). 137 TP and
+  16 medium/high FPs vs 139 and 14 with 1.5 s; 7% more utterances and no
+  change in median report latency (5.0 s, set by utterance length).
+- **Second Whisper pass with `large-v3` (beam 10) on suspicious
+  utterances** (a book name or chapter/verse word but no full reference;
+  3–21% of utterances per recording). 5 of 13 recordings: about 100 retries, none produced
+  a full reference; scores identical to the baseline. Where turbo mangles a
+  citation, large-v3 mangles it the same way.
+- **Previous utterance's tail appended to the Whisper prompt** (book prompt
+  trimmed to 191 tokens to make room, ~28 tokens of context). 13
+  recordings: 133 TP / 15 medium+high FP vs 138 / 14 with the same trimmed
+  prompt alone.
+- **Rolling window with `large-v3-turbo`** (re-test of the first entry;
+  10 s window, 2 s hop, 3 s lookahead, chapter-only refs held 6 s; the
+  proto/rolling-window code ported onto the current runner). 6 of 13
+  recordings: 55 TP / 16 medium+high FP vs 70 / 5 for the VAD-utterance
+  path. On the 52 references both found, rolling reported a median 1.5 s
+  earlier (a quarter of them 2 s or more later); end to end about 1–2.5 s
+  faster. Citations still split across 2 s commits ("Kolosiečiams 3, 2"
+  committed as a lone "Du."). Shorter lookahead (1 s) dropped book names at
+  commit boundaries outright.
+- **Adding Hosea (Ozėjo) to the Lithuanian prompt** in place of Kunigų
+  (221 tokens; Hosea is cited 4x in gold). 136 TP / 17 medium+high FP vs
+  136 / 13 with the current prompt; 07-05, the Hosea recording, lost a hit.
+  (Runs with confidence matching live: Whisper flagged 43 of 7,102
+  utterances low-confidence, none carrying a reference, so earlier
+  medium/high counts stand.)
+- **Trimming the Lithuanian book prompt to 191 tokens** (dropping 8
+  never-cited books) was neutral (138/14 vs 139/14). Only Ezros was dropped
+  in the end, to bring the prompt (224 tokens, over faster-whisper's
+  223-token window) back under the limit: 136 TP / 12 medium+high FP vs
+  139 / 14, judged prompt-perturbation noise (any prompt edit shifts a few
+  transcripts; 10-11 lost 2-3 TP under both trims) and kept.
 
 What did help, for contrast: the utterance cap (live path 0/10/25 ->
 5/3/20) and `large-v3-turbo` float16 (live path 20/2/5 at 30 s with the

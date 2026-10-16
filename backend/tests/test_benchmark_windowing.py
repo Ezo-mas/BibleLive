@@ -11,11 +11,16 @@ import pytest
 from benchmarks.run_benchmark import (
     BenchmarkingSender,
     Detection,
+    GoldItem,
+    SpanTracker,
     StubReceiver,
     dedupe_detections,
     feed_cache_key,
     feed_cache_path,
+    feeds_from_cache,
+    gold_distance_s,
     is_silent_window,
+    match_detections_to_gold,
     parse_t_range,
     pcm_resample,
     read_feed_cache,
@@ -257,6 +262,91 @@ class TestRegisterFeedsReplay:
             "Matthew 24:23",
             "John 3:16",
         ]
+
+
+class TestSpokenSpanMatching:
+    """Offline detections match gold by the speech they came from, not report time."""
+
+    def _gold(self, t: float) -> GoldItem:
+        return GoldItem("r", t, t + 8.0, "", "Romans", 8, 28, None)
+
+    def test_midpoint_inside_span_is_zero(self):
+        d = _det(40.0)
+        d.spoken_from_s, d.spoken_to_s = 28.0, 40.0
+        assert gold_distance_s(d, self._gold(28.0)) == 0.0  # midpoint 32
+
+    def test_gap_to_span_edge(self):
+        d = _det(40.0)
+        d.spoken_from_s, d.spoken_to_s = 38.0, 40.0
+        assert gold_distance_s(d, self._gold(26.0)) == 8.0  # midpoint 30
+
+    def test_no_span_uses_report_time(self):
+        assert gold_distance_s(_det(40.0), self._gold(26.0)) == 10.0
+
+    def test_long_utterance_matches_within_5s(self):
+        # Reported 12 s after gold at the end of a 12 s utterance: a miss by
+        # report time, a match by span.
+        d = _det(44.0)
+        d.spoken_from_s, d.spoken_to_s = 32.0, 44.0
+        matches, fps, fns = match_detections_to_gold([d], [self._gold(28.0)], 5.0)
+        assert len(matches) == 1 and not fps and not fns
+
+    def test_held_chapter_only_gets_previous_span(self):
+        parser = StreamingParser(ReferenceParser(language="lt"), hold_chapter_only=True)
+        spans = SpanTracker()
+        dets: list[Detection] = []
+        register_feeds(parser, None, [(20.0, "Romiečiams 5 skyrius", 12.0, "")], dets, spans)
+        assert dets == []  # held one utterance
+        register_feeds(parser, None, [(35.0, "ir toliau kalbame", 25.0, "")], dets, spans)
+        assert [(d.chapter, d.verse_start, d.t_s) for d in dets] == [(5, None, 35.0)]
+        assert (dets[0].spoken_from_s, dets[0].spoken_to_s) == (12.0, 20.0)
+
+    def test_low_confidence_decode_marks_refs_low(self):
+        # Mirrors audio/pipeline.py: refs from a shaky Whisper decode are "low".
+        parser = StreamingParser(ReferenceParser(language="lt"))
+        dets: list[Detection] = []
+        register_feeds(parser, None, [(10.0, "Jono 3 skyrius 16 eilutė", 2.0, "avg_logprob")], dets)
+        register_feeds(parser, None, [(30.0, "Mato 5 skyrius 3 eilutė", 22.0, "")], dets)
+        assert [(str(d.book), d.confidence) for d in dets] == [("John", "low"), ("Matthew", "high")]
+
+    def test_cache_key_marks_low_confidence_feeds(self):
+        key = feed_cache_key(
+            record_id="r",
+            audio_sha256="abc",
+            language="lt",
+            model="small",
+            device="cuda",
+            compute_type="int8",
+            mode="offline",
+            segmentation={"max_silent_frames": 50},
+        )
+        assert key["stt_low_confidence"] is True
+
+    def test_cache_round_trip_keeps_starts(self, tmp_path):
+        key = feed_cache_key(
+            record_id="r",
+            audio_sha256="abc",
+            language="lt",
+            model="small",
+            device="cuda",
+            compute_type="int8",
+            mode="offline",
+        )
+        path = feed_cache_path(tmp_path, key)
+        write_feed_cache(
+            path,
+            key,
+            units=[[(20.0, "Jono 3 16", 14.0, "no_speech_prob")]],
+            transcripts=[],
+            audio_duration_s=1.0,
+        )
+        cached = read_feed_cache(path)
+        assert cached is not None
+        assert feeds_from_cache(cached["units"][0]) == [(20.0, "Jono 3 16", 14.0, "no_speech_prob")]
+        # A start without a verdict (pre-verdict cache entry) reads as trusted.
+        assert feeds_from_cache([[20.0, "Jono 3 16", 14.0]]) == [(20.0, "Jono 3 16", 14.0, "")]
+        # Entries written before starts were recorded still load.
+        assert feeds_from_cache([[20.0, "Jono 3 16"]]) == [(20.0, "Jono 3 16")]
 
 
 class TestVerifiedAudioSha:
