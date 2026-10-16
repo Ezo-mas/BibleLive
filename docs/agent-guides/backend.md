@@ -57,6 +57,7 @@ On Windows there is no `make`: use `.venv\Scripts\python.exe -m ...` with
 | Add/adjust a verse-reference pattern | `backend/core/verse_parser.py` (+ `verse_parser_lt.py` for Lithuanian) and tests in `backend/tests/test_verse_parser*.py` |
 | Change an HTTP endpoint or WS handler | `backend/core/server/app.py`, `state.py`; message shapes in `models.py` + mirrored in `frontend/src/shared/types.ts` |
 | Change verse text lookup | `backend/core/bible_lookup.py` (SQLite at `bible_data/biblelive.sqlite`) |
+| Change picking a verse from the words read aloud (Lithuanian chapter-only refs) | `backend/core/verse_text.py` (index over `bible_data/bible_ltb.sqlite`), used by `StreamingParser` in `verse_parser.py`; benchmark before/after |
 | Change manual scripture selection (Find Scripture) | `backend/core/passage.py` (validation + resolution) over `backend/core/books.py` (canon); endpoints and the `display_reference` action in `backend/core/server/app.py` |
 | Change display history source / Show Again state | `backend/core/server/state.py` (`AppState.reference_history`, newest first, `MAX_HISTORY_REFERENCES`, 20-entry snapshot window) |
 | Change audio capture/VAD/STT/sending | the matching module in `backend/audio/`; if it can change what gets detected, benchmark before/after (`testing.md`) |
