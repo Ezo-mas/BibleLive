@@ -58,6 +58,7 @@ from audio.vad import VoiceActivityDetector  # noqa: E402
 from core.bible_lookup import BibleLookup  # noqa: E402
 from core.verse_parser import Reference as ParsedReference  # noqa: E402
 from core.verse_parser import ReferenceParser, StreamingParser  # noqa: E402
+from core.verse_text import VerseTextIndex  # noqa: E402
 
 # Detection-vs-gold tolerance in seconds (allows for utterance batching lag).
 LATENCY_TOLERANCE_S = 5.0
@@ -155,6 +156,7 @@ class Detection:
     # ref); gold marks when it was said, so matching uses the span.
     spoken_from_s: float | None = None
     spoken_to_s: float | None = None
+    from_text: bool = False  # verse picked from the words read aloud
 
 
 def gold_distance_s(d: Detection, g: GoldItem) -> float:
@@ -341,6 +343,10 @@ CACHE_VERSION = 2
 # (BibleLookup's validator hook); set in main() from --bible-db. Parsing is
 # not part of the transcript cache key, so cached runs validate too.
 _VALIDATOR: Callable[[ParsedReference], bool] | None = None
+# Lithuanian verse text for filling a held chapter-only ref from the words
+# read aloud (StreamingParser ``verse_text``), as live; set in main() from
+# --verse-text-db.
+_VERSE_TEXT: VerseTextIndex | None = None
 
 
 def parse_t_range(spec: str | None) -> tuple[float, float] | None:
@@ -545,7 +551,8 @@ def register_feeds(
             if low_reason:
                 ref.confidence = "low"
             ref_span = span
-            if spans is not None and parser.hold_chapter_only and ref.verse_start is None:
+            held = ref.verse_start is None or ref.from_text
+            if spans is not None and parser.hold_chapter_only and held:
                 ref_span = spans.prev
             detections.append(
                 Detection(
@@ -556,6 +563,7 @@ def register_feeds(
                     verse_end=ref.verse_end,
                     confidence=ref.confidence,
                     inferred=ref.inferred,
+                    from_text=ref.from_text,
                     utterance_text=text,
                     transcript_t_s=t_s,
                     spoken_from_s=ref_span[0] if ref_span else None,
@@ -636,6 +644,7 @@ def run_single_recording(
         ReferenceParser(language=rec.language, validator=_VALIDATOR),
         context_ttl_s=context_ttl_s,
         hold_chapter_only=True,  # as live
+        verse_text=_VERSE_TEXT if rec.language == "lt" else None,
     )
     metrics = PipelineMetrics()
     stub = StubReceiver(t0=time.time())
@@ -956,6 +965,7 @@ def run_windowed_recording(
         ReferenceParser(language=rec.language, validator=_VALIDATOR),
         context_ttl_s=context_ttl_s,
         hold_chapter_only=True,  # as live
+        verse_text=_VERSE_TEXT if rec.language == "lt" else None,
     )
     raw: list[Detection] = []
     transcripts: list[tuple[float, str]] = []
@@ -1155,6 +1165,7 @@ def score_recording(
                 + (f"-{d.verse_end}" if d.verse_end else ""),
                 "spoken_span_s": _span_json(d),
                 "confidence": d.confidence,
+                "from_text": d.from_text,
                 "utterance": d.utterance_text[:160],
             }
             for d, g in matches
@@ -1165,6 +1176,7 @@ def score_recording(
                 "reference": f"{d.book} {d.chapter}:{d.verse_start}",
                 "spoken_span_s": _span_json(d),
                 "confidence": d.confidence,
+                "from_text": d.from_text,
                 "utterance": d.utterance_text[:160],
             }
             for d in fps
@@ -1261,6 +1273,12 @@ def main() -> int:
         default=str(REPO_ROOT / "bible_data" / "biblelive.sqlite"),
         help="Bible SQLite DB for the live pipeline's verse-exists check (skipped if missing)",
     )
+    ap.add_argument(
+        "--verse-text-db",
+        default=str(REPO_ROOT / "bible_data" / "bible_ltb.sqlite"),
+        help="Lithuanian Bible SQLite DB: as live, a Lithuanian chapter-only reference "
+        "gets the verse read aloud (skipped if missing; '' turns it off)",
+    )
     ap.add_argument("--out", required=True)
     ap.add_argument("--records", default=None, help="comma-separated subset of record ids")
     ap.add_argument(
@@ -1275,7 +1293,15 @@ def main() -> int:
     )
     args = ap.parse_args()
 
-    global _VALIDATOR
+    global _VALIDATOR, _VERSE_TEXT
+    if args.verse_text_db and Path(args.verse_text_db).is_file():
+        _VERSE_TEXT = VerseTextIndex.from_sqlite(args.verse_text_db)
+    elif args.verse_text_db:
+        print(
+            f"[warn] {args.verse_text_db} not found: Lithuanian chapter-only references "
+            "stay chapter-only (the live pipeline fills them when it has the DB)",
+            file=sys.stderr,
+        )
     if Path(args.bible_db).is_file():
         _VALIDATOR = BibleLookup(args.bible_db, readonly=True).get_validator_hook()
     else:
@@ -1378,6 +1404,7 @@ def main() -> int:
         "created_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "tolerance_s": LATENCY_TOLERANCE_S,
         "verse_validator": _VALIDATOR is not None,
+        "verse_text_db": args.verse_text_db if _VERSE_TEXT is not None else None,
         "dependency_versions": {"ctranslate2": ct2_version},
         "aggregate": aggregate(results),
         "recordings": results,
