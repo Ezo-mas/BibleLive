@@ -31,15 +31,17 @@ from __future__ import annotations
 import difflib
 import re
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import cast
 
 if __package__:
     from . import verse_parser_lt as _lt
     from .books import CANONICAL_BOOKS
+    from .verse_text import VerseTextIndex
 else:
     import verse_parser_lt as _lt  # type: ignore[no-redef]
     from books import CANONICAL_BOOKS  # type: ignore[no-redef]
+    from verse_text import VerseTextIndex  # type: ignore[no-redef]
 
 Token = int | str
 
@@ -262,6 +264,8 @@ class Reference:
     verse_end: int | None = None
     confidence: str = "high"  # "high" | "medium" | "low"
     inferred: bool = False  # book/chapter came from earlier context
+    # The verse was picked from the words read aloud, not from a spoken number.
+    from_text: bool = field(default=False, compare=False)
     text: str = field(default="", compare=False)
     start: int = field(default=0, repr=False, compare=False)  # token span
     end: int = field(default=0, repr=False, compare=False)
@@ -1039,6 +1043,12 @@ class StreamingParser:
     a verse in that chapter, only the full reference is reported; otherwise the
     held one is reported then (one segment late). ``flush()`` releases it at
     the end of a stream.
+
+    With a ``verse_text`` index as well, a held chapter that gets no spoken
+    verse is matched against the words of both segments: if the speaker is
+    reading one of its verses aloud (score >= ``verse_text_min_score``), that
+    verse is reported instead of the bare chapter, marked ``from_text`` and
+    never above medium confidence.
     """
 
     def __init__(
@@ -1048,6 +1058,8 @@ class StreamingParser:
         language: str = "en",
         context_ttl_s: float | None = 600.0,
         hold_chapter_only: bool = False,
+        verse_text: VerseTextIndex | None = None,
+        verse_text_min_score: float = 0.6,
     ):
         self.parser = parser or ReferenceParser(language=language)
         self.ctx = Context()
@@ -1055,6 +1067,9 @@ class StreamingParser:
         self.carry_tokens = carry_tokens
         self.hold_chapter_only = hold_chapter_only
         self._held: list[Reference] = []
+        self._held_text = ""  # the segment the held refs were said in
+        self.verse_text = verse_text
+        self.verse_text_min_score = verse_text_min_score
         # Max age of the running book/chapter context. A stale context
         # (e.g. Romans still set 300 s later) turns stray numbers into
         # confident wrong references, so feeds timestamped later than this
@@ -1108,13 +1123,46 @@ class StreamingParser:
             self._ctx_t = t_s
         if not self.hold_chapter_only:
             return released + fresh
-        released += _drop_covered_chapters(self.flush(), fresh)
+        held_text = self._held_text
+        for ref in _drop_covered_chapters(self.flush(), fresh):
+            if segment.strip():  # an empty feed only releases, like flush()
+                ref = self._verse_from_text(ref, f"{held_text} {segment}")
+            released.append(ref)
         self._held = [r for r in fresh if r.verse_start is None]
+        self._held_text = segment
         return released + [r for r in fresh if r.verse_start is not None]
+
+    def _verse_from_text(self, ref: Reference, text: str) -> Reference:
+        """``ref`` with the verse being read aloud filled in, if one matches."""
+        if self.verse_text is None or ref.verse_start is not None:
+            return ref
+        match = self.verse_text.best_verse(ref.book, ref.chapter, text)
+        if match is None or match.score < self.verse_text_min_score:
+            return ref
+        # The text's verse numbering can differ from the display Bible's
+        # (LTB vs KJV in a few chapters): keep only verses that exist there.
+        validator = self.parser.validator
+        if validator is not None and not validator(Reference(ref.book, ref.chapter, match.verse)):
+            return ref
+        verse_end = match.verse_end
+        if (
+            verse_end is not None
+            and validator is not None
+            and not validator(Reference(ref.book, ref.chapter, verse_end))
+        ):
+            verse_end = None
+        return replace(
+            ref,
+            verse_start=match.verse,
+            verse_end=verse_end,
+            confidence="medium" if ref.confidence == "high" else ref.confidence,
+            from_text=True,
+        )
 
     def flush(self) -> list[Reference]:
         """Release any held chapter-only reference (end of stream)."""
         held, self._held = self._held, []
+        self._held_text = ""
         return held
 
     def reset(self) -> None:
@@ -1122,6 +1170,7 @@ class StreamingParser:
         self.carry = []
         self._ctx_t = None
         self._held = []
+        self._held_text = ""
 
 
 if __name__ == "__main__":

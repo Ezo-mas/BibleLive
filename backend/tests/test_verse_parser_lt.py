@@ -6,9 +6,10 @@ or absent in transcripts; both parse.
 """
 
 from core.verse_parser import BOOKS as EN_BOOKS
-from core.verse_parser import ReferenceParser, StreamingParser
+from core.verse_parser import Reference, ReferenceParser, StreamingParser
 from core.verse_parser_lt import BOOKS as LT_BOOKS
 from core.verse_parser_lt import number_word
+from core.verse_text import VerseTextIndex
 
 P = ReferenceParser(language="lt")
 
@@ -974,3 +975,124 @@ class TestCitationSlotAcrossUtterances:
 
     def test_article_after_book_in_next_utterance_stays_text(self):
         assert self._run("mes skaitėme Jobo", "Viena moteris atėjo") == []
+
+
+class TestChapterFilledFromVerseText:
+    """A held Lithuanian chapter ("Luko 16 skyrius") takes the verse read next.
+
+    The index is synthetic, not Bible text: Luke 16 has the distinctive words,
+    and the Genesis filler makes them rare enough to count (IDF above 2).
+    """
+
+    VERSE_TEXT = VerseTextIndex(
+        [
+            ("Luke", 16, 1, "išmanusis valdytojas apkaltintas mokiniams"),
+            ("Luke", 16, 2, "šeimininkas reikalauja sąskaitų atsiskaitymo"),
+            ("Luke", 16, 3, "skolininkams sumažino skolas aliejaus statinės"),
+        ]
+        + [("Genesis", 1, v, "Dievas kūrė dangų ir žemę") for v in range(1, 21)]
+    )
+    READ_V1 = "išmanusis valdytojas apkaltintas mokiniams"
+
+    def _parser(self):
+        return StreamingParser(
+            ReferenceParser(language="lt"),
+            language="lt",
+            hold_chapter_only=True,
+            verse_text=self.VERSE_TEXT,
+        )
+
+    def test_chapter_mention_takes_the_verse_read_next(self):
+        sp = self._parser()
+        assert sp.feed("Luko 16 skyrius, sako", 0.0) == []  # held for the next segment
+        [ref] = sp.feed(self.READ_V1, 10.0)
+        assert (str(ref), ref.verse_start, ref.confidence, ref.from_text) == (
+            "Luke 16:1",
+            1,
+            "medium",
+            True,
+        )
+        assert sp.flush() == []
+
+    def test_verse_read_in_the_same_segment_counts(self):
+        # The held text is the segment that said the chapter plus the next one.
+        sp = self._parser()
+        assert sp.feed(f"Luko 16 skyrius, {self.READ_V1}", 0.0) == []
+        [ref] = sp.feed("ir toliau kalbame", 10.0)
+        assert (str(ref), ref.from_text) == ("Luke 16:1", True)
+
+    def test_verse_read_before_the_chapter_is_not_used(self):
+        sp = self._parser()
+        assert sp.feed(self.READ_V1, 0.0) == []
+        assert sp.feed("Luko 16 skyrius", 10.0) == []
+        [ref] = sp.feed("ir toliau kalbame", 20.0)
+        assert (str(ref), ref.verse_start, ref.from_text) == ("Luke 16", None, False)
+
+    def test_below_threshold_keeps_the_bare_chapter(self):
+        sp = self._parser()
+        assert sp.feed("Luko 16 skyrius", 0.0) == []
+        [ref] = sp.feed("apkaltintas", 10.0)  # one of verse 1's four distinctive words
+        assert (str(ref), ref.verse_start, ref.from_text) == ("Luke 16", None, False)
+
+    def test_verse_named_in_next_segment_wins(self):
+        sp = self._parser()
+        assert sp.feed("Luko 16 skyrius", 0.0) == []
+        [ref] = sp.feed(f"šešta eilutė, {self.READ_V1}", 10.0)
+        assert (str(ref), ref.confidence, ref.from_text) == ("Luke 16:6", "high", False)
+
+    def test_without_verse_text_the_chapter_is_reported_as_before(self):
+        sp = StreamingParser(ReferenceParser(language="lt"), language="lt", hold_chapter_only=True)
+        assert sp.feed("Luko 16 skyrius", 0.0) == []
+        [ref] = sp.feed(self.READ_V1, 10.0)
+        assert (str(ref), ref.verse_start, ref.from_text) == ("Luke 16", None, False)
+
+    def test_flush_at_end_of_stream_does_not_fill(self):
+        sp = self._parser()
+        assert sp.feed(f"Luko 16 skyrius, {self.READ_V1}", 0.0) == []
+        [ref] = sp.flush()
+        assert (str(ref), ref.verse_start, ref.from_text) == ("Luke 16", None, False)
+
+    def test_ttl_expiry_does_not_fill(self):
+        sp = self._parser()
+        assert sp.feed(f"Luko 16 skyrius, {self.READ_V1}", 0.0) == []
+        [ref] = sp.feed("ir toliau kalbame", 700.0)  # past the 600 s context TTL
+        assert (str(ref), ref.verse_start, ref.from_text) == ("Luke 16", None, False)
+
+    def test_fill_lowers_high_to_medium_and_keeps_low(self):
+        # The LT parser builds every chapter-only ref as medium, so the
+        # high -> medium step is checked on the helper directly.
+        sp = self._parser()
+        high = sp._verse_from_text(Reference("Luke", 16, confidence="high"), self.READ_V1)
+        assert (high.verse_start, high.confidence, high.from_text) == (1, "medium", True)
+        low = sp._verse_from_text(Reference("Luke", 16, confidence="low"), self.READ_V1)
+        assert (low.verse_start, low.confidence) == (1, "low")
+
+    def test_empty_feed_releases_without_filling(self):
+        # The benchmark's end-of-recording release, kept equal to live flush().
+        sp = self._parser()
+        assert sp.feed(f"Luko 16 skyrius, {self.READ_V1}", 0.0) == []
+        [ref] = sp.feed("", 10.0)
+        assert (str(ref), ref.verse_start, ref.from_text) == ("Luke 16", None, False)
+
+    def test_verse_missing_from_the_display_bible_keeps_the_chapter(self):
+        # Verse numbering differs between translations in a few chapters.
+        sp = StreamingParser(
+            ReferenceParser(language="lt", validator=lambda r: r.verse_start != 1),
+            language="lt",
+            hold_chapter_only=True,
+            verse_text=self.VERSE_TEXT,
+        )
+        assert sp.feed("Luko 16 skyrius", 0.0) == []
+        [ref] = sp.feed(self.READ_V1, 10.0)
+        assert (str(ref), ref.from_text) == ("Luke 16", False)
+
+    def test_range_end_missing_from_the_display_bible_is_dropped(self):
+        sp = StreamingParser(
+            ReferenceParser(language="lt", validator=lambda r: r.verse_start != 2),
+            language="lt",
+            hold_chapter_only=True,
+            verse_text=self.VERSE_TEXT,
+        )
+        assert sp.feed("Luko 16 skyrius", 0.0) == []
+        [ref] = sp.feed(f"{self.READ_V1} šeimininkas reikalauja sąskaitų atsiskaitymo", 10.0)
+        assert (str(ref), ref.from_text) == ("Luke 16:1", True)
