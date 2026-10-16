@@ -600,3 +600,20 @@ def test_transcription_thread_exit_delivers_held_reference_and_closes_lookup(mon
     assert [str(ref) for ref in proc.sender.sent] == ["Romans 8"]
     assert lookup.closed is True
     assert proc._local.bible_lookup is None
+
+
+def test_initial_prompts_fit_whisper_prompt_window():
+    # faster-whisper keeps only the last 223 prompt tokens, so a longer prompt
+    # silently loses its first book names (the Lithuanian one hit 224).
+    import glob
+    import os
+
+    tokenizers = pytest.importorskip("tokenizers")
+    found = glob.glob(
+        os.path.expanduser("~/.cache/huggingface/hub/*whisper-large-v3*/snapshots/*/tokenizer.json")
+    )
+    if not found:
+        pytest.skip("no cached Whisper tokenizer")
+    tok = tokenizers.Tokenizer.from_file(found[0])
+    for language, prompt in WHISPER_INITIAL_PROMPTS.items():
+        assert len(tok.encode(" " + prompt).ids) <= 223, language

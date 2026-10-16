@@ -84,7 +84,7 @@ WHISPER_INITIAL_PROMPTS: dict[str, str] = {
     ),
     "lt": (
         "Pradžios, Išėjimo, Kunigų, Skaičių, Pakartoto Įstatymo, Jozuės, "
-        "Teisėjų, Rūtos, Samuelio, Karalių, Metraščių, Ezros, Nehemijo, "
+        "Teisėjų, Rūtos, Samuelio, Karalių, Metraščių, Nehemijo, "
         "Esteros, Jobo, Psalmės, Patarlių, Mokytojo, Izaijo, "
         "Jeremijo, Ezechielio, Danielės, Mato, Morkaus, Luko, Jono evangelija, "
         "Apaštalų darbai, Romiečiams, Korintiečiams, Galatams, Efeziečiams, "
