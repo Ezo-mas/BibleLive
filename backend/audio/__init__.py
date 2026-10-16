@@ -5,7 +5,7 @@ Replaces the former ``audio/biblelive_audio_pipeline.py`` monolith:
 - ``audio.config``      - ``AudioPipelineConfig``
 - ``audio.metrics``     - ``PipelineMetrics``
 - ``audio.capture``     - ``AudioCapture`` (ffmpeg microphone capture)
-- ``audio.vad``         - ``VoiceActivityDetector`` (WebRTC VAD)
+- ``audio.vad``         - ``VoiceActivityDetector`` (WebRTC VAD), ``SileroVoiceActivityDetector``
 - ``audio.stt``         - ``SpeechToText`` (faster-whisper)
 - ``audio.sender``      - ``ReferenceSender`` (dedup + retry/backoff)
 - ``audio.heartbeat``   - ``HeartbeatSender`` (periodic health report to the server)

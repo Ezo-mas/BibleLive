@@ -3,6 +3,8 @@
 import argparse
 import logging
 import time
+from collections.abc import Callable
+from typing import Any
 
 from core.config import config as server_config
 
@@ -11,21 +13,46 @@ from .config import AudioPipelineConfig
 from .logging_config import configure_logging
 from .pipeline import BibleLiveAudioProcessor
 from .stt import SUPPORTED_LANGUAGES
+from .vad import VAD_ENGINES
 
 logger = logging.getLogger(__name__)
 
 
 _TUNING_DEFAULTS = AudioPipelineConfig()
 
+
+def _flag(value: str) -> bool:
+    """Parse an on/off tuning value (1/0, true/false, yes/no, on/off)."""
+    lowered = value.strip().lower()
+    if lowered in ("1", "true", "yes", "on"):
+        return True
+    if lowered in ("0", "false", "no", "off"):
+        return False
+    raise argparse.ArgumentTypeError(f"expected on/off, got {value!r}")
+
+
+def _vad_engine(value: str) -> str:
+    """Parse a VAD engine name."""
+    if value not in VAD_ENGINES:
+        raise argparse.ArgumentTypeError(f"expected one of {', '.join(VAD_ENGINES)}, got {value!r}")
+    return value
+
+
 # (flag, config field, type, help) — shared with benchmarks/run_benchmark.py so
 # every live tuning knob can be swept there under the same name.
-TUNING_ARGUMENTS: list[tuple[str, str, type, str]] = [
+TUNING_ARGUMENTS: list[tuple[str, str, Callable[[str], Any], str]] = [
     ("--beam-size", "beam_size", int, "Whisper beam width; lower is faster"),
     ("--cpu-threads", "cpu_threads", int, "Whisper CPU threads (0 = library default)"),
     ("--end-of-speech-s", "end_of_speech_s", float, "silence that ends an utterance"),
     ("--min-speech-s", "min_speech_s", float, "shorter utterances are dropped"),
     ("--soft-utterance-s", "soft_utterance_s", float, "past this, end at the next pause"),
     ("--max-utterance-s", "max_utterance_s", float, "hard utterance length cap"),
+    ("--pre-roll-s", "pre_roll_s", float, "audio kept from before speech starts"),
+    ("--keep-pauses", "keep_pauses", _flag, "keep in-utterance frames the VAD calls silent"),
+    ("--start-voiced-frames", "start_voiced_frames", int, "voiced frames needed to start"),
+    ("--start-window-frames", "start_window_frames", int, "...within this many recent frames"),
+    ("--vad", "vad", _vad_engine, "VAD engine: webrtc or silero"),
+    ("--silero-threshold", "silero_threshold", float, "Silero speech probability threshold"),
 ]
 
 
@@ -38,7 +65,7 @@ def add_tuning_arguments(parser: argparse.ArgumentParser) -> None:
 
 def apply_tuning_arguments(config: AudioPipelineConfig, args: argparse.Namespace) -> None:
     """Copy any tuning flags that were given onto ``config``."""
-    for _flag, field_name, _kind, _help in TUNING_ARGUMENTS:
+    for _name, field_name, _kind, _help in TUNING_ARGUMENTS:
         value = getattr(args, field_name)
         if value is not None:
             setattr(config, field_name, value)
