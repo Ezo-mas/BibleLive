@@ -175,6 +175,13 @@ recordings, 5 s span tolerance, cached transcripts): 139 TP / 10
 medium+high FP vs 136 / 13 without it. It filled Luke 16:10, Matthew 18:20
 and Psalms 40:1-2; no chapter-only gold reference was lost. Correct fills
 scored 0.67-1.0, wrong candidates at most 0.5, hence the 0.6 threshold.
+Lithuanian number-word and book-title fixes (2026-10-16: "nuo pirmos
+trečios eilutės" as 1-3 once a chapter is known, "psalmių 40 skyriaus
+pirma antra eilutė", clipped tens such as "devyniasdešim", "pirmą eilutę
+91 psalmės", LTB titles "Ezdro", "Koheleto", "Jonos"; found by the
+fine-tuned models, which write numbers as words): cached turbo
+transcripts replay unchanged at 139 / 10, so they only matter for
+transcripts that spell numbers out.
 Also the utterance cap (live path 0/10/25 ->
 5/3/20) and `large-v3-turbo` float16 (live path 20/2/5 at 30 s with the
 Lithuanian parser fixes, against 5 for `small`).
