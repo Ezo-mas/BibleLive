@@ -64,6 +64,8 @@ BIBLELIVE_OPERATOR_TOKEN=your-generated-token-here
 
 - `GET /operator` — operator console page
 - `POST /api/reference` — reference ingestion (from the audio pipeline)
+- `POST /api/transcript` — transcript lines from the audio pipeline, used only
+  for follow-along suggestions (sermon text; not stored or logged)
 - `POST /api/pipeline/heartbeat` — audio pipeline health report (so nobody
   else can tell the operator that detection is healthy)
 - `GET /api/pipeline/status` — pipeline health shown in the operator console

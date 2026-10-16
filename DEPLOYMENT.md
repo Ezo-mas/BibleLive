@@ -72,6 +72,8 @@ BIBLELIVE_LOG_LEVEL=INFO
 # language's translation; set false to leave the version to the operator.
 # BIBLELIVE_AUTO_BIBLE_VERSION=true
 # BIBLELIVE_LANGUAGE_BIBLE_VERSIONS={"en":"kjv","lt":"ltb"}
+# Follow-along next-verse suggestions for the operator (on by default).
+# BIBLELIVE_FOLLOW_ALONG=true
 ```
 
 ### Generate Secure Token
