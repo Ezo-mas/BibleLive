@@ -28,6 +28,7 @@ ENV/
 # Generated databases (keep source JSON, not generated SQLite)
 bible_data/*.sqlite
 bible_data/*.db
+bible_data/*.sqlite3*
 backend/bible_data/*.sqlite
 backend/bible_data/*.db
 # Backups/snapshots the import tooling leaves next to the DB (.sqlite.bak-*, .sqlite.pre-repair-*)

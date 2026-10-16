@@ -149,6 +149,26 @@ class Detection:
     inferred: bool
     utterance_text: str = ""
     transcript_t_s: float | None = None
+    # Speech span (start, end) of the utterance the reference was spoken in,
+    # when the mode knows it (offline/rt). ``t_s`` is when the reference is
+    # reported (end of speech, or one utterance later for a held chapter-only
+    # ref); gold marks when it was said, so matching uses the span.
+    spoken_from_s: float | None = None
+    spoken_to_s: float | None = None
+
+
+def gold_distance_s(d: Detection, g: GoldItem) -> float:
+    """Seconds between a detection and the gold midpoint.
+
+    With a known speech span: the gap from the midpoint to that span (0 when
+    the midpoint falls inside it), so a long utterance is not penalized for
+    reporting at its end. Without one (windowed mode, old caches): the
+    distance to the detection time.
+    """
+    mid = (g.t_start_s + g.t_end_s) / 2
+    if d.spoken_from_s is not None and d.spoken_to_s is not None:
+        return max(0.0, d.spoken_from_s - mid, mid - d.spoken_to_s)
+    return abs(d.t_s - mid)
 
 
 def ref_key(book: str, chapter: int, v1: int | None, v2: int | None) -> tuple:
@@ -162,15 +182,15 @@ def match_detections_to_gold(
 
     A detection matches a gold item when book/chapter/verse_start/verse_end all
     agree (a wrong verse is a miss, reported as an FP+FN pair — never partial
-    credit) and the detection time is within tolerance of the gold midpoint.
+    credit) and the speech it came from is within tolerance of the gold
+    midpoint (see gold_distance_s).
     """
     matches: list[tuple[Detection, GoldItem]] = []
     used_det: set[int] = set()
     used_gold: set[int] = set()
 
     for gi, g in enumerate(gold):
-        mid = (g.t_start_s + g.t_end_s) / 2
-        best: tuple[float, int] | None = None  # (|latency|, detection index)
+        best: tuple[float, int] | None = None  # (distance, detection index)
         for di, d in enumerate(detections):
             if di in used_det:
                 continue
@@ -178,9 +198,9 @@ def match_detections_to_gold(
                 g.book, g.chapter, g.verse_start, g.verse_end
             ):
                 continue
-            if abs(d.t_s - mid) > tolerance_s:
+            dist = gold_distance_s(d, g)
+            if dist > tolerance_s:
                 continue
-            dist = abs(d.t_s - mid)
             if best is None or dist < best[0]:
                 best = (dist, di)
         if best is not None:
@@ -417,6 +437,9 @@ def feed_cache_key(
     # VAD modes only; omitted for windowed so its existing cache entries stay valid.
     if segmentation is not None:
         key["segmentation"] = segmentation
+        # Feeds carry Whisper's low-confidence verdict (see Feed); caches
+        # written before that lack it, so they must not be replayed.
+        key["stt_low_confidence"] = True
     return key
 
 
@@ -430,7 +453,7 @@ def write_feed_cache(
     path: Path,
     key: dict[str, Any],
     *,
-    units: list[list[tuple[float, str]]],
+    units: list[list[Feed]],
     transcripts: list[tuple[float, str]],
     audio_duration_s: float,
     stats: dict[str, Any] | None = None,
@@ -440,7 +463,7 @@ def write_feed_cache(
         json.dumps(
             {
                 "key": key,
-                "units": [[[t, txt] for t, txt in unit] for unit in units],
+                "units": [[list(feed) for feed in unit] for unit in units],
                 "transcripts": [[t, txt] for t, txt in transcripts],
                 "audio_duration_s": audio_duration_s,
                 "stats": stats or {},
@@ -461,26 +484,69 @@ def read_feed_cache(path: Path) -> dict[str, Any] | None:
     return data
 
 
+# One parser feed: (t_s, text), or (t_s, text, speech_start_s, low_reason)
+# when the mode knows where the utterance's speech began and Whisper's
+# low-confidence verdict on it (offline/rt; "" when trusted). Cached as a list.
+Feed = tuple[float, str] | tuple[float, str, float, str]
+
+
+@dataclass
+class SpanTracker:
+    """Speech span of the previous feed, for held chapter-only refs.
+
+    With ``hold_chapter_only`` a chapter-only ref is always reported by the
+    feed after the one that said it (held refs are replaced every feed), so
+    its span is the previous feed's.
+    """
+
+    prev: tuple[float, float] | None = None
+
+
+def feeds_from_cache(unit: list[list[Any]]) -> list[Feed]:
+    """Cached feeds back to tuples; entries from older caches lack the start."""
+    out: list[Feed] = []
+    for item in unit:
+        if len(item) > 2 and item[2] is not None:
+            low = str(item[3]) if len(item) > 3 and item[3] else ""
+            out.append((float(item[0]), str(item[1]), float(item[2]), low))
+        else:
+            out.append((float(item[0]), str(item[1])))
+    return out
+
+
 def register_feeds(
     parser: StreamingParser,
     sender: BenchmarkingSender | None,
-    feeds: list[tuple[float, str]],
+    feeds: list[Feed],
     detections: list[Detection],
+    spans: SpanTracker | None = None,
 ) -> None:
-    """Feed one dedup-scope group of (t_s, text) through parser + sender.
+    """Feed one dedup-scope group of (t_s, text[, start]) through parser + sender.
 
     One utterance (offline/rt) or one window (windowed) is one group: refs
     repeat within the group only. Shared by the live paths and cache replay
     so both build bit-identical detections. ``sender`` is None where the
     live path bypasses submission (windowed mode relies on its own dedup).
+    ``spans`` (offline/rt) attributes each detection to the speech span it
+    was said in; without it detections carry no span. A feed whose Whisper
+    decode was low-confidence marks every reference it reports "low", as
+    the live pipeline does before auto-approve sees them.
     """
     seen: set[tuple] = set()
-    for t_s, text in feeds:
+    for feed in feeds:
+        t_s, text = feed[0], feed[1]
+        span = (feed[2], t_s) if len(feed) > 2 else None
+        low_reason = feed[3] if len(feed) > 3 else ""
         for ref in parser.feed(text, t_s):
             key = ref_key(ref.book, ref.chapter, ref.verse_start, ref.verse_end)
             if key in seen:
                 continue
             seen.add(key)
+            if low_reason:
+                ref.confidence = "low"
+            ref_span = span
+            if spans is not None and parser.hold_chapter_only and ref.verse_start is None:
+                ref_span = spans.prev
             detections.append(
                 Detection(
                     t_s=t_s,
@@ -492,10 +558,14 @@ def register_feeds(
                     inferred=ref.inferred,
                     utterance_text=text,
                     transcript_t_s=t_s,
+                    spoken_from_s=ref_span[0] if ref_span else None,
+                    spoken_to_s=ref_span[1] if ref_span else None,
                 )
             )
             if sender is not None:
                 sender.send(ref)
+        if spans is not None:
+            spans.prev = span
 
 
 def release_held(
@@ -503,6 +573,7 @@ def release_held(
     sender: BenchmarkingSender | None,
     units: list[Any],
     detections: list[Detection],
+    spans: SpanTracker | None = None,
 ) -> None:
     """End of recording: report a chapter-only ref the parser is still holding.
 
@@ -510,7 +581,7 @@ def release_held(
     last feed. Live and cache-replay paths both call this, so they stay equal.
     """
     last_t = float(units[-1][-1][0]) if units and units[-1] else 0.0
-    register_feeds(parser, sender, [(last_t, "")], detections)
+    register_feeds(parser, sender, [(last_t, "")], detections, spans)
 
 
 def run_single_recording(
@@ -590,9 +661,15 @@ def run_single_recording(
         cached = read_feed_cache(cpath)
         if cached is not None and cached.get("key") == key:
             t0 = time.time()
+            spans = SpanTracker()
             for unit in cached["units"]:
-                register_feeds(parser, sender, [(float(t), txt) for t, txt in unit], detections)
-            release_held(parser, sender, cached["units"], detections)
+                register_feeds(parser, sender, feeds_from_cache(unit), detections, spans)
+            release_held(parser, sender, cached["units"], detections, spans)
+            if cached["units"] and not any(len(f) > 2 for u in cached["units"] for f in u):
+                print(
+                    f"[cache] {rec.id}: cache has no utterance starts; matching by "
+                    "report time. Rerun with --no-cache to record them."
+                )
             transcripts.extend((float(t), txt) for t, txt in cached["transcripts"])
             runtime_s = time.time() - t0
             config_snapshot["transcripts_cached"] = True
@@ -625,20 +702,27 @@ def run_single_recording(
 
     # The live pipeline's segmenter, so benchmark and live segmentation cannot drift.
     segmenter = Segmenter.from_config(vad.is_speech, config)
-    units: list[list[tuple[float, str]]] = []
+    units: list[list[Feed]] = []
+    spans = SpanTracker()
+    speech_start = 0.0  # when the current utterance's speech began
 
     def utterance_end(t_start: float, event: SegmentEvent) -> None:
         # Mirrors pipeline._queue_speech_segment + _process_utterance.
+        # ``t_start`` is when the utterance's speech ended (the STT/parse
+        # step starts there); ``speech_start`` is when it began.
         vad_events.append((t_start, event.kind))
         if event.kind == "blip":
             return
-        text = stt.transcribe_utterance(b"".join(event.frames), rec.language).text
+        result = stt.transcribe_utterance(b"".join(event.frames), rec.language)
+        text = result.text
         if text is None:
             transcripts.append((t_start, "<none>"))
             return
         transcripts.append((t_start, text))
-        units.append([(t_start, text)])
-        register_feeds(parser, sender, [(t_start, text)], detections)
+        low = result.low_confidence_reason or ""
+        feed: Feed = (t_start, text, min(speech_start, t_start), low)
+        units.append([feed])
+        register_feeds(parser, sender, [feed], detections, spans)
 
     n_frames = len(pcm) // frame_bytes
     frame_s = frame_duration_ms / 1000.0
@@ -671,13 +755,15 @@ def run_single_recording(
             continue
         if event.kind == "start":
             vad_events.append((t_s, "start"))
+            # t_s is the end of the first voiced frame; the speech began one frame earlier.
+            speech_start = t_s - frame_s
         else:
             utterance_end(t_s - event.trailing_silent_frames * frame_duration_ms / 1000.0, event)
 
     final = segmenter.flush()
     if final is not None:
         utterance_end(last_frame * frame_s, final)
-    release_held(parser, sender, units, detections)
+    release_held(parser, sender, units, detections, spans)
 
     runtime_s = time.time() - t0
     if cache_dir is not None:
@@ -894,7 +980,7 @@ def run_windowed_recording(
         if cached is not None and cached.get("key") == key:
             t0 = time.time()
             for unit in cached["units"]:
-                register_feeds(parser, None, [(float(t), txt) for t, txt in unit], raw)
+                register_feeds(parser, None, feeds_from_cache(unit), raw)
             release_held(parser, None, cached["units"], raw)
             transcripts.extend((float(t), txt) for t, txt in cached["transcripts"])
             cached_stats = cached.get("stats", {})
@@ -951,7 +1037,7 @@ def run_windowed_recording(
     else:
         audio_duration = full_duration
     stats = WindowStats(windows_total=len(bounds))
-    units: list[list[tuple[float, str]]] = []
+    units: list[list[Feed]] = []
 
     t0 = time.time()
     window_times_s: list[float] = []  # wall time per transcribed window (throttling check)
@@ -974,7 +1060,7 @@ def run_windowed_recording(
             transcripts.append((w_start_s, "<none>"))
             continue
         transcripts.append((w_start_s, " ".join(t for _, t in pieces)))
-        feeds = [
+        feeds: list[Feed] = [
             (w_start_s + seg_start if seg_start is not None else w_start_s, text)
             for seg_start, text in pieces
         ]
@@ -1025,6 +1111,12 @@ def run_windowed_recording(
 # ---------------------------------------------------------------------------
 
 
+def _span_json(d: Detection) -> list[float] | None:
+    if d.spoken_from_s is None or d.spoken_to_s is None:
+        return None
+    return [round(d.spoken_from_s, 2), round(d.spoken_to_s, 2)]
+
+
 def score_recording(
     result: RunResult, gold: list[GoldItem], tolerance_s: float = LATENCY_TOLERANCE_S
 ) -> dict[str, Any]:
@@ -1061,6 +1153,8 @@ def score_recording(
                 "latency_s": round(d.t_s - (g.t_start_s + g.t_end_s) / 2, 2),
                 "reference": f"{d.book} {d.chapter}:{d.verse_start}"
                 + (f"-{d.verse_end}" if d.verse_end else ""),
+                "spoken_span_s": _span_json(d),
+                "confidence": d.confidence,
                 "utterance": d.utterance_text[:160],
             }
             for d, g in matches
@@ -1069,6 +1163,8 @@ def score_recording(
             {
                 "t_s": round(d.t_s, 2),
                 "reference": f"{d.book} {d.chapter}:{d.verse_start}",
+                "spoken_span_s": _span_json(d),
+                "confidence": d.confidence,
                 "utterance": d.utterance_text[:160],
             }
             for d in fps

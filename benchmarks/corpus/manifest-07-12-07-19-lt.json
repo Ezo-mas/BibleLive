@@ -1,0 +1,246 @@
+{
+  "language": "lt",
+  "recordings": [
+    {
+      "annotation_provenance": "partially-verified",
+      "audio_quality": "live-event full-mix loudnorm I=-20 TP=-3 (normalized; 09-13 file is not)",
+      "channels": 1,
+      "duration_s": 5401.77,
+      "file": "benchmark_audio_07-12-norm.wav",
+      "gold_file": "gold/07-12-live-lt.gold.jsonl",
+      "id": "07-12-live-lt-norm",
+      "language": "lt",
+      "loudness": {
+        "after": {
+          "integrated_lufs": -23.52,
+          "true_peak_dbtp": -2.55,
+          "domain": "16kHz mono WAV"
+        },
+        "before": {
+          "domain": "source stereo MP3",
+          "integrated_lufs": -19.3,
+          "true_peak_dbtp": 0.06
+        },
+        "recipe": "ffmpeg loudnorm two-pass linear=true I=-20 TP=-3 LRA=11, out 16kHz mono WAV"
+      },
+      "notes": "Lithuanian live event 07-12, full mix (not gated, no gain fix), different speaker. Normalized copy; run with --t-range 2040:4700. 7 gold entries: John 20:24 at ~57:35 (user timestamp corrected after audit); Jude 1:20-21 at 2700 plus same-verse restatement 1:21 at 2730; 1 Kings later verses (~4160:4260) without book/chapter left out of gold.",
+      "sample_rate_hz": 16000,
+      "sha256": "a9320f237073c919d3ff893c4b0d9b8fb1ae664a8e400c9e59b905ba653d96ab",
+      "source": "Sekmadienio susirinkimas 2026-07-12.mp3 sha256 77689c9c9fd433a268bcc238f56635a2eaebbdd1ba70ee75b5b2b4eeadd3f9d6 (local live event recording 07-12, Lithuanian)",
+      "speakers": [
+        "speaker-b"
+      ]
+    },
+    {
+      "annotation_provenance": "partially-verified",
+      "audio_quality": "live-event full-mix loudnorm I=-20 TP=-3 (normalized; 09-13 file is not)",
+      "channels": 1,
+      "duration_s": 4908.03,
+      "file": "benchmark_audio_07-19-norm.wav",
+      "gold_file": "gold/07-19-live-lt.gold.jsonl",
+      "id": "07-19-live-lt-norm",
+      "language": "lt",
+      "loudness": {
+        "after": {
+          "integrated_lufs": -23.97,
+          "true_peak_dbtp": -2.5,
+          "domain": "16kHz mono WAV"
+        },
+        "before": {
+          "domain": "source stereo MP3",
+          "integrated_lufs": -18.15,
+          "true_peak_dbtp": 0.29
+        },
+        "recipe": "ffmpeg loudnorm two-pass linear=true I=-20 TP=-3 LRA=11, out 16kHz mono WAV"
+      },
+      "notes": "Lithuanian live event 07-19, full mix (not gated, no gain fix), different speaker. Normalized copy; run with --t-range 2340:4500. 9 gold entries: James 4:8 repeat within 5 s merged to one; Matthew 17:2 at 4180 and 4194 kept separate; Matthew 12:7 kept as spoken (speaker mix); '12-17' false start not gold.",
+      "sample_rate_hz": 16000,
+      "sha256": "420d162166c86da1ccd8394a060dbc983e8aa3839e1567837bfce0c0f3542909",
+      "source": "Sekmadienio susirinkimas 2026-07-19.mp3 sha256 e9c2efdd1a45e17b77f5d95fe7aea924a0c225d967ab9721a423eedd6dad5452 (local live event recording 07-19, Lithuanian)",
+      "speakers": [
+        "speaker-c"
+      ]
+    },
+    {
+      "id": "06-21-live-lt-norm",
+      "source": "Sekmadienio susirinkimas 2026-06-21.mp3 sha256 db9cfa1b5762e689fca95cd16233a5757fa8a8bd24af2136bc09027847ba86c8 (local live event recording 06-21, Lithuanian)",
+      "file": "benchmark_audio_06-21-norm.wav",
+      "duration_s": 5009.22,
+      "sha256": "a28b806e060ad2cb035d556c69ebbbe9971b0c87347110e05e786675292217cc",
+      "sample_rate_hz": 16000,
+      "channels": 1,
+      "speakers": [
+        "speaker-d"
+      ],
+      "audio_quality": "live-event full-mix loudnorm I=-20 TP=-3 (normalized; 09-13 file is not)",
+      "language": "lt",
+      "annotation_provenance": "partially-verified",
+      "gold_file": "gold/06-21-live-lt.gold.jsonl",
+      "loudness": {
+        "before": {
+          "integrated_lufs": -24.0,
+          "true_peak_dbtp": -1.09,
+          "domain": "source stereo MP3"
+        },
+        "after": {
+          "integrated_lufs": -23.46,
+          "true_peak_dbtp": -2.4,
+          "domain": "16kHz mono WAV"
+        },
+        "recipe": "ffmpeg loudnorm two-pass linear=true I=-20 TP=-3 LRA=11, out 16kHz mono WAV"
+      },
+      "notes": "Lithuanian live event 06-21, full mix (not gated, no gain fix). Normalized copy; run with --t-range 2080:4565. 12 gold entries: 8 user-listed plus audit finds confirmed by user (Revelation 21:4 at 3930, Isaiah 58 chapter-only at 4127, Isaiah 53 chapter-only at 4151, Isaiah 58:11 at 4170); Isaiah 53:4 continuation at 3649."
+    },
+    {
+      "id": "06-28-live-lt-norm",
+      "source": "Sekmadienio susirinkimas 2026-06-28.mp3 sha256 c351b755fcac2ee6a4060b4ce1bc862c6e5cf0eb3ecefbce4847d41f0160902a (local live event recording 06-28, Lithuanian)",
+      "file": "benchmark_audio_06-28-norm.wav",
+      "duration_s": 6370.23,
+      "sha256": "74381be4f0db871dbfb5f0baa67e3da2a222ed609d5745fd02203e5032aeb98f",
+      "sample_rate_hz": 16000,
+      "channels": 1,
+      "speakers": [
+        "speaker-e"
+      ],
+      "audio_quality": "live-event full-mix loudnorm I=-20 TP=-3 (normalized; 09-13 file is not)",
+      "language": "lt",
+      "annotation_provenance": "partially-verified",
+      "gold_file": "gold/06-28-live-lt.gold.jsonl",
+      "loudness": {
+        "before": {
+          "integrated_lufs": -21.18,
+          "true_peak_dbtp": -0.17,
+          "domain": "source stereo MP3"
+        },
+        "after": {
+          "integrated_lufs": -23.83,
+          "true_peak_dbtp": -2.64,
+          "domain": "16kHz mono WAV"
+        },
+        "recipe": "ffmpeg loudnorm two-pass linear=true I=-20 TP=-3 LRA=11, out 16kHz mono WAV"
+      },
+      "notes": "Lithuanian live event 06-28, full mix (not gated, no gain fix). Normalized copy; run with --t-range 3400:6040. 7 rough gold entries; Mark 12 chapter-only at 5235 merged with 12:41 at 5239 (within 5 s). Hand-picked list to verify by audit."
+    },
+    {
+      "id": "10-08-live-lt-norm",
+      "source": "EK 2026 10 08.mp3 sha256 9ae09c07655ff45e2cfa0294d110840fc4d1e5fdcba9d16e383cc9509587c03e (local live event recording 10-08, Lithuanian)",
+      "file": "benchmark_audio_10-08-norm.wav",
+      "duration_s": 4911.46,
+      "sha256": "77cee39c6a33e347f5e5aaa9d1c865dfbd2f75bf34cba676d36d88c8a6aec76c",
+      "sample_rate_hz": 16000,
+      "channels": 1,
+      "speakers": [
+        "speaker-f"
+      ],
+      "audio_quality": "live-event full-mix loudnorm I=-20 TP=-3 (normalized; 09-13 file is not)",
+      "language": "lt",
+      "annotation_provenance": "verified",
+      "gold_file": "gold/10-08-live-lt.gold.jsonl",
+      "loudness": {
+        "before": {
+          "integrated_lufs": -27.72,
+          "true_peak_dbtp": -1.04,
+          "domain": "source stereo MP3"
+        },
+        "after": {
+          "integrated_lufs": -23.54,
+          "true_peak_dbtp": -2.51,
+          "domain": "16kHz mono WAV"
+        },
+        "recipe": "ffmpeg loudnorm two-pass linear=true I=-20 TP=-3 LRA=11, out 16kHz mono WAV"
+      },
+      "notes": "Lithuanian live event 10-08 (EK), full mix (not gated, no gain fix). Normalized copy; run with --t-range 2280:3260. 7 verified gold entries; entry 4 confirmed as Luke 10:25-28 (audit transcript 'Luko 10 skyrius, 25-28', Good Samaritan context). Luke 10 read-through verses 30-37 without citation are not gold."
+    },
+    {
+      "id": "10-11-live-lt-norm",
+      "source": "PB 2026 10 11.mp3 sha256 ba818bf202a9505f5524d06942527e870a64de4955a77781c4ddfbf26ccf74ae (local live event recording, Lithuanian)",
+      "file": "benchmark_audio_10-11-norm.wav",
+      "duration_s": 7922.6,
+      "sha256": "9a78ee4adf875651ffe9168542b1e3d323ad44a8aafc28912bc77ee5d91b949e",
+      "sample_rate_hz": 16000,
+      "channels": 1,
+      "speakers": [
+        "speaker-g"
+      ],
+      "audio_quality": "live-event full-mix loudnorm I=-20 TP=-3 (normalized; 09-13 file is not)",
+      "language": "lt",
+      "annotation_provenance": "verified",
+      "gold_file": "gold/10-11-live-lt.gold.jsonl",
+      "loudness": {
+        "before": {
+          "integrated_lufs": -25.9,
+          "true_peak_dbtp": -2.11,
+          "domain": "source stereo MP3"
+        },
+        "after": {
+          "integrated_lufs": -23.44,
+          "true_peak_dbtp": -2.06,
+          "domain": "16kHz mono WAV"
+        },
+        "recipe": "ffmpeg loudnorm two-pass linear=true I=-20 TP=-3 LRA=11, out 16kHz mono WAV"
+      },
+      "notes": "Live event 10-11 (PB). Normalized copy; run with --t-range 2090:6543. 21 draft gold entries incl. 2 Kings 3-7 chain with book/chapter inferred from context (marked context_inferred); Phil 4:7 at 1:45:01."
+    },
+    {
+      "id": "10-04-live-lt-norm",
+      "source": "RBi 2026 10 04.mp3 sha256 30b06e4b220d2830a7747830c0a93166b328983a413ab63c24c59fb91ae3f300 (local live event recording, Lithuanian)",
+      "file": "benchmark_audio_10-04-norm.wav",
+      "duration_s": 6836.88,
+      "sha256": "5501a28fb514b3adafce40a84b16915352423fddbceebfcddb17799426c47342",
+      "sample_rate_hz": 16000,
+      "channels": 1,
+      "speakers": [
+        "speaker-h"
+      ],
+      "audio_quality": "live-event full-mix loudnorm I=-20 TP=-3 (normalized; 09-13 file is not)",
+      "language": "lt",
+      "annotation_provenance": "verified",
+      "gold_file": "gold/10-04-live-lt.gold.jsonl",
+      "loudness": {
+        "before": {
+          "integrated_lufs": -27.21,
+          "true_peak_dbtp": -0.09,
+          "domain": "source stereo MP3"
+        },
+        "after": {
+          "integrated_lufs": -23.33,
+          "true_peak_dbtp": -2.28,
+          "domain": "16kHz mono WAV"
+        },
+        "recipe": "ffmpeg loudnorm two-pass linear=true I=-20 TP=-3 LRA=11, out 16kHz mono WAV"
+      },
+      "notes": "Live event 10-04 (RBi). Normalized copy; run with --t-range 2918:5823. 15 draft gold entries; Genesis 22 read-through vv 3-18 with book/chapter inferred from context (marked context_inferred). Long context chains: needs context-aware detection."
+    },
+    {
+      "id": "09-24-live-lt-norm",
+      "source": "DS 2026 09 24.mp3 sha256 4618eac9b1338a0d5e80c74f32dd276373e3168df7ee0ed51894583408280835 (local live event recording, Lithuanian)",
+      "file": "benchmark_audio_09-24-norm.wav",
+      "duration_s": 5710.48,
+      "sha256": "e77aabbe9a9a6317e3e6d9cb52c424d56098df53ab1f1bec2ae521bc8f605481",
+      "sample_rate_hz": 16000,
+      "channels": 1,
+      "speakers": [
+        "speaker-i"
+      ],
+      "audio_quality": "live-event full-mix loudnorm I=-20 TP=-3 (normalized; 09-13 file is not)",
+      "language": "lt",
+      "annotation_provenance": "verified",
+      "gold_file": "gold/09-24-live-lt.gold.jsonl",
+      "loudness": {
+        "before": {
+          "integrated_lufs": -18.9,
+          "true_peak_dbtp": 0.84,
+          "domain": "source stereo MP3"
+        },
+        "after": {
+          "integrated_lufs": -23.53,
+          "true_peak_dbtp": -2.74,
+          "domain": "16kHz mono WAV"
+        },
+        "recipe": "ffmpeg loudnorm two-pass linear=true I=-20 TP=-3 LRA=11, out 16kHz mono WAV"
+      },
+      "notes": "Live event 09-24 (DS). Normalized copy (source closest to target at -18.9 LUFS but +0.84 dBTP peaks); run with --t-range 2784:4411. 13 draft gold entries; 1 Cor 14:2-4 as one range (split 14:2+14:4 detections also accepted at audit)."
+    }
+  ],
+  "schema_version": 1
+}
