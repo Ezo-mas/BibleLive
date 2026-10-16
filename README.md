@@ -126,6 +126,10 @@ PYTHONPATH="$PWD/backend" python3 -m audio.cli [options]
 
 Options:
   --bible-db PATH         Bible SQLite database (default: bible_data/biblelive.sqlite)
+  --verse-text-db PATH    Lithuanian Bible SQLite database; when a Lithuanian
+                          speaker names only a chapter and then reads a verse,
+                          that verse is reported (default:
+                          bible_data/bible_ltb.sqlite, skipped if missing)
   --server URL            BibleLive server URL (default: http://localhost:8000)
   --server-token TOKEN    Operator token sent with references when the server
                           requires auth (default: BIBLELIVE_OPERATOR_TOKEN from

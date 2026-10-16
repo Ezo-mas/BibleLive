@@ -50,6 +50,7 @@ def _processor(stt=None, **config) -> BibleLiveAudioProcessor:
     proc._last_frame_at = time.monotonic()
     proc._consecutive_transcription_errors = 0
     proc._parser_problems = []
+    proc.verse_text_db_path = None  # set by __init__ in the real pipeline
     return proc
 
 

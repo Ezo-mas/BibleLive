@@ -3,10 +3,12 @@
 import logging
 import threading
 import time
+from pathlib import Path
 from queue import Empty, Full, Queue
 
 from core.bible_lookup import BibleLookup
 from core.verse_parser import ReferenceParser, StreamingParser
+from core.verse_text import VerseTextIndex
 
 from .capture import AudioCapture
 from .config import AudioPipelineConfig
@@ -33,10 +35,14 @@ class BibleLiveAudioProcessor:
         bible_db_path: str = "bible_data/biblelive.sqlite",
         server_url: str = "http://localhost:8000",
         config: AudioPipelineConfig | None = None,
+        verse_text_db_path: str | None = None,
     ):
         # Configuration
         self.config = config or AudioPipelineConfig()
         self.bible_db_path = bible_db_path
+        # Lithuanian Bible text: a chapter-only reference gets the verse the
+        # speaker reads aloud. Optional; without it the chapter is reported.
+        self.verse_text_db_path = verse_text_db_path
         self.server_url = server_url
 
         # Initialize components with bounded queues
@@ -504,6 +510,8 @@ class BibleLiveAudioProcessor:
                 "are not checked against it"
             )
 
+        verse_text = self._load_verse_text()
+
         # English and Lithuanian parsing stay separate implementations; the
         # language selects which tables a parser is built with.
         parsers: dict[str, StreamingParser] = {}
@@ -512,7 +520,10 @@ class BibleLiveAudioProcessor:
                 parser = ReferenceParser(validator=validator, language=language)
                 # Hold a chapter-only ref one utterance in case the verse follows.
                 parsers[language] = StreamingParser(
-                    parser, language=language, hold_chapter_only=True
+                    parser,
+                    language=language,
+                    hold_chapter_only=True,
+                    verse_text=verse_text if language == "lt" else None,
                 )
             except Exception as e:
                 logger.error(f"Failed to initialize '{language}' parser: {e}")
@@ -528,6 +539,24 @@ class BibleLiveAudioProcessor:
             f"Thread {threading.current_thread().name}: Initialized parsers for "
             f"{', '.join(parsers) or 'no languages'}"
         )
+
+    def _load_verse_text(self) -> VerseTextIndex | None:
+        """The Lithuanian verse-text index, or None when it is not available."""
+        path = self.verse_text_db_path
+        if not path:
+            return None
+        if not Path(path).is_file():
+            logger.info(
+                "Verse text database %s not found: chapter-only references are "
+                "reported without picking the verse read aloud",
+                path,
+            )
+            return None
+        try:
+            return VerseTextIndex.from_sqlite(path)
+        except Exception as e:
+            logger.warning(f"Failed to load verse text from {path}: {e}")
+            return None
 
     def _select_parser(self, language: str) -> StreamingParser | None:
         """Select the parser for ``language``, resetting context on a switch."""

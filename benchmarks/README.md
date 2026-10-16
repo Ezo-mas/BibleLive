@@ -140,6 +140,11 @@ python benchmarks/run_benchmark.py --manifest benchmarks/corpus/manifest.example
 - **Confidence** (per match/FP in the output) mirrors the live pipeline in
   offline/rt mode: references from a Whisper decode flagged low-confidence
   are marked `low`, as `audio/pipeline.py` does before auto-approve.
+- **Verse read aloud**: like the live pipeline, a Lithuanian chapter-only
+  reference whose verse is read aloud right after is reported as that verse
+  (`from_text: true` in the output), using `--verse-text-db` (default
+  `bible_data/bible_ltb.sqlite`; skipped with a warning if missing). Its
+  spoken time is the utterance that named the chapter.
 - **FP**: prediction matched to nothing in gold (within tolerance).
 - **FN**: gold item matched by nothing.
 - **Exact book/chapter/verse accuracy** = TP where all of book/chapter/verse

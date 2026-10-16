@@ -162,6 +162,19 @@ a 20 s tolerance unless noted. Check here before re-running one of these.
   139 / 14, judged prompt-perturbation noise (any prompt edit shifts a few
   transcripts; 10-11 lost 2-3 TP under both trims) and kept.
 
-What did help, for contrast: the utterance cap (live path 0/10/25 ->
+- **Matching the words read aloud against every chapter named in the last
+  60-180 s** (2026-10-16, transcripts of the 13 recordings, IDF word
+  overlap). It finds 4 more gold verses but also 113-182 confident matches
+  to non-gold verses, mostly the speaker reading on through a passage.
+  That is a follow-along feature, not a reference detector; only the
+  chapter-only fill below was adopted.
+
+What did help, for contrast: picking the verse read aloud for a Lithuanian
+chapter-only reference (`core/verse_text.py`, 2026-10-16; same 13
+recordings, 5 s span tolerance, cached transcripts): 139 TP / 10
+medium+high FP vs 136 / 13 without it. It filled Luke 16:10, Matthew 18:20
+and Psalms 40:1-2; no chapter-only gold reference was lost. Correct fills
+scored 0.67-1.0, wrong candidates at most 0.5, hence the 0.6 threshold.
+Also the utterance cap (live path 0/10/25 ->
 5/3/20) and `large-v3-turbo` float16 (live path 20/2/5 at 30 s with the
 Lithuanian parser fixes, against 5 for `small`).

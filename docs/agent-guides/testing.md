@@ -59,7 +59,10 @@ python benchmarks/run_benchmark.py \
 - Like the live pipeline, the benchmark drops references to verses that do
   not exist, using `--bible-db` (default `bible_data/biblelive.sqlite`). The
   DB is not in git, so from a worktree pass the main checkout's path; without
-  it the run warns and over-counts false positives.
+  it the run warns and over-counts false positives. Likewise
+  `--verse-text-db` (default `bible_data/bible_ltb.sqlite`) fills a
+  Lithuanian chapter-only reference with the verse read aloud, as live;
+  without it the run warns and under-counts.
 - Name outputs uniquely under `results/`; never overwrite an earlier run.
 - Tuning knobs are flags shared with the live CLI (`--beam-size`,
   `--end-of-speech-s`, `--soft-utterance-s`, `--max-utterance-s`, ...), so a

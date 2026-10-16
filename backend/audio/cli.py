@@ -50,6 +50,14 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--bible-db", default="bible_data/biblelive.sqlite", help="Path to Bible SQLite database"
     )
+    parser.add_argument(
+        "--verse-text-db",
+        default="bible_data/bible_ltb.sqlite",
+        help=(
+            "Lithuanian Bible SQLite database: when a Lithuanian speaker names only a "
+            "chapter and reads a verse aloud, report that verse (skipped if missing)"
+        ),
+    )
     parser.add_argument("--server", default="http://localhost:8000", help="BibleLive server URL")
     parser.add_argument(
         "--server-token",
@@ -189,7 +197,10 @@ def main() -> None:
     )
     apply_tuning_arguments(config, args)
     processor = BibleLiveAudioProcessor(
-        bible_db_path=args.bible_db, server_url=args.server, config=config
+        bible_db_path=args.bible_db,
+        server_url=args.server,
+        config=config,
+        verse_text_db_path=args.verse_text_db,
     )
 
     try:

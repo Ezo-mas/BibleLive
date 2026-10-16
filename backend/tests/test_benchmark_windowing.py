@@ -30,6 +30,7 @@ from benchmarks.run_benchmark import (
     write_feed_cache,
 )
 from core.verse_parser import ReferenceParser, StreamingParser
+from core.verse_text import VerseTextIndex
 
 SR = 16000
 
@@ -299,6 +300,32 @@ class TestSpokenSpanMatching:
         assert dets == []  # held one utterance
         register_feeds(parser, None, [(35.0, "ir toliau kalbame", 25.0, "")], dets, spans)
         assert [(d.chapter, d.verse_start, d.t_s) for d in dets] == [(5, None, 35.0)]
+        assert (dets[0].spoken_from_s, dets[0].spoken_to_s) == (12.0, 20.0)
+
+    def test_verse_read_from_text_gets_previous_span(self):
+        # The verse is picked from the next feed's words, but the chapter was
+        # said in the previous one: like a held chapter, it takes that span.
+        index = VerseTextIndex(
+            [("Luke", 16, 1, "išmanusis valdytojas apkaltintas mokiniams")]
+            + [("Genesis", 1, v, "Dievas kūrė dangų ir žemę") for v in range(1, 21)]
+        )
+        parser = StreamingParser(
+            ReferenceParser(language="lt"), hold_chapter_only=True, verse_text=index
+        )
+        spans = SpanTracker()
+        dets: list[Detection] = []
+        register_feeds(parser, None, [(20.0, "Luko 16 skyrius", 12.0, "")], dets, spans)
+        assert dets == []  # held one utterance
+        register_feeds(
+            parser,
+            None,
+            [(35.0, "išmanusis valdytojas apkaltintas mokiniams", 25.0, "")],
+            dets,
+            spans,
+        )
+        assert [(d.chapter, d.verse_start, d.from_text, d.t_s) for d in dets] == [
+            (16, 1, True, 35.0)
+        ]
         assert (dets[0].spoken_from_s, dets[0].spoken_to_s) == (12.0, 20.0)
 
     def test_low_confidence_decode_marks_refs_low(self):

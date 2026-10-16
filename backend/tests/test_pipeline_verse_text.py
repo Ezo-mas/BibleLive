@@ -1,0 +1,47 @@
+"""The Lithuanian verse-text index goes to the Lithuanian parser only, and only if its file exists."""
+
+import threading
+
+import pytest
+
+from audio.pipeline import BibleLiveAudioProcessor
+from core.verse_text import VerseTextIndex
+
+# Requires the optional audio extras (faster-whisper, webrtcvad, numpy).
+pytestmark = pytest.mark.audio
+
+
+def _parsers(bible_db, verse_text_db_path):
+    """Build the per-language parsers as the transcription thread does."""
+    proc = BibleLiveAudioProcessor.__new__(BibleLiveAudioProcessor)
+    proc.bible_db_path = str(bible_db)
+    proc.verse_text_db_path = verse_text_db_path
+    proc._local = threading.local()
+    proc._parser_problems = []
+    proc._init_thread_local_parsers()
+    return proc._local.streaming_parsers
+
+
+def test_lithuanian_parser_gets_the_index_when_the_file_exists(bible_db):
+    parsers = _parsers(bible_db, str(bible_db))
+
+    assert isinstance(parsers["lt"].verse_text, VerseTextIndex)
+    assert parsers["en"].verse_text is None
+
+
+def test_missing_verse_text_file_leaves_every_parser_without_it(tmp_path, bible_db):
+    missing = tmp_path / "bible_ltb.sqlite"
+
+    parsers = _parsers(bible_db, str(missing))
+
+    assert {language: parser.verse_text for language, parser in parsers.items()} == {
+        "en": None,
+        "lt": None,
+    }
+    assert not missing.exists()
+
+
+def test_no_verse_text_path_leaves_every_parser_without_it(bible_db):
+    parsers = _parsers(bible_db, None)
+
+    assert all(parser.verse_text is None for parser in parsers.values())
