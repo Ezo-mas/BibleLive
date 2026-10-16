@@ -313,6 +313,15 @@ _NUMBER_STEMS: list[tuple[str, int, str, frozenset[str]]] = [
     ("septyniasdesimt", 70, "tens", _TENS_END),
     ("astuoniasdesimt", 80, "tens", _TENS_END),
     ("devyniasdesimt", 90, "tens", _TENS_END),
+    # STT drops the final 't' of every tens word, like "dvidešim" above
+    # ("devyniasdešim pirmą psalmę" for Psalm 91).
+    ("trisdesim", 30, "tens", _TENS_END),
+    ("keturiasdesim", 40, "tens", _TENS_END),
+    ("penkiasdesim", 50, "tens", _TENS_END),
+    ("sesiasdesim", 60, "tens", _TENS_END),
+    ("septyniasdesim", 70, "tens", _TENS_END),
+    ("astuoniasdesim", 80, "tens", _TENS_END),
+    ("devyniasdesim", 90, "tens", _TENS_END),
     ("simt", 100, "hundred", _ADJ_END),
 ]
 
@@ -524,6 +533,7 @@ BOOK_STEMS: frozenset[str] = frozenset(
         "afeziec",  # STT writes A for E ("Afeziečiams 4.25")
         "ekleziast",
         "ezr",
+        "ezdr",  # the LTB title ("Ezdro knyga")
         "ester",
         "ezechezio",
         "ezechiel",
@@ -543,12 +553,14 @@ BOOK_STEMS: frozenset[str] = frozenset(
         "joel",
         "jokub",
         "jona",
+        "jonos",  # Jonah's genitive ("Jonos knyga"); "jono" is John
         "jonas",
         "jono",
         "jonui",
         "jozu",
         "judo",
         "karali",
+        "kohelet",  # Ecclesiastes' LTB subtitle ("Mokytojo (Koheleto) knyga")
         "kolosiec",
         "korintiec",
         "kunig",
@@ -774,7 +786,8 @@ def _collapse_psalm_stutter(toks: list[Token]) -> list[Token]:
     A speaker says "psalmynė 119 psalmė, 142 eilutė" for Psalm 119 verse 142;
     the repeated psalm word would otherwise start a second, bogus psalm. The
     same goes for a redundant chapter word ("psalmė 16 skyrius, 8 eilutė"):
-    it would otherwise strand the verse number.
+    it would otherwise strand the verse number. A verse range collapses the
+    same way ("psalmių 40 skyriaus 1 2 eilutė" -> psalme 40 eilute 1 - 2).
     """
     out: list[Token] = []
     i, n = 0, len(toks)
@@ -784,15 +797,41 @@ def _collapse_psalm_stutter(toks: list[Token]) -> list[Token]:
             and i + 4 < n
             and isinstance(toks[i + 1], int)
             and toks[i + 2] in (PSALM, CHAPTER)
-            and isinstance(toks[i + 3], int)
-            and toks[i + 4] == VERSE
         ):
-            out += [PSALM, toks[i + 1], VERSE, toks[i + 3]]
-            i += 5
-            continue
+            verses = _verse_span_before_verse_word(toks, i + 3)
+            if verses is not None:
+                span, after = verses
+                out += [PSALM, toks[i + 1], VERSE, *span]
+                i = after
+                continue
         out.append(toks[i])
         i += 1
     return out
+
+
+def _verse_span_before_verse_word(toks: list[Token], j: int) -> tuple[list[Token], int] | None:
+    """At toks[j]: ``a VERSE``, ``a b VERSE`` (a < b) or ``a joiner b VERSE``.
+
+    Returns the verse tokens to emit after the verse word (``[a]`` or
+    ``[a, "-"/joiner, b]``) and the index after the verse word.
+    """
+    n = len(toks)
+    a = toks[j] if j < n else None
+    if not isinstance(a, int):
+        return None
+    if j + 1 < n and toks[j + 1] == VERSE:
+        return [a], j + 2
+    b = toks[j + 1] if j + 1 < n else None
+    if isinstance(b, int) and a < b and j + 2 < n and toks[j + 2] == VERSE:
+        return [a, "-", b], j + 3
+    if (
+        j + 3 < n
+        and toks[j + 1] in _JOINERS
+        and isinstance(toks[j + 2], int)
+        and toks[j + 3] == VERSE
+    ):
+        return [a, toks[j + 1], toks[j + 2]], j + 4
+    return None
 
 
 def postprocess(toks: list[Token]) -> list[Token]:
@@ -815,7 +854,42 @@ def postprocess(toks: list[Token]) -> list[Token]:
     i = 0
     while i < n:
         t = toks[i]
+        first, second = (toks[i + 1], toks[i + 2]) if i + 2 < n else (None, None)
+        if (
+            t in VERSE_INTRO_WORDS
+            # Only once the chapter is known ("15 skyrius nuo 1 3"): right
+            # after a book, "nuo 8 28 eilutės" is chapter 8 verse 28.
+            and out
+            and (isinstance(out[-1], int) or out[-1] == CHAPTER)
+            and i + 3 < n
+            and isinstance(first, int)
+            and isinstance(second, int)
+            and first < second
+            and toks[i + 3] == VERSE
+        ):
+            # [nuo, num, num2, VERSE] -> [VERSE, nuo, num, -, num2]
+            # ("nuo pirmos trečios eilutės" = verses 1-3; "nuo" marks the range)
+            out += [VERSE, t, first, "-", second]
+            i += 4
+            owned = False
+            continue
         if isinstance(t, int) and not owned:
+            # [num, VERSE, num2, PSALM] -> [PSALM, num2, VERSE, num]
+            # ("pirmą eilutę 91 psalmės" = Psalm 91:1, the verse named first).
+            # Not after another number, and not when a number follows the
+            # psalm word: then the pair belongs to something else.
+            if (
+                i + 3 < n
+                and toks[i + 1] == VERSE
+                and isinstance(toks[i + 2], int)
+                and toks[i + 3] == PSALM
+                and not (out and isinstance(out[-1], int))
+                and not (i + 4 < n and isinstance(toks[i + 4], int))
+            ):
+                out += [PSALM, toks[i + 2], VERSE, t]
+                i += 4
+                owned = False
+                continue
             # [num, joiner, num, VERSE] -> [VERSE, num, joiner, num]  ("4 iki 7 eilutes")
             if (
                 i + 3 < n
@@ -910,13 +984,13 @@ BOOKS: list[tuple[str, int, list[str]]] = [
     ("2 Kings", 25, ["karali knyga", "karali"]),
     ("1 Chronicles", 29, ["metrasc knyga", "metrasc"]),
     ("2 Chronicles", 36, ["metrasc knyga", "metrasc"]),
-    ("Ezra", 10, ["ezr knyga", "ezr"]),
+    ("Ezra", 10, ["ezr knyga", "ezr", "ezdr knyga", "ezdr"]),
     ("Nehemiah", 13, ["nehemij knyga", "nehemij"]),
     ("Esther", 10, ["ester knyga", "ester"]),
     ("Job", 42, ["job knyga", "job"]),
     ("Psalms", 150, ["psalme"]),
     ("Proverbs", 31, ["patarl knyga", "patarl"]),
-    ("Ecclesiastes", 12, ["mokytoj knyga", "mokytoj", "ekleziast"]),
+    ("Ecclesiastes", 12, ["mokytoj knyga", "mokytoj", "ekleziast", "kohelet knyga", "kohelet"]),
     ("Song of Solomon", 8, ["giesm giesm"]),
     ("Isaiah", 66, ["izaj knyga", "izaj", "izaij knyga", "izaij", "zaj", "izaiu"]),
     ("Jeremiah", 52, ["jeremij knyga", "jeremij"]),
@@ -927,7 +1001,7 @@ BOOKS: list[tuple[str, int, list[str]]] = [
     ("Joel", 3, ["joel knyga", "joel"]),
     ("Amos", 9, ["amos knyga", "amos"]),
     ("Obadiah", 1, ["abdij knyga", "abdij"]),
-    ("Jonah", 4, ["jona knyga", "jona"]),
+    ("Jonah", 4, ["jona knyga", "jona", "jonos knyga", "jonos"]),
     ("Micah", 7, ["mich knyga", "mich"]),
     ("Nahum", 3, ["nahum knyga", "nahum"]),
     ("Habakkuk", 3, ["habakuk knyga", "habakuk"]),
