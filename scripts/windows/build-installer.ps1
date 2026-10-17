@@ -11,6 +11,7 @@
 .PARAMETER SkipPortableBuild  Reuse the existing build\BibleLive folder.
 .PARAMETER Iscc               Path to ISCC.exe. Otherwise: $env:ISCC, then the usual Inno Setup 6 folders.
 .PARAMETER BibleDb            Passed on to build-portable.ps1.
+.PARAMETER ExtraBibleDb       Passed on to build-portable.ps1 (e.g. bible_data\bible_ltb.sqlite).
 .PARAMETER SkipFrontendBuild  Passed on to build-portable.ps1.
 #>
 [CmdletBinding()]
@@ -18,6 +19,7 @@ param(
     [switch]$SkipPortableBuild,
     [string]$Iscc,
     [string]$BibleDb,
+    [string[]]$ExtraBibleDb = @(),
     [switch]$SkipFrontendBuild
 )
 
@@ -57,6 +59,7 @@ if ($SkipPortableBuild) {
 } else {
     $portableArgs = @{ NoZip = $true }
     if ($BibleDb) { $portableArgs.BibleDb = $BibleDb }
+    if ($ExtraBibleDb.Count) { $portableArgs.ExtraBibleDb = $ExtraBibleDb }
     if ($SkipFrontendBuild) { $portableArgs.SkipFrontendBuild = $true }
     & (Join-Path $PSScriptRoot 'build-portable.ps1') @portableArgs
 }

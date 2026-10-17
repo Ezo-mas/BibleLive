@@ -8,9 +8,13 @@
 ; Output:  dist\BibleLive-Setup-<version>.exe
 ;
 ; Setup switches (besides the standard ones):
-;   /SKIPGPUCHECK   do not require an NVIDIA GPU: driver 525.60+, compute capability 7.0+
-;                   (GTX 1660 / RTX 2060 or newer) and 4 GB VRAM (testing only)
-;   /SKIPMODEL      skip the model download and GPU self-test after copying files
+;   /SPEECH=cpu|gpu|whisper  the Lithuanian speech option when installing silently (default: by
+;                            hardware). cpu = Kmynas on the processor, gpu = Kmynas + Canary on an
+;                            NVIDIA GPU, whisper = Whisper only (the previous setup)
+;   /WITHENGLISH    with the cpu option: also download the English model (Whisper small)
+;   /SKIPGPUCHECK   the NVIDIA options do not require an NVIDIA GPU: driver 525.60+, compute
+;                   capability 7.0+ (GTX 1660 / RTX 2060 or newer) and 4 GB VRAM (testing only)
+;   /SKIPMODEL      skip the speech settings, model downloads and self-test after copying files
 ; Uninstall switch:
 ;   /DELETEUSERDATA with a silent uninstall, also delete settings, logs and the model
 
@@ -69,8 +73,8 @@ LZMANumBlockThreads=2
 LZMAUseSeparateProcess=yes
 ; Inno stores up to 4.2 GB in a single Setup.exe, so no DiskSpanning is needed for ~1.4 GB.
 DiskSpanning=no
-; Room for the Whisper model that is downloaded into %LOCALAPPDATA%\BibleLive\models afterwards.
-ExtraDiskSpaceRequired=1800000000
+; Room for the speech models downloaded into %LOCALAPPDATA%\BibleLive\models afterwards (up to about 3.5 GB).
+ExtraDiskSpaceRequired=4000000000
 ; A running BibleLive (pythonw.exe from {app}) is closed for an upgrade and not restarted.
 CloseApplications=yes
 RestartApplications=no
@@ -80,8 +84,8 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "lithuanian"; MessagesFile: "Lithuanian.isl"
 
 [CustomMessages]
-english.GpuMissing=No NVIDIA graphics card was detected on this computer.%n%nBibleLive needs an NVIDIA graphics card (GPU) with an up-to-date driver to transcribe speech in real time.%n%nInstall the latest driver from nvidia.com/drivers and run Setup again.
-lithuanian.GpuMissing=Šiame kompiuteryje nerasta NVIDIA vaizdo plokštės.%n%n„BibleLive“ kalbą atpažįsta realiuoju laiku, todėl jai reikalinga NVIDIA vaizdo plokštė (GPU) su naujausia tvarkykle.%n%nĮdiekite naujausią tvarkyklę iš nvidia.com/drivers ir paleiskite diegimą iš naujo.
+english.GpuMissing=No NVIDIA graphics card was detected on this computer.%n%nThe NVIDIA options need an NVIDIA graphics card (GPU) with an up-to-date driver. Go back and choose the processor option, or install the latest driver from nvidia.com/drivers and run Setup again.
+lithuanian.GpuMissing=Šiame kompiuteryje nerasta NVIDIA vaizdo plokštės.%n%nNVIDIA parinktims reikalinga NVIDIA vaizdo plokštė (GPU) su naujausia tvarkykle. Grįžkite ir pasirinkite procesoriaus parinktį arba įdiegę naujausią tvarkyklę iš nvidia.com/drivers paleiskite diegimą iš naujo.
 english.GpuDriverOld=The NVIDIA driver on this computer is too old.%n%nGraphics card: %1%nDriver version: %2%nRequired: %3 or newer%n%nUpdate the driver from nvidia.com/drivers and run Setup again.
 lithuanian.GpuDriverOld=Šiame kompiuteryje įdiegta per sena NVIDIA tvarkyklė.%n%nVaizdo plokštė: %1%nTvarkyklės versija: %2%nReikalinga: %3 arba naujesnė%n%nAtnaujinkite tvarkyklę iš nvidia.com/drivers ir paleiskite diegimą iš naujo.
 english.GpuTooOld=The graphics card in this computer is too old.%n%nGraphics card: %1%nCompute capability: %2 (%3 or newer is required)%n%nBibleLive needs an NVIDIA graphics card of the GTX 1660 / RTX 2060 generation or newer. The GTX 10 series and older cards cannot run the speech model.
@@ -92,18 +96,18 @@ english.GpuLowMemory=Graphics card: %1%nVideo memory: %2 MB%n%nBibleLive will wo
 lithuanian.GpuLowMemory=Vaizdo plokštė: %1%nVaizdo atmintis: %2 MB%n%n„BibleLive“ veiks, tačiau jei šiame kompiuteryje taip pat transliuojate su OBS, vaizdas gali strigti. Rekomenduojama 6 GB ar daugiau vaizdo atminties.%n%nTęsti diegimą?
 english.ModelPageCaption=Setting up speech recognition
 lithuanian.ModelPageCaption=Kalbos atpažinimo paruošimas
-english.DownloadDesc=Downloading the speech model (about 1.6 GB). This happens once and may take several minutes.
-lithuanian.DownloadDesc=Atsisiunčiamas kalbos atpažinimo modelis (apie 1,6 GB). Tai daroma vieną kartą ir gali užtrukti kelias minutes.
+english.DownloadDesc=Downloading the speech models (up to about 3.5 GB). This happens once and may take several minutes.
+lithuanian.DownloadDesc=Atsisiunčiami kalbos atpažinimo modeliai (iki maždaug 3,5 GB). Tai daroma vieną kartą ir gali užtrukti kelias minutes.
 english.DownloadingModel=Downloading the speech model...
 lithuanian.DownloadingModel=Atsisiunčiamas kalbos atpažinimo modelis...
-english.CheckDesc=Loading the model on the graphics card. This can take up to a minute.
-lithuanian.CheckDesc=Modelis įkeliamas į vaizdo plokštę. Tai gali užtrukti iki minutės.
-english.CheckingGpu=Testing speech recognition on the graphics card...
-lithuanian.CheckingGpu=Tikrinamas kalbos atpažinimas vaizdo plokštėje...
-english.DownloadFailed=The speech model could not be downloaded.%n%n%1%n%nCheck your internet connection and the free disk space.%n%nTry again now? Choose No to continue anyway: BibleLive stays installed, and you can download the model later by running this command:%n%2
-lithuanian.DownloadFailed=Nepavyko atsisiųsti kalbos atpažinimo modelio.%n%n%1%n%nPatikrinkite interneto ryšį ir laisvą vietą diske.%n%nBandyti dar kartą? Pasirinkus „Ne“, tęsite vis tiek: „BibleLive“ liks įdiegta, o modelį vėliau galėsite atsisiųsti paleidę šią komandą:%n%2
-english.SelfTestFailed=The graphics card speech test failed.%n%n%1%n%nBibleLive is installed, but speech recognition may not work until this is fixed (update the NVIDIA driver and restart the computer).%n%nTry the test again now? Choose No to continue anyway; you can repeat the test later by running this command:%n%2
-lithuanian.SelfTestFailed=Nepavyko vaizdo plokštės kalbos atpažinimo patikra.%n%n%1%n%n„BibleLive“ įdiegta, tačiau kalbos atpažinimas gali neveikti, kol problema nebus išspręsta (atnaujinkite NVIDIA tvarkyklę ir paleiskite kompiuterį iš naujo).%n%nBandyti patikrą dar kartą? Pasirinkus „Ne“, tęsite vis tiek; patikrą vėliau galėsite pakartoti paleidę šią komandą:%n%2
+english.CheckDesc=Loading the speech models. This can take up to a minute.
+lithuanian.CheckDesc=Kalbos atpažinimo modeliai įkeliami. Tai gali užtrukti iki minutės.
+english.CheckingGpu=Testing speech recognition...
+lithuanian.CheckingGpu=Tikrinamas kalbos atpažinimas...
+english.DownloadFailed=The speech models could not be downloaded.%n%n%1%n%nCheck your internet connection and the free disk space.%n%nTry again now? Choose No to continue anyway: BibleLive stays installed, and you can download the models later by running this command:%n%2
+lithuanian.DownloadFailed=Nepavyko atsisiųsti kalbos atpažinimo modelių.%n%n%1%n%nPatikrinkite interneto ryšį ir laisvą vietą diske.%n%nBandyti dar kartą? Pasirinkus „Ne“, tęsite vis tiek: „BibleLive“ liks įdiegta, o modelius vėliau galėsite atsisiųsti paleidę šią komandą:%n%2
+english.SelfTestFailed=The speech recognition test failed.%n%n%1%n%nBibleLive is installed, but speech recognition may not work until this is fixed (for an NVIDIA graphics card, update its driver and restart the computer).%n%nTry the test again now? Choose No to continue anyway; you can repeat the test later by running this command:%n%2
+lithuanian.SelfTestFailed=Nepavyko kalbos atpažinimo patikra.%n%n%1%n%n„BibleLive“ įdiegta, tačiau kalbos atpažinimas gali neveikti, kol problema nebus išspręsta (NVIDIA vaizdo plokštei atnaujinkite tvarkyklę ir paleiskite kompiuterį iš naujo).%n%nBandyti patikrą dar kartą? Pasirinkus „Ne“, tęsite vis tiek; patikrą vėliau galėsite pakartoti paleidę šią komandą:%n%2
 english.NoOutput=(no output)
 lithuanian.NoOutput=(išvesties nėra)
 english.StartNow=Start BibleLive now
@@ -112,8 +116,26 @@ english.ShortcutConsole=BibleLive (console)
 lithuanian.ShortcutConsole=BibleLive (konsolė)
 english.ShortcutLogs=Logs folder
 lithuanian.ShortcutLogs=Žurnalų aplankas
-english.AskDeleteUserData=Do you also want to delete your BibleLive settings and logs and the downloaded speech model (about 1.6 GB)?%n%n%1%n%2%n%nChoose No to keep them for a future installation.
-lithuanian.AskDeleteUserData=Ar norite ištrinti ir „BibleLive“ nustatymus, žurnalus bei atsisiųstą kalbos atpažinimo modelį (apie 1,6 GB)?%n%n%1%n%2%n%nPasirinkite „Ne“, jei norite juos pasilikti būsimam diegimui.
+english.AskDeleteUserData=Do you also want to delete your BibleLive settings and logs and the downloaded speech models (several GB)?%n%n%1%n%2%n%nChoose No to keep them for a future installation.
+lithuanian.AskDeleteUserData=Ar norite ištrinti ir „BibleLive“ nustatymus, žurnalus bei atsisiųstus kalbos atpažinimo modelius (kelis GB)?%n%n%1%n%2%n%nPasirinkite „Ne“, jei norite juos pasilikti būsimam diegimui.
+english.SpeechPageCaption=Speech recognition
+english.SpeechPageDesc=Choose how BibleLive recognises Lithuanian speech. You can change this later under Advanced in the launcher.
+english.SpeechCpuOption=Lithuanian on CPU — Kmynas (no graphics card needed)
+english.SpeechGpuOption=Lithuanian on NVIDIA GPU — Kmynas + Canary (most accurate)
+english.SpeechWhisperOption=Whisper only (previous setup)
+english.WhisperPageCaption=English speech recognition
+english.WhisperPageDesc=English services use the Whisper model, which is slow on a processor. This choice does not affect Lithuanian.
+english.WhisperNoOption=No, Lithuanian only (recommended)
+english.WhisperYesOption=Yes, also download the English model (Whisper small, about 0.5 GB)
+lithuanian.SpeechPageCaption=Kalbos atpažinimas
+lithuanian.SpeechPageDesc=Pasirinkite, kaip „BibleLive“ atpažins lietuvių kalbą. Vėliau tai galima pakeisti programos išplėstiniuose nustatymuose.
+lithuanian.SpeechCpuOption=Lietuvių kalba procesoriuje — Kmynas (vaizdo plokštė nereikalinga)
+lithuanian.SpeechGpuOption=Lietuvių kalba NVIDIA vaizdo plokštėje — Kmynas + Canary (tiksliausia)
+lithuanian.SpeechWhisperOption=Tik Whisper (ankstesnė sąranka)
+lithuanian.WhisperPageCaption=Anglų kalbos atpažinimas
+lithuanian.WhisperPageDesc=Angliškiems pamokslams naudojamas Whisper modelis, kuris procesoriuje veikia lėtai. Lietuvių kalbai šis pasirinkimas įtakos neturi.
+lithuanian.WhisperNoOption=Ne, tik lietuvių kalba (rekomenduojama)
+lithuanian.WhisperYesOption=Taip, atsisiųsti ir angliško atpažinimo modelį (Whisper small, apie 0,5 GB)
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
@@ -181,6 +203,11 @@ var
   CheckPage: TOutputMarqueeProgressWizardPage;
   ShowingModelPage: Boolean;
   LastOutput: String;
+  SpeechPage: TInputOptionWizardPage;
+  WhisperPage: TInputOptionWizardPage;
+  GpuOk: Boolean;  // a usable NVIDIA GPU was found (see CheckNvidia)
+  GpuProblem: String;  // why not: shown when an NVIDIA option is chosen
+  GpuLowMemory: String;  // question for a card under 6 GB (empty = none)
 
 function HasSwitch(const Name: String): Boolean;
 var
@@ -360,22 +387,20 @@ begin
     and ((Gpu.MemMiB < 0) or (Gpu.MemMiB >= MinMemMiB));
 end;
 
-function InitializeSetup(): Boolean;
+// Looks for an NVIDIA GPU that meets the minimum, once at start-up. GpuOk says whether one does;
+// otherwise GpuProblem says why (shown only when an NVIDIA option is chosen). GpuLowMemory holds
+// the question for a card under 6 GB.
+procedure CheckNvidia;
 var
   Gpus: array of TGpu;
   I, Best, Worst: Integer;
 begin
-  Result := True;
-  if HasSwitch('/SKIPGPUCHECK') then
-  begin
-    Log('/SKIPGPUCHECK given: not checking for an NVIDIA GPU.');
-    Exit;
-  end;
-
+  GpuOk := False;
+  GpuProblem := '';
+  GpuLowMemory := '';
   if not LoadGpus(Gpus) then
   begin
-    Result := False;
-    SuppressibleMsgBox(CustomMessage('GpuMissing'), mbCriticalError, MB_OK, IDOK);
+    GpuProblem := CustomMessage('GpuMissing');
     Exit;
   end;
 
@@ -397,30 +422,75 @@ begin
 
   if Best >= 0 then
   begin
+    GpuOk := True;
     Log(Format('GPU check passed: %s, driver %s, compute capability %s, memory %d MiB.', [
       Gpus[Best].Name, Gpus[Best].Driver, FormatCc(Gpus[Best].CcTenths), Gpus[Best].MemMiB]));
     if Gpus[Best].CcTenths < 0 then
-      Log('Compute capability unknown (old driver): not checked, the GPU self-test decides.');
+      Log('Compute capability unknown (old driver): not checked, the speech test decides.');
     if (Gpus[Best].MemMiB >= 0) and (Gpus[Best].MemMiB < WarnMemMiB) then
     begin
       Log('Warning: under 6 GB of video memory, OBS streaming on this PC may stutter.');
-      // Yes = continue. Silent installs only log it and continue.
-      Result := SuppressibleMsgBox(FmtMessage(CustomMessage('GpuLowMemory'), [
-        Gpus[Best].Name, IntToStr(Gpus[Best].MemMiB)]), mbConfirmation, MB_YESNO, IDYES) = IDYES;
+      GpuLowMemory := FmtMessage(CustomMessage('GpuLowMemory'), [
+        Gpus[Best].Name, IntToStr(Gpus[Best].MemMiB)]);
     end;
     Exit;
   end;
 
-  Result := False;
   if not DriverIsNewEnough(Gpus[Worst].Driver) then
-    SuppressibleMsgBox(FmtMessage(CustomMessage('GpuDriverOld'), [Gpus[Worst].Name,
-      Gpus[Worst].Driver, MinDriverText]), mbCriticalError, MB_OK, IDOK)
+    GpuProblem := FmtMessage(CustomMessage('GpuDriverOld'), [Gpus[Worst].Name,
+      Gpus[Worst].Driver, MinDriverText])
   else if (Gpus[Worst].CcTenths >= 0) and (Gpus[Worst].CcTenths < MinCcTenths) then
-    SuppressibleMsgBox(FmtMessage(CustomMessage('GpuTooOld'), [Gpus[Worst].Name,
-      FormatCc(Gpus[Worst].CcTenths), FormatCc(MinCcTenths)]), mbCriticalError, MB_OK, IDOK)
+    GpuProblem := FmtMessage(CustomMessage('GpuTooOld'), [Gpus[Worst].Name,
+      FormatCc(Gpus[Worst].CcTenths), FormatCc(MinCcTenths)])
   else
-    SuppressibleMsgBox(FmtMessage(CustomMessage('GpuTooLittleMemory'), [Gpus[Worst].Name,
-      IntToStr(Gpus[Worst].MemMiB)]), mbCriticalError, MB_OK, IDOK);
+    GpuProblem := FmtMessage(CustomMessage('GpuTooLittleMemory'), [Gpus[Worst].Name,
+      IntToStr(Gpus[Worst].MemMiB)]);
+end;
+
+// True if an NVIDIA option may go on: a qualifying card, or /SKIPGPUCHECK (testing only). A card
+// under 6 GB asks first; silent installs log it and continue.
+function NvidiaAllowed(): Boolean;
+begin
+  if HasSwitch('/SKIPGPUCHECK') then
+  begin
+    Log('/SKIPGPUCHECK given: not checking for an NVIDIA GPU.');
+    Result := True;
+  end
+  else if not GpuOk then
+  begin
+    SuppressibleMsgBox(GpuProblem, mbCriticalError, MB_OK, IDOK);
+    Result := False;
+  end
+  else if GpuLowMemory <> '' then
+    // Yes = continue. Silent installs only log it and continue.
+    Result := SuppressibleMsgBox(GpuLowMemory, mbConfirmation, MB_YESNO, IDYES) = IDYES
+  else
+    Result := True;
+end;
+
+// /SPEECH=cpu|gpu|whisper picks the speech option; '' when the switch is not given.
+function SpeechSwitch(): String;
+var
+  I: Integer;
+  Arg: String;
+begin
+  Result := '';
+  for I := 1 to ParamCount do
+  begin
+    Arg := UpperCase(ParamStr(I));
+    if Pos('/SPEECH=', Arg) = 1 then
+      Result := LowerCase(Copy(Arg, 9, Length(Arg)));
+  end;
+end;
+
+function InitializeSetup(): Boolean;
+begin
+  CheckNvidia;
+  Result := True;
+  // A silent install that asks for an NVIDIA option without the hardware is refused here. An
+  // interactive install gets the same message when it leaves the speech page.
+  if WizardSilent and ((SpeechSwitch() = 'gpu') or (SpeechSwitch() = 'whisper')) then
+    Result := NvidiaAllowed();
 end;
 
 // ---------------------------------------------------------------------------------------------
@@ -428,9 +498,70 @@ end;
 // ---------------------------------------------------------------------------------------------
 
 procedure InitializeWizard;
+var
+  Choice: String;
 begin
+  SpeechPage := CreateInputOptionPage(wpSelectTasks, CustomMessage('SpeechPageCaption'),
+    CustomMessage('SpeechPageDesc'), '', True, False);
+  SpeechPage.Add(CustomMessage('SpeechCpuOption'));
+  SpeechPage.Add(CustomMessage('SpeechGpuOption'));
+  SpeechPage.Add(CustomMessage('SpeechWhisperOption'));
+  Choice := SpeechSwitch();
+  if Choice = 'cpu' then
+    SpeechPage.SelectedValueIndex := 0
+  else if Choice = 'gpu' then
+    SpeechPage.SelectedValueIndex := 1
+  else if Choice = 'whisper' then
+    SpeechPage.SelectedValueIndex := 2
+  else if GpuOk then
+    // By hardware: the NVIDIA option when a qualifying card is there, else the processor option.
+    SpeechPage.SelectedValueIndex := 1
+  else
+    SpeechPage.SelectedValueIndex := 0;
+
+  WhisperPage := CreateInputOptionPage(SpeechPage.ID, CustomMessage('WhisperPageCaption'),
+    CustomMessage('WhisperPageDesc'), '', True, False);
+  WhisperPage.Add(CustomMessage('WhisperNoOption'));
+  WhisperPage.Add(CustomMessage('WhisperYesOption'));
+  if HasSwitch('/WITHENGLISH') then
+    WhisperPage.SelectedValueIndex := 1
+  else
+    WhisperPage.SelectedValueIndex := 0;
+
   ModelPage := CreateOutputProgressPage(CustomMessage('ModelPageCaption'), CustomMessage('DownloadDesc'));
   CheckPage := CreateOutputMarqueeProgressPage(CustomMessage('ModelPageCaption'), CustomMessage('CheckDesc'));
+end;
+
+// The English-model question is asked only for the processor option.
+function ShouldSkipPage(CurPageID: Integer): Boolean;
+begin
+  Result := (CurPageID = WhisperPage.ID) and (SpeechPage.SelectedValueIndex <> 0);
+end;
+
+// The NVIDIA options (1 and 2) need a graphics card; the processor option does not.
+function NextButtonClick(CurPageID: Integer): Boolean;
+begin
+  Result := True;
+  if (CurPageID = SpeechPage.ID) and (SpeechPage.SelectedValueIndex > 0) then
+    Result := NvidiaAllowed();
+end;
+
+// The launcher arguments for the chosen speech option: its settings, and the models to download.
+function SpeechArgs(): String;
+begin
+  if SpeechPage.SelectedValueIndex = 0 then
+  begin
+    // The Lithuanian options start the pipeline in Lithuanian, so a CPU-only PC never loads
+    // Whisper at start (the operator can still switch to English at runtime).
+    Result := '--speech-engine kmynas --device cpu --model small --language lt';
+    if WhisperPage.SelectedValueIndex = 0 then
+      Result := Result + ' --no-whisper';
+  end
+  else if SpeechPage.SelectedValueIndex = 1 then
+    Result := '--speech-engine kmynas+canary --device auto --model large-v3-turbo --language lt'
+  else
+    Result := '--speech-engine whisper --device auto --model large-v3-turbo';
+  Result := '--download-model ' + Result + ' --save';
 end;
 
 // Called once per output line of the launcher command. The download prints
@@ -535,7 +666,7 @@ begin
     SetEnvironmentVariableW('PYTHONHOME', '');
     SetEnvironmentVariableW('PYTHONPATH', '');
     SetEnvironmentVariableW('VIRTUAL_ENV', '');
-    RunStepWithRetry('--download-model', 'DownloadFailed', True);
+    RunStepWithRetry(SpeechArgs(), 'DownloadFailed', True);
     RunStepWithRetry('--gpu-self-test', 'SelfTestFailed', False);
   end;
 end;

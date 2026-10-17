@@ -10,6 +10,9 @@
 
 .PARAMETER SkipFrontendBuild  Reuse an existing static\frontend bundle (no npm ci / build).
 .PARAMETER BibleDb            Bible SQLite file to ship. Default: <repo>\bible_data\biblelive.sqlite.
+.PARAMETER ExtraBibleDb       More translation files to ship beside it, keeping their names (e.g.
+                              bible_data\bible_ltb.sqlite: the Lithuanian text the server switches
+                              to for Lithuanian, and that the pipeline reads verses from).
 .PARAMETER SkipCuda           Omit the cuda extra (quick test builds; GPU transcription will not work).
 .PARAMETER NoZip              Do not create the zip.
 #>
@@ -17,6 +20,7 @@
 param(
     [switch]$SkipFrontendBuild,
     [string]$BibleDb,
+    [string[]]$ExtraBibleDb = @(),
     [switch]$SkipCuda,
     [switch]$NoZip
 )
@@ -89,6 +93,10 @@ if (-not (Test-Path -PathType Leaf $BibleDb)) {
     throw "Bible database not found: $BibleDb (pass -BibleDb <path to biblelive.sqlite>)"
 }
 if ((Get-Item $BibleDb).Length -le 0) { throw "Bible database is empty: $BibleDb" }
+foreach ($db in $ExtraBibleDb) {
+    if (-not (Test-Path -PathType Leaf $db)) { throw "Extra Bible database not found: $db" }
+    if ((Get-Item $db).Length -le 0) { throw "Extra Bible database is empty: $db" }
+}
 $tar = Join-Path $env:SystemRoot 'System32\tar.exe'
 if (-not (Test-Path $tar)) { throw 'tar.exe (Windows 10 1803+) is required to unpack the Python archive.' }
 if (-not $SkipFrontendBuild -and -not (Get-Command npm -ErrorAction SilentlyContinue)) {
@@ -137,8 +145,10 @@ Invoke-Native $Py @('-c', "import tkinter, sqlite3, ssl; print('python OK, tk', 
 
 # ---- third-party dependencies -----------------------------------------------------------
 Step 'Installing third-party dependencies (pinned by backend\constraints.txt)'
-$extras = 'audio'
-if (-not $SkipCuda) { $extras = 'audio,cuda' }
+# gguf (transcribe.cpp: Kmynas / Canary on the processor, or Vulkan on any GPU) is always bundled;
+# cuda adds the NVIDIA runtime DLLs for Whisper.
+$extras = 'audio,gguf'
+if (-not $SkipCuda) { $extras = 'audio,gguf,cuda' }
 $genPy = Join-Path $Cache 'gen_requirements.py'
 Set-Content -Encoding ASCII $genPy @'
 import sys
@@ -179,6 +189,9 @@ if ($LASTEXITCODE -ge 8) { throw "robocopy failed for the frontend bundle (exit 
 $global:LASTEXITCODE = 0
 New-Item -ItemType Directory -Force (Join-Path $App 'bible_data') | Out-Null
 Copy-Item $BibleDb (Join-Path $App 'bible_data\biblelive.sqlite')
+foreach ($db in $ExtraBibleDb) {
+    Copy-Item $db (Join-Path $App ('bible_data\' + (Split-Path -Leaf $db)))
+}
 # The server needs no files from data\ at runtime (verses come from the SQLite DB; the launcher
 # keeps server settings under %APPDATA%). The folder is only the default base for relative paths.
 New-Item -ItemType Directory -Force (Join-Path $App 'data') | Out-Null
@@ -221,7 +234,10 @@ BibleLive bundles third-party software; each package keeps its own license:
  * NVIDIA cuBLAS / cuDNN / NVRTC runtime DLLs (python\Lib\site-packages\nvidia): NVIDIA's license terms
    (see the license files inside each nvidia-* package directory).
  * Python itself: Python-LICENSE.txt. FFmpeg: FFmpeg-LICENSE.txt, FFmpeg-SOURCE.txt.
- * Whisper models are downloaded separately on first setup (large-v3-turbo, MIT).
+ * transcribe.cpp (transcribe-cpp, transcribe-cpp-native): see their *.dist-info\licenses files.
+ * Speech models are downloaded separately on first setup, not bundled: Whisper large-v3-turbo
+   (MIT), Kmynas (Ezomas/kmynas-parakeet-lt-v4-gguf) and Canary-1B-v2 (handy-computer/canary-1b-v2-gguf).
+   Read each model card for its license terms.
 '@
 
 # ---- launchers --------------------------------------------------------------------------
@@ -261,7 +277,7 @@ try {
         Write-Host '- launcher --dry-run'
         Invoke-Native $Py @('-m', 'launcher', '--dry-run')
         Write-Host '- imports'
-        Invoke-Native $Py @('-c', "import faster_whisper, ctranslate2, webrtcvad, tkinter, core.config as c; print('imports OK, PROJECT_ROOT =', c.PROJECT_ROOT)")
+        Invoke-Native $Py @('-c', "import faster_whisper, ctranslate2, webrtcvad, transcribe_cpp, tkinter, core.config as c; print('imports OK, PROJECT_ROOT =', c.PROJECT_ROOT)")
         Write-Host '- ffmpeg'
         Invoke-Native (Join-Path $ffDir 'ffmpeg.exe') @('-hide_banner', '-version')
     } finally { Pop-Location }
