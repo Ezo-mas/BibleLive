@@ -797,8 +797,6 @@ class BibleLiveAudioProcessor:
         # TTL is dropped instead of attaching to stray numbers.
         now = time.time()
         references = self._parse_transcription(parser, result, now)
-        if references is None:
-            return result, []
         if alternate is not None:
             alternate_parser = self._alternate_parser(language)
             alternate_refs = (
@@ -806,8 +804,13 @@ class BibleLiveAudioProcessor:
                 if alternate_parser is not None
                 else None
             )
-            # Only references both models found keep their confidence.
-            references = merge_agreement(references, alternate_refs or [])
+            if references is None and alternate_refs is None:
+                return result, []
+            # Only references both models found keep their confidence; a
+            # parser error on one model still leaves the other's (as low).
+            references = merge_agreement(references or [], alternate_refs or [])
+        elif references is None:
+            return result, []
 
         if not references:
             logger.debug("No Bible references detected in transcription")

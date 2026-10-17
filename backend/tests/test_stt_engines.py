@@ -93,6 +93,34 @@ def test_merge_with_nothing_from_either_model():
     assert merge_agreement([], []) == []
 
 
+def _range(book: str, chapter: int, start: int, end: int, confidence: str = "high") -> Reference:
+    return Reference(
+        book=book, chapter=chapter, verse_start=start, verse_end=end, confidence=confidence
+    )
+
+
+@pytest.mark.parametrize("range_first", [True, False])
+def test_range_and_its_start_verse_agree_and_the_range_is_kept(range_first):
+    # One model dropped the range's second number ("pirmąjį lūtę" for 40:1-2).
+    full, start = _range("Psalms", 40, 1, 2, "medium"), _ref("Psalms", 40, 1, "high")
+    primary, alternate = ([full], [start]) if range_first else ([start], [full])
+    merged = merge_agreement(primary, alternate)
+    assert [(str(r), r.confidence) for r in merged] == [("Psalms 40:1-2", "high")]
+
+
+def test_range_does_not_agree_with_another_start_or_a_chapter():
+    merged = merge_agreement(
+        [_range("Psalms", 40, 1, 2), _ref("John", 3, None)],
+        [_ref("Psalms", 40, 2), _ref("John", 3, 16)],
+    )
+    assert [(str(r), r.confidence) for r in merged] == [
+        ("Psalms 40:1-2", "low"),
+        ("John 3", "low"),
+        ("Psalms 40:2", "low"),
+        ("John 3:16", "low"),
+    ]
+
+
 # ---------------------------------------------------------------------------
 # MultiModelSpeechToText
 # ---------------------------------------------------------------------------
@@ -377,3 +405,16 @@ def test_neither_model_hearing_anything_is_no_transcription(tmp_path):
     proc._process_utterance("lt", [ONE_SECOND])
     assert proc.sender.sent == []
     assert proc.metrics.transcription_failures == 1
+
+
+def test_primary_parser_error_still_sends_the_second_models_references(tmp_path):
+    proc = _two_model_processor(
+        _two_model_result("Jono trečias skyrius šešiolikta eilutė", "Salme 23, 1 eilutė"), tmp_path
+    )
+
+    def boom(*_args, **_kwargs):
+        raise RuntimeError("parser bug")
+
+    proc._local.streaming_parsers["lt"].feed = boom
+    proc._process_utterance("lt", [ONE_SECOND])
+    assert [(str(r), r.confidence) for r in proc.sender.sent] == [("Psalms 23:1", "low")]
