@@ -43,6 +43,12 @@ cuda = [
     "nvidia-cublas-cu12>=12,<13",
     "nvidia-cudnn-cu12>=9,<10",
 ]
+# GGUF speech models for Lithuanian (`--stt kmynas|canary|kmynas+canary`,
+# audio/stt_gguf.py) through transcribe.cpp. The default native library is
+# CPU-only; for an NVIDIA GPU set TRANSCRIBE_LIBRARY to a CUDA build.
+gguf = [
+    "transcribe-cpp>=0.4,<0.5",
+]
 dev = [
     "pytest>=7.0.0",
     "pytest-cov>=4.0.0",

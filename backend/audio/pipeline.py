@@ -7,17 +7,25 @@ from pathlib import Path
 from queue import Empty, Full, Queue
 
 from core.bible_lookup import BibleLookup
-from core.verse_parser import ReferenceParser, StreamingParser
+from core.verse_parser import Reference, ReferenceParser, StreamingParser
 from core.verse_text import VerseTextIndex
 
 from .capture import AudioCapture
 from .config import AudioPipelineConfig
 from .control import LanguageControlServer
+from .ensemble import merge_agreement
 from .heartbeat import HeartbeatSender
 from .metrics import PipelineMetrics
 from .segmenter import FRAME_DURATION_MS, Segmenter, SegmentEvent
 from .sender import ReferenceSender
-from .stt import SUPPORTED_LANGUAGES, SpeechToText
+from .spelling_maps import MappedStreamingParser, spelling_map
+from .stt import SUPPORTED_LANGUAGES, SpeechToText, Transcription
+from .stt_gguf import (
+    GGUF_LANGUAGES,
+    MultiModelSpeechToText,
+    create_gguf_speech_to_text,
+    engine_models,
+)
 from .transcript_sender import TranscriptSender
 from .vad import create_vad
 
@@ -54,14 +62,21 @@ class BibleLiveAudioProcessor:
             silero_threshold=self.config.silero_threshold,
             silero_neg_threshold=self.config.silero_neg_threshold,
         )
-        self.stt = SpeechToText(
-            model_size=self.config.whisper_model,
-            device=self.config.whisper_device,
-            language=self.config.language,
-            compute_type=self.config.whisper_compute_type,
-            beam_size=self.config.beam_size,
-            cpu_threads=self.config.cpu_threads,
-        )
+        # Whisper for every language, or GGUF models for Lithuanian (Whisper
+        # then loads only once a non-Lithuanian utterance needs it).
+        self._stt_models = engine_models(self.config.stt_engine)
+        self.stt: SpeechToText | MultiModelSpeechToText
+        if self._stt_models:
+            self.stt = create_gguf_speech_to_text(
+                self.config.stt_engine,
+                {"kmynas": self.config.kmynas_model, "canary": self.config.canary_model},
+                device=self.config.whisper_device,
+                cpu_threads=self.config.cpu_threads,
+                language=self.config.language,
+                whisper_factory=self._create_whisper,
+            )
+        else:
+            self.stt = self._create_whisper()
 
         # VAD queue for speech segments (bounded). Each item is
         # ``(language, frames)``: the language the utterance was captured in, so
@@ -124,6 +139,16 @@ class BibleLiveAudioProcessor:
         # Worker threads
         self.vad_thread: threading.Thread | None = None
         self.transcription_thread: threading.Thread | None = None
+
+    def _create_whisper(self) -> SpeechToText:
+        return SpeechToText(
+            model_size=self.config.whisper_model,
+            device=self.config.whisper_device,
+            language=self.config.language,
+            compute_type=self.config.whisper_compute_type,
+            beam_size=self.config.beam_size,
+            cpu_threads=self.config.cpu_threads,
+        )
 
     def start(self):
         """Start the audio processing pipeline.
@@ -477,8 +502,8 @@ class BibleLiveAudioProcessor:
             # the join timeout; shutdown must not hang on a stuck transcription.
             try:
                 parsers = getattr(self._local, "streaming_parsers", None) or {}
-                for held_parser in parsers.values():
-                    for ref in held_parser.flush():
+                for held_language in list(parsers):
+                    for ref in self._flush_held(held_language):
                         logger.info("Flushing held reference on shutdown: %s", ref)
                         try:
                             self.sender.submit(ref)
@@ -524,18 +549,22 @@ class BibleLiveAudioProcessor:
         verse_text = self._load_verse_text()
 
         # English and Lithuanian parsing stay separate implementations; the
-        # language selects which tables a parser is built with.
+        # language selects which tables a parser is built with. GGUF models
+        # transcribe Lithuanian only, so other languages' parsers read Whisper.
+        models = getattr(self, "_stt_models", [])
         parsers: dict[str, StreamingParser] = {}
+        # Two-model mode: the second model's transcripts get their own parsers,
+        # so its context never mixes with the first model's.
+        alternate_parsers: dict[str, StreamingParser] = {}
         for language in SUPPORTED_LANGUAGES:
+            gguf = bool(models) and language in GGUF_LANGUAGES
             try:
-                parser = ReferenceParser(validator=validator, language=language)
-                # Hold a chapter-only ref one utterance in case the verse follows.
-                parsers[language] = StreamingParser(
-                    parser,
-                    language=language,
-                    hold_chapter_only=True,
-                    verse_text=verse_text if language == "lt" else None,
-                )
+                source = models[0] if gguf else "whisper"
+                parsers[language] = self._make_parser(language, validator, verse_text, source)
+                if gguf and len(models) > 1:
+                    alternate_parsers[language] = self._make_parser(
+                        language, validator, verse_text, models[1]
+                    )
             except Exception as e:
                 logger.error(f"Failed to initialize '{language}' parser: {e}")
                 problems.append(
@@ -545,11 +574,51 @@ class BibleLiveAudioProcessor:
 
         self._parser_problems = problems
         self._local.streaming_parsers = parsers
+        self._local.alternate_parsers = alternate_parsers
         self._local.last_parser_language = None
         logger.debug(
             f"Thread {threading.current_thread().name}: Initialized parsers for "
             f"{', '.join(parsers) or 'no languages'}"
         )
+
+    @staticmethod
+    def _make_parser(
+        language: str,
+        validator,
+        verse_text: VerseTextIndex | None,
+        source: str,
+    ) -> StreamingParser:
+        """One streaming parser for ``source``'s transcripts in ``language``."""
+        parser = ReferenceParser(validator=validator, language=language)
+        lt_text = verse_text if language == "lt" else None
+        rewrite = spelling_map(source, language)
+        # Hold a chapter-only ref one utterance in case the verse follows.
+        if rewrite is not None:
+            return MappedStreamingParser(
+                parser,
+                language=language,
+                hold_chapter_only=True,
+                verse_text=lt_text,
+                spelling_map=rewrite,
+            )
+        return StreamingParser(
+            parser, language=language, hold_chapter_only=True, verse_text=lt_text
+        )
+
+    def _flush_held(self, language: str) -> list[Reference]:
+        """Release ``language``'s held references (both models' in two-model mode)."""
+        parsers = getattr(self._local, "streaming_parsers", None) or {}
+        alternates = getattr(self._local, "alternate_parsers", None) or {}
+        parser = parsers.get(language)
+        held = parser.flush() if parser is not None else []
+        alternate = alternates.get(language)
+        if alternate is None:
+            return held
+        return merge_agreement(held, alternate.flush())
+
+    def _alternate_parser(self, language: str) -> StreamingParser | None:
+        """The second model's parser for ``language`` (two-model mode only)."""
+        return (getattr(self._local, "alternate_parsers", None) or {}).get(language)
 
     def _load_verse_text(self) -> VerseTextIndex | None:
         """The Lithuanian verse-text index, or None when it is not available."""
@@ -584,23 +653,24 @@ class BibleLiveAudioProcessor:
             # language, so flush the previous parser instead of leaving its
             # held reference to be dropped by a later reset.
             if last is not None:
-                old_parser = parsers.get(last)
-                if old_parser is not None:
-                    for ref in old_parser.flush():
-                        logger.info(
-                            "Flushing held reference on language switch: %s",
-                            ref,
-                        )
-                        self.sender.submit(ref)
+                for ref in self._flush_held(last):
+                    logger.info(
+                        "Flushing held reference on language switch: %s",
+                        ref,
+                    )
+                    self.sender.submit(ref)
             # Previous-language context (carry tokens + inferred chapter/verse)
             # must not leak across the switch.
-            for ref in parser.flush():
+            for ref in self._flush_held(language):
                 logger.info(
                     "Flushing held reference on language switch: %s",
                     ref,
                 )
                 self.sender.submit(ref)
             parser.reset()
+            alternate = self._alternate_parser(language)
+            if alternate is not None:
+                alternate.reset()
             self._local.last_parser_language = language
             logger.info("Selected '%s' parser (context reset)", language)
 
@@ -619,24 +689,37 @@ class BibleLiveAudioProcessor:
         self.metrics.transcription_attempts += 1
         result = self.stt.transcribe_utterance(b"".join(speech_frames), language)
         transcript, duration_ms = result.text, result.duration_ms
+        # Two-model mode: the second model's transcript of the same audio.
+        alternate = result.alternate
         if result.failed:
             self._consecutive_transcription_errors += 1
         else:
             self._consecutive_transcription_errors = 0
 
-        if transcript is None:
+        if transcript is None and (alternate is None or alternate.text is None):
             self.metrics.transcription_failures += 1
             logger.debug("No transcription produced")
             return
 
         self.metrics.transcription_successes += 1
         self.metrics.record_transcription_duration(duration_ms)
-        logger.info(f"Transcription ({duration_ms:.0f}ms): '{transcript}'")
+        if alternate is None:
+            logger.info(f"Transcription ({duration_ms:.0f}ms): '{transcript}'")
+        else:
+            logger.info(
+                f"Transcription ({duration_ms:.0f}ms): {result.source}: '{transcript}' | "
+                f"{alternate.source}: '{alternate.text}'"
+            )
 
         # A confident transcript also goes to the server, which may hint the verse the
         # speaker reads next. A shaky one never does: its words may not be what was said.
-        if transcript and result.low_confidence_reason is None:
-            self.transcript_sender.submit(transcript, language)
+        confident = [
+            r.text
+            for r in (result, alternate)
+            if r is not None and r.text and r.low_confidence_reason is None
+        ]
+        if confident:
+            self.transcript_sender.submit(confident[0], language)
 
         # Process with the parser for the utterance's capture language
         parser = self._select_parser(language)
@@ -644,23 +727,56 @@ class BibleLiveAudioProcessor:
             logger.warning("Streaming parser not initialized, cannot detect references")
             return
 
-        try:
-            # Wallclock-stamped so a book/chapter context older than the
-            # TTL is dropped instead of attaching to stray numbers.
-            references = parser.feed(transcript, time.time())
-        except Exception as e:
-            logger.error(f"Error parsing references: {e}", exc_info=True)
+        # Wallclock-stamped so a book/chapter context older than the
+        # TTL is dropped instead of attaching to stray numbers.
+        now = time.time()
+        references = self._parse_transcription(parser, result, now)
+        if references is None:
             return
+        if alternate is not None:
+            alternate_parser = self._alternate_parser(language)
+            alternate_refs = (
+                self._parse_transcription(alternate_parser, alternate, now)
+                if alternate_parser is not None
+                else None
+            )
+            # Only references both models found keep their confidence.
+            references = merge_agreement(references, alternate_refs or [])
 
         if not references:
             logger.debug("No Bible references detected in transcription")
             return
 
+        self.metrics.references_detected += len(references)
+        logger.info(f"Found {len(references)} Bible reference(s):")
+        for ref in references:
+            logger.info(
+                f"  - {ref} [{ref.confidence}]" + (" (from context)" if ref.inferred else "")
+            )
+
+            # Queue for the sender thread (deduplicated); never blocks on the server
+            self.sender.submit(ref)
+
+    def _parse_transcription(
+        self, parser: StreamingParser, result: Transcription, now: float
+    ) -> list[Reference] | None:
+        """One model's references in its transcript, each once; None on a parser error.
+
+        References from a shaky decode are marked "low".
+        """
+        if result.text is None:
+            return []
+        try:
+            references = parser.feed(result.text, now)
+        except Exception as e:
+            logger.error(f"Error parsing references: {e}", exc_info=True)
+            return None
+
         # One utterance can legitimately mention the same book/chapter more than
         # once ("Romans 8:28 ... Romans 8:28"), but a transcription that yields the
         # same reference dozens of times is a decoder artifact. Collapse them here
         # so logs and metrics describe what was actually heard.
-        unique: list = []
+        unique: list[Reference] = []
         seen: set[tuple] = set()
         for ref in references:
             key = (ref.book, ref.chapter, ref.verse_start, ref.verse_end)
@@ -679,7 +795,7 @@ class BibleLiveAudioProcessor:
         # A shaky decode (probably silence, unsure tokens, or a trimmed loop)
         # is exactly where prompt-echo hallucinations come from. Its references
         # still reach the operator, but as "low" so auto-approve won't show them.
-        if result.low_confidence_reason is not None:
+        if result.low_confidence_reason is not None and unique:
             self.metrics.references_low_confidence += len(unique)
             logger.warning(
                 f"Low-confidence transcription ({result.low_confidence_reason}): "
@@ -687,13 +803,4 @@ class BibleLiveAudioProcessor:
             )
             for ref in unique:
                 ref.confidence = "low"
-
-        self.metrics.references_detected += len(unique)
-        logger.info(f"Found {len(unique)} Bible reference(s):")
-        for ref in unique:
-            logger.info(
-                f"  - {ref} [{ref.confidence}]" + (" (from context)" if ref.inferred else "")
-            )
-
-            # Queue for the sender thread (deduplicated); never blocks on the server
-            self.sender.submit(ref)
+        return unique

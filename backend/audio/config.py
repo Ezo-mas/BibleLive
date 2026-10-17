@@ -53,7 +53,13 @@ class AudioPipelineConfig:
     whisper_compute_type: str | None = None  # None = int8 (safe on all devices)
     language: str = "en"  # Spoken language: "en" or "lt"
     beam_size: int = 5  # Whisper beam search width; lower is faster
-    cpu_threads: int = 0  # Whisper threads on CPU; 0 = library default
+    cpu_threads: int = 0  # Whisper/GGUF threads on CPU; 0 = library default
+    # Lithuanian speech model (see audio/stt_gguf.py): "whisper", "kmynas",
+    # "canary" or "kmynas+canary". GGUF models run on ``whisper_device``;
+    # other languages always use Whisper.
+    stt_engine: str = "whisper"
+    kmynas_model: str | None = None  # .gguf path, for --stt kmynas / kmynas+canary
+    canary_model: str | None = None  # .gguf path, for --stt canary / kmynas+canary
     vad_aggressiveness: int = 2  # 0=least, 3=most aggressive (WebRTC only)
     # VAD engine: "webrtc" or "silero" (Silero v6, bundled with faster-whisper).
     vad: str = "webrtc"
