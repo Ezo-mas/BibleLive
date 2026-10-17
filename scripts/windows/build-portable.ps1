@@ -14,6 +14,10 @@
                               bible_data\bible_ltb.sqlite: the Lithuanian text the server switches
                               to for Lithuanian, and that the pipeline reads verses from).
 .PARAMETER SkipCuda           Omit the cuda extra (quick test builds; GPU transcription will not work).
+.PARAMETER ReuseDependencies  Keep build\BibleLive\python (the bundled Python and its packages) from the
+                              last build when nothing it depends on changed (Python archive, extras,
+                              backend\constraints.txt, backend\pyproject.toml); only the app, ffmpeg and
+                              licenses are rebuilt. Falls back to a full build when anything differs.
 .PARAMETER NoZip              Do not create the zip.
 #>
 [CmdletBinding()]
@@ -22,6 +26,7 @@ param(
     [string]$BibleDb,
     [string[]]$ExtraBibleDb = @(),
     [switch]$SkipCuda,
+    [switch]$ReuseDependencies,
     [switch]$NoZip
 )
 
@@ -125,13 +130,38 @@ foreach ($f in 'display.html', 'operator.html') {
 }
 
 # ---- fresh output folder ----------------------------------------------------------------
-Step "Creating $Out"
-if (Test-Path $Out) {
-    if (-not $Out.StartsWith($Build, [StringComparison]::OrdinalIgnoreCase)) { throw 'Refusing to delete outside build\' }
-    Remove-Item -Recurse -Force $Out
+# gguf (transcribe.cpp: Kmynas / Canary on the processor, or Vulkan on any GPU) is always bundled;
+# cuda adds the NVIDIA runtime DLLs for Whisper.
+$extras = 'audio,gguf'
+if (-not $SkipCuda) { $extras = 'audio,gguf,cuda' }
+# What the bundled python\ folder is built from: if none of it changed, -ReuseDependencies keeps it.
+$fingerprintText = @(
+    $Deps.python.sha256, $extras,
+    (Get-FileHash -Algorithm SHA256 (Join-Path $Repo 'backend\constraints.txt')).Hash,
+    (Get-FileHash -Algorithm SHA256 $pyproject).Hash
+) -join '|'
+$fingerprintFile = Join-Path $Out 'python\.biblelive-deps'
+$reuse = $false
+if ($ReuseDependencies) {
+    if ((Test-Path (Join-Path $Out 'python\python.exe')) -and (Test-Path $fingerprintFile) -and
+        ((Get-Content -Raw $fingerprintFile).Trim() -eq $fingerprintText)) {
+        $reuse = $true
+    } else {
+        Write-Host 'Dependencies changed (or no previous build): doing a full build.' -ForegroundColor Yellow
+    }
 }
-New-Item -ItemType Directory -Force $Out | Out-Null
+if (-not $Out.StartsWith($Build, [StringComparison]::OrdinalIgnoreCase)) { throw 'Refusing to delete outside build\' }
+if ($reuse) {
+    Step "Refreshing $Out (reusing the bundled Python and its packages)"
+    Get-ChildItem -Force $Out | Where-Object { $_.Name -ne 'python' } | Remove-Item -Recurse -Force
+} else {
+    Step "Creating $Out"
+    if (Test-Path $Out) { Remove-Item -Recurse -Force $Out }
+    New-Item -ItemType Directory -Force $Out | Out-Null
+}
+$Py = Join-Path $Out 'python\python.exe'
 
+if (-not $reuse) {
 # ---- Python -----------------------------------------------------------------------------
 Step 'Unpacking Python'
 $unpack = Join-Path $Cache 'python-unpack'
@@ -140,15 +170,10 @@ New-Item -ItemType Directory -Force $unpack | Out-Null
 Invoke-Native $tar @('-xzf', $pyArchive, '-C', $unpack)
 Move-Item (Join-Path $unpack 'python') (Join-Path $Out 'python')
 Remove-Item -Recurse -Force $unpack
-$Py = Join-Path $Out 'python\python.exe'
 Invoke-Native $Py @('-c', "import tkinter, sqlite3, ssl; print('python OK, tk', tkinter.TkVersion)")
 
 # ---- third-party dependencies -----------------------------------------------------------
 Step 'Installing third-party dependencies (pinned by backend\constraints.txt)'
-# gguf (transcribe.cpp: Kmynas / Canary on the processor, or Vulkan on any GPU) is always bundled;
-# cuda adds the NVIDIA runtime DLLs for Whisper.
-$extras = 'audio,gguf'
-if (-not $SkipCuda) { $extras = 'audio,gguf,cuda' }
 $genPy = Join-Path $Cache 'gen_requirements.py'
 Set-Content -Encoding ASCII $genPy @'
 import sys
@@ -167,6 +192,8 @@ if ($LASTEXITCODE -ne 0) { throw 'Could not derive the requirement list from pyp
 Write-Host (Get-Content $reqFile | Out-String)
 Invoke-Native $Py @('-m', 'pip', 'install', '--disable-pip-version-check', '--no-warn-script-location',
     '--no-cache-dir', '-r', $reqFile, '-c', (Join-Path $Repo 'backend\constraints.txt'))
+Set-Content -Encoding ASCII $fingerprintFile $fingerprintText
+} # end of: not reusing the bundled Python
 
 # ---- app --------------------------------------------------------------------------------
 Step 'Copying the application'

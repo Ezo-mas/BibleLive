@@ -28,6 +28,13 @@
 #ifndef VersionNumeric
   #define VersionNumeric AppVersion
 #endif
+#ifndef Compression
+  #define Compression "lzma2/ultra64"
+#endif
+; -Fast test builds get their own name so they are not handed out by mistake.
+#ifndef OutputSuffix
+  #define OutputSuffix ""
+#endif
 #ifndef BuildDir
   #define BuildDir "..\..\..\build\BibleLive"
 #endif
@@ -55,7 +62,7 @@ ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 MinVersion=10.0
 OutputDir={#OutputDir}
-OutputBaseFilename=BibleLive-Setup-{#AppVersion}
+OutputBaseFilename=BibleLive-Setup-{#AppVersion}{#OutputSuffix}
 SetupIconFile=biblelive.ico
 UninstallDisplayIcon={app}\biblelive.ico
 UninstallDisplayName={#AppName}
@@ -67,7 +74,8 @@ SetupLogging=yes
 ; separate compressor process keep that within a normal build machine, including the 32-bit ISCC.
 ; Decompression on the user's PC needs only the 64 MB dictionary. If a build host runs out of
 ; memory, switch to lzma2/max (8 MB dictionary, ~100 MB) at a small size cost.
-Compression=lzma2/ultra64
+; build-installer.ps1 -Fast passes /DCompression=lzma2/fast for quick test installers.
+Compression={#Compression}
 SolidCompression=yes
 LZMANumBlockThreads=2
 LZMAUseSeparateProcess=yes

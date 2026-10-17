@@ -21,7 +21,8 @@
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts\windows\build-portable.ps1 `
-    [-SkipFrontendBuild] [-BibleDb <path>] [-ExtraBibleDb <path>,...] [-SkipCuda] [-NoZip]
+    [-SkipFrontendBuild] [-BibleDb <path>] [-ExtraBibleDb <path>,...] [-SkipCuda]
+    [-ReuseDependencies] [-NoZip]
 ```
 
 Produces `build\BibleLive\` and `dist\BibleLive-portable-<version>.zip` (version from
@@ -49,6 +50,11 @@ Produces `build\BibleLive\` and `dist\BibleLive-portable-<version>.zip` (version
   `core.server` serving `/readyz`, `/display`, `/operator`.
 - `-SkipCuda` leaves out the NVIDIA CUDA wheels (quick test builds). Whisper cannot run on the GPU
   then; Kmynas and Canary still do, through Vulkan.
+- `-ReuseDependencies` keeps `build\BibleLive\python` (the bundled Python and its packages, the
+  slow part) from the previous build when its inputs are unchanged: the Python archive, the
+  extras, `backend\constraints.txt` and `backend\pyproject.toml` (fingerprint in
+  `python\.biblelive-deps`). The app, ffmpeg and licenses are rebuilt and the smoke test still
+  runs. If any input changed it says so and does a full build.
 - **Speech models are not bundled.** They are downloaded into `%LOCALAPPDATA%\BibleLive\models`
   (installer steps, or by hand):
   - processor: `BibleLive-console.cmd --download-model --speech-engine kmynas --device cpu --save --no-whisper`
@@ -63,7 +69,7 @@ Produces `build\BibleLive\` and `dist\BibleLive-portable-<version>.zip` (version
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts\windows\build-installer.ps1 `
     [-SkipPortableBuild] [-Iscc <ISCC.exe>] [-BibleDb <path>] [-ExtraBibleDb <path>,...]
-    [-SkipFrontendBuild]
+    [-SkipFrontendBuild] [-ReuseDependencies] [-Fast]
 ```
 
 Builds `dist\BibleLive-Setup-<version>.exe` from `build\BibleLive\` (runs `build-portable.ps1 -NoZip`
@@ -72,7 +78,17 @@ first unless `-SkipPortableBuild`). Needs **Inno Setup 6.5.0 or newer** (`ExecAn
 `$env:ISCC`, then `Program Files (x86)`, `Program Files` and `%LOCALAPPDATA%\Programs`
 `\Inno Setup 6`. Compression is `lzma2/ultra64` (~750 MB RAM per compression thread, 2 threads), so
 compiling ~2.5 GB takes a while; use `lzma2/max` in `installer\BibleLive.iss` on a small machine.
-The result (~1.4 GB) is far below Inno's 4.2 GB single-file limit, so no disk spanning. The speech
+`-Fast` compiles with `lzma2/fast` into `BibleLive-Setup-<version>-fast.exe` (~1.4 GB instead of
+~1 GB; the separate name keeps a test build from being handed out by mistake).
+
+Build times on a Ryzen 7 5800X: full build ~12 min (~7 min bundle + ~5 min compression);
+`-ReuseDependencies -Fast` after an app-only change ~1.5 min. Quick test loop:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\windows\build-installer.ps1 -SkipFrontendBuild `
+    -ReuseDependencies -Fast -ExtraBibleDb bible_data\bible_ltb.sqlite
+```
+The result (~1 GB) is far below Inno's 4.2 GB single-file limit, so no disk spanning. The speech
 models are downloaded at install time, not packed into the exe.
 
 What the installer does:
