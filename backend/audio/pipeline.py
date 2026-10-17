@@ -512,11 +512,13 @@ class BibleLiveAudioProcessor:
         frames = event.frames
         utterance_seconds = self._frame_duration_s * len(frames)
         if event.kind == "end":
+            # Before the put: once queued, the transcription thread may log
+            # the utterance at once, and must find its position.
+            session_log = getattr(self, "session_log", None)
+            if session_log is not None:
+                session_log.utterance_queued(frames, event.trailing_silent_frames)
             try:
                 self.vad_queue.put((self._capture_language, frames), timeout=0.1)
-                session_log = getattr(self, "session_log", None)
-                if session_log is not None:
-                    session_log.utterance_queued(frames, event.trailing_silent_frames)
                 self.metrics.vad_segments_detected += 1
                 logger.info(
                     f"Utterance ended ({event.reason}): {utterance_seconds:.2f}s of audio "
@@ -524,6 +526,8 @@ class BibleLiveAudioProcessor:
                     f"queued for transcription"
                 )
             except Full:
+                if session_log is not None:
+                    session_log.utterance_dropped(frames)
                 logger.warning("VAD queue full, dropping speech segment (slow transcription)")
         else:
             logger.debug(

@@ -158,6 +158,13 @@ class SessionLog:
                 self._pending.pop(next(iter(self._pending)))
             self._pending[id(frames)] = (min(self._speech_start_s, end_s), end_s)
 
+    def utterance_dropped(self, frames: list[bytes]) -> None:
+        """Forget a registered utterance that never reached the queue (VAD thread)."""
+        with self._lock:
+            span = self._pending.pop(id(frames), None)
+        if span is not None:
+            self.event("utterance_dropped", start_s=round(span[0], 2), end_s=round(span[1], 2))
+
     def utterance(
         self,
         frames: list[bytes],

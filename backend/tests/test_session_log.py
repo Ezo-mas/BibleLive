@@ -135,3 +135,48 @@ def test_pipeline_logs_each_processed_utterance(tmp_path):
     assert utterance["transcripts"][0]["text"] == "turn to John 3:16"
     assert [r["reference"] for r in utterance["references"]] == ["John 3:16"]
     assert len(proc.sender.sent) == 1
+
+
+class _CheckingQueue:
+    """A vad_queue whose put() checks the utterance is already registered."""
+
+    def __init__(self, log: SessionLog, full: bool = False):
+        self.log, self.full, self.registered_at_put = log, full, None
+
+    def put(self, item, timeout=None):  # noqa: ARG002
+        self.registered_at_put = id(item[1]) in self.log._pending
+        if self.full:
+            from queue import Full
+
+            raise Full
+
+    def qsize(self) -> int:
+        return 0
+
+
+def _queueing_processor(tmp_path, full: bool):
+    from audio.segmenter import SegmentEvent
+
+    proc = BibleLiveAudioProcessor.__new__(BibleLiveAudioProcessor)
+    proc.metrics = PipelineMetrics()
+    proc._frame_duration_s = 0.03
+    proc._capture_language = "lt"
+    proc.session_log = SessionLog(tmp_path, False, {}, 0.03)
+    proc.vad_queue = _CheckingQueue(proc.session_log, full)
+    event = SegmentEvent("end", frames=[FRAME] * 20, reason="silence")
+    return proc, event
+
+
+def test_utterance_position_is_registered_before_it_is_queued(tmp_path):
+    proc, event = _queueing_processor(tmp_path, full=False)
+    proc._queue_speech_segment(event)
+    assert proc.vad_queue.registered_at_put is True
+    proc.session_log.close()
+
+
+def test_utterance_dropped_by_a_full_queue_is_forgotten(tmp_path):
+    proc, event = _queueing_processor(tmp_path, full=True)
+    proc._queue_speech_segment(event)
+    assert proc.session_log._pending == {}
+    proc.session_log.close()
+    assert _records(proc.session_log)[-1]["type"] == "utterance_dropped"
