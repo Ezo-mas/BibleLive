@@ -199,6 +199,21 @@ def build_parser() -> argparse.ArgumentParser:
         help="Disable the runtime language-control server",
     )
     parser.add_argument(
+        "--session-log-dir",
+        default=None,
+        help=(
+            "Write a live session log here: <start time>.jsonl with every utterance's "
+            "transcript and the references sent (default: off)"
+        ),
+    )
+    parser.add_argument(
+        "--session-audio",
+        type=_flag,
+        default=False,
+        help="With --session-log-dir, also record the service as <start time>.wav "
+        "(16 kHz mono, ~115 MB per hour; default: off)",
+    )
+    parser.add_argument(
         "--log-level",
         default=None,
         choices=["DEBUG", "INFO", "WARNING", "ERROR"],
@@ -245,6 +260,8 @@ def main() -> None:
         control_host=args.control_host,
         control_port=args.control_port,
         control_token=args.control_token,
+        session_log_dir=args.session_log_dir,
+        session_audio=args.session_audio,
         # Same source the server reads its token from, so one .env covers both.
         api_token=args.server_token or server_config.OPERATOR_TOKEN,
     )

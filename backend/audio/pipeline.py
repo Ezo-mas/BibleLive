@@ -1,6 +1,7 @@
 """Main audio processing pipeline for BibleLive."""
 
 import logging
+import os
 import threading
 import time
 from pathlib import Path
@@ -18,6 +19,7 @@ from .heartbeat import HeartbeatSender
 from .metrics import PipelineMetrics
 from .segmenter import FRAME_DURATION_MS, Segmenter, SegmentEvent
 from .sender import ReferenceSender
+from .session_log import SessionLog
 from .spelling_maps import MappedStreamingParser, spelling_map
 from .stt import SUPPORTED_LANGUAGES, SpeechToText, Transcription
 from .stt_gguf import (
@@ -136,6 +138,9 @@ class BibleLiveAudioProcessor:
             else None
         )
 
+        # Live session log, opened by start() when configured.
+        self.session_log: SessionLog | None = None
+
         # Worker threads
         self.vad_thread: threading.Thread | None = None
         self.transcription_thread: threading.Thread | None = None
@@ -179,6 +184,9 @@ class BibleLiveAudioProcessor:
 
             self.is_running = True
             self._last_frame_at = time.monotonic()
+
+            if self.config.session_log_dir:
+                self.session_log = self._open_session_log(self.config.session_log_dir)
 
             # Start audio capture
             self.audio_capture.start_capture(self.config.input_device)
@@ -230,6 +238,33 @@ class BibleLiveAudioProcessor:
                 thread.join(timeout=2.0)
         self.sender.stop()
         self.transcript_sender.stop()
+        self._close_session_log()
+
+    def _open_session_log(self, directory: str) -> SessionLog | None:
+        """Open the session log; a failure only costs the log, never detection."""
+        config = self.config
+        header = {
+            "stt_engine": config.stt_engine,
+            "models": {
+                name: os.path.basename(getattr(config, f"{name}_model") or "")
+                for name in getattr(self, "_stt_models", [])
+            },
+            "whisper_model": config.whisper_model,
+            "device": config.whisper_device,
+            "language": config.language,
+            "vad": config.vad,
+        }
+        try:
+            return SessionLog(directory, config.session_audio, header, self._frame_duration_s)
+        except Exception as e:
+            logger.error(f"Could not open the session log in {directory}: {e}")
+            return None
+
+    def _close_session_log(self) -> None:
+        session_log = getattr(self, "session_log", None)
+        if session_log is not None:
+            session_log.close()
+            self.session_log = None
 
     def stop(self):
         """Stop the audio processing pipeline"""
@@ -265,6 +300,9 @@ class BibleLiveAudioProcessor:
         # exit (see _transcription_loop): stop() runs on the main thread whose
         # threading.local() namespace never holds it, so closing here would be
         # dead code.
+
+        # Last: the transcription thread logs held references it flushes
+        self._close_session_log()
 
         # Log final metrics
         self.metrics.log_summary()
@@ -349,6 +387,9 @@ class BibleLiveAudioProcessor:
             return
 
         dropped = self.segmenter.reset()
+        session_log = getattr(self, "session_log", None)
+        if session_log is not None:
+            session_log.event("language", language=pending, dropped_frames=dropped)
         if dropped:
             logger.info(
                 "Language switched to '%s': discarding partial utterance (%d frames)",
@@ -377,10 +418,16 @@ class BibleLiveAudioProcessor:
             self._note_capture_healthy()
             self._last_frame_at = time.monotonic()
             self.metrics.audio_chunks_captured += 1
+            session_log = getattr(self, "session_log", None)
+            if session_log is not None:
+                session_log.write_frame(frame)
 
             event = self.segmenter.push(frame)
             if event is not None:
                 if event.kind == "start":
+                    session_log = getattr(self, "session_log", None)
+                    if session_log is not None:
+                        session_log.speech_started(event.onset_frames)
                     logger.info("Voice activity detected, capturing utterance...")
                 else:
                     self._queue_speech_segment(event)
@@ -437,6 +484,9 @@ class BibleLiveAudioProcessor:
 
             self.metrics.capture_restarts += 1
             self._capture_down = False
+            session_log = getattr(self, "session_log", None)
+            if session_log is not None:
+                session_log.event("capture_restarted")
             self._capture_restarted_at_s = self.audio_capture.captured_seconds
             logger.warning("Audio capture restarted; listening for Bible references again")
             return
@@ -464,6 +514,9 @@ class BibleLiveAudioProcessor:
         if event.kind == "end":
             try:
                 self.vad_queue.put((self._capture_language, frames), timeout=0.1)
+                session_log = getattr(self, "session_log", None)
+                if session_log is not None:
+                    session_log.utterance_queued(frames, event.trailing_silent_frames)
                 self.metrics.vad_segments_detected += 1
                 logger.info(
                     f"Utterance ended ({event.reason}): {utterance_seconds:.2f}s of audio "
@@ -503,7 +556,11 @@ class BibleLiveAudioProcessor:
             try:
                 parsers = getattr(self._local, "streaming_parsers", None) or {}
                 for held_language in list(parsers):
-                    for ref in self._flush_held(held_language):
+                    flushed = self._flush_held(held_language)
+                    session_log = getattr(self, "session_log", None)
+                    if session_log is not None:
+                        session_log.references("shutdown_flush", flushed)
+                    for ref in flushed:
                         logger.info("Flushing held reference on shutdown: %s", ref)
                         try:
                             self.sender.submit(ref)
@@ -678,6 +735,15 @@ class BibleLiveAudioProcessor:
 
     def _process_utterance(self, language: str, speech_frames: list[bytes]):
         """Process a completed utterance captured in ``language``"""
+        result, references = self._detect_references(language, speech_frames)
+        session_log = getattr(self, "session_log", None)
+        if session_log is not None:
+            session_log.utterance(speech_frames, language, result, references)
+
+    def _detect_references(
+        self, language: str, speech_frames: list[bytes]
+    ) -> tuple[Transcription | None, list[Reference]]:
+        """Transcribe, parse and send one utterance; returns what was heard and sent."""
         audio_seconds = self._frame_duration_s * len(speech_frames)
         logger.info(
             f"Processing utterance ({len(speech_frames)} frames, {audio_seconds:.2f}s audio, "
@@ -699,7 +765,7 @@ class BibleLiveAudioProcessor:
         if transcript is None and (alternate is None or alternate.text is None):
             self.metrics.transcription_failures += 1
             logger.debug("No transcription produced")
-            return
+            return result, []
 
         self.metrics.transcription_successes += 1
         self.metrics.record_transcription_duration(duration_ms)
@@ -725,14 +791,14 @@ class BibleLiveAudioProcessor:
         parser = self._select_parser(language)
         if parser is None:
             logger.warning("Streaming parser not initialized, cannot detect references")
-            return
+            return result, []
 
         # Wallclock-stamped so a book/chapter context older than the
         # TTL is dropped instead of attaching to stray numbers.
         now = time.time()
         references = self._parse_transcription(parser, result, now)
         if references is None:
-            return
+            return result, []
         if alternate is not None:
             alternate_parser = self._alternate_parser(language)
             alternate_refs = (
@@ -745,7 +811,7 @@ class BibleLiveAudioProcessor:
 
         if not references:
             logger.debug("No Bible references detected in transcription")
-            return
+            return result, []
 
         self.metrics.references_detected += len(references)
         logger.info(f"Found {len(references)} Bible reference(s):")
@@ -756,6 +822,7 @@ class BibleLiveAudioProcessor:
 
             # Queue for the sender thread (deduplicated); never blocks on the server
             self.sender.submit(ref)
+        return result, references
 
     def _parse_transcription(
         self, parser: StreamingParser, result: Transcription, now: float

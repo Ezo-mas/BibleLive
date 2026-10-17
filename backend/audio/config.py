@@ -60,6 +60,12 @@ class AudioPipelineConfig:
     stt_engine: str = "whisper"
     kmynas_model: str | None = None  # .gguf path, for --stt kmynas / kmynas+canary
     canary_model: str | None = None  # .gguf path, for --stt canary / kmynas+canary
+
+    # Live session log (audio/session_log.py): one JSONL transcript per run in
+    # this directory (None = off), plus a WAV of the captured audio when
+    # session_audio is on.
+    session_log_dir: str | None = None
+    session_audio: bool = False
     vad_aggressiveness: int = 2  # 0=least, 3=most aggressive (WebRTC only)
     # VAD engine: "webrtc" or "silero" (Silero v6, bundled with faster-whisper).
     vad: str = "webrtc"
