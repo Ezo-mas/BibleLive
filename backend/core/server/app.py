@@ -16,6 +16,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import TypeAdapter, ValidationError
 
 from ..bible_lookup import BibleLookup
+from ..book_names import lithuanian_search_variants
 from ..books import CANONICAL_BOOKS
 from ..config import config
 from ..passage import PassageError, resolve_passage, validate_detection
@@ -727,6 +728,16 @@ def create_app(bible_lookup: BibleLookup | None = None) -> FastAPI:
         name table on the client. Requires authentication if
         BIBLELIVE_REQUIRE_AUTH is enabled.
         """
+        # The names the loaded translation gives its books (none for KJV). The
+        # Lithuanian parser's spellings are added only when that translation is the
+        # Lithuanian one, so they can never match books named in another language.
+        local_names = app_state.book_names.for_database(app_state.bible_lookup.db_path)
+        lithuanian = config.LANGUAGE_BIBLE_VERSIONS.get("lt")
+        local_variants = (
+            lithuanian_search_variants()
+            if local_names and lithuanian and app_state.active_bible_version() == lithuanian
+            else {}
+        )
         return BooksResponse(
             books=[
                 BookInfo(
@@ -735,6 +746,8 @@ def create_app(bible_lookup: BibleLookup | None = None) -> FastAPI:
                     order=book.order,
                     abbrev=book.abbrev,
                     variants=list(book.variants),
+                    local_name=local_names.get(book.name),
+                    local_variants=local_variants.get(book.name, []),
                 )
                 for book in CANONICAL_BOOKS
             ]

@@ -38,4 +38,17 @@ describe('formatReference', () => {
   it('handles missing verse_end for single verse', () => {
     expect(formatReference(ref({ verse_end: null }))).toBe('John 3:16')
   })
+
+  it("shows the server's book label in the spoken language when there is one", () => {
+    expect(formatReference(ref({ book_label: 'Jono evangelija' }))).toBe('Jono evangelija 3:16')
+    expect(formatReference(ref({ book_label: 'Jono evangelija', verse_end: 18 }))).toBe(
+      'Jono evangelija 3:16-18'
+    )
+  })
+
+  it('falls back to the canonical name for a null, empty, or absent label', () => {
+    expect(formatReference(ref({ book_label: null }))).toBe('John 3:16')
+    expect(formatReference(ref({ book_label: '' }))).toBe('John 3:16')
+    expect(formatReference(ref({}))).toBe('John 3:16')
+  })
 })

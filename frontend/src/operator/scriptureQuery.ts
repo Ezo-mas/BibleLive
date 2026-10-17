@@ -76,30 +76,62 @@ export interface ScriptureResult {
   highlight: BookHighlight | null
 }
 
+/** Drop accents, so "Pradžios" is found by "pradzios" and typing never needs ž or ė. */
+function stripMarks(text: string): string {
+  return text.normalize('NFD').replace(/[̀-ͯ]/g, '')
+}
+
 /** Lowercase letters and digits only, so "1 cor.", "1Cor", and "1 cor" match. */
 function fold(text: string): string {
-  return text.toLowerCase().replace(/[^a-z0-9]/g, '')
+  return stripMarks(text.toLowerCase()).replace(/[^a-z0-9]/g, '')
+}
+
+/** The name to show for a book: the loaded translation's if it has one, else the canonical. */
+export function bookLabel(book: ScriptureBook): string {
+  return book.label ?? book.name
 }
 
 /**
- * Where the folded query sits inside the book's name, for highlighting.
+ * The canon with the loaded translation's own book names applied, for display and
+ * matching.
+ *
+ * Only `label` and the extra search spellings change: `name` stays canonical,
+ * because it is what every request to the server uses. A book the translation
+ * has no name for is returned unchanged.
+ */
+export function localizeBooks(books: ScriptureBook[]): ScriptureBook[] {
+  return books.map(book => {
+    if (!book.local_name) return book
+    return {
+      ...book,
+      label: book.local_name,
+      variants: [...(book.variants ?? []), ...(book.local_variants ?? [])],
+    }
+  })
+}
+
+/**
+ * Where the folded query sits inside the shown name, for highlighting.
  *
  * Returns null rather than a guess: a match through an abbreviation ("gn" for
  * Genesis) or an alias ("canticles") has no matching text in the name itself.
  */
 function highlightRange(name: string, needle: string): BookHighlight | null {
-  const lowered = name.toLowerCase()
-  const direct = lowered.indexOf(needle)
-  if (direct >= 0) return { start: direct, length: needle.length }
+  // One entry per character, so positions line up with `name` after accents go.
+  const chars = name.split('').map(character => stripMarks(character.toLowerCase()))
+  const direct = chars.join('').indexOf(needle)
+  if (chars.join('').length === name.length && direct >= 0) {
+    return { start: direct, length: needle.length }
+  }
 
   // Separator-insensitive pass: "1cor" highlights across "1 Corinthians".
   for (let start = 0; start < name.length; start += 1) {
     let taken = 0
     let index = start
     while (index < name.length && taken < needle.length) {
-      const character = lowered[index]
+      const character = chars[index]
       index += 1
-      if (!/[a-z0-9]/.test(character)) continue
+      if (!/^[a-z0-9]$/.test(character)) continue
       if (character !== needle[taken]) break
       taken += 1
     }
@@ -111,8 +143,8 @@ function highlightRange(name: string, needle: string): BookHighlight | null {
 /**
  * Books matching the typed name portion, best match first.
  *
- * Ranking is what keeps "john 3:16" off 1 John: an exact book name beats a name
- * prefix, which beats an exact abbreviation or variant, and so on, with
+ * Ranking is what keeps "john 3:16" off 1 John: an exact book name beats an
+ * exact abbreviation or variant, which beats a name prefix, and so on, with
  * canonical order breaking ties. A partial match never hides its alternatives —
  * every other match is returned too, in the same list.
  */
@@ -123,22 +155,26 @@ export function matchBooks(bookText: string, books: ScriptureBook[]): BookMatch[
   const scored: { match: BookMatch; score: number; order: number }[] = []
 
   for (const book of books) {
-    const name = fold(book.name)
+    // Both the shown name and the canonical one count as the book's name, so an
+    // operator on a Lithuanian console can still type "john" or "gen".
+    const names = [fold(bookLabel(book)), fold(book.name)]
     const aliases = [book.abbrev ?? '', ...(book.variants ?? [])]
       .map(fold)
       .filter(alias => alias.length > 0)
 
     let score: number | null = null
-    if (name === needle) score = 0
-    else if (name.startsWith(needle)) score = 1
-    else if (aliases.includes(needle)) score = 2
+    if (names.includes(needle)) score = 0
+    // An exact alias outranks a mere name prefix: "jono" is John's own short form
+    // and must beat Jonah ("Jonos"), whose name only starts with it.
+    else if (aliases.includes(needle)) score = 1
+    else if (names.some(name => name.startsWith(needle))) score = 2
     else if (aliases.some(alias => alias.startsWith(needle))) score = 3
-    else if (name.includes(needle)) score = 4
+    else if (names.some(name => name.includes(needle))) score = 4
     else if (aliases.some(alias => alias.includes(needle))) score = 5
 
     if (score === null) continue
     scored.push({
-      match: { book, highlight: highlightRange(book.name, needle) },
+      match: { book, highlight: highlightRange(bookLabel(book), needle) },
       score,
       order: book.order ?? 0,
     })
@@ -175,10 +211,12 @@ function parseCoordinates(
 ): { coordinates: ScriptureCoordinates | null; error: string | null } {
   if (!coordinatesText) return { coordinates: null, error: null }
 
+  const name = bookLabel(book)
+
   if (/[a-z]/i.test(coordinatesText)) {
     return {
       coordinates: null,
-      error: `Use a chapter and verse, for example "${book.name} 3:16" or "${book.name} 3:16-18".`,
+      error: `Use a chapter and verse, for example "${name} 3:16" or "${name} 3:16-18".`,
     }
   }
 
@@ -193,14 +231,14 @@ function parseCoordinates(
   if (numbers.length > 3) {
     return {
       coordinates: null,
-      error: `Too many numbers — use a chapter and a verse, for example "${book.name} 3:16-18".`,
+      error: `Too many numbers — use a chapter and a verse, for example "${name} 3:16-18".`,
     }
   }
 
   if (numbers.length === 2 && RANGE_SEPARATOR.test(separators[0] ?? '')) {
     return {
       coordinates: null,
-      error: `"${book.name} ${numbers[0]}-${numbers[1]}" is ambiguous (a chapter range, or verses of which chapter?); write a chapter first, for example "${book.name} ${numbers[0]}:1".`,
+      error: `"${name} ${numbers[0]}-${numbers[1]}" is ambiguous (a chapter range, or verses of which chapter?); write a chapter first, for example "${name} ${numbers[0]}:1".`,
     }
   }
 
@@ -212,7 +250,7 @@ function parseCoordinates(
   if (chapter > book.chapters) {
     return {
       coordinates: null,
-      error: `${book.name} has ${book.chapters} chapter${book.chapters === 1 ? '' : 's'}.`,
+      error: `${name} has ${book.chapters} chapter${book.chapters === 1 ? '' : 's'}.`,
     }
   }
 
@@ -241,7 +279,7 @@ function parseCoordinates(
 
 /** Format what will be requested, in the shape the rest of the console uses. */
 function referenceLabel(book: ScriptureBook, coordinates: ScriptureCoordinates): string {
-  let label = `${book.name} ${coordinates.chapter}`
+  let label = `${bookLabel(book)} ${coordinates.chapter}`
   if (coordinates.verseStart !== null) {
     label += `:${coordinates.verseStart}`
     if (coordinates.verseEnd !== null && coordinates.verseEnd !== coordinates.verseStart) {
@@ -323,7 +361,7 @@ export function buildResults(
         {
           kind: 'reference',
           id: `reference-${query.book.order}`,
-          label: query.label ?? query.book.name,
+          label: query.label ?? bookLabel(query.book),
           detail:
             query.coordinates.verseStart === null
               ? 'Whole chapter — the server opens at verse 1'
@@ -342,7 +380,7 @@ export function buildResults(
     results: shown.map(match => ({
       kind: 'book' as const,
       id: `book-${match.book.order}`,
-      label: match.book.name,
+      label: bookLabel(match.book),
       detail: `${match.book.chapters} chapter${match.book.chapters === 1 ? '' : 's'}`,
       book: match.book,
       coordinates: null,

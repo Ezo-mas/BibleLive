@@ -9,6 +9,7 @@ from fastapi import WebSocket
 
 from ..bible_lookup import BibleLookup
 from ..bible_versions import BibleVersion, discover_versions
+from ..book_names import BookNames
 from ..config import config
 from ..passage import ResolvedPassage
 from .connections import ConnectionManager
@@ -86,6 +87,16 @@ class AppState:
         # an unchanged hint is not sent again and a reconnecting operator gets it.
         self.verse_indexes = VerseIndexes(self.available_bible_versions)
         self.last_follow_along: FollowAlongHint | None = None
+        # Book labels (``local_name``) of whichever translation is loaded.
+        self.book_names = BookNames()
+
+    def book_label(self, book: str) -> str | None:
+        """``book`` named as the loaded translation names it, or None for the canonical name.
+
+        Keyed to the loaded Bible, not the spoken language, so the name on screen
+        always belongs to the same translation as the verse text under it.
+        """
+        return self.book_names.label(book, self.bible_lookup.db_path)
 
     def record_pipeline_report(self, report: PipelineHeartbeat, now: float | None = None) -> None:
         """Keep the audio pipeline's latest health report."""
@@ -388,6 +399,7 @@ class AppState:
         # apply to a reference that arrived under the previous mode.
         mode_at_arrival = self.auto_mode
 
+        ref.book_label = self.book_label(ref.book)
         self.pending_references.append(ref)
         # Notify operators of new pending reference
         await self._send_pending_update()
@@ -467,6 +479,9 @@ class AppState:
         """
         if ref.verse_start is None:
             ref.verse_start = 1
+        # Labelled as it goes on screen, so the display always reads in the
+        # language spoken now, whatever it was when the detection arrived.
+        ref.book_label = self.book_label(ref.book)
 
         ref.text = ""
         ref.verses = []
@@ -512,6 +527,7 @@ class AppState:
         """
         ref = BibleReference(
             book=passage.book,
+            book_label=self.book_label(passage.book),
             chapter=passage.chapter,
             verse_start=passage.verse_start,
             verse_end=passage.verse_end,
@@ -558,6 +574,7 @@ class AppState:
             and (hint.display_id, hint.verse_start) == (last.display_id, last.verse_start)
         ):
             return None
+        hint.book_label = self.book_label(hint.book)
         self.last_follow_along = hint
         await self.connection_manager.send_to_operator(
             {"type": "follow_along", "data": hint.model_dump()}

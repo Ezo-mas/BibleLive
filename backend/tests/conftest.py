@@ -9,6 +9,7 @@ from pathlib import Path
 
 import pytest
 
+from core.book_names import BookNames
 from core.config import config
 from core.import_bible import BibleImporter
 from core.server.models import DisplaySettings
@@ -149,6 +150,7 @@ def reset_app_state(app_state, tmp_path: Path):
     app_state.pipeline_report = None
     app_state.pipeline_reported_at = None
     app_state.last_follow_along = None
+    app_state.book_names = BookNames()
     yield
     app_state.connection_manager = app_state.connection_manager.__class__()
 

@@ -762,8 +762,6 @@ export function useOperatorState(): OperatorState {
 
   // Manual passage search: the server's canon, the server's text, and staging on
   // success only.
-  const search = useScriptureSearch(token, stageManualPassage, showManualDirect)
-
   const isConnected = status === 'open'
 
   // The pipeline's language: read once the socket is up, switched only on request.
@@ -771,6 +769,14 @@ export function useOperatorState(): OperatorState {
 
   const bibleVersion = useBibleVersion(token, isConnected, showNotice)
   applyBibleVersionRef.current = bibleVersion.applyConfirmed
+
+  // Search names books as the loaded Bible translation does, so it follows a switch.
+  const search = useScriptureSearch(
+    token,
+    stageManualPassage,
+    showManualDirect,
+    bibleVersion.version
+  )
 
   // Speech detection health, asked of the server only while it is reachable.
   const pipeline = usePipelineStatus(token, isConnected)
