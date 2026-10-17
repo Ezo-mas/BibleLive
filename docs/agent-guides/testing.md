@@ -33,8 +33,9 @@ On Windows there is no `make`: use `.venv\Scripts\python.exe -m ...` with
 
 Unit tests prove the code does what it says, not that it detects more
 references. Any change that can move detection quality — Whisper prompt,
-hotwords, beam size, model or compute type, VAD choice or tuning, utterance
-segmentation, transcript post-processing, parser patterns — needs a
+hotwords, beam size, model or compute type, the `--stt` speech models and
+their spelling maps, VAD choice or tuning, utterance segmentation, transcript
+post-processing, parser patterns — needs a
 before/after run on the same corpus and settings. Before proposing one,
 check "Tried and not adopted" in `benchmarks/BASELINE_NOTES.md` (rolling
 windows, longer caps, vocal isolation, denoise/gate already measured):
@@ -46,9 +47,18 @@ python benchmarks/run_benchmark.py \
     --out results/<change>-before.json      # then -after.json with the change
 ```
 
-- The canonical corpus is two Lithuanian services, 25 gold references.
-  There is no English gold corpus yet: say so when an English-only change
-  is unmeasured instead of implying it was.
+- The canonical corpus is 13 Lithuanian services, 158 gold references:
+  the runs listed in `benchmarks/corpus/lt-sermons.txt` (manifest, record,
+  and the `--t-range` of the sermon part where a recording has one), with
+  `--mode offline --context-ttl-s 600`. Results so far are in
+  `benchmarks/BASELINE_NOTES.md`. There is no English gold corpus yet: say
+  so when an English-only change is unmeasured instead of implying it was.
+- `--stt kmynas|canary|kmynas+canary` (with `--kmynas-model` /
+  `--canary-model` .gguf paths and `--device cpu|cuda`) runs the Lithuanian
+  GGUF engines through the same code as live; it needs the `gguf` extra and
+  `--mode offline` or `rt` (windowed mode reads Whisper segments). The
+  spelling maps are applied when cached transcripts are parsed, so a map
+  change replays from the cache in seconds.
 - `--mode windowed` cuts fixed 30 s windows and never runs the VAD or the
   segmenter. VAD or segmentation changes need `--mode offline`, which
   replays frames through `audio/segmenter.py` exactly as the live pipeline

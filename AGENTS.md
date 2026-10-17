@@ -39,9 +39,10 @@ Before reporting done:
 - **Backend changes**: run `make check` (ruff lint + format-check + pytest)
   and `make typecheck` (mypy — separate from `check`).
 - **Frontend changes**: from `frontend/` run `npm run lint && npm run typecheck && npm run format:check && npm test -- --run`.
-- **Detection-accuracy changes** (Whisper prompt/hotwords/beam/model, VAD
-  tuning, utterance segmentation, transcript post-processing, parser
-  patterns): unit tests are not enough — run the benchmark before and after
+- **Detection-accuracy changes** (Whisper prompt/hotwords/beam/model, the
+  `--stt` speech models, per-model spelling maps or the two-model agreement
+  rule, VAD tuning, utterance segmentation, transcript post-processing,
+  parser patterns): unit tests are not enough — run the benchmark before and after
   on the same corpus and report TP/FP/FN and runtime for both
   ([testing guide](docs/agent-guides/testing.md#detection-accuracy-benchmark)).
 - Report failures honestly, including which check failed and why; don't
@@ -60,8 +61,9 @@ BibleLive listens to live audio (a sermon), detects spoken Bible references,
 and shows them on an audience-facing display. An operator panel approves or
 discards each detected reference before it goes on screen.
 
-Pipeline: `ffmpeg → VAD → Whisper STT → reference parser → FastAPI server →
-WebSocket → operator approval → display page`.
+Pipeline: `ffmpeg → VAD → speech-to-text (Whisper, or Kmynas/Canary GGUF
+models for Lithuanian) → reference parser → FastAPI server → WebSocket →
+operator approval → display page`.
 
 ## Guides: what to read for each task type
 
