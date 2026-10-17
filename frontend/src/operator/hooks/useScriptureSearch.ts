@@ -1,7 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { fetchBooks, lookupPassage } from '../passageApi'
 import type { PassageQuery } from '../passageApi'
-import { BOOK_RESULT_LIMIT, buildResults, parseScriptureQuery } from '../scriptureQuery'
+import {
+  BOOK_RESULT_LIMIT,
+  bookLabel,
+  buildResults,
+  localizeBooks,
+  parseScriptureQuery,
+} from '../scriptureQuery'
 import type { ScriptureResult } from '../scriptureQuery'
 import type { Passage, ScriptureBook } from '../../shared/types'
 
@@ -61,11 +67,12 @@ export interface ScriptureSearchState {
 export function useScriptureSearch(
   token: string | null,
   onPassage: (passage: Passage) => void,
-  onDirectDisplay: (request: PassageQuery) => void
+  onDirectDisplay: (request: PassageQuery) => void,
+  bibleVersion: string | null = null
 ): ScriptureSearchState {
   const [input, setInputState] = useState('')
   const [debouncedInput, setDebouncedInput] = useState('')
-  const [books, setBooks] = useState<ScriptureBook[]>([])
+  const [canon, setCanon] = useState<ScriptureBook[]>([])
   const [booksError, setBooksError] = useState<string | null>(null)
   const [isLoadingBooks, setIsLoadingBooks] = useState(false)
   const [showAllBooks, setShowAllBooks] = useState(false)
@@ -108,10 +115,10 @@ export function useScriptureSearch(
     try {
       const loaded = await fetchBooks(token)
       if (requestId !== booksIdRef.current) return
-      setBooks(loaded)
+      setCanon(loaded)
     } catch (error) {
       if (requestId !== booksIdRef.current) return
-      setBooks([])
+      setCanon([])
       setBooksError(error instanceof Error ? error.message : 'Could not load the book list.')
     } finally {
       if (requestId === booksIdRef.current) setIsLoadingBooks(false)
@@ -129,6 +136,18 @@ export function useScriptureSearch(
     void loadBooks()
   }, [loadBooks])
 
+  // The book names belong to the loaded Bible translation, so a switch makes the
+  // list the search holds stale. Reload it, but only if it has been asked for and
+  // the version really changed (learning the first version is not a change).
+  const seenVersionRef = useRef<string | null>(null)
+  useEffect(() => {
+    const previous = seenVersionRef.current
+    if (bibleVersion) seenVersionRef.current = bibleVersion
+    if (previous && bibleVersion && previous !== bibleVersion && booksRequestedRef.current) {
+      void loadBooks()
+    }
+  }, [bibleVersion, loadBooks])
+
   const setInput = useCallback(
     (value: string) => {
       setInputState(value)
@@ -139,6 +158,12 @@ export function useScriptureSearch(
     },
     [ensureBooks]
   )
+
+  // The canon as the loaded translation names it. Only labels and search spellings
+  // change; every request below still names a book by its canonical `name`.
+  const books = useMemo(() => localizeBooks(canon), [canon])
+  const booksRef = useRef(books)
+  booksRef.current = books
 
   const query = useMemo(() => parseScriptureQuery(debouncedInput, books), [debouncedInput, books])
 
@@ -158,7 +183,10 @@ export function useScriptureSearch(
         try {
           const passage = await lookupPassage(request, token)
           if (requestId !== lookupIdRef.current) return
-          onPassageRef.current(passage)
+          // The preview reads in the loaded translation's names like everything else; the
+          // lookup itself was made, and is shown again later, by canonical name.
+          const label = booksRef.current.find(book => book.name === passage.book)?.label
+          onPassageRef.current(label ? { ...passage, book_label: label } : passage)
         } catch (error) {
           if (requestId !== lookupIdRef.current) return
           setLookupError(error instanceof Error ? error.message : 'Could not look that up.')
@@ -183,7 +211,7 @@ export function useScriptureSearch(
       }
       // A book is not a passage: picking one completes the text so its chapter
       // can be typed. Nothing is looked up, staged, or sent.
-      setInputState(`${result.book.name} `)
+      setInputState(`${bookLabel(result.book)} `)
       setShowAllBooks(false)
       setLookupError(null)
     },

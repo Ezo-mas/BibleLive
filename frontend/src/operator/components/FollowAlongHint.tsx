@@ -1,4 +1,5 @@
 import { BookIcon, Button } from '../../components'
+import { bookDisplayName } from '../../shared/reference'
 import type { FollowAlongHint as FollowAlongHintData } from '../../shared/types'
 
 export interface FollowAlongHintProps {
@@ -13,7 +14,7 @@ export interface FollowAlongHintProps {
 function formatHint(hint: FollowAlongHintData): string {
   const range =
     hint.verse_end > hint.verse_start ? `${hint.verse_start}-${hint.verse_end}` : hint.verse_start
-  return `${hint.book} ${hint.chapter}:${range}`
+  return `${bookDisplayName(hint)} ${hint.chapter}:${range}`
 }
 
 /**

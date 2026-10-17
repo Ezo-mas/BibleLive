@@ -142,4 +142,16 @@ describe('display verses', () => {
     // The uppercase treatment is CSS, so assert the rendered text.
     expect(screen.getByText('John 1:1-3')).toBeInTheDocument()
   })
+
+  it('names the book in the spoken language when the server labels it', async () => {
+    render(<App />)
+    act(() => {
+      socket?.onopen?.()
+    })
+
+    push({ type: 'reference', data: { ...reference(), book_label: 'Jono evangelija' } })
+
+    await waitFor(() => expect(screen.getByText('Jono evangelija 1:1-3')).toBeInTheDocument())
+    expect(screen.queryByText('John 1:1-3')).not.toBeInTheDocument()
+  })
 })

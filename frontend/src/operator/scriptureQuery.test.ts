@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { BOOK_RESULT_LIMIT, buildResults, matchBooks, parseScriptureQuery } from './scriptureQuery'
+import {
+  BOOK_RESULT_LIMIT,
+  bookLabel,
+  buildResults,
+  localizeBooks,
+  matchBooks,
+  parseScriptureQuery,
+} from './scriptureQuery'
 import type { ScriptureBook } from '../shared/types'
 
 /** A slice of the canon, with the abbreviation and variant data the server sends. */
@@ -290,5 +297,113 @@ describe('buildResults', () => {
     const all = buildResults(parseScriptureQuery('an', books), Number.POSITIVE_INFINITY)
     expect(all.results).toHaveLength(18)
     expect(all.hiddenCount).toBe(0)
+  })
+})
+
+describe('book names from the loaded translation', () => {
+  /** The same slice of the canon, as /api/books serves it under the Lithuanian LTB (real names). */
+  const withName = (book: ScriptureBook, name: string, variants: string[]): ScriptureBook => ({
+    ...book,
+    local_name: name,
+    local_variants: variants,
+  })
+  const JONAH: ScriptureBook = {
+    name: 'Jonah',
+    chapters: 4,
+    order: 32,
+    abbrev: 'jo',
+    variants: ['jonah'],
+  }
+  const SERVED: ScriptureBook[] = [
+    withName(GENESIS, 'Pradžios', ['pradz knyga', 'pradz']),
+    withName(JONAH, 'Jonos', ['jona knyga', 'jona']),
+    withName(JOHN, 'Jono evangelija', ['jono evangelija', 'jonas evangelija', 'jono', 'jonas']),
+    withName(FIRST_CORINTHIANS, '1 Korintiečiams', [
+      'laiskas korintiec',
+      'korintiec',
+      '1 laiskas korintiec',
+      '1 korintiec',
+    ]),
+    withName(FIRST_JOHN, '1 Jono', ['jono laiskas', 'jono', '1 jono laiskas', '1 jono']),
+  ]
+  const LT = localizeBooks(SERVED)
+  const labels = (query: string) => matchBooks(query, LT).map(match => bookLabel(match.book))
+
+  it('leaves books the translation has no name for exactly as they are', () => {
+    const plain = [GENESIS, JOHN]
+    expect(localizeBooks(plain).map(bookLabel)).toEqual(['Genesis', 'John'])
+    expect(localizeBooks([{ ...GENESIS, local_name: null }]).map(bookLabel)).toEqual(['Genesis'])
+  })
+
+  it('shows the translation name but keeps the canonical one for requests', () => {
+    const john = LT.find(book => book.order === 43)
+    expect(john && bookLabel(john)).toBe('Jono evangelija')
+    expect(john?.name).toBe('John')
+  })
+
+  it('finds books by their name without typing the accents', () => {
+    expect(labels('prad')).toEqual(['Pradžios'])
+    expect(labels('Pradžios')).toEqual(['Pradžios'])
+    expect(labels('pradzios')).toEqual(['Pradžios'])
+    expect(labels('korintieciams')).toEqual(['1 Korintiečiams'])
+  })
+
+  it('finds numbered books by number and stem', () => {
+    expect(labels('1 kor')).toEqual(['1 Korintiečiams'])
+    expect(labels('1 jono')).toEqual(['1 Jono'])
+  })
+
+  it('ranks a short form by the book it belongs to, not by a longer name it starts', () => {
+    // Real ltb names: Jonah is "Jonos", which merely starts with John's "Jono".
+    const first = (text: string) => matchBooks(text, LT)[0]?.book.name
+    expect(first('jono')).toBe('John')
+    expect(first('Jono')).toBe('John')
+    expect(first('jonos')).toBe('Jonah')
+    expect(parseScriptureQuery('Jono 3:16', LT).book?.name).toBe('John')
+  })
+
+  it('ranks the gospel before the letter for a bare name', () => {
+    expect(labels('jono')).toEqual(['Jono evangelija', '1 Jono', 'Jonos'])
+  })
+
+  it('still accepts the English names and abbreviations', () => {
+    expect(labels('genesis')).toEqual(['Pradžios'])
+    expect(labels('jn')).toEqual(['Jono evangelija'])
+  })
+
+  it('reads a complete reference and labels it with the translation name', () => {
+    const query = parseScriptureQuery('Jono evangelija 3:16-18', LT)
+    expect(query.book?.name).toBe('John')
+    expect(query.label).toBe('Jono evangelija 3:16-18')
+    expect(query.isComplete).toBe(true)
+
+    const numbered = parseScriptureQuery('1 Korintiečiams 13', LT)
+    expect(numbered.book?.name).toBe('1 Corinthians')
+    expect(numbered.coordinates?.chapter).toBe(13)
+  })
+
+  it('reads an accent-free reference', () => {
+    const query = parseScriptureQuery('pradzios 1:1', LT)
+    expect(query.book?.name).toBe('Genesis')
+    expect(query.label).toBe('Pradžios 1:1')
+  })
+
+  it('lists book rows and result rows by the translation name', () => {
+    const books = buildResults(parseScriptureQuery('prad', LT)).results
+    expect(books.map(result => result.label)).toEqual(['Pradžios'])
+    expect(books[0].book.name).toBe('Genesis')
+
+    const reference = buildResults(parseScriptureQuery('pradz 2:3', LT)).results[0]
+    expect(reference.label).toBe('Pradžios 2:3')
+    expect(reference.book.name).toBe('Genesis')
+  })
+
+  it('names the book as the translation does in its inline errors', () => {
+    expect(parseScriptureQuery('pradzios 99', LT).error).toBe('Pradžios has 50 chapters.')
+  })
+
+  it('highlights the typed text in the name, accents included', () => {
+    const [match] = matchBooks('pradzi', LT)
+    expect(match.highlight).toEqual({ start: 0, length: 6 })
   })
 })

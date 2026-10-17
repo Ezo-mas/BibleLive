@@ -101,6 +101,7 @@ export function passageToReference(passage: Passage): BibleReference {
   return {
     id: `manual-${passage.book}-${passage.chapter}-${passage.verse_start}-${passage.verse_end}`,
     book: passage.book,
+    book_label: passage.book_label ?? null,
     chapter: passage.chapter,
     verse_start: passage.verse_start,
     verse_end: passage.verse_end,

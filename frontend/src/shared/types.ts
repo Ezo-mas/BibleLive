@@ -14,6 +14,11 @@ export interface VerseText {
 export interface BibleReference {
   id: string
   book: string
+  /**
+   * The book named as the loaded Bible translation names it (e.g. 'Jono evangelija'), for display
+   * only. Absent or null means show `book`; never send it back to the server.
+   */
+  book_label?: string | null
   chapter: number
   verse_start: number | null
   verse_end: number | null
@@ -44,6 +49,19 @@ export interface ScriptureBook {
    * Also optional for the same reason as `abbrev`.
    */
   variants?: string[]
+  /**
+   * What the loaded Bible translation calls the book (e.g. 'Jono evangelija'), or
+   * null/absent when it has no names of its own. Display and matching only:
+   * requests still name the book by `name`.
+   */
+  local_name?: string | null
+  /** Extra spellings the search accepts for `local_name`. */
+  local_variants?: string[]
+  /**
+   * What the console shows for this book, set by `localizeBooks` from
+   * `local_name`. Never present on the wire.
+   */
+  label?: string
 }
 
 /** GET /api/books response. */
@@ -54,6 +72,8 @@ export interface BooksResponse {
 /** A passage resolved by the server, ready to stage and then display. */
 export interface Passage {
   book: string
+  /** Display name from the loaded translation, added by the console; never from the server. */
+  book_label?: string | null
   chapter: number
   verse_start: number
   verse_end: number
@@ -94,6 +114,8 @@ export type DisplayMessage =
  */
 export interface FollowAlongHint {
   book: string
+  /** Display name from the loaded translation; absent or null means show `book`. */
+  book_label?: string | null
   chapter: number
   verse_start: number
   verse_end: number
