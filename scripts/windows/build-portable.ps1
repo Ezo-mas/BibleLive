@@ -164,8 +164,8 @@ $App = Join-Path $Out 'app'
 New-Item -ItemType Directory -Force $App | Out-Null
 # pyproject.toml marker: core.config finds PROJECT_ROOT = app\ because it sits two levels above backend\core.
 Copy-Item (Join-Path $Repo 'pyproject.toml') (Join-Path $App 'pyproject.toml')
-# Window icon for the launcher GUI (launcher.gui looks for appiblelive.ico).
-Copy-Item (Join-Path $PSScriptRoot 'installeriblelive.ico') (Join-Path $App 'biblelive.ico')
+# Window icon for the launcher GUI (launcher.gui looks for app\biblelive.ico).
+Copy-Item (Join-Path $PSScriptRoot 'installer\biblelive.ico') (Join-Path $App 'biblelive.ico')
 foreach ($pkg in 'core', 'audio', 'launcher') {
     $src = Join-Path $Repo "backend\$pkg"
     $dst = Join-Path $App "backend\$pkg"
