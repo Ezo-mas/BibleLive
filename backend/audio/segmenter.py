@@ -37,8 +37,8 @@ class SegmentEvent:
     ``onset_frames`` counts the frames from its first voiced frame up to and
     including this one, so the caller can date the onset.
     ``end``: an utterance closed with at least ``min_speech_frames`` of speech;
-    ``frames`` holds its audio: the voiced frames, plus the pre-roll and the
-    in-utterance pauses when those are on.
+    ``frames`` holds its audio: the voiced frames, plus the pre-roll, the
+    in-utterance pauses and the post-roll when those are on.
     ``blip``: an utterance closed too short to transcribe; ``frames`` holds it
     for logging only.
     ``reason`` says what closed it, ``trailing_silent_frames`` how much silence.
@@ -61,7 +61,10 @@ class Segmenter:
     - ``pre_roll_frames``: frames from just before the first voiced frame
       are kept too, so a soft first sound the VAD missed still reaches Whisper.
     - ``keep_pauses``: frames the VAD calls silent between voiced ones stay in
-      the audio (soft consonants, short pauses); trailing silence never does.
+      the audio (soft consonants, short pauses).
+    - ``post_roll_frames``: up to this many of the silent frames after the
+      last voiced one end the utterance's audio, so a soft last sound the VAD
+      missed is not cut; the rest of the trailing silence is dropped.
     - ``start_voiced_frames`` of the last ``start_window_frames`` must be
       voiced to start an utterance (1 of 1: the first voiced frame). The
       utterance then begins at the window's first voiced frame (preceded by
@@ -79,6 +82,7 @@ class Segmenter:
         keep_pauses: bool = False,
         start_voiced_frames: int = 1,
         start_window_frames: int = 1,
+        post_roll_frames: int = 0,
     ):
         if not 1 <= start_voiced_frames <= start_window_frames:
             raise ValueError(
@@ -87,6 +91,8 @@ class Segmenter:
             )
         if pre_roll_frames < 0:
             raise ValueError(f"pre_roll_frames must be >= 0, got {pre_roll_frames}")
+        if post_roll_frames < 0:
+            raise ValueError(f"post_roll_frames must be >= 0, got {post_roll_frames}")
         self._is_speech = is_speech
         self.max_silent_frames = max_silent_frames
         self.min_speech_frames = min_speech_frames
@@ -96,9 +102,12 @@ class Segmenter:
         self.start_voiced_frames = start_voiced_frames
         self.start_window_frames = start_window_frames
         self.pre_roll_frames = pre_roll_frames
+        self.post_roll_frames = post_roll_frames
         self.speech_frames: list[bytes] = []  # the utterance's audio so far
         self.voiced_frames = 0  # voiced frames in it (the blip test)
-        self._pause: list[bytes] = []  # silent frames since the last voiced one
+        # Silent frames since the last voiced one: all of them with keep_pauses,
+        # else the first post_roll_frames.
+        self._pause: list[bytes] = []
         self.silent_frames = 0
         self.utterance_frames = 0  # voiced + silent frames since the start
         # Before an utterance: the recent frames (pre-roll + start window).
@@ -126,6 +135,7 @@ class Segmenter:
             soft_utterance_frames=soft,
             max_utterance_frames=cap,
             pre_roll_frames=frames(config.pre_roll_s),
+            post_roll_frames=frames(config.post_roll_s),
             keep_pauses=config.keep_pauses,
             start_voiced_frames=config.start_voiced_frames,
             start_window_frames=config.start_window_frames,
@@ -143,9 +153,9 @@ class Segmenter:
 
         if voiced:
             self.silent_frames = 0
-            if self._pause:  # a pause between words, kept with keep_pauses
+            if self.keep_pauses:  # a pause between words
                 self.speech_frames.extend(self._pause)
-                self._pause = []
+            self._pause = []
             self.speech_frames.append(frame)
             self.voiced_frames += 1
             self.utterance_frames += 1
@@ -155,7 +165,7 @@ class Segmenter:
 
         self.silent_frames += 1
         self.utterance_frames += 1
-        if self.keep_pauses:
+        if self.keep_pauses or len(self._pause) < self.post_roll_frames:
             self._pause.append(frame)
         if self.silent_frames > self.max_silent_frames:
             return self._close("silence")
@@ -209,7 +219,8 @@ class Segmenter:
         return dropped
 
     def _close(self, reason: EndReason) -> SegmentEvent:
-        frames, silent, voiced = self.speech_frames, self.silent_frames, self.voiced_frames
-        self.reset()  # drops the trailing pause and the pre-roll history
+        frames = self.speech_frames + self._pause[: self.post_roll_frames]
+        silent, voiced = self.silent_frames, self.voiced_frames
+        self.reset()  # drops the rest of the trailing pause and the pre-roll history
         kind: Literal["end", "blip"] = "end" if voiced >= self.min_speech_frames else "blip"
         return SegmentEvent(kind, frames, silent, reason)

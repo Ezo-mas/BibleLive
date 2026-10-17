@@ -43,24 +43,48 @@ class VoiceActivityDetector:
             return False
 
 
+def silero_neg_threshold(threshold: float, neg_threshold: float | None = None) -> float:
+    """The probability Silero speech must drop below to end (faster-whisper's default).
+
+    Rounded so 0.5 gives 0.35, not 0.35000000000000003, and never above the threshold.
+    """
+    if neg_threshold is not None:
+        return neg_threshold
+    return min(round(max(threshold - 0.15, 0.01), 6), threshold)
+
+
 class SileroVoiceActivityDetector:
     """Silero VAD (v6, the ONNX model bundled with faster-whisper) behind the
     same ``is_speech(frame)`` interface as the WebRTC detector.
 
     The pipeline keeps its 30 ms frames; Silero needs 512-sample windows at
     16 kHz, so each frame's samples are buffered and every complete window is
-    scored in order (leftover samples carry over to the next frame). A frame
-    is speech when the latest window's probability reaches ``threshold``.
+    scored in order (leftover samples carry over to the next frame).
+
+    Speech starts when a window's probability reaches ``threshold`` and lasts
+    until one drops below ``neg_threshold`` (default ``threshold - 0.15``, as
+    in faster-whisper's own Silero use), so the dips inside a phrase stay
+    voiced. ``neg_threshold == threshold`` is a plain per-window threshold.
     """
 
     WINDOW_SAMPLES = 512
     CONTEXT_SAMPLES = 64  # the model expects each window prefixed by the last 64 samples
 
-    def __init__(self, sample_rate: int = 16000, threshold: float = 0.5):
+    def __init__(
+        self,
+        sample_rate: int = 16000,
+        threshold: float = 0.5,
+        neg_threshold: float | None = None,
+    ):
         if sample_rate != 16000:
             raise ValueError(f"Silero VAD runs at 16 kHz here, got {sample_rate}")
         if not 0.0 < threshold < 1.0:
             raise ValueError(f"threshold must be between 0 and 1, got {threshold}")
+        neg_threshold = silero_neg_threshold(threshold, neg_threshold)
+        if not 0.0 < neg_threshold <= threshold:
+            raise ValueError(
+                f"neg_threshold must be in (0, threshold={threshold}], got {neg_threshold}"
+            )
         from faster_whisper.vad import get_vad_model
 
         try:
@@ -81,12 +105,14 @@ class SileroVoiceActivityDetector:
             ) from e
         self.sample_rate = sample_rate
         self.threshold = threshold
+        self.neg_threshold = neg_threshold
         self.frame_duration_ms = 30
         self._pending = np.zeros(0, dtype=np.float32)
         self._context = np.zeros(self.CONTEXT_SAMPLES, dtype=np.float32)
         self._h = np.zeros((1, 1, 128), dtype=np.float32)
         self._c = np.zeros((1, 1, 128), dtype=np.float32)
         self.probability = 0.0  # of the latest scored window
+        self.triggered = False  # inside speech (hysteresis state)
 
     def is_speech(self, frame: bytes) -> bool:
         """Check if audio frame contains speech (16-bit mono PCM)."""
@@ -103,10 +129,14 @@ class SileroVoiceActivityDetector:
                 self._pending = self._pending[self.WINDOW_SAMPLES :]
                 self._context = window[-self.CONTEXT_SAMPLES :]
                 self.probability = float(np.asarray(prob).reshape(-1)[0])
+                if self.probability >= self.threshold:
+                    self.triggered = True
+                elif self.probability < self.neg_threshold:
+                    self.triggered = False
         except Exception as e:
             logger.warning(f"Unexpected Silero VAD error: {e}")
             return False
-        return self.probability >= self.threshold
+        return self.triggered
 
 
 class SpeechDetector(Protocol):
@@ -117,11 +147,16 @@ VAD_ENGINES = ("webrtc", "silero")
 
 
 def create_vad(
-    engine: str, aggressiveness: int = 2, silero_threshold: float = 0.5
+    engine: str,
+    aggressiveness: int = 2,
+    silero_threshold: float = 0.5,
+    silero_neg_threshold: float | None = None,
 ) -> SpeechDetector:
     """Build the configured VAD: ``webrtc`` (default) or ``silero``."""
     if engine == "webrtc":
         return VoiceActivityDetector(aggressiveness=aggressiveness)
     if engine == "silero":
-        return SileroVoiceActivityDetector(threshold=silero_threshold)
+        return SileroVoiceActivityDetector(
+            threshold=silero_threshold, neg_threshold=silero_neg_threshold
+        )
     raise ValueError(f"unknown VAD engine {engine!r}; expected one of {VAD_ENGINES}")

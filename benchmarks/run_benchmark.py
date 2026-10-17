@@ -54,7 +54,7 @@ from audio.metrics import PipelineMetrics  # noqa: E402
 from audio.segmenter import FRAME_DURATION_MS, Segmenter, SegmentEvent  # noqa: E402
 from audio.sender import ReferenceSender  # noqa: E402
 from audio.stt import SpeechToText  # noqa: E402
-from audio.vad import create_vad  # noqa: E402
+from audio.vad import create_vad, silero_neg_threshold  # noqa: E402
 from core.bible_lookup import BibleLookup  # noqa: E402
 from core.verse_parser import Reference as ParsedReference  # noqa: E402
 from core.verse_parser import ReferenceParser, StreamingParser  # noqa: E402
@@ -628,6 +628,7 @@ def run_single_recording(
     # Added later: keyed only when changed, so caches from before stay valid.
     for name, default in (
         ("pre_roll_s", 0.0),
+        ("post_roll_s", 0.0),
         ("keep_pauses", False),
         ("start_voiced_frames", 1),
         ("start_window_frames", 1),
@@ -639,6 +640,11 @@ def run_single_recording(
         del segmentation["vad_aggressiveness"]  # a WebRTC setting
         if config.vad == "silero":
             segmentation["silero_threshold"] = config.silero_threshold
+            # Hysteresis came later: keyed only when on, so earlier Silero
+            # caches (a plain threshold) are not replayed for it.
+            neg = silero_neg_threshold(config.silero_threshold, config.silero_neg_threshold)
+            if neg != config.silero_threshold:
+                segmentation["silero_neg_threshold"] = neg
     key = feed_cache_key(
         record_id=rec.id,
         audio_sha256=audio_sha,
@@ -717,6 +723,7 @@ def run_single_recording(
         config.vad,
         aggressiveness=config.vad_aggressiveness,
         silero_threshold=config.silero_threshold,
+        silero_neg_threshold=config.silero_neg_threshold,
     )
     stt = SpeechToText(
         model_size=config.whisper_model,

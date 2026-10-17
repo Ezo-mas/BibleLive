@@ -208,15 +208,32 @@ a 20 s tolerance unless noted. Check here before re-running one of these.
   loses references in 11 of 13 recordings. VAD cost is negligible (about
   0.1 ms per 32 ms window on CPU); about 50 min of STT for 13 recordings
   run two at a time (not timed side by side with WebRTC). WebRTC stays
-  the default. Not tried yet: Silero the way faster-whisper uses it
-  (end only below threshold - 0.15, ~400 ms padding, longer end silence);
-  this run applied a plain per-frame threshold to WebRTC-tuned settings.
+  the default. This run applied a plain per-frame threshold to
+  WebRTC-tuned settings; Silero the way faster-whisper uses it is below.
 - **WebRTC aggressiveness** (`--vad-aggressiveness`, 2026-10-17, same 13
   recordings; default 2 = 139 TP / 19 FN / 15 low / 10 medium+high FP,
   3551 utterances). 1: 136 / 22 / 18 / 9 (3396 utterances); 3: 121 / 37 /
   19 / 19 (3970). Level 1 is within noise of 2; level 3 loses clearly.
   Same pattern as Silero: the stricter the VAD, the more utterances and
   the fewer references. Default stays 2.
+- **Silero the way faster-whisper uses it** (2026-10-17, same 13
+  recordings and baseline). Hysteresis (`--silero-neg-threshold`, default
+  threshold - 0.15: speech starts at the threshold and ends only below
+  neg), 0.4 s padding both sides (`--pre-roll-s 0.4 --post-roll-s 0.4`),
+  `--keep-pauses on`. Threshold 0.5, 2.0 s end of speech (faster-whisper's
+  own settings): 134 / 24 / 14 / 16 (3696 utterances); 0.5 with 1.5 s:
+  133 / 25 / 13 / 17 (3980); 0.35 with 2.0 s: 132 / 26 / 13 / 18 (3627).
+  Much closer than the plain threshold (best was 128) but still 5-7 TP
+  behind with 6-8 more medium/high FPs. About half the lost references
+  were still detected, a few seconds late (utterance starts moved); the
+  rest of the gap is 3-4 more wrong references per run. Re-scored at a
+  10 s / 20 s window the best Silero run is 136 / 14 while WebRTC stays
+  139 / 10, so the window does not explain the gap. Silero did better on
+  10-11, 10-08 and 09-13 (2 Kings 6:24/26, Isaiah 26:3, Ephesians 2:5 and
+  2:8, Luke 12:29-30) and worse on 04-19, 05-31, 07-19 and 10-04. Not
+  adopted; WebRTC stays the default. Runtimes not comparable (runs shared
+  the GPU). Still open: a WebRTC + Silero hybrid (WebRTC starts the
+  utterance, Silero with post-roll ends it, or both must agree).
 
 What did help, for contrast: picking the verse read aloud for a Lithuanian
 chapter-only reference (`core/verse_text.py`, 2026-10-16; same 13

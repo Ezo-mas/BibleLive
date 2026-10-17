@@ -52,6 +52,7 @@ class BibleLiveAudioProcessor:
             self.config.vad,
             aggressiveness=self.config.vad_aggressiveness,
             silero_threshold=self.config.silero_threshold,
+            silero_neg_threshold=self.config.silero_neg_threshold,
         )
         self.stt = SpeechToText(
             model_size=self.config.whisper_model,
