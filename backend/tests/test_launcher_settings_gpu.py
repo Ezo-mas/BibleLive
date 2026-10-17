@@ -256,7 +256,9 @@ def test_gpu_self_test_ok_and_failures(tmp_path):
         return lambda pcm: SimpleNamespace(failed=False, n=len(pcm))
 
     out = io.StringIO()
-    s = LauncherSettings()
+    s = LauncherSettings(
+        speech_engine="whisper"
+    )  # the Whisper path; GGUF is in test_launcher_speech
     assert (
         gpu_self_test_command(s, tmp_path, probe=lambda: ["float16"], loader=loader, out=out) == 0
     )

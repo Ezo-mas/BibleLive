@@ -18,6 +18,7 @@ from .settings import (
     LANGUAGES,
     LOG_LEVELS,
     MODELS,
+    SPEECH_ENGINES,
     LauncherSettings,
 )
 
@@ -48,6 +49,7 @@ class FormValues:
     extra_args: str
     open_display: bool
     open_operator: bool
+    speech_engine: str = "auto"
 
 
 def form_from_settings(s: LauncherSettings) -> FormValues:
@@ -65,6 +67,7 @@ def form_from_settings(s: LauncherSettings) -> FormValues:
         extra_args=shlex.join(s.extra_audio_args),
         open_display=s.open_display_on_start,
         open_operator=s.open_operator_on_start,
+        speech_engine=s.speech_engine,
     )
 
 
@@ -95,6 +98,7 @@ def settings_from_form(base: LauncherSettings, form: FormValues) -> LauncherSett
         extra_audio_args=extra,
         open_display_on_start=form.open_display,
         open_operator_on_start=form.open_operator,
+        speech_engine=form.speech_engine,
     )
 
 
@@ -111,6 +115,18 @@ def ui_language_options() -> list[Option]:
 
 def auto_mode_options() -> list[Option]:
     return [(m, t(f"auto.{m}")) for m in AUTO_MODES]
+
+
+_SPEECH_LABEL_KEYS = {
+    "auto": "speech.auto",
+    "whisper": "speech.whisper",
+    "kmynas": "speech.kmynas",
+    "kmynas+canary": "speech.kmynas_canary",
+}
+
+
+def speech_engine_options() -> list[Option]:
+    return [(v, t(_SPEECH_LABEL_KEYS[v])) for v in SPEECH_ENGINES]
 
 
 def plain_options(values: Sequence[str]) -> list[Option]:
@@ -194,6 +210,15 @@ def state_text(state: str) -> str:
 def describe_gpu(device: str, compute_type: str) -> str:
     key = "gpu.cuda" if device == "cuda" else "gpu.cpu"
     return t(key, device=device, compute=compute_type)
+
+
+def describe_speech(engine: str, device: str, compute_type: str) -> str:
+    """The "speech recognition" status line: Whisper keeps the GPU wording."""
+    if engine == "whisper":
+        return describe_gpu(device, compute_type)
+    where = "speech.where_cpu" if device == "cpu" else "speech.where_gpu"
+    name = "speech.short.kmynas_canary" if engine == "kmynas+canary" else "speech.short.kmynas"
+    return t("speech.status", engine=t(name), where=t(where))
 
 
 def describe_event(

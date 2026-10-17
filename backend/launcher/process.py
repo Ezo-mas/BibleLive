@@ -22,6 +22,7 @@ from typing import IO
 from .gpu import SupportedProbe, cuda_supported_compute_types, resolve_compute_type, resolve_device
 from .settings import LauncherSettings, app_data_dir
 from .settings import models_dir as default_models_dir
+from .speech import GGUF_LANGUAGES, resolve_speech, speech_threads
 
 logger = logging.getLogger(__name__)
 
@@ -57,6 +58,7 @@ class LaunchPlan:
     device: str
     compute_type: str
     warnings: list[str] = field(default_factory=list)
+    speech_engine: str = "whisper"  # the Lithuanian engine actually run (after fallbacks)
 
     @property
     def base_url(self) -> str:
@@ -83,8 +85,16 @@ def build_plan(
     env = dict(base_env if base_env is not None else os.environ)
     python = python or sys.executable
 
-    device, warnings = resolve_device(settings.device, probe)
+    device, device_warnings = resolve_device(settings.device, probe)
     compute_type = resolve_compute_type(device, settings.compute_type, probe)
+    hf_models = models_dir or default_models_dir()
+    speech = resolve_speech(settings.speech_engine, hf_models, probe)
+    # The Whisper device only matters when Whisper transcribes (English, or the Whisper engine).
+    whisper_used = speech.engine == "whisper" or settings.language not in GGUF_LANGUAGES
+    warnings = list(device_warnings) if whisper_used else []
+    if speech.engine == "kmynas+canary" and device == "cpu":
+        warnings.append("Kmynas + Canary on the processor will be slow; use an NVIDIA GPU for it.")
+    warnings += speech.warnings
 
     backend = str(app_root / "backend")
     existing = [p for p in env.get("PYTHONPATH", "").split(os.pathsep) if p and p != backend]
@@ -97,7 +107,7 @@ def build_plan(
     env["PYTHONUNBUFFERED"] = "1"
     # faster-whisper (huggingface_hub) caches models under HF_HOME/hub: keep them in the
     # machine-local models dir, not the user profile's ~/.cache.
-    env["HF_HOME"] = str(models_dir or default_models_dir())
+    env["HF_HOME"] = str(hf_models)
 
     ffmpeg_dir = Path(settings.ffmpeg_dir) if settings.ffmpeg_dir else app_root / "ffmpeg"
     if ffmpeg_dir.is_dir():
@@ -119,7 +129,17 @@ def build_plan(
         compute_type,
         "--log-level",
         settings.log_level,
+        "--stt",
+        speech.engine,
+        "--cpu-threads",
+        str(speech_threads()),
+        "--session-log-dir",
+        str(data_dir / "logs" / "sessions"),
+        "--session-audio",
+        "on" if settings.session_audio else "off",
     ]
+    for name, path in speech.model_paths.items():
+        audio_cmd += [f"--{name}-model", path]
     if settings.input_device:
         audio_cmd += ["--input-device", settings.input_device]
     audio_cmd += settings.extra_audio_args
@@ -134,6 +154,7 @@ def build_plan(
         device=device,
         compute_type=compute_type,
         warnings=warnings,
+        speech_engine=speech.engine,
     )
 
 
