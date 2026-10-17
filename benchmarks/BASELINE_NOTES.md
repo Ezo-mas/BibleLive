@@ -234,3 +234,76 @@ transcripts that spell numbers out.
 Also the utterance cap (live path 0/10/25 ->
 5/3/20) and `large-v3-turbo` float16 (live path 20/2/5 at 30 s with the
 Lithuanian parser fixes, against 5 for `small`).
+
+## Other speech models for Lithuanian (2026-10-17)
+
+Same 13 recordings, offline, 5 s span tolerance, WebRTC segmentation
+unchanged, so only the transcripts differ. Scores are TP / medium+high FP
+(baseline `large-v3-turbo` + book prompt: 139 / 10). Run outside the repo:
+the NVIDIA models through `onnx-asr` (onnxruntime-gpu 1.23.2, CUDA 12,
+cuDNN 9.10) or `transcribe.cpp` (GGUF, CPU build), fed the same utterances
+through a stand-in for `SpeechToText` that keeps its text clean-up.
+
+- **Canary-1B-v2** (`nvidia/canary-1b-v2`, ONNX by istupakov; no prompt
+  input): 124 / 12. Its misses are mostly spellings the parser did not
+  know ("Salme", "poštalų darbų", "Jonų 17.17", "lutėje"); a 16-rule
+  spelling map in front of the parser brings it to 140 / 11 (fp32 and
+  fp16 identical). Found 10 references turbo misses (2 Kings 6:24/26,
+  Isaiah 26:3, 45:18, Job 1:20, 1 Peter 5:10, Luke 12:29/30, Genesis
+  22:13, Ephesians 2:5), where turbo misheard number words or book names.
+  Lost 9 turbo finds, mostly to its built-in digit formatting ("devinta,
+  dešimta" -> "90-ąją", "11, 12" -> "11.12.3") and to words dropped at
+  utterance cuts (Colossians 3:23, Ephesians 1:13). The `pnc` switch does
+  not turn the digit formatting off (tested), and canary-1b-v2 has no
+  separate ITN control. 200 ms of zero padding per utterance: 127 / 12
+  with the map (lost 15, mostly Genesis 22 verses), so no padding.
+- **Canary GGUF on CPU** (handy-computer/canary-1b-v2-gguf, transcribe.cpp,
+  6 threads): Q8_0 126 / 10 raw, 140 / 10 with the map; Q4_K_M 117 / 16
+  raw, 130 / 14 with the map. Q4 loses about 10 references in Lithuanian.
+- **Parakeet-TDT-0.6B-v3** (`nvidia/parakeet-tdt-0.6b-v3`): 64 / 28 (66 /
+  27 with the map); too many ordinary words wrong to patch.
+- **Kmynas v4** (`kristijonas/kmynas-parakeet-lt-v4`, Parakeet v3
+  fine-tuned on LIEPA-3 and Lithuanian conference/podcast speech, numbers
+  as words; GGUF converted with transcribe.cpp's `convert-parakeet.py`
+  plus a local profile for its 8196-token vocabulary): Q8_0 on CPU 132 /
+  17 raw, no phantom "Mums" in 3564 utterances. With the parser fixes
+  below 143 / 11; with a 5-rule spelling map ("Psmė", "Šizajo",
+  "fiziečiams", "gavatams", "eutį") 148 / 10, the best result so far.
+  Lithuanian only.
+- **svogunas/whisper-large-v3-turbo-lt** (LIEPA-3 fine-tune, no
+  punctuation or capitals): our book prompt makes it return garbage, so
+  no prompt: 132 / 13, the best prompt-less Whisper (turbo without the
+  prompt 118 / 14, Paprika 126 / 17), still behind turbo with the prompt.
+- Not usable: Canary-Qwen-2.5B (English only), Nemotron 3.5 ASR Streaming
+  (Lithuanian needs fine-tuning first), sherpa-onnx int8 Canary (same
+  dynamic int8, Lithuanian not selectable). The spelling maps were fitted
+  on these recordings, so their scores are optimistic until checked on
+  new ones.
+
+Speed and memory, timed alone on the same 160 s / 480 s of 10-11 (Ryzen 7
+5800X, RTX 5070 Ti); real-time factor, lower is faster:
+
+| Model | GPU RTF | Peak VRAM | CPU RTF 4 / 6 threads | Peak RAM |
+| --- | --- | --- | --- | --- |
+| Whisper turbo int8 + prompt, beam 5 | 0.031 | +1.4 GB | 0.92 / 0.90 | |
+| Whisper small int8 + prompt, beam 5 | | | 0.49 / 0.49 | |
+| Canary fp32 (onnxruntime) | 0.026 | +5.5 GB | | |
+| Canary fp16 (converted; arena kSameAsRequested) | 0.027-0.032 | +2.5 GB | | |
+| Canary int8 (onnxruntime) | 0.145 | +0.7 GB | 0.116 / 0.113 | |
+| Canary GGUF Q8_0 | | | 0.123 / 0.106 | ~1.65 GB |
+| Canary GGUF Q4_K_M | | | 0.100 / 0.083 | ~1.25 GB |
+| Kmynas v4 GGUF Q8_0 | | | 0.075 / 0.062 | |
+| Kmynas v4 GGUF Q4_K_M | | | 0.065 / 0.053 | |
+
+Dynamic int8 runs on the CPU even under the CUDA provider, hence its GPU
+speed. On an 8th-gen i5 or Zen 1 the CPU figures should be roughly 1.5-2x
+slower (estimate, not measured), which still leaves Canary Q8 and Kmynas
+well inside real time; Whisper on CPU does not keep up.
+
+**Lithuanian parser: spoken number forms** (2026-10-17, found on the
+Kmynas and Canary transcripts): clipped "dešim" (10), the spoken locative
+"-oj" / "-ėj" ("antroj", "penktoj eilutėj", "psalmėj", "skyriuj"),
+"Psalmio", accusative "eilutį", "ir iki" ranges, and a declined tens
+ordinal ("dvidešimta, penkta eilutė" = 20:5, while "dvidešimt penkta"
+stays 25). Cached-transcript replays: turbo 139 / 10 -> 140 / 10, Canary
+Q8 with its map 140 / 10 -> 141 / 9, Kmynas Q8 132 / 17 -> 143 / 11.
