@@ -68,6 +68,7 @@ _WORD_FORMS: dict[str, set[str]] = {
         "skyris",
         "skyrus",
         "kyriaus",  # dropped initial s ("20 kyriaus, 21 eilutės")
+        "skyriuj",  # spoken locative ("antram skyriuj")
     },
     VERSE: {
         "eilute",
@@ -75,6 +76,7 @@ _WORD_FORMS: dict[str, set[str]] = {
         "eilutei",
         "eiluteje",
         "eilutej",
+        "eiluti",  # accusative "eilutį" ("15-16 eilutį")
         "eiluciu",
         "eilutems",
         "eilutemis",
@@ -125,6 +127,8 @@ _WORD_FORMS: dict[str, set[str]] = {
         "psalmes",
         "psalmei",
         "psalmeje",
+        "psalmej",  # spoken locative ("kitoj psalmėj")
+        "psalmio",  # masculine genitive speakers use ("Psalmio 40 skyriaus")
         "psalmiu",
         "psalmems",
         "psalmiai",
@@ -229,6 +233,7 @@ _ADJ_END = frozenset(
         "asias",
         "osiomis",
         "osiose",
+        "oj",  # spoken locative ("antroj", "trisdešim penktoj eilutėj")
     }
 )
 # Endings of the cardinals 4-9 ("keturi", "keturių", "keturis", "keturios").
@@ -293,6 +298,7 @@ _NUMBER_STEMS: list[tuple[str, int, str, frozenset[str]]] = [
     ("devyn", 9, "unit", _CARD_END),
     ("devint", 9, "unit", _ADJ_END),
     ("desimt", 10, "teen", _TENS_END),
+    ("desim", 10, "teen", _TENS_END),  # STT drops the final 't' ("penki dešim")
     ("vienuolik", 11, "teen", _TEEN_END),
     ("dvylik", 12, "teen", _TEEN_END),
     ("trylik", 13, "teen", _TEEN_END),
@@ -433,7 +439,7 @@ def _below_100(w: list[Token], j: int) -> tuple[int, int] | None:
     if not c or c[1] == "hundred":
         return None
     value, kind = c
-    if kind == "tens":
+    if kind == "tens" and not _is_tens_ordinal(w[j]):
         nxt = _classify(w, j + 1)
         following = w[j + 1] if j + 1 < len(w) else None
         if (
@@ -447,6 +453,20 @@ def _below_100(w: list[Token], j: int) -> tuple[int, int] | None:
         if nxt and nxt[1] == "unit":
             return value + nxt[0], j + 2
     return value, j + 1
+
+
+def _is_tens_ordinal(word: Token) -> bool:
+    """'dvidešimta' (20th) is a whole ordinal; only the cardinal 'dvidešimt'
+    compounds with a following unit ('dvidešimt penkta' = 25th, but
+    'psalmė dvidešimta, penkta eilutė' = Psalm 20 verse 5). The plural
+    ending -i is left out: STT writes "dvidešimti pirma" for "dvidešimt pirma"."""
+    if not isinstance(word, str):
+        return False
+    w = fold(word)
+    return any(
+        kind == "tens" and w.startswith(stem) and w[len(stem) :] in _ADJ_END - {"i"}
+        for stem, _value, kind, _endings in _NUMBER_STEMS
+    )
 
 
 def read_number(w: list[Token], i: int) -> tuple[int, int] | None:
@@ -739,7 +759,12 @@ def tokenize(text: str) -> list[Token]:
             else:
                 out.append(book_stem(t) if isinstance(t, str) else t)
             i += 1
-    return out
+    # "34 ir iki 37": an "ir" right before a range word adds nothing.
+    return [
+        t
+        for k, t in enumerate(out)
+        if not (t in AND_WORDS and k + 1 < len(out) and out[k + 1] in RANGE_WORDS)
+    ]
 
 
 def _citation_slot(out: list[Token]) -> bool:

@@ -1152,6 +1152,47 @@ class TestFineTuneNumberWords:
         assert refs("Jono 3 16 eilutė 23 psalmė")[0] == "John 3:16"
 
 
+class TestSpokenNumberForms:
+    """Spoken forms the number-word models (Kmynas Parakeet LT, Canary) write;
+    found by their benchmark runs, generic to any transcript."""
+
+    @pytest.mark.parametrize(
+        ("text", "expected"),
+        [
+            # clipped "dešim" (10)
+            ("iš pirmo Petro penki dešim paskaitysim", ["1 Peter 5:10"]),
+            ("Evangelija pagal Joną dešim dešim: vagis ateina", ["John 10:10"]),
+            ("paskaitykim dar Luko dešim. Penki šeši, į kuriuos", ["Luke 10:5-6"]),
+            # spoken locative -oj / -ėj / skyriuj
+            ("Ir kitoj psalmėj šešiasdešim antroj, devinta eilutė sako", ["Psalms 62:9"]),
+            ("apaštalų darbų dvidešimtam skyriuj trisdešim penktoj eilutėje", ["Acts 20:35"]),
+            ("Psalmio keturiasdešimto skyriaus pirmą antra eilutė sako", ["Psalms 40:1-2"]),
+            # accusative "eilutį" after a range
+            ("Pradžios 22 skyrius, 15-16 eilutį", ["Genesis 22:15-16"]),
+            # "ir iki" range
+            (
+                "Pirmas Samuelio septynioliktame skyriuje trisdešim ketvirta ir iki trisdešim septintos",
+                ["1 Samuel 17:34-37"],
+            ),
+        ],
+    )
+    def test_reads(self, text, expected):
+        assert refs(text) == expected
+
+    def test_a_declined_tens_ordinal_does_not_take_the_next_unit(self):
+        # "dvidešimta" is a whole ordinal (20th); "dvidešimt penkta" is 25th.
+        assert refs("psalmė dvidešimta, penkta eilutė taip sako") == ["Psalms 20:5"]
+        assert refs("psalmė dvidešimt penkta") == ["Psalms 25"]
+        # STT's "dvidešimti" stands for "dvidešimt" and still compounds.
+        assert refs("Jono penktas skyrius dvidešimti pirma eilutė") == ["John 5:21"]
+
+    def test_clipped_ten_is_ten(self):
+        assert number_word("dešim") == number_word("dešimt")
+
+    def test_and_between_numbers_is_still_a_range(self):
+        assert refs("Romiečiams 12 skyrius 1 ir 2 eilutės") == ["Romans 12:1-2"]
+
+
 class TestLtbBookTitles:
     """The LTB's own book titles (bible_ltb.sqlite local_name) and their
     case forms; a sweep over every title found these three missing."""
