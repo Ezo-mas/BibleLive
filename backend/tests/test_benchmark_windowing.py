@@ -538,6 +538,7 @@ class TestSegmentationCacheKey:
         "changed",
         [
             {"pre_roll_s": 0.3},
+            {"post_roll_s": 0.4},
             {"keep_pauses": True},
             {"start_voiced_frames": 2, "start_window_frames": 2},
             {"start_window_frames": 3},
@@ -552,8 +553,22 @@ class TestSegmentationCacheKey:
         # The new settings default to the old behavior, so none of them is keyed.
         assert _segmentation_key(monkeypatch, tmp_path, AudioPipelineConfig()) == self.LEGACY
 
-    def test_silero_vad_is_keyed_with_its_threshold(self, monkeypatch, tmp_path):
+    def test_silero_vad_is_keyed_with_its_thresholds(self, monkeypatch, tmp_path):
         config = replace(self._old_config(), vad="silero", silero_threshold=0.35)
+
+        legacy = {k: v for k, v in self.LEGACY.items() if k != "vad_aggressiveness"}
+        assert _segmentation_key(monkeypatch, tmp_path, config) == {
+            **legacy,
+            "vad": "silero",
+            "silero_threshold": 0.35,
+            "silero_neg_threshold": 0.2,  # the default, threshold - 0.15
+        }
+
+    def test_silero_without_hysteresis_keeps_the_plain_threshold_key(self, monkeypatch, tmp_path):
+        # neg == threshold is the first Silero version, so its caches stay valid.
+        config = replace(
+            self._old_config(), vad="silero", silero_threshold=0.35, silero_neg_threshold=0.35
+        )
 
         legacy = {k: v for k, v in self.LEGACY.items() if k != "vad_aggressiveness"}
         assert _segmentation_key(monkeypatch, tmp_path, config) == {

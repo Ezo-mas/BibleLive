@@ -57,7 +57,10 @@ class AudioPipelineConfig:
     vad_aggressiveness: int = 2  # 0=least, 3=most aggressive (WebRTC only)
     # VAD engine: "webrtc" or "silero" (Silero v6, bundled with faster-whisper).
     vad: str = "webrtc"
-    silero_threshold: float = 0.5  # speech probability that counts as voiced
+    silero_threshold: float = 0.5  # speech probability that starts speech
+    # Speech lasts until the probability drops below this (hysteresis);
+    # None = silero_threshold - 0.15, as in faster-whisper.
+    silero_neg_threshold: float | None = None
     # Microphone name for ffmpeg (dshow device on Windows, pulse source on Linux,
     # avfoundation index on macOS). None = platform default; see capture.py.
     input_device: str | None = None
@@ -70,8 +73,11 @@ class AudioPipelineConfig:
     # Audio kept from just before the first voiced frame, so a soft first
     # sound the VAD missed is not cut.
     pre_roll_s: float = 0.0
+    # Silence kept after the last voiced frame, so a soft last sound is not cut.
+    post_roll_s: float = 0.0
     # Keep the frames the VAD calls silent inside an utterance (soft consonants,
-    # short pauses) instead of only voiced frames; trailing silence is dropped.
+    # short pauses) instead of only voiced frames; trailing silence is dropped
+    # (beyond the post-roll).
     keep_pauses: bool = False
     # Start an utterance once this many of the last ``start_window_frames``
     # VAD frames are voiced (1 of 1 = the first voiced frame).

@@ -451,6 +451,99 @@ def test_pre_roll_cannot_be_negative():
         _segmenter(pre_roll_frames=-1)
 
 
+def test_post_roll_keeps_the_first_silent_frames_after_the_last_voiced_one():
+    segmenter = _segmenter(max_silent_frames=3, post_roll_frames=2)
+    events = _push_all(segmenter, [b"v1", b"v2", b"s1", b"s2", b"s3", b"s4"])
+
+    assert events == [(0, "start", []), (5, "end", [b"v1", b"v2", b"s1", b"s2"])]
+
+
+def test_post_roll_does_not_keep_pauses_between_words():
+    segmenter = _segmenter(max_silent_frames=3, post_roll_frames=2)
+    events = _push_all(segmenter, [b"v1", b"s1", b"v2", b"s2", b"s3", b"s4", b"s5"])
+
+    assert events[-1] == (6, "end", [b"v1", b"v2", b"s2", b"s3"])
+
+
+def test_post_roll_with_keep_pauses_keeps_pauses_and_only_the_post_roll_of_the_tail():
+    segmenter = _segmenter(max_silent_frames=3, post_roll_frames=1, keep_pauses=True)
+    events = _push_all(segmenter, [b"v1", b"s1", b"v2", b"s2", b"s3", b"s4", b"s5"])
+
+    assert events[-1] == (6, "end", [b"v1", b"s1", b"v2", b"s2"])
+
+
+def test_post_roll_is_shorter_when_the_utterance_ends_sooner():
+    # Past the soft limit the utterance ends at the first pause frame; flush ends
+    # it with no silence at all.
+    segmenter = _segmenter(soft_utterance_frames=2, post_roll_frames=5)
+    events = _push_all(segmenter, [b"v1", b"v2", b"s1", b"v3"])
+
+    assert events[1] == (2, "end", [b"v1", b"v2", b"s1"])
+    assert segmenter.flush().frames == [b"v3"]
+
+
+def test_post_roll_is_not_carried_into_the_next_utterance():
+    segmenter = _segmenter(max_silent_frames=2, post_roll_frames=2, pre_roll_frames=1)
+    events = _push_all(segmenter, [b"v1", b"v2", b"s1", b"s2", b"s3", b"s4", b"v3", b"v4"])
+
+    assert events[1] == (4, "end", [b"v1", b"v2", b"s1", b"s2"])
+    assert segmenter.flush().frames == [b"s4", b"v3", b"v4"]  # s4 is the pre-roll
+
+
+def test_post_roll_reaches_a_flush_during_trailing_silence_and_a_blip():
+    segmenter = _segmenter(max_silent_frames=5, min_speech_frames=2, post_roll_frames=2)
+    _push_all(segmenter, [b"v1", b"v2", b"s1", b"s2", b"s3"])
+    assert segmenter.flush().frames == [b"v1", b"v2", b"s1", b"s2"]
+
+    events = _push_all(segmenter, [b"v3", b"s4", b"s5", b"s6", b"s7", b"s8", b"s9"])
+    assert events[-1] == (6, "blip", [b"v3", b"s4", b"s5"])
+
+
+@pytest.mark.parametrize("seed", range(5))
+def test_post_roll_never_duplicates_or_reorders_audio(seed):
+    """Every utterance's audio is a run of the input in order, each voiced frame
+    lands in exactly one, and no tail is longer than the post-roll."""
+    rng = random.Random(seed)
+    frames = [(SILENT if rng.random() < 0.3 else VOICED) + str(i).encode() for i in range(5000)]
+    post_roll = rng.randint(1, 8)
+    segmenter = Segmenter(
+        lambda f: f.startswith(VOICED),
+        max_silent_frames=rng.randint(2, 10),
+        min_speech_frames=1,
+        soft_utterance_frames=200,
+        max_utterance_frames=300,
+        pre_roll_frames=rng.randint(0, 5),
+        keep_pauses=bool(seed % 2),
+        post_roll_frames=post_roll,
+    )
+
+    closed = [e for e in (segmenter.push(f) for f in frames) if e and e.kind != "start"]
+    final = segmenter.flush()
+    closed += [final] if final else []
+
+    kept = [f for e in closed for f in e.frames]
+    index = {f: i for i, f in enumerate(frames)}
+    positions = [index[f] for f in kept]
+    assert positions == sorted(set(positions))  # in order, nothing twice
+    assert [f for f in kept if f.startswith(VOICED)] == [f for f in frames if f.startswith(VOICED)]
+    for e in closed:
+        tail = len(e.frames) - max(i for i, f in enumerate(e.frames) if f.startswith(VOICED)) - 1
+        assert tail <= post_roll
+        assert len(e.frames) <= segmenter.max_utterance_frames
+
+
+def test_post_roll_cannot_be_negative():
+    with pytest.raises(ValueError, match="post_roll_frames"):
+        _segmenter(post_roll_frames=-1)
+
+
+def test_from_config_converts_post_roll():
+    built = Segmenter.from_config(lambda f: True, AudioPipelineConfig(post_roll_s=0.4))
+
+    assert built.post_roll_frames == 13  # 0.4 s = 13.3 frames
+    assert Segmenter.from_config(lambda f: True, AudioPipelineConfig()).post_roll_frames == 0
+
+
 def test_pre_roll_and_start_window_count_toward_the_hard_cap():
     segmenter = _segmenter(pre_roll_frames=4, max_utterance_frames=6)
 

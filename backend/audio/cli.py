@@ -48,11 +48,18 @@ TUNING_ARGUMENTS: list[tuple[str, str, Callable[[str], Any], str]] = [
     ("--soft-utterance-s", "soft_utterance_s", float, "past this, end at the next pause"),
     ("--max-utterance-s", "max_utterance_s", float, "hard utterance length cap"),
     ("--pre-roll-s", "pre_roll_s", float, "audio kept from before speech starts"),
+    ("--post-roll-s", "post_roll_s", float, "silence kept after speech ends"),
     ("--keep-pauses", "keep_pauses", _flag, "keep in-utterance frames the VAD calls silent"),
     ("--start-voiced-frames", "start_voiced_frames", int, "voiced frames needed to start"),
     ("--start-window-frames", "start_window_frames", int, "...within this many recent frames"),
     ("--vad", "vad", _vad_engine, "VAD engine: webrtc or silero"),
     ("--silero-threshold", "silero_threshold", float, "Silero speech probability threshold"),
+    (
+        "--silero-neg-threshold",
+        "silero_neg_threshold",
+        float,
+        "Silero: speech lasts until the probability drops below this (None = threshold - 0.15)",
+    ),
 ]
 
 
