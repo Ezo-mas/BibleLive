@@ -278,6 +278,8 @@ output, ignored short VAD blips, and skipped duplicates.
 | POST   | `/api/clear-pending`| Clear the pending queue                  |
 | GET    | `/api/books`        | List canonical books (for Find Scripture) |
 | GET    | `/api/lookup`       | Look up verse text by coordinates        |
+| GET    | `/api/language`     | Current spoken language (requires auth if enabled) |
+| POST   | `/api/language`     | Switch spoken language (requires auth if enabled) |
 | GET    | `/api/state`        | Current server state snapshot (requires auth if enabled) |
 | POST   | `/api/transcript`   | Audio pipeline transcript line, used only for follow-along suggestions; not stored (token when auth is on) |
 | POST   | `/api/pipeline/heartbeat` | Audio pipeline health report, sent every 5 s (token when auth is on) |

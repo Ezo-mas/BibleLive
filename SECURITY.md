@@ -73,6 +73,8 @@ BIBLELIVE_OPERATOR_TOKEN=your-generated-token-here
 - `POST /api/approve` — approve pending reference
 - `POST /api/clear` — clear display
 - `POST /api/clear-pending` — clear pending queue
+- `GET /api/language` — current spoken language
+- `POST /api/language` — switch spoken language
 - `GET /ws/operator` — operator WebSocket (token in the first message)
 
 ## Production Configuration
