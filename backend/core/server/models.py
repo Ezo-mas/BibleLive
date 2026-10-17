@@ -26,6 +26,13 @@ class BibleReference(BaseModel):
 
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     book: str
+    book_label: str | None = Field(
+        default=None,
+        description=(
+            "The book's name in the spoken language, for display (e.g. 'Jono evangelija'); "
+            "null means show the canonical 'book'. Never used to look anything up."
+        ),
+    )
     chapter: int
     verse_start: int | None = None
     verse_end: int | None = None
@@ -199,6 +206,18 @@ class BookInfo(BaseModel):
     variants: list[str] = Field(
         default_factory=list, description="Alternative name forms accepted by the parser"
     )
+    local_name: str | None = Field(
+        default=None,
+        description=(
+            "What the loaded Bible translation calls the book (e.g. 'Jono evangelija'); "
+            "null when it has no names of its own. Display and matching only: "
+            "requests still name the book by 'name'."
+        ),
+    )
+    local_variants: list[str] = Field(
+        default_factory=list,
+        description="Extra spellings the search accepts for 'local_name'",
+    )
 
 
 class BooksResponse(BaseModel):
@@ -272,6 +291,7 @@ class FollowAlongHint(BaseModel):
     """
 
     book: str
+    book_label: str | None = None
     chapter: int
     verse_start: int
     verse_end: int

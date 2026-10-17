@@ -65,14 +65,24 @@ class TestBooksEndpoint:
 
         assert [book["name"] for book in books] == [book.name for book in CANONICAL_BOOKS]
         assert [book["order"] for book in books] == list(range(1, 67))
-        assert books[0] == {
+        # Translated names are an addition (see test_book_names.py); the canonical
+        # fields below are what every request names a book by.
+        canonical = [
+            {
+                key: value
+                for key, value in book.items()
+                if key not in ("local_name", "local_variants")
+            }
+            for book in books
+        ]
+        assert canonical[0] == {
             "name": "Genesis",
             "chapters": 50,
             "order": 1,
             "abbrev": "gn",
             "variants": ["genesis"],
         }
-        assert books[-1] == {
+        assert canonical[-1] == {
             "name": "Revelation",
             "chapters": 22,
             "order": 66,

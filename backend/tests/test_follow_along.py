@@ -195,6 +195,7 @@ class TestHints:
         assert hints == [
             {
                 "book": "John",
+                "book_label": None,  # English: no translated name to show
                 "chapter": 3,
                 "verse_start": 17,
                 "verse_end": 17,
