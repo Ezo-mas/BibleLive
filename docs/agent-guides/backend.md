@@ -10,8 +10,9 @@ including the database lookup/import pointers.
 
 BibleLive listens to live audio (a sermon), detects spoken Bible
 references, and shows them on an audience-facing display. Pipeline:
-`ffmpeg → VAD → Whisper STT → reference parser → FastAPI server →
-WebSocket → operator approval → display page`.
+`ffmpeg → VAD → speech-to-text (Whisper, or Kmynas/Canary GGUF models for
+Lithuanian) → reference parser → FastAPI server → WebSocket → operator
+approval → display page`.
 
 ## Repo layout (backend)
 
@@ -61,6 +62,7 @@ On Windows there is no `make`: use `.venv\Scripts\python.exe -m ...` with
 | Change manual scripture selection (Find Scripture) | `backend/core/passage.py` (validation + resolution) over `backend/core/books.py` (canon); endpoints and the `display_reference` action in `backend/core/server/app.py` |
 | Change display history source / Show Again state | `backend/core/server/state.py` (`AppState.reference_history`, newest first, `MAX_HISTORY_REFERENCES`, 20-entry snapshot window) |
 | Change audio capture/VAD/STT/sending | the matching module in `backend/audio/`; if it can change what gets detected, benchmark before/after (`testing.md`) |
+| Change the Lithuanian speech models (`--stt`) | `backend/audio/stt_gguf.py` (Kmynas / Canary GGUF via transcribe.cpp; English falls back to Whisper), per-model spelling maps in `audio/spelling_maps.py`, two-model agreement in `audio/ensemble.py`; pipeline wiring in `_process_utterance` / `_init_thread_local_parsers` (`pipeline.py`), benchmark wiring in `make_stt` / `make_parsers` (`benchmarks/run_benchmark.py`); benchmark before/after |
 | Change runtime language switching | the pipeline side is `backend/audio/control.py` (loopback API) + `pipeline.py`/`stt.py`; the server's proxy for the console is `backend/core/server/language_control.py` and `/api/language` in `app.py` (config: `AUDIO_CONTROL_*`); the console side is `frontend/src/operator/languageApi.ts`, `hooks/useSpokenLanguage.ts`, `components/LanguageSettings.tsx` |
 | Change follow-along (next-verse suggestions) | matching in `backend/core/server/follow_along.py` over `backend/core/verse_text.py`; `AppState.offer_follow_along` in `state.py`; `/api/transcript` in `app.py` (config: `FOLLOW_ALONG`); pipeline side `backend/audio/transcript_sender.py`; console side `frontend/src/operator/components/FollowAlongHint.tsx` |
 | Change Bible translation switching | discovery in `backend/core/bible_versions.py`; swap + broadcast + language default in `backend/core/server/state.py` (`switch_bible_version`, `change_bible_version`, `apply_language_default_version`); `/api/bible-version` in `app.py` (config: `AUTO_BIBLE_VERSION`, `LANGUAGE_BIBLE_VERSIONS`); choice persisted via `settings_store.py`; console side `frontend/src/operator/bibleVersionApi.ts`, `hooks/useBibleVersion.ts`, `components/BibleVersionSettings.tsx` |
@@ -80,8 +82,18 @@ beside it); CLI flags override them and `--save` persists them. Useful flags:
 `--dry-run` (print resolved commands/env). Args after `--` go to `audio.cli`.
 A `ffmpeg/` dir next to the app is prepended to PATH if present.
 `start.ps1` is unchanged. Modules: `settings.py` (incl. allowed enum values,
-shared with `cli.py`), `gpu.py`, `process.py` (UI-agnostic `Launcher`, thread-safe
-`stop()`, `on_event` callback, `error_code` for translation), `cli.py`.
+shared with `cli.py`), `gpu.py`, `speech.py` (Lithuanian engine: `GGUF_MODELS`
+holds the Kmynas/Canary repo ids and files, `resolve_speech` picks the engine and
+falls back to Whisper when a GGUF file is missing, `speech_threads` = physical
+cores − 1 capped at 6), `process.py` (UI-agnostic `Launcher`, thread-safe
+`stop()`, `on_event` callback, `error_code` for translation; `build_plan` maps
+the speech setting to `--stt`, `--kmynas-model`, `--canary-model`, `--cpu-threads`,
+`--session-log-dir logs\sessions` and `--session-audio`), `cli.py`.
+Speech setting `speech_engine`: `auto` (Kmynas + Canary on an NVIDIA GPU, Kmynas
+alone otherwise) | `whisper` | `kmynas` | `kmynas+canary`. The GGUF engines run on
+the `device` setting (the audio CLI has one `--device` for Whisper and GGUF), and
+English always goes to Whisper. `session_audio` (default on) records each service
+under `logs\sessions`.
 GUI: `python -m launcher --gui` (default when there is no console, e.g.
 `pythonw`); Tk code is thin in `gui.py`, testable logic in `viewmodel.py`,
 strings in `i18n.py` (en/lt, `ui_language` setting, default from the Windows UI
@@ -89,7 +101,7 @@ language). `monitors.py` finds the projector (first non-primary monitor unless
 `projector_monitor` is saved); `projector.py` opens `/display` in an Edge (else
 Chrome) kiosk window on it and never falls back to the operator's screen.
 
-Installer commands (`commands.py`): `--check-gpu` (exit 0, or 3 without a CUDA GPU), `--download-model`, `--gpu-self-test` (exit 0/1). Models are cached under `HF_HOME=%LOCALAPPDATA%\BibleLive\models` (set by `build_plan`). The portable Windows build is `scripts/windows/build-portable.ps1` (see its README).
+Installer commands (`commands.py`): `--check-gpu` (exit 0, or 3 without a CUDA GPU), `--download-model [--no-whisper]` (the Lithuanian GGUF models of the engine via `hf_hub_download`, then Whisper unless `--no-whisper`), `--gpu-self-test` (loads each speech model the settings use on its device and transcribes 1 s of silence; exit 0/1; never downloads). `--speech-engine`, `--device`, `--model` and `--save` set what the installer chose. Models are cached under `HF_HOME=%LOCALAPPDATA%\BibleLive\models` (set by `build_plan`; the GGUF files are looked up in its `hub` folder without network access). The installer's speech page and `/SPEECH` switches are in `scripts/windows/installer/BibleLive.iss`; the portable build is `scripts/windows/build-portable.ps1` (see its README).
 
 ## Database lookup / import pointers
 

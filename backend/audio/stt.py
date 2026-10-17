@@ -240,6 +240,12 @@ class Transcription:
     # True when Whisper raised, as opposed to hearing nothing worth keeping:
     # both have no text, but only a failure means detection is broken.
     failed: bool = False
+    # The model that produced ``text`` ("whisper", or a GGUF engine such as
+    # "kmynas"); selects that model's spelling map before parsing.
+    source: str = "whisper"
+    # Two-model mode: the second model's transcript of the same utterance.
+    # A reference only one of the two finds is reported as low confidence.
+    alternate: "Transcription | None" = None
 
 
 class SpeechToText:
@@ -413,51 +419,59 @@ class SpeechToText:
             return Transcription(None, duration_ms, failed=True)
 
     def _collapse_repetition(self, text: str) -> tuple[str, str | None]:
-        """Collapse a degenerate Whisper repetition loop.
-
-        Whisper sometimes latches onto a phrase (often one seeded by the initial
-        prompt) and repeats it for the rest of the buffer. That single artifact
-        turns into dozens of "found reference" lines downstream, so the repeated
-        block is reduced to one occurrence here.
-
-        Returns the cleaned text and a description of the loop that was removed,
-        or ``None`` when the text is not looping.
-        """
-        words = text.split()
-        if len(words) < MIN_REPEAT_COUNT * MIN_REPEAT_BLOCK_WORDS:
-            return text, None
-
-        # Try each block size, and each start position, looking for a block that
-        # repeats back to back often enough to be a decoding artifact.
-        best: tuple[int, int, int] | None = None  # (start, block_len, count)
-        max_block = max(MIN_REPEAT_BLOCK_WORDS, len(words) // MIN_REPEAT_COUNT)
-
-        for block_len in range(MIN_REPEAT_BLOCK_WORDS, max_block + 1):
-            for start in range(0, len(words) - block_len * MIN_REPEAT_COUNT + 1):
-                block = words[start : start + block_len]
-                count = 1
-                while words[start + block_len * count : start + block_len * (count + 1)] == block:
-                    count += 1
-                if count < MIN_REPEAT_COUNT or count * block_len < MIN_REPEAT_WORDS:
-                    continue
-                # Prefer the earliest, longest match.
-                if best is None or start < best[0]:
-                    best = (start, block_len, count)
-
-        if best is None:
-            return text, None
-
-        start, block_len, count = best
-        collapsed = words[: start + block_len]  # keep one occurrence of the block
-        block_text = " ".join(words[start : start + block_len])
-        return " ".join(collapsed), f"'{block_text}' repeated {count} times, trimmed to 1"
+        return collapse_repetition(text)
 
     def _fix_common_transcription_errors(self, text: str) -> str:
-        """Fix common transcription errors in Bible references"""
-        # More conservative approach: only rewrite clearly merged
-        # "book<digits><digits>" / "book<c:v> <v>" patterns, and only when the
-        # surrounding words look like a Bible reference.
-        for pattern, replacement in _REFERENCE_CORRECTIONS.items():
-            text = re.sub(pattern, replacement, text, flags=re.IGNORECASE)
+        return fix_common_transcription_errors(text)
 
-        return text
+
+def collapse_repetition(text: str) -> tuple[str, str | None]:
+    """Collapse a degenerate Whisper repetition loop.
+
+    Whisper sometimes latches onto a phrase (often one seeded by the initial
+    prompt) and repeats it for the rest of the buffer. That single artifact
+    turns into dozens of "found reference" lines downstream, so the repeated
+    block is reduced to one occurrence here.
+
+    Returns the cleaned text and a description of the loop that was removed,
+    or ``None`` when the text is not looping.
+    """
+    words = text.split()
+    if len(words) < MIN_REPEAT_COUNT * MIN_REPEAT_BLOCK_WORDS:
+        return text, None
+
+    # Try each block size, and each start position, looking for a block that
+    # repeats back to back often enough to be a decoding artifact.
+    best: tuple[int, int, int] | None = None  # (start, block_len, count)
+    max_block = max(MIN_REPEAT_BLOCK_WORDS, len(words) // MIN_REPEAT_COUNT)
+
+    for block_len in range(MIN_REPEAT_BLOCK_WORDS, max_block + 1):
+        for start in range(0, len(words) - block_len * MIN_REPEAT_COUNT + 1):
+            block = words[start : start + block_len]
+            count = 1
+            while words[start + block_len * count : start + block_len * (count + 1)] == block:
+                count += 1
+            if count < MIN_REPEAT_COUNT or count * block_len < MIN_REPEAT_WORDS:
+                continue
+            # Prefer the earliest, longest match.
+            if best is None or start < best[0]:
+                best = (start, block_len, count)
+
+    if best is None:
+        return text, None
+
+    start, block_len, count = best
+    collapsed = words[: start + block_len]  # keep one occurrence of the block
+    block_text = " ".join(words[start : start + block_len])
+    return " ".join(collapsed), f"'{block_text}' repeated {count} times, trimmed to 1"
+
+
+def fix_common_transcription_errors(text: str) -> str:
+    """Fix common transcription errors in Bible references"""
+    # More conservative approach: only rewrite clearly merged
+    # "book<digits><digits>" / "book<c:v> <v>" patterns, and only when the
+    # surrounding words look like a Bible reference.
+    for pattern, replacement in _REFERENCE_CORRECTIONS.items():
+        text = re.sub(pattern, replacement, text, flags=re.IGNORECASE)
+
+    return text

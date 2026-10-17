@@ -79,6 +79,8 @@ setuptools==80.10.2
 starlette==1.7.0
 tokenizers==0.23.2
 tqdm==4.70.1
+transcribe-cpp==0.4.0
+transcribe-cpp-native==0.4.0
 types-requests==2.33.0.20261006
 typing-inspection==0.4.4
 typing_extensions==4.16.0

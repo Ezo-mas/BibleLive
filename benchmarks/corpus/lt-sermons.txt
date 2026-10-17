@@ -1,0 +1,15 @@
+# The 13-service Lithuanian run behind the results in BASELINE_NOTES.md (158 gold references).
+# One run per line: <manifest> <record id> [--t-range START:END = the sermon part].
+manifest-04-05-lt.json 04-05-live-lt-norm
+manifest-04-19-lt.json 04-19-live-lt-norm
+manifest-05-31-lt.json 05-31-live-lt-norm
+manifest-07-05-lt.json 07-05-live-lt-trim40
+manifest-07-05-lt.json 09-13-live-lt
+manifest-07-12-07-19-lt.json 06-21-live-lt-norm 2080:4565
+manifest-07-12-07-19-lt.json 06-28-live-lt-norm 3400:6040
+manifest-07-12-07-19-lt.json 07-12-live-lt-norm 2040:4700
+manifest-07-12-07-19-lt.json 07-19-live-lt-norm 2340:4500
+manifest-07-12-07-19-lt.json 09-24-live-lt-norm 2784:4411
+manifest-07-12-07-19-lt.json 10-04-live-lt-norm 2918:5823
+manifest-07-12-07-19-lt.json 10-08-live-lt-norm 2280:3260
+manifest-07-12-07-19-lt.json 10-11-live-lt-norm 2090:6543

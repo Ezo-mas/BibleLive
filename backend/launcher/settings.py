@@ -30,6 +30,8 @@ COMPUTE_TYPES = ("auto", "float16", "float32", "int8", "int8_float16")
 AUTO_MODES = ("off", "high", "medium_and_up", "all")
 LOG_LEVELS = ("DEBUG", "INFO", "WARNING", "ERROR")
 UI_LANGUAGES = ("auto", "en", "lt")
+# Lithuanian speech model (--stt): "auto" = by graphics card, see launcher/speech.py.
+SPEECH_ENGINES = ("auto", "whisper", "kmynas", "kmynas+canary")
 
 _ALLOWED: dict[str, tuple[str, ...]] = {
     "language": LANGUAGES,
@@ -39,6 +41,7 @@ _ALLOWED: dict[str, tuple[str, ...]] = {
     "auto_mode": AUTO_MODES,
     "log_level": LOG_LEVELS,
     "ui_language": UI_LANGUAGES,
+    "speech_engine": SPEECH_ENGINES,
 }
 
 
@@ -51,9 +54,9 @@ def app_data_dir() -> Path:
 
 
 def models_dir() -> Path:
-    """Where Whisper models are cached (``HF_HOME``): ``%LOCALAPPDATA%\\BibleLive\\models``.
+    """Where speech models are cached (``HF_HOME``): ``%LOCALAPPDATA%\\BibleLive\\models``.
 
-    Machine-local rather than roaming: the model is ~1.6 GB. ``~/.biblelive/models`` elsewhere.
+    Machine-local rather than roaming: the models are ~1.6 GB. ``~/.biblelive/models`` elsewhere.
     """
     local = os.environ.get("LOCALAPPDATA")
     if sys.platform == "win32" and local:
@@ -81,6 +84,11 @@ class LauncherSettings:
     projector_monitor: str | None = None  # monitor device name; None = first non-primary
     open_display_on_start: bool = True
     open_operator_on_start: bool = True
+    speech_engine: str = (
+        "auto"  # Lithuanian speech model; "auto" | whisper | kmynas | kmynas+canary
+    )
+    # Record each service (session log + WAV) under %APPDATA%\BibleLive\logs\sessions.
+    session_audio: bool = True
 
 
 def _coerce(value: Any, default: Any) -> Any:

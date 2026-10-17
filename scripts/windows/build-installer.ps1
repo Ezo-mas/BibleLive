@@ -11,6 +11,11 @@
 .PARAMETER SkipPortableBuild  Reuse the existing build\BibleLive folder.
 .PARAMETER Iscc               Path to ISCC.exe. Otherwise: $env:ISCC, then the usual Inno Setup 6 folders.
 .PARAMETER BibleDb            Passed on to build-portable.ps1.
+.PARAMETER ExtraBibleDb       Passed on to build-portable.ps1 (e.g. bible_data\bible_ltb.sqlite).
+.PARAMETER ReuseDependencies  Passed on to build-portable.ps1: keep the bundled Python and packages when
+                              their inputs did not change (app-only changes rebuild in under a minute).
+.PARAMETER Fast               Quick compression (lzma2/fast) for test installers: about a minute instead
+                              of five, but a larger exe. Leave it off for installers you hand out.
 .PARAMETER SkipFrontendBuild  Passed on to build-portable.ps1.
 #>
 [CmdletBinding()]
@@ -18,6 +23,9 @@ param(
     [switch]$SkipPortableBuild,
     [string]$Iscc,
     [string]$BibleDb,
+    [string[]]$ExtraBibleDb = @(),
+    [switch]$ReuseDependencies,
+    [switch]$Fast,
     [switch]$SkipFrontendBuild
 )
 
@@ -57,6 +65,8 @@ if ($SkipPortableBuild) {
 } else {
     $portableArgs = @{ NoZip = $true }
     if ($BibleDb) { $portableArgs.BibleDb = $BibleDb }
+    if ($ExtraBibleDb.Count) { $portableArgs.ExtraBibleDb = $ExtraBibleDb }
+    if ($ReuseDependencies) { $portableArgs.ReuseDependencies = $true }
     if ($SkipFrontendBuild) { $portableArgs.SkipFrontendBuild = $true }
     & (Join-Path $PSScriptRoot 'build-portable.ps1') @portableArgs
 }
@@ -74,13 +84,18 @@ $isccArgs = @(
     "/DAppVersion=$Version",
     "/DVersionNumeric=$numeric",
     "/DBuildDir=$Build",
-    "/DOutputDir=$Dist",
-    $Script
+    "/DOutputDir=$Dist"
 )
-Write-Host "Compiling $Script (lzma2/ultra64 on ~2.5 GB: this takes a while)"
+if ($Fast) {
+    $isccArgs += '/DCompression=lzma2/fast', '/DOutputSuffix=-fast'
+    Write-Host "Compiling $Script (lzma2/fast: quick test build, larger exe)"
+} else {
+    Write-Host "Compiling $Script (lzma2/ultra64 on ~2.5 GB: this takes a while)"
+}
+$isccArgs += $Script
 & $IsccPath @isccArgs
 if ($LASTEXITCODE -ne 0) { throw "ISCC failed (exit $LASTEXITCODE)" }
 
-$exe = Join-Path $Dist "BibleLive-Setup-$Version.exe"
+$exe = Join-Path $Dist ("BibleLive-Setup-$Version" + $(if ($Fast) { '-fast' } else { '' }) + '.exe')
 if (-not (Test-Path $exe)) { throw "Expected installer not found: $exe" }
 Write-Host ("Built {0} ({1} MB)" -f $exe, [math]::Round((Get-Item $exe).Length / 1MB, 1)) -ForegroundColor Green

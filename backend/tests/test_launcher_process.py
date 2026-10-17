@@ -15,6 +15,7 @@ def _plan(tmp_path, settings=None, **kw):
         settings or LauncherSettings(),
         app_root=tmp_path / "app",
         data_dir=tmp_path / "data",
+        models_dir=tmp_path / "models",  # empty: never the developer's cached models
         base_env={"PATH": "/usr/bin"},
         python="py",
         probe=kw.pop("probe", GPU),

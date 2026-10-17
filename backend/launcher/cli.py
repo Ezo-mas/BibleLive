@@ -11,7 +11,7 @@ from collections.abc import Sequence
 from dataclasses import replace
 from pathlib import Path
 
-from .commands import check_gpu_command, download_model_command, gpu_self_test_command
+from .commands import check_gpu_command, download_speech_command, gpu_self_test_command
 from .process import Launcher, LaunchPlan, build_plan
 from .settings import (
     AUTO_MODES,
@@ -20,6 +20,7 @@ from .settings import (
     LANGUAGES,
     LOG_LEVELS,
     MODELS,
+    SPEECH_ENGINES,
     LauncherSettings,
     default_settings_path,
     load_settings,
@@ -44,10 +45,22 @@ def build_parser() -> argparse.ArgumentParser:
         choices=COMPUTE_TYPES,
         help="Whisper compute type (auto = best the GPU supports)",
     )
-    p.add_argument("--model", choices=MODELS, help="Whisper model")
+    p.add_argument("--model", choices=MODELS, help="Whisper model (English, and Whisper engine)")
+    p.add_argument(
+        "--speech-engine",
+        choices=SPEECH_ENGINES,
+        help="Lithuanian speech model: auto (by graphics card), whisper, kmynas (processor), "
+        "kmynas+canary (NVIDIA GPU)",
+    )
     p.add_argument("--port", type=int, help="server port (default 8000)")
     p.add_argument("--auto-mode", choices=AUTO_MODES)
     p.add_argument("--log-level", choices=LOG_LEVELS)
+    p.add_argument(
+        "--session-audio",
+        type=_on_off,
+        metavar="on|off",
+        help="also record each service as a WAV in logs\\sessions (default on)",
+    )
     p.add_argument("--ffmpeg-dir", help="directory containing ffmpeg (default: <app>/ffmpeg)")
     p.add_argument("--settings-file", type=Path, help="launcher settings JSON path")
     p.add_argument("--save", action="store_true", help="persist the resolved settings")
@@ -55,12 +68,21 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--gui", action="store_true", help="open the graphical window")
     p.add_argument("--smoke", action="store_true", help=argparse.SUPPRESS)
     p.add_argument(
-        "--download-model", action="store_true", help="download the Whisper model and exit"
+        "--download-model",
+        action="store_true",
+        help="download the speech models the settings need (Whisper too, unless --no-whisper) "
+        "and exit",
+    )
+    p.add_argument(
+        "--no-whisper",
+        action="store_true",
+        help="with --download-model: skip the Whisper model (English) unless the engine is whisper",
     )
     p.add_argument(
         "--gpu-self-test",
         action="store_true",
-        help="load the model on the GPU, transcribe 1 s of silence, print OK/FAIL, exit 0/1",
+        help="load the speech models on their device, transcribe 1 s of silence, "
+        "print OK/FAIL, exit 0/1",
     )
     p.add_argument(
         "--check-gpu",
@@ -78,11 +100,19 @@ _OVERRIDES = (
     "device",
     "compute_type",
     "model",
+    "speech_engine",
     "port",
     "auto_mode",
     "log_level",
     "ffmpeg_dir",
+    "session_audio",
 )
+
+
+def _on_off(value: str) -> bool:
+    if value not in ("on", "off"):
+        raise argparse.ArgumentTypeError(f"expected on or off, got {value!r}")
+    return value == "on"
 
 
 def apply_overrides(settings: LauncherSettings, args: argparse.Namespace) -> LauncherSettings:
@@ -100,6 +130,7 @@ def format_plan(plan: LaunchPlan) -> str:
     lines = [
         f"cwd:    {plan.cwd}",
         f"device: {plan.device}  compute type: {plan.compute_type}",
+        f"speech: {plan.speech_engine}",
         f"server: {json.dumps(plan.server_cmd)}",
         f"audio:  {json.dumps(plan.audio_cmd)}",
         f"logs:   {plan.log_dir}",
@@ -115,7 +146,7 @@ def run_oneshot(args: argparse.Namespace, settings: LauncherSettings) -> int | N
     if args.check_gpu:
         return check_gpu_command()
     if args.download_model:
-        return download_model_command(settings.model, models_dir())
+        return download_speech_command(settings, models_dir(), with_whisper=not args.no_whisper)
     if args.gpu_self_test:
         return gpu_self_test_command(settings, models_dir())
     return None

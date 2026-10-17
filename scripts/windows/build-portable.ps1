@@ -10,14 +10,23 @@
 
 .PARAMETER SkipFrontendBuild  Reuse an existing static\frontend bundle (no npm ci / build).
 .PARAMETER BibleDb            Bible SQLite file to ship. Default: <repo>\bible_data\biblelive.sqlite.
+.PARAMETER ExtraBibleDb       More translation files to ship beside it, keeping their names (e.g.
+                              bible_data\bible_ltb.sqlite: the Lithuanian text the server switches
+                              to for Lithuanian, and that the pipeline reads verses from).
 .PARAMETER SkipCuda           Omit the cuda extra (quick test builds; GPU transcription will not work).
+.PARAMETER ReuseDependencies  Keep build\BibleLive\python (the bundled Python and its packages) from the
+                              last build when nothing it depends on changed (Python archive, extras,
+                              backend\constraints.txt, backend\pyproject.toml); only the app, ffmpeg and
+                              licenses are rebuilt. Falls back to a full build when anything differs.
 .PARAMETER NoZip              Do not create the zip.
 #>
 [CmdletBinding()]
 param(
     [switch]$SkipFrontendBuild,
     [string]$BibleDb,
+    [string[]]$ExtraBibleDb = @(),
     [switch]$SkipCuda,
+    [switch]$ReuseDependencies,
     [switch]$NoZip
 )
 
@@ -89,6 +98,10 @@ if (-not (Test-Path -PathType Leaf $BibleDb)) {
     throw "Bible database not found: $BibleDb (pass -BibleDb <path to biblelive.sqlite>)"
 }
 if ((Get-Item $BibleDb).Length -le 0) { throw "Bible database is empty: $BibleDb" }
+foreach ($db in $ExtraBibleDb) {
+    if (-not (Test-Path -PathType Leaf $db)) { throw "Extra Bible database not found: $db" }
+    if ((Get-Item $db).Length -le 0) { throw "Extra Bible database is empty: $db" }
+}
 $tar = Join-Path $env:SystemRoot 'System32\tar.exe'
 if (-not (Test-Path $tar)) { throw 'tar.exe (Windows 10 1803+) is required to unpack the Python archive.' }
 if (-not $SkipFrontendBuild -and -not (Get-Command npm -ErrorAction SilentlyContinue)) {
@@ -117,13 +130,38 @@ foreach ($f in 'display.html', 'operator.html') {
 }
 
 # ---- fresh output folder ----------------------------------------------------------------
-Step "Creating $Out"
-if (Test-Path $Out) {
-    if (-not $Out.StartsWith($Build, [StringComparison]::OrdinalIgnoreCase)) { throw 'Refusing to delete outside build\' }
-    Remove-Item -Recurse -Force $Out
+# gguf (transcribe.cpp: Kmynas / Canary on the processor, or Vulkan on any GPU) is always bundled;
+# cuda adds the NVIDIA runtime DLLs for Whisper.
+$extras = 'audio,gguf'
+if (-not $SkipCuda) { $extras = 'audio,gguf,cuda' }
+# What the bundled python\ folder is built from: if none of it changed, -ReuseDependencies keeps it.
+$fingerprintText = @(
+    $Deps.python.sha256, $extras,
+    (Get-FileHash -Algorithm SHA256 (Join-Path $Repo 'backend\constraints.txt')).Hash,
+    (Get-FileHash -Algorithm SHA256 $pyproject).Hash
+) -join '|'
+$fingerprintFile = Join-Path $Out 'python\.biblelive-deps'
+$reuse = $false
+if ($ReuseDependencies) {
+    if ((Test-Path (Join-Path $Out 'python\python.exe')) -and (Test-Path $fingerprintFile) -and
+        ((Get-Content -Raw $fingerprintFile).Trim() -eq $fingerprintText)) {
+        $reuse = $true
+    } else {
+        Write-Host 'Dependencies changed (or no previous build): doing a full build.' -ForegroundColor Yellow
+    }
 }
-New-Item -ItemType Directory -Force $Out | Out-Null
+if (-not $Out.StartsWith($Build, [StringComparison]::OrdinalIgnoreCase)) { throw 'Refusing to delete outside build\' }
+if ($reuse) {
+    Step "Refreshing $Out (reusing the bundled Python and its packages)"
+    Get-ChildItem -Force $Out | Where-Object { $_.Name -ne 'python' } | Remove-Item -Recurse -Force
+} else {
+    Step "Creating $Out"
+    if (Test-Path $Out) { Remove-Item -Recurse -Force $Out }
+    New-Item -ItemType Directory -Force $Out | Out-Null
+}
+$Py = Join-Path $Out 'python\python.exe'
 
+if (-not $reuse) {
 # ---- Python -----------------------------------------------------------------------------
 Step 'Unpacking Python'
 $unpack = Join-Path $Cache 'python-unpack'
@@ -132,13 +170,10 @@ New-Item -ItemType Directory -Force $unpack | Out-Null
 Invoke-Native $tar @('-xzf', $pyArchive, '-C', $unpack)
 Move-Item (Join-Path $unpack 'python') (Join-Path $Out 'python')
 Remove-Item -Recurse -Force $unpack
-$Py = Join-Path $Out 'python\python.exe'
 Invoke-Native $Py @('-c', "import tkinter, sqlite3, ssl; print('python OK, tk', tkinter.TkVersion)")
 
 # ---- third-party dependencies -----------------------------------------------------------
 Step 'Installing third-party dependencies (pinned by backend\constraints.txt)'
-$extras = 'audio'
-if (-not $SkipCuda) { $extras = 'audio,cuda' }
 $genPy = Join-Path $Cache 'gen_requirements.py'
 Set-Content -Encoding ASCII $genPy @'
 import sys
@@ -157,6 +192,8 @@ if ($LASTEXITCODE -ne 0) { throw 'Could not derive the requirement list from pyp
 Write-Host (Get-Content $reqFile | Out-String)
 Invoke-Native $Py @('-m', 'pip', 'install', '--disable-pip-version-check', '--no-warn-script-location',
     '--no-cache-dir', '-r', $reqFile, '-c', (Join-Path $Repo 'backend\constraints.txt'))
+Set-Content -Encoding ASCII $fingerprintFile $fingerprintText
+} # end of: not reusing the bundled Python
 
 # ---- app --------------------------------------------------------------------------------
 Step 'Copying the application'
@@ -164,8 +201,8 @@ $App = Join-Path $Out 'app'
 New-Item -ItemType Directory -Force $App | Out-Null
 # pyproject.toml marker: core.config finds PROJECT_ROOT = app\ because it sits two levels above backend\core.
 Copy-Item (Join-Path $Repo 'pyproject.toml') (Join-Path $App 'pyproject.toml')
-# Window icon for the launcher GUI (launcher.gui looks for appiblelive.ico).
-Copy-Item (Join-Path $PSScriptRoot 'installeriblelive.ico') (Join-Path $App 'biblelive.ico')
+# Window icon for the launcher GUI (launcher.gui looks for app\biblelive.ico).
+Copy-Item (Join-Path $PSScriptRoot 'installer\biblelive.ico') (Join-Path $App 'biblelive.ico')
 foreach ($pkg in 'core', 'audio', 'launcher') {
     $src = Join-Path $Repo "backend\$pkg"
     $dst = Join-Path $App "backend\$pkg"
@@ -179,6 +216,9 @@ if ($LASTEXITCODE -ge 8) { throw "robocopy failed for the frontend bundle (exit 
 $global:LASTEXITCODE = 0
 New-Item -ItemType Directory -Force (Join-Path $App 'bible_data') | Out-Null
 Copy-Item $BibleDb (Join-Path $App 'bible_data\biblelive.sqlite')
+foreach ($db in $ExtraBibleDb) {
+    Copy-Item $db (Join-Path $App ('bible_data\' + (Split-Path -Leaf $db)))
+}
 # The server needs no files from data\ at runtime (verses come from the SQLite DB; the launcher
 # keeps server settings under %APPDATA%). The folder is only the default base for relative paths.
 New-Item -ItemType Directory -Force (Join-Path $App 'data') | Out-Null
@@ -221,7 +261,10 @@ BibleLive bundles third-party software; each package keeps its own license:
  * NVIDIA cuBLAS / cuDNN / NVRTC runtime DLLs (python\Lib\site-packages\nvidia): NVIDIA's license terms
    (see the license files inside each nvidia-* package directory).
  * Python itself: Python-LICENSE.txt. FFmpeg: FFmpeg-LICENSE.txt, FFmpeg-SOURCE.txt.
- * Whisper models are downloaded separately on first setup (large-v3-turbo, MIT).
+ * transcribe.cpp (transcribe-cpp, transcribe-cpp-native): see their *.dist-info\licenses files.
+ * Speech models are downloaded separately on first setup, not bundled: Whisper large-v3-turbo
+   (MIT), Kmynas (Ezomas/kmynas-parakeet-lt-v4-gguf) and Canary-1B-v2 (handy-computer/canary-1b-v2-gguf).
+   Read each model card for its license terms.
 '@
 
 # ---- launchers --------------------------------------------------------------------------
@@ -261,7 +304,7 @@ try {
         Write-Host '- launcher --dry-run'
         Invoke-Native $Py @('-m', 'launcher', '--dry-run')
         Write-Host '- imports'
-        Invoke-Native $Py @('-c', "import faster_whisper, ctranslate2, webrtcvad, tkinter, core.config as c; print('imports OK, PROJECT_ROOT =', c.PROJECT_ROOT)")
+        Invoke-Native $Py @('-c', "import faster_whisper, ctranslate2, webrtcvad, transcribe_cpp, tkinter, core.config as c; print('imports OK, PROJECT_ROOT =', c.PROJECT_ROOT)")
         Write-Host '- ffmpeg'
         Invoke-Native (Join-Path $ffDir 'ffmpeg.exe') @('-hide_banner', '-version')
     } finally { Pop-Location }

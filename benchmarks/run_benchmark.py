@@ -32,6 +32,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import re
 import sys
 import time
@@ -50,10 +51,13 @@ from audio import stt as stt_module  # noqa: E402  (prompt/hotwords fingerprint 
 from audio.capture import AudioCapture  # noqa: E402  (frame sizing reference)
 from audio.cli import add_tuning_arguments, apply_tuning_arguments  # noqa: E402
 from audio.config import AudioPipelineConfig  # noqa: E402
+from audio.ensemble import merge_agreement  # noqa: E402
 from audio.metrics import PipelineMetrics  # noqa: E402
 from audio.segmenter import FRAME_DURATION_MS, Segmenter, SegmentEvent  # noqa: E402
 from audio.sender import ReferenceSender  # noqa: E402
+from audio.spelling_maps import MappedStreamingParser, spelling_map  # noqa: E402
 from audio.stt import SpeechToText  # noqa: E402
+from audio.stt_gguf import GGUF_LANGUAGES, create_gguf_speech_to_text, engine_models  # noqa: E402
 from audio.vad import create_vad, silero_neg_threshold  # noqa: E402
 from core.bible_lookup import BibleLookup  # noqa: E402
 from core.verse_parser import Reference as ParsedReference  # noqa: E402
@@ -421,6 +425,7 @@ def feed_cache_key(
     context_ttl_s: float | None = 60.0,
     t_range: tuple[float, float] | None = None,
     segmentation: dict[str, int] | None = None,
+    stt: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     key = {
         "cache_version": CACHE_VERSION,
@@ -446,7 +451,83 @@ def feed_cache_key(
         # Feeds carry Whisper's low-confidence verdict (see Feed); caches
         # written before that lack it, so they must not be replayed.
         key["stt_low_confidence"] = True
+    # GGUF engines only, so Whisper cache entries stay valid.
+    if stt is not None:
+        key["stt"] = stt
     return key
+
+
+def stt_cache_identity(config: AudioPipelineConfig) -> dict[str, Any] | None:
+    """The GGUF engine, model files (name + size) and native library for the cache
+    key; None for Whisper.
+
+    The native library is part of it: a CUDA build and the bundled library
+    (CPU / Vulkan) decode slightly differently, so one must not replay the
+    other's transcripts. The spelling maps are applied when feeds are parsed,
+    not cached, so a map change replays from the cache.
+    """
+    models = engine_models(config.stt_engine)
+    if not models:
+        return None
+    files = []
+    for name in models:
+        path = Path(getattr(config, f"{name}_model") or "")
+        files.append([path.name, path.stat().st_size if path.is_file() else None])
+    library = os.environ.get("TRANSCRIBE_LIBRARY")
+    return {
+        "engine": config.stt_engine,
+        "models": files,
+        "native_library": Path(library).resolve().as_posix() if library else "bundled",
+        "native_backend": os.environ.get("TRANSCRIBE_BACKEND") or "auto",
+    }
+
+
+def make_stt(config: AudioPipelineConfig, language: str) -> Any:
+    """The live pipeline's speech-to-text for ``config`` (Whisper or GGUF models)."""
+
+    def whisper() -> SpeechToText:
+        return SpeechToText(
+            model_size=config.whisper_model,
+            device=config.whisper_device,
+            language=language,
+            compute_type=config.whisper_compute_type,
+            beam_size=config.beam_size,
+            cpu_threads=config.cpu_threads,
+        )
+
+    if not engine_models(config.stt_engine):
+        return whisper()
+    return create_gguf_speech_to_text(
+        config.stt_engine,
+        {"kmynas": config.kmynas_model, "canary": config.canary_model},
+        device=config.whisper_device,
+        cpu_threads=config.cpu_threads,
+        language=language,
+        whisper_factory=whisper,
+    )
+
+
+def make_parsers(
+    config: AudioPipelineConfig, language: str, context_ttl_s: float | None
+) -> tuple[StreamingParser, StreamingParser | None]:
+    """The parser for the (first) model's transcripts and, in two-model mode,
+    one for the second model's; each applies its model's spelling map, as live."""
+    models = engine_models(config.stt_engine) if language in GGUF_LANGUAGES else []
+    sources = models or ["whisper"]
+
+    def build(source: str) -> StreamingParser:
+        options: dict[str, Any] = {
+            "context_ttl_s": context_ttl_s,
+            "hold_chapter_only": True,  # as live
+            "verse_text": _VERSE_TEXT if language == "lt" else None,
+        }
+        parser = ReferenceParser(language=language, validator=_VALIDATOR)
+        rewrite = spelling_map(source, language)
+        if rewrite is not None:
+            return MappedStreamingParser(parser, spelling_map=rewrite, **options)
+        return StreamingParser(parser, **options)
+
+    return build(sources[0]), (build(sources[1]) if len(sources) > 1 else None)
 
 
 def feed_cache_path(cache_dir: Path, key: dict[str, Any]) -> Path:
@@ -493,7 +574,10 @@ def read_feed_cache(path: Path) -> dict[str, Any] | None:
 # One parser feed: (t_s, text), or (t_s, text, speech_start_s, low_reason)
 # when the mode knows where the utterance's speech began and Whisper's
 # low-confidence verdict on it (offline/rt; "" when trusted). Cached as a list.
-Feed = tuple[float, str] | tuple[float, str, float, str]
+# (t_s, text[, start, low_reason[, alternate_text, alternate_low_reason]]).
+# Two-model runs (``--stt kmynas+canary``) add the second model's transcript;
+# either text may then be None (that model heard nothing).
+Feed = tuple[Any, ...]
 
 
 @dataclass
@@ -512,7 +596,11 @@ def feeds_from_cache(unit: list[list[Any]]) -> list[Feed]:
     """Cached feeds back to tuples; entries from older caches lack the start."""
     out: list[Feed] = []
     for item in unit:
-        if len(item) > 2 and item[2] is not None:
+        if len(item) > 4:  # two-model feed; either text may be None
+            low = str(item[3]) if item[3] else ""
+            alt_low = str(item[5]) if len(item) > 5 and item[5] else ""
+            out.append((float(item[0]), item[1], float(item[2]), low, item[4], alt_low))
+        elif len(item) > 2 and item[2] is not None:
             low = str(item[3]) if len(item) > 3 and item[3] else ""
             out.append((float(item[0]), str(item[1]), float(item[2]), low))
         else:
@@ -526,6 +614,7 @@ def register_feeds(
     feeds: list[Feed],
     detections: list[Detection],
     spans: SpanTracker | None = None,
+    alternate_parser: StreamingParser | None = None,
 ) -> None:
     """Feed one dedup-scope group of (t_s, text[, start]) through parser + sender.
 
@@ -536,20 +625,25 @@ def register_feeds(
     ``spans`` (offline/rt) attributes each detection to the speech span it
     was said in; without it detections carry no span. A feed whose Whisper
     decode was low-confidence marks every reference it reports "low", as
-    the live pipeline does before auto-approve sees them.
+    the live pipeline does before auto-approve sees them. With
+    ``alternate_parser`` (two-model mode) the second model's text goes through
+    it, and only references both models report keep their confidence.
     """
     seen: set[tuple] = set()
     for feed in feeds:
         t_s, text = feed[0], feed[1]
-        span = (feed[2], t_s) if len(feed) > 2 else None
+        span = (feed[2], t_s) if len(feed) > 2 and feed[2] is not None else None
         low_reason = feed[3] if len(feed) > 3 else ""
-        for ref in parser.feed(text, t_s):
+        refs = _model_refs(parser, text, t_s, low_reason)
+        if alternate_parser is not None:
+            alt_text = feed[4] if len(feed) > 4 else ""
+            alt_low = feed[5] if len(feed) > 5 else ""
+            refs = merge_agreement(refs, _model_refs(alternate_parser, alt_text, t_s, alt_low))
+        for ref in refs:
             key = ref_key(ref.book, ref.chapter, ref.verse_start, ref.verse_end)
             if key in seen:
                 continue
             seen.add(key)
-            if low_reason:
-                ref.confidence = "low"
             ref_span = span
             held = ref.verse_start is None or ref.from_text
             if spans is not None and parser.hold_chapter_only and held:
@@ -576,12 +670,32 @@ def register_feeds(
             spans.prev = span
 
 
+def _model_refs(
+    parser: StreamingParser, text: str | None, t_s: float, low_reason: str
+) -> list[ParsedReference]:
+    """One model's references in its text, each once ("low" after a shaky decode)."""
+    if text is None:  # this model heard nothing in a two-model utterance
+        return []
+    refs: list[ParsedReference] = []
+    keys: set[tuple] = set()
+    for ref in parser.feed(text, t_s):
+        key = ref_key(ref.book, ref.chapter, ref.verse_start, ref.verse_end)
+        if key in keys:
+            continue
+        keys.add(key)
+        if low_reason:
+            ref.confidence = "low"
+        refs.append(ref)
+    return refs
+
+
 def release_held(
     parser: StreamingParser,
     sender: BenchmarkingSender | None,
     units: list[Any],
     detections: list[Detection],
     spans: SpanTracker | None = None,
+    alternate_parser: StreamingParser | None = None,
 ) -> None:
     """End of recording: report a chapter-only ref the parser is still holding.
 
@@ -589,7 +703,8 @@ def release_held(
     last feed. Live and cache-replay paths both call this, so they stay equal.
     """
     last_t = float(units[-1][-1][0]) if units and units[-1] else 0.0
-    register_feeds(parser, sender, [(last_t, "")], detections, spans)
+    release: Feed = (last_t, "", None, "", "", "") if alternate_parser else (last_t, "")
+    register_feeds(parser, sender, [release], detections, spans, alternate_parser)
 
 
 def run_single_recording(
@@ -657,15 +772,11 @@ def run_single_recording(
         context_ttl_s=context_ttl_s,
         t_range=t_range,
         segmentation=segmentation,
+        stt=stt_cache_identity(config),
     )
     cpath = feed_cache_path(cache_dir, key) if cache_dir is not None and use_cache else None
 
-    parser = StreamingParser(
-        ReferenceParser(language=rec.language, validator=_VALIDATOR),
-        context_ttl_s=context_ttl_s,
-        hold_chapter_only=True,  # as live
-        verse_text=_VERSE_TEXT if rec.language == "lt" else None,
-    )
+    parser, alt_parser = make_parsers(config, rec.language, context_ttl_s)
     metrics = PipelineMetrics()
     stub = StubReceiver(t0=time.time())
     sender = BenchmarkingSender(stub, config, metrics)
@@ -678,6 +789,7 @@ def run_single_recording(
         "whisper_model": config.whisper_model,
         "whisper_device": config.whisper_device,
         "whisper_compute_type": config.whisper_compute_type,
+        "stt_engine": config.stt_engine,
         **segmentation,
         "dedup_window_seconds": config.dedup_window_seconds,
         "mode": mode,
@@ -692,8 +804,10 @@ def run_single_recording(
             t0 = time.time()
             spans = SpanTracker()
             for unit in cached["units"]:
-                register_feeds(parser, sender, feeds_from_cache(unit), detections, spans)
-            release_held(parser, sender, cached["units"], detections, spans)
+                register_feeds(
+                    parser, sender, feeds_from_cache(unit), detections, spans, alt_parser
+                )
+            release_held(parser, sender, cached["units"], detections, spans, alt_parser)
             if cached["units"] and not any(len(f) > 2 for u in cached["units"] for f in u):
                 print(
                     f"[cache] {rec.id}: cache has no utterance starts; matching by "
@@ -725,14 +839,7 @@ def run_single_recording(
         silero_threshold=config.silero_threshold,
         silero_neg_threshold=config.silero_neg_threshold,
     )
-    stt = SpeechToText(
-        model_size=config.whisper_model,
-        device=config.whisper_device,
-        language=rec.language,
-        compute_type=config.whisper_compute_type,
-        beam_size=config.beam_size,
-        cpu_threads=config.cpu_threads,
-    )
+    stt = make_stt(config, rec.language)
 
     # The live pipeline's segmenter, so benchmark and live segmentation cannot drift.
     segmenter = Segmenter.from_config(vad.is_speech, config)
@@ -748,15 +855,19 @@ def run_single_recording(
         if event.kind == "blip":
             return
         result = stt.transcribe_utterance(b"".join(event.frames), rec.language)
-        text = result.text
-        if text is None:
+        text, alt = result.text, result.alternate
+        if text is None and (alt is None or alt.text is None):
             transcripts.append((t_start, "<none>"))
             return
-        transcripts.append((t_start, text))
         low = result.low_confidence_reason or ""
         feed: Feed = (t_start, text, min(speech_start, t_start), low)
+        if alt is not None:
+            transcripts.append((t_start, f"{text} || {alt.text}"))
+            feed = (*feed, alt.text, alt.low_confidence_reason or "")
+        else:
+            transcripts.append((t_start, text))
         units.append([feed])
-        register_feeds(parser, sender, [feed], detections, spans)
+        register_feeds(parser, sender, [feed], detections, spans, alt_parser)
 
     n_frames = len(pcm) // frame_bytes
     frame_s = frame_duration_ms / 1000.0
@@ -798,7 +909,7 @@ def run_single_recording(
     final = segmenter.flush()
     if final is not None:
         utterance_end(last_frame * frame_s, final)
-    release_held(parser, sender, units, detections, spans)
+    release_held(parser, sender, units, detections, spans, alt_parser)
 
     runtime_s = time.time() - t0
     if cache_dir is not None:
@@ -1358,6 +1469,9 @@ def main() -> int:
     if args.vad_aggressiveness is not None:
         config.vad_aggressiveness = args.vad_aggressiveness
     apply_tuning_arguments(config, args)
+    if args.mode == "windowed" and engine_models(config.stt_engine):
+        print("error: windowed mode reads Whisper segments; use --stt whisper", file=sys.stderr)
+        return 2
     tmp_dir = audio_dir / ".bench-16k" if audio_dir else Path("bench_audio/.bench-16k")
     tmp_dir.mkdir(parents=True, exist_ok=True)
     cache_dir = Path(args.cache_dir)

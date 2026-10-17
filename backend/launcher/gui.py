@@ -32,7 +32,7 @@ from .viewmodel import (
     auto_mode_options,
     describe_error,
     describe_event,
-    describe_gpu,
+    describe_speech,
     form_from_settings,
     language_options,
     load_microphones,
@@ -40,6 +40,7 @@ from .viewmodel import (
     plain_options,
     projector_options,
     settings_from_form,
+    speech_engine_options,
     state_text,
     ui_language_options,
 )
@@ -179,11 +180,13 @@ class App:
         self.c_device = Choice(self.adv, plain_options(DEVICE_OPTIONS), f.device, 22)
         self.c_compute = Choice(self.adv, plain_options(COMPUTE_OPTIONS), f.compute_type, 22)
         self.c_log = Choice(self.adv, plain_options(LOG_LEVEL_OPTIONS), f.log_level, 22)
+        self.c_speech = Choice(self.adv, speech_engine_options(), f.speech_engine, 40)
         self.v_port = tk.StringVar(value=f.port)
         self.v_extra = tk.StringVar(value=f.extra_args)
         e_port = ttk.Entry(self.adv, textvariable=self.v_port, width=10)
         e_extra = ttk.Entry(self.adv, textvariable=self.v_extra)
         adv_rows: list[tuple[str, Any]] = [
+            ("adv.speech_engine", self.c_speech.box),
             ("adv.model", self.c_model.box),
             ("adv.device", self.c_device.box),
             ("adv.compute_type", self.c_compute.box),
@@ -250,6 +253,7 @@ class App:
             self.c_auto.box,
             k_display,
             k_operator,
+            self.c_speech.box,
             self.c_model.box,
             self.c_device.box,
             self.c_compute.box,
@@ -289,6 +293,7 @@ class App:
             extra_args=self.v_extra.get(),
             open_display=self.v_open_display.get(),
             open_operator=self.v_open_operator.get(),
+            speech_engine=self.c_speech.get() or "auto",
         )
 
     def on_ui_language(self) -> None:
@@ -333,7 +338,9 @@ class App:
             except Exception:
                 logger.exception("GPU probe failed")
                 return
-            self.queue.put(("gpu", describe_gpu(plan.device, plan.compute_type)))
+            self.queue.put(
+                ("gpu", describe_speech(plan.speech_engine, plan.device, plan.compute_type))
+            )
 
         threading.Thread(target=work, daemon=True).start()
 
@@ -366,7 +373,9 @@ class App:
                     self.queue.put(("finished", 0))
                     return
                 self.plan, self.launcher = plan, launcher
-            self.queue.put(("gpu", describe_gpu(plan.device, plan.compute_type)))
+            self.queue.put(
+                ("gpu", describe_speech(plan.speech_engine, plan.device, plan.compute_type))
+            )
             code = launcher.run()
         except Exception as exc:
             logger.exception("Launcher crashed")
@@ -448,7 +457,12 @@ class App:
         if tag == "event":
             _, kind, message, code, detail = item
             self.status = apply_event(self.status, kind, message, code)
-            if kind == "warning" and self.plan and self.plan.device == "cpu":
+            if (
+                kind == "warning"
+                and self.plan
+                and self.plan.device == "cpu"
+                and self.plan.speech_engine == "whisper"
+            ):
                 self._log(t("warn.no_gpu"), "warning")
             else:
                 described = describe_event(kind, message, code, detail)
@@ -484,7 +498,12 @@ class App:
             self.s_labels[key].configure(text=state_text(state), foreground=STATE_COLORS[state])
         gpu = self.s_labels["gpu"]
         gpu.configure(text=self.gpu_text or t("gpu.checking"), foreground="#000000")
-        if self.gpu_text and self.plan and self.plan.device == "cpu":
+        if (
+            self.gpu_text
+            and self.plan
+            and self.plan.device == "cpu"
+            and self.plan.speech_engine == "whisper"
+        ):
             gpu.configure(foreground=STATE_COLORS["error"])
 
     def _apply_running_state(self) -> None:

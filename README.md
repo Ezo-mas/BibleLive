@@ -11,7 +11,8 @@ references before they go on screen.
 ┌─────────────────┐    HTTP/WS     ┌──────────────────────┐
 │  Audio Pipeline │ ─────────────► │  FastAPI Server      │
 │  (ffmpeg + VAD  │  POST /api/    │  (core/)             │
-│   + Whisper)    │  reference     │                      │
+│   + speech-to-  │  reference     │                      │
+│   text)         │                │                      │
 └─────────────────┘                │  • verse parser      │
                                    │  • Bible lookup      │
 ┌─────────────────┐    WS          │  • approval queue    │
@@ -48,6 +49,9 @@ pip install -e "./backend[audio]" -c backend/constraints.txt
 
 # Optional: GPU transcription (--device cuda): CUDA 12 cuBLAS + cuDNN 9 wheels
 pip install -e "./backend[audio,cuda]" -c backend/constraints.txt
+
+# Optional: Lithuanian GGUF speech models (--stt kmynas|canary|kmynas+canary)
+pip install -e "./backend[audio,gguf]" -c backend/constraints.txt
 ```
 
 `-c backend/constraints.txt` holds every package, direct or indirect, to the
@@ -102,6 +106,19 @@ Uses `.venv\Scripts\python.exe` when present, `BIBLELIVE_HOST`/`BIBLELIVE_PORT`
 (default `8000`), and `BIBLELIVE_AUDIO_ARGS` for extra pipeline flags, e.g.
 `$env:BIBLELIVE_AUDIO_ARGS = "--device cpu --model base"`.
 
+### Windows installer
+
+`scripts\windows\build-installer.ps1` builds `dist\BibleLive-Setup-<version>.exe`:
+a self-contained per-user install (Python, ffmpeg, the app and the Bible
+databases) with a launcher that starts the server, the audio pipeline and the
+projector display. During setup you pick the Lithuanian speech model —
+**Kmynas on the processor** (no graphics card needed), **Kmynas + Canary on a
+GPU** (most accurate), or Whisper only — and the installer downloads just those
+models and tests them. For Lithuanian services build it with
+`-ExtraBibleDb bible_data\bible_ltb.sqlite`. Every service is logged to
+`%APPDATA%\BibleLive\logs\sessions` (transcript + audio, see "Session log").
+Details, requirements and silent-install switches: `scripts/windows/README.md`.
+
 ### Run the server only
 
 ```bash
@@ -142,7 +159,14 @@ Options:
   --language LANG         Spoken language: en or lt (default: en)
   --vad-aggressiveness N  WebRTC VAD aggressiveness 0-3 (default: 2)
   --beam-size N           Whisper beam width; lower is faster (default: 5)
-  --cpu-threads N         Whisper CPU threads, 0 = library default (default: 0)
+  --cpu-threads N         Speech model CPU threads, 0 = library default (default: 0)
+  --stt ENGINE            Lithuanian speech model: whisper, kmynas, canary or
+                          kmynas+canary (default: whisper); English always uses
+                          Whisper. See "Lithuanian speech models" below
+  --kmynas-model PATH     Kmynas .gguf file (for kmynas, kmynas+canary)
+  --canary-model PATH     Canary .gguf file (for canary, kmynas+canary)
+  --session-log-dir DIR   Write a live session log (transcript + references) here
+  --session-audio on|off  With --session-log-dir, also record the service as WAV
   --end-of-speech-s S     Silence that ends an utterance (default: 1.5)
   --min-speech-s S        Shorter utterances are dropped (default: 0.3)
   --soft-utterance-s S    Past this, end the utterance at the next pause (default: 8)
@@ -179,6 +203,34 @@ spoken reference (live detections arrive about 12 s after the words). It
 also decoded faster than `small` int8 on an RTX 5070 Ti (about 0.06x real
 time). The `distil-*` models are English-only. On a CPU-only machine
 `small` (int8) is the practical ceiling.
+
+#### Lithuanian speech models (`--stt`)
+
+For Lithuanian, two GGUF models run through
+[transcribe.cpp](https://github.com/handy-computer/transcribe.cpp) (the `gguf`
+extra) instead of Whisper; English still uses Whisper, loaded only once an
+English utterance arrives:
+
+| `--stt` | Hardware | References found (of 158) | Wrong, medium/high |
+| --- | --- | --- | --- |
+| `whisper` (turbo, default) | NVIDIA GPU | 140 | 10 |
+| `kmynas` | any CPU (`--device cpu`) | 148 | 10 |
+| `kmynas+canary` | a GPU (`--device cuda`) | 153 | 5 |
+
+Measured on 13 recorded Lithuanian services (benchmark details in
+`benchmarks/BASELINE_NOTES.md`). `kmynas` is a Lithuanian fine-tune of NVIDIA
+Parakeet: on a Ryzen 7 5800X it transcribes an 8 s utterance in about 0.5 s
+(6 threads) using ~1.1 GB of RAM, so an 8th-gen i5 / Zen 1 PC keeps up.
+`kmynas+canary` runs both models on every utterance: a reference only one of
+them finds still reaches the operator, but as low confidence, so auto-approve
+never shows it. With `--device cuda` the bundled library picks the best GPU
+through Vulkan (NVIDIA, AMD or Intel; ~3.2 GB of video memory for both models,
+~0.2 s per 8 s utterance); set `TRANSCRIBE_LIBRARY` to use a CUDA build instead.
+Model files (Q8_0): `Ezomas/kmynas-parakeet-lt-v4-gguf` and
+`handy-computer/canary-1b-v2-gguf` on Hugging Face, both CC BY 4.0. Each model
+has a small spelling map for its known Lithuanian mishearings
+(`audio/spelling_maps.py`); the maps were fitted on the benchmark services, so
+expect slightly lower numbers on new ones.
 
 #### Runtime language switching
 
@@ -271,6 +323,19 @@ INFO - audio.sender   - Sent to server (31ms): John 3:16
 
 Use `--log-level DEBUG` (or `BIBLELIVE_AUDIO_LOG_LEVEL=DEBUG`) to also trace ffmpeg
 output, ignored short VAD blips, and skipped duplicates.
+
+#### Session log (live transcript)
+
+`--session-log-dir DIR` writes `DIR/<start time>.jsonl` for every run: a header
+(speech models, device, language), then one line per utterance — where it sits in
+the service (`start_s` / `end_s`), each speech model's transcript and verdict, and
+the references sent with their confidence — plus language switches, capture
+restarts and references flushed at shutdown. `--session-audio on` also records the
+whole service as `DIR/<start time>.wav` (16 kHz mono, ~115 MB per hour); the
+utterance times are positions in that file, so a logged service can be annotated
+and added to the benchmark corpus. The WAV stays playable if the PC loses power,
+and a logging failure never stops detection. The Windows launcher keeps sessions
+in `%APPDATA%\BibleLive\logs\sessions`.
 
 ## HTTP API
 
@@ -390,11 +455,15 @@ BibleLive/                        # Monorepo root: tooling + shared assets
 │   │   ├── passage.py, books.py  # Manual passage validation + canon
 │   │   ├── bible_lookup.py       # SQLite verse text lookup
 │   │   └── import_bible.py       # Bible DB importer
-│   ├── audio/                    # Audio pipeline (ffmpeg + VAD + Whisper STT)
+│   ├── audio/                    # Audio pipeline (ffmpeg + VAD + speech-to-text)
 │   │   ├── cli.py                # Entry point
 │   │   ├── pipeline.py           # BibleLiveAudioProcessor
 │   │   ├── capture.py, vad.py    # ffmpeg capture + WebRTC/Silero VAD
 │   │   ├── stt.py                # faster-whisper transcription
+│   │   ├── stt_gguf.py           # Lithuanian GGUF models (--stt kmynas / canary)
+│   │   ├── spelling_maps.py      # Per-model Lithuanian spelling fixes
+│   │   ├── ensemble.py           # Two-model agreement (--stt kmynas+canary)
+│   │   ├── session_log.py        # Live session log (--session-log-dir)
 │   │   ├── sender.py             # Reference delivery (dedup + retry/backoff)
 │   │   ├── control.py            # Runtime language-control HTTP server
 │   │   └── config.py, metrics.py

@@ -13,6 +13,7 @@ from .config import AudioPipelineConfig
 from .logging_config import configure_logging
 from .pipeline import BibleLiveAudioProcessor
 from .stt import SUPPORTED_LANGUAGES
+from .stt_gguf import STT_ENGINES
 from .vad import VAD_ENGINES
 
 logger = logging.getLogger(__name__)
@@ -38,11 +39,27 @@ def _vad_engine(value: str) -> str:
     return value
 
 
+def _stt_engine(value: str) -> str:
+    """Parse a speech-to-text engine name."""
+    if value not in STT_ENGINES:
+        raise argparse.ArgumentTypeError(f"expected one of {', '.join(STT_ENGINES)}, got {value!r}")
+    return value
+
+
 # (flag, config field, type, help) — shared with benchmarks/run_benchmark.py so
 # every live tuning knob can be swept there under the same name.
 TUNING_ARGUMENTS: list[tuple[str, str, Callable[[str], Any], str]] = [
     ("--beam-size", "beam_size", int, "Whisper beam width; lower is faster"),
-    ("--cpu-threads", "cpu_threads", int, "Whisper CPU threads (0 = library default)"),
+    ("--cpu-threads", "cpu_threads", int, "STT CPU threads (0 = library default)"),
+    (
+        "--stt",
+        "stt_engine",
+        _stt_engine,
+        "Lithuanian speech model: whisper, kmynas (CPU-friendly), canary, or "
+        "kmynas+canary (both; GPU). English always uses Whisper",
+    ),
+    ("--kmynas-model", "kmynas_model", str, "Kmynas .gguf file for --stt kmynas"),
+    ("--canary-model", "canary_model", str, "Canary .gguf file for --stt canary"),
     ("--end-of-speech-s", "end_of_speech_s", float, "silence that ends an utterance"),
     ("--min-speech-s", "min_speech_s", float, "shorter utterances are dropped"),
     ("--soft-utterance-s", "soft_utterance_s", float, "past this, end at the next pause"),
@@ -67,7 +84,9 @@ def add_tuning_arguments(parser: argparse.ArgumentParser) -> None:
     """Add the speech-tuning flags; each defaults to None (= config default)."""
     for flag, field_name, kind, help_text in TUNING_ARGUMENTS:
         default = getattr(_TUNING_DEFAULTS, field_name)
-        parser.add_argument(flag, type=kind, default=None, help=f"{help_text} (default: {default})")
+        parser.add_argument(
+            flag, dest=field_name, type=kind, default=None, help=f"{help_text} (default: {default})"
+        )
 
 
 def apply_tuning_arguments(config: AudioPipelineConfig, args: argparse.Namespace) -> None:
@@ -180,6 +199,21 @@ def build_parser() -> argparse.ArgumentParser:
         help="Disable the runtime language-control server",
     )
     parser.add_argument(
+        "--session-log-dir",
+        default=None,
+        help=(
+            "Write a live session log here: <start time>.jsonl with every utterance's "
+            "transcript and the references sent (default: off)"
+        ),
+    )
+    parser.add_argument(
+        "--session-audio",
+        type=_flag,
+        default=False,
+        help="With --session-log-dir, also record the service as <start time>.wav "
+        "(16 kHz mono, ~115 MB per hour; default: off)",
+    )
+    parser.add_argument(
         "--log-level",
         default=None,
         choices=["DEBUG", "INFO", "WARNING", "ERROR"],
@@ -226,6 +260,8 @@ def main() -> None:
         control_host=args.control_host,
         control_port=args.control_port,
         control_token=args.control_token,
+        session_log_dir=args.session_log_dir,
+        session_audio=args.session_audio,
         # Same source the server reads its token from, so one .env covers both.
         api_token=args.server_token or server_config.OPERATOR_TOKEN,
     )
