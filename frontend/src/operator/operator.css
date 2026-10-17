@@ -604,13 +604,19 @@
 /* Verse text on either stage: the same order and grouping as the projector — a
    number column and the text — at a console-friendly size set inline by the fit
    logic. The numbers share one right edge so verse 9 and verse 10 sit against
-   the text they label. */
+   the text they label.
+
+   The block is as wide as its longest line and centered on the stage, like the
+   citation under it, so a short passage does not hug the left edge. A long verse
+   grows the block until it fills the stage and then wraps. */
 .operator-live-verses,
 .operator-next-verses {
   display: flex;
   flex-direction: column;
   gap: 0.6em;
-  width: 100%;
+  align-self: center;
+  width: fit-content;
+  max-width: 100%;
   margin: 0;
   padding: 0;
   list-style: none;
