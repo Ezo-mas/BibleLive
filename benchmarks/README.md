@@ -11,6 +11,8 @@ directory adds evaluation only.
 benchmarks/
 ├── corpus/
 │   ├── manifest.example.json   # schema; copy for your own manifest
+│   ├── manifest-*-lt.json      # the Lithuanian services (audio not committed)
+│   ├── lt-sermons.txt          # the 13-service run (record + sermon --t-range)
 │   └── gold/
 │       └── example-schema-only.gold.jsonl  # gold annotation schema example
 ├── hash_audio.py               # fill in manifest sha256 fields
@@ -103,7 +105,11 @@ stray numbers minutes later. Applies to all modes and to production.
 STT dominates runtime. Feed events are cached under
 `results/.bench-cache` keyed by audio hash + model + segmentation settings +
 a fingerprint of the Whisper initial prompt and hotwords (editing either one
-re-runs STT instead of replaying stale transcripts);
+re-runs STT instead of replaying stale transcripts), and, for the GGUF
+engines (`--stt kmynas|canary|kmynas+canary`), the model files and the
+native library (a CUDA build and the bundled CPU/Vulkan library decode
+slightly differently). Per-model spelling maps are applied when cached
+feeds are parsed, so a map change replays without re-running STT;
 repeat runs replay the cache in seconds with bit-identical detections
 (`transcripts_cached: true` in the output). `--no-cache` forces a live run
 (which still refreshes the cache). `--t-range START:END` restricts

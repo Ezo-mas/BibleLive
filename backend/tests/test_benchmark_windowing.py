@@ -24,12 +24,15 @@ from benchmarks.run_benchmark import (
     feeds_from_cache,
     gold_distance_s,
     is_silent_window,
+    make_parsers,
     match_detections_to_gold,
     parse_t_range,
     pcm_resample,
     read_feed_cache,
     register_feeds,
+    release_held,
     run_single_recording,
+    stt_cache_identity,
     verified_audio_sha,
     window_bounds,
     write_feed_cache,
@@ -379,6 +382,75 @@ class TestSpokenSpanMatching:
         assert feeds_from_cache([[20.0, "Jono 3 16", 14.0]]) == [(20.0, "Jono 3 16", 14.0, "")]
         # Entries written before starts were recorded still load.
         assert feeds_from_cache([[20.0, "Jono 3 16"]]) == [(20.0, "Jono 3 16")]
+
+    def test_two_model_feeds_round_trip(self):
+        # Either model may have heard nothing (None); the second model's text
+        # and verdict survive the cache.
+        assert feeds_from_cache([[20.0, None, 14.0, "", "Jono 3 16", "loop"]]) == [
+            (20.0, None, 14.0, "", "Jono 3 16", "loop")
+        ]
+
+    def test_gguf_cache_identity_tells_native_libraries_apart(self, monkeypatch, tmp_path):
+        # A CUDA build and the bundled library decode differently: one must
+        # not replay the other's transcripts.
+        config = AudioPipelineConfig(stt_engine="kmynas", kmynas_model=str(tmp_path / "k.gguf"))
+        monkeypatch.delenv("TRANSCRIBE_LIBRARY", raising=False)
+        monkeypatch.delenv("TRANSCRIBE_BACKEND", raising=False)
+        bundled = stt_cache_identity(config)
+        monkeypatch.setenv("TRANSCRIBE_LIBRARY", str(tmp_path / "transcribe.dll"))
+        cuda_build = stt_cache_identity(config)
+        assert bundled is not None and cuda_build is not None
+        assert bundled["native_library"] == "bundled"
+        assert bundled != cuda_build
+
+    def test_cache_key_names_the_gguf_engine_only(self):
+        args = {
+            "record_id": "r",
+            "audio_sha256": "abc",
+            "language": "lt",
+            "model": "small",
+            "device": "cuda",
+            "compute_type": "int8",
+            "mode": "offline",
+        }
+        assert "stt" not in feed_cache_key(**args)  # Whisper entries keep their key
+        stt = {"engine": "kmynas", "models": [["k.gguf", 1]]}
+        assert feed_cache_key(**args, stt=stt)["stt"] == stt
+        assert stt_cache_identity(AudioPipelineConfig()) is None
+
+    def test_two_model_feeds_keep_only_agreed_confidence(self):
+        config = AudioPipelineConfig(stt_engine="kmynas+canary")
+        parser, alternate = make_parsers(config, "lt", None)
+        assert alternate is not None
+        dets: list[Detection] = []
+        feeds = [
+            # Both models (after each one's spelling map): agreed.
+            (10.0, "Psmė dvidešimt trečia, pirma eilutė", 2.0, "", "Salme 23, 1 eilutė", ""),
+            # Only the first model.
+            (30.0, "Jono trečias skyrius šešiolikta eilutė", 22.0, "", "Jono, kai jis", ""),
+        ]
+        for feed in feeds:
+            register_feeds(parser, None, [feed], dets, alternate_parser=alternate)
+        assert [(str(d.book), d.verse_start, d.confidence) for d in dets] == [
+            ("Psalms", 1, "high"),
+            ("John", 16, "low"),
+        ]
+
+    def test_two_model_release_flushes_both_parsers(self):
+        config = AudioPipelineConfig(stt_engine="kmynas+canary")
+        parser, alternate = make_parsers(config, "lt", None)
+        dets: list[Detection] = []
+        feed = (20.0, "Romiečiams 5 skyrius", 12.0, "", "Romiečiams 5 skyrius", "")
+        register_feeds(parser, None, [feed], dets, alternate_parser=alternate)
+        assert dets == []  # held by both
+        release_held(parser, None, [[feed]], dets, alternate_parser=alternate)
+        assert [(d.chapter, d.verse_start) for d in dets] == [(5, None)]
+        assert dets[0].confidence != "low"  # both models held it: agreed
+
+    def test_whisper_parsers_have_no_map_or_second_parser(self):
+        parser, alternate = make_parsers(AudioPipelineConfig(), "lt", None)
+        assert alternate is None
+        assert type(parser) is StreamingParser
 
 
 class TestVerifiedAudioSha:

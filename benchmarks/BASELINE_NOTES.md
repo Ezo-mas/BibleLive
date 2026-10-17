@@ -307,10 +307,12 @@ Speed and memory, timed alone on the same 160 s / 480 s of 10-11 (Ryzen 7
 | Canary fp32 (onnxruntime) | 0.026 | +5.5 GB | | |
 | Canary fp16 (converted; arena kSameAsRequested) | 0.027-0.032 | +2.5 GB | | |
 | Canary int8 (onnxruntime) | 0.145 | +0.7 GB | 0.116 / 0.113 | |
-| Canary GGUF Q8_0 | | | 0.123 / 0.106 | ~1.65 GB |
-| Canary GGUF Q4_K_M | | | 0.100 / 0.083 | ~1.25 GB |
-| Kmynas v4 GGUF Q8_0 | | | 0.075 / 0.062 | |
+| Canary GGUF Q8_0 (transcribe.cpp CUDA) | 0.025 | +1.6 GB | 0.123 / 0.106 | ~1.65 GB |
+| Canary GGUF Q4_K_M | 0.025 | +1.2 GB | 0.100 / 0.083 | ~1.25 GB |
+| Kmynas v4 GGUF F32 | 0.016 | +2.7 GB | | |
+| Kmynas v4 GGUF Q8_0 | 0.017 | +1.1 GB | 0.075 / 0.062 | ~1.13 GB |
 | Kmynas v4 GGUF Q4_K_M | | | 0.065 / 0.053 | |
+| Kmynas Q8_0 + Canary Q8_0, both loaded | | +2.9 GB | | |
 
 Dynamic int8 runs on the CPU even under the CUDA provider, hence its GPU
 speed. On an 8th-gen i5 or Zen 1 the CPU figures should be roughly 1.5-2x
@@ -324,3 +326,44 @@ Kmynas and Canary transcripts): clipped "dešim" (10), the spoken locative
 ordinal ("dvidešimta, penkta eilutė" = 20:5, while "dvidešimt penkta"
 stays 25). Cached-transcript replays: turbo 139 / 10 -> 140 / 10, Canary
 Q8 with its map 140 / 10 -> 141 / 9, Kmynas Q8 132 / 17 -> 143 / 11.
+
+**GPU runs and the two-model ensemble** (2026-10-17): transcribe.cpp built
+with CUDA 13.4 (`-DTRANSCRIBE_CUDA=ON`, sm_120), same GGUF files, full
+corpus with Kmynas and Canary running side by side on one GPU (one
+recording at a time each). Over all 9.4 h of audio, including VAD and
+parsing: Kmynas Q8 RTF 0.018, Canary Q8 0.027 (CPU Q8 runs: 0.079 and
+0.131), 16 min wall time for both; peak VRAM with both loaded +2.9 GB.
+Accuracy matches the CPU runs: Kmynas Q8 with its map 148 / 9 (CPU 148 /
+10), Canary Q8 with its map 140 / 10 (CPU 141 / 9; Canary's repetition
+guard dropped one utterance). Merging the two (same reference within 15 s
+counts once; a reference only one model found is kept as low confidence):
+**153 / 5**, the same as the estimate from the CPU transcripts (union
+without the confidence rule 153 / 14). Kmynas F32 148 / 9, the same as Q8
+(one reference won, one lost), so Q8 costs nothing. Q4_K_M costs 8
+references for each model (Kmynas 140 / 10, Canary 132 / 13 with maps;
+pair 149 / 5) and saves only 0.3 GB, so Q8 stays. The merge is still
+offline (`union.py` over the two runs' detections); the pipeline has no
+two-model mode yet.
+
+**`--stt` in the pipeline** (2026-10-17): the engines, per-model spelling maps
+and the agreement rule now live in `audio/stt_gguf.py`, `spelling_maps.py` and
+`ensemble.py`, and `run_benchmark.py --stt ...` runs them through the same
+code as live. Same 13 recordings, TP / medium+high FP:
+
+| Run | Result | Notes |
+| --- | --- | --- |
+| `whisper` (turbo + prompt), cached replay | 140 / 10 | identical to before: the default path is unchanged |
+| `kmynas`, CPU, Q8_0 | 148 / 10 | identical to the scratch-tool run |
+| `kmynas+canary`, CUDA build | 153 / 5 | the offline estimate, confirmed; 30 low FPs |
+| `kmynas+canary`, bundled library (Vulkan) | 152 / 5 | lost Philippians 4:7, a borderline reference |
+
+Agreement is judged per utterance: both models found the same reference in
+the same utterance 149 times out of 150, so nothing is held back. Speed on
+the 60 x 8 s clips of 10-11, one process, idle machine: `kmynas+canary` rtf
+0.026 on Vulkan (+3.15 GB video memory) vs 0.039 on the CUDA build (+2.9 GB);
+`kmynas` alone on Vulkan 0.011 (+1.9 GB); `kmynas` on CPU 0.059 (6 threads) /
+0.076 (4 threads). On the GPU the CPU thread count makes no measurable
+difference (0, 2 or 4). The bundled `transcribe-cpp` library is the default:
+it needs no CUDA toolkit and also runs on AMD and Intel GPUs (untested here).
+The benchmark cache key includes the native library, since CUDA and Vulkan
+decode slightly differently.
