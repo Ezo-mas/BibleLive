@@ -31,6 +31,7 @@ from launcher.viewmodel import (
     FormError,
     StatusState,
     apply_event,
+    check_microphone,
     describe_error,
     describe_event,
     describe_gpu,
@@ -318,6 +319,17 @@ def test_form_validation():
     with pytest.raises(FormError) as err:
         settings_from_form(LauncherSettings(), form)
     assert err.value.code == "invalid_args"
+
+
+def test_automatic_microphone_needs_a_choice_when_several_are_connected():
+    # Live test 2026-10-17: "automatic" took the first input, a silent built-in mic.
+    with pytest.raises(FormError) as err:
+        check_microphone(None, ["Microphone (Realtek)", "Microphone (Blackmagic Design)"])
+    assert err.value.code == "choose_microphone"
+    assert describe_error("choose_microphone", "") != describe_error("nope", "")
+    check_microphone("Microphone (Blackmagic Design)", ["a", "b"])  # chosen: fine
+    check_microphone(None, ["Microphone (USB)"])  # only one: automatic is safe
+    check_microphone(None, [])  # list not loaded yet: the pipeline decides
 
 
 def test_form_keeps_unshown_fields():

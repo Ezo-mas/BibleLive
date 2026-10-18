@@ -30,6 +30,7 @@ from .viewmodel import (
     StatusState,
     apply_event,
     auto_mode_options,
+    check_microphone,
     describe_error,
     describe_event,
     describe_speech,
@@ -349,6 +350,7 @@ class App:
     def on_start(self) -> None:
         try:
             settings = settings_from_form(self.settings, self._read_form())
+            check_microphone(settings.input_device, self.mic_names)
         except FormError as exc:
             msg = describe_error(exc.code, exc.detail)
             self._log(msg, "error")

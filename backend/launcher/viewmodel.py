@@ -102,6 +102,17 @@ def settings_from_form(base: LauncherSettings, form: FormValues) -> LauncherSett
     )
 
 
+def check_microphone(input_device: str | None, mic_names: Sequence[str]) -> None:
+    """Refuse "automatic" when several microphones are connected.
+
+    Automatic can only take the first DirectShow input (ffmpeg cannot see the
+    Windows default), which on a live test was a silent built-in microphone.
+    With one microphone, or the list not loaded yet, automatic stays allowed.
+    """
+    if input_device is None and len(mic_names) > 1:
+        raise FormError("choose_microphone")
+
+
 Option = tuple[str | None, str]  # (stored value, label shown)
 
 
@@ -263,4 +274,5 @@ _KNOWN_ERRORS = {
     "projector_failed",
     "invalid_port",
     "invalid_args",
+    "choose_microphone",
 }
