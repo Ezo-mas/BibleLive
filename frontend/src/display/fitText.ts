@@ -40,6 +40,15 @@ export interface FitTextInput {
   lineHeight: number
   /** Non-text space to leave free; defaults to the projector's allowance. */
   chromePx?: number
+  /** Size bounds; default to the projector's MIN_FONT_SIZE / MAX_FONT_SIZE. */
+  minFontSize?: number
+  maxFontSize?: number
+}
+
+/** Font size bounds for {@link fitFontSizeByMeasurement}, in px. */
+export interface FontSizeBounds {
+  min: number
+  max: number
 }
 
 /**
@@ -49,7 +58,16 @@ export interface FitTextInput {
  * even the smallest font would overflow, so callers always get a usable value.
  */
 export function computeFitFontSize(input: FitTextInput): number {
-  const { charCount, lineCount, widthPx, heightPx, lineHeight, chromePx = CHROME_PX } = input
+  const {
+    charCount,
+    lineCount,
+    widthPx,
+    heightPx,
+    lineHeight,
+    chromePx = CHROME_PX,
+    minFontSize = MIN_FONT_SIZE,
+    maxFontSize = MAX_FONT_SIZE,
+  } = input
 
   const blocks = Math.max(1, lineCount)
   const lines = Math.max(1, heightPx - chromePx)
@@ -62,18 +80,18 @@ export function computeFitFontSize(input: FitTextInput): number {
   }
 
   // Text that fits at the largest size is the common case; skip the search.
-  if (fits(MAX_FONT_SIZE)) return MAX_FONT_SIZE
+  if (fits(maxFontSize)) return maxFontSize
 
   // Otherwise search downward for the largest size that fits.
-  let low = MIN_FONT_SIZE
-  let high = MAX_FONT_SIZE
+  let low = minFontSize
+  let high = maxFontSize
   while (high - low > 0.5) {
     const mid = (low + high) / 2
     if (fits(mid)) low = mid
     else high = mid
   }
   // Clamp so text that overflows even at MIN still renders at a readable size.
-  return Math.max(MIN_FONT_SIZE, Math.round(low))
+  return Math.max(minFontSize, Math.round(low))
 }
 
 /**
@@ -87,12 +105,14 @@ export function computeFitFontSize(input: FitTextInput): number {
  * @param apply Applies a font size to the element being fitted.
  * @param measure Returns the height the text occupies at that size.
  * @param available Height in px the text may occupy.
+ * @param bounds Size bounds; the projector's by default.
  */
 export function fitFontSizeByMeasurement(
   estimate: number,
   apply: (fontSize: number) => void,
   measure: () => number,
-  available: number
+  available: number,
+  bounds: FontSizeBounds = { min: MIN_FONT_SIZE, max: MAX_FONT_SIZE }
 ): number {
   // Not laid out yet (hidden element or jsdom): keep the estimate.
   if (available <= 0) return estimate
@@ -101,14 +121,14 @@ export function fitFontSizeByMeasurement(
   apply(size)
 
   // Too large: shrink until the text fits.
-  while (size > MIN_FONT_SIZE && measure() > available) {
+  while (size > bounds.min && measure() > available) {
     size -= 1
     apply(size)
   }
 
   // Too small: grow while at least 8% of the available height is unused.
   // Re-measure each step because wrapping is not monotonic in font size.
-  while (size < MAX_FONT_SIZE && measure() < available * 0.92) {
+  while (size < bounds.max && measure() < available * 0.92) {
     const next = size + 1
     apply(next)
     if (measure() > available) {
@@ -118,5 +138,5 @@ export function fitFontSizeByMeasurement(
     size = next
   }
 
-  return Math.min(MAX_FONT_SIZE, Math.max(MIN_FONT_SIZE, size))
+  return Math.min(bounds.max, Math.max(bounds.min, size))
 }

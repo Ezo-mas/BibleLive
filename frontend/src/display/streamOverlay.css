@@ -1,0 +1,121 @@
+/* Stream overlay (/display?mode=obs): a lower third for OBS over a transparent
+   page. Sized in viewport units so it scales with the Browser source (set the
+   source to the stream's resolution, e.g. 1920x1080). */
+
+/* OBS composites this page over the camera, so nothing may paint a background. */
+html.stream-overlay-page,
+html.stream-overlay-page body,
+html.stream-overlay-page #root {
+  background: transparent;
+  margin: 0;
+  overflow: hidden;
+}
+
+.stream-overlay {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  color: #fff;
+  font-family: var(--font-serif);
+}
+
+.stream-band {
+  position: absolute;
+  left: 0;
+  right: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1.2vh;
+  padding: 2.2vh 5vw;
+  box-sizing: border-box;
+  opacity: 0;
+  transform: translateY(1.5vh);
+  transition:
+    opacity 0.4s ease,
+    transform 0.4s ease;
+}
+
+.stream-band--bottom {
+  bottom: 0;
+}
+
+.stream-band--top {
+  top: 0;
+  transform: translateY(-1.5vh);
+}
+
+.stream-band--visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* Dark translucent band: readable over any camera shot, still shows the room. */
+.stream-band--band {
+  background: linear-gradient(to top, rgba(8, 10, 14, 0.86), rgba(8, 10, 14, 0.7));
+  border-top: 0.35vh solid #e0a63a;
+}
+
+.stream-band--top.stream-band--band {
+  background: linear-gradient(to bottom, rgba(8, 10, 14, 0.86), rgba(8, 10, 14, 0.7));
+  border-top: none;
+  border-bottom: 0.35vh solid #e0a63a;
+}
+
+/* No band: the text carries its own shadow instead. */
+.stream-band--none .stream-verses,
+.stream-band--none .stream-reference {
+  text-shadow:
+    0 0.15vh 0.4vh rgba(0, 0, 0, 0.9),
+    0 0 1.2vh rgba(0, 0, 0, 0.7);
+}
+
+.stream-reference {
+  flex: 0 0 auto;
+  font-family: var(--font-sans);
+  font-size: 2.4vh;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #e0a63a;
+}
+
+.stream-more {
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+/* The verse block takes the rest of the band; its font is fitted to it. */
+.stream-verses {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+  line-height: 1.3;
+}
+
+.stream-verses-inner {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: baseline;
+  column-gap: 0.4em;
+  row-gap: 0.35em;
+}
+
+.stream-verse {
+  display: contents;
+}
+
+.stream-verse-number {
+  text-align: right;
+  font-size: 0.55em;
+  font-weight: 600;
+  opacity: 0.75;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stream-band {
+    transition: opacity 0.15s ease;
+    transform: none;
+  }
+}
