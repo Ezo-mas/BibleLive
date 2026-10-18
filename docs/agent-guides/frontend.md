@@ -43,6 +43,7 @@ frontend/
 | --- | --- |
 | Change operator UI | `frontend/src/operator/` (+ `operator.css`) |
 | Change display UI / text fitting | `frontend/src/display/` (+ `display.css`, `fitText.ts`) |
+| Stream overlay for OBS (`/display?mode=obs`) | `frontend/src/display/StreamOverlay.tsx`, `streamOverlayOptions.ts` (URL options, fit-or-drop-verses), `streamOverlay.css`; picked in `display/main.tsx` |
 | Change shared WS hook / message types | `frontend/src/shared/useWebSocket.ts`, `types.ts` (mirror of `backend/core/server/models.py`) |
 | History / Show Again staging UI | `frontend/src/operator/components/HistoryPanel.tsx`, `frontend/src/operator/hooks/useOperatorState.ts` |
 | Manual scripture search (Find Scripture) | `frontend/src/operator/components/ScriptureSearch.tsx` |

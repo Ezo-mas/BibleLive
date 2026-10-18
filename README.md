@@ -133,8 +133,27 @@ Then open:
 | URL                | Purpose                                          |
 |--------------------|--------------------------------------------------|
 | `/display`         | Audience screen showing approved references      |
+| `/display?mode=obs` | Stream lower third for OBS (see below)          |
 | `/operator`        | Operator panel: approve/clear pending references, manual passage, history |
 | `/docs`            | Interactive API docs (Swagger UI)                |
+
+### Stream overlay for OBS
+
+Add a **Browser** source in OBS with the URL
+`http://127.0.0.1:8000/display?mode=obs`, width 1920 and height 1080 (the
+stream's resolution). It shows the passage on screen as a lower third over the
+camera, on a transparent page, and follows the projector: same passages, same
+verse limit, cleared with it. Options in the URL:
+
+| Option | Values | Default |
+|---|---|---|
+| `height` | band height, % of the frame (15-60) | `30` |
+| `position` | `bottom`, `top` | `bottom` |
+| `bg` | `band` (dark translucent band), `none` (text with a shadow only) | `band` |
+
+The text shrinks to fit the band but never below what a stream viewer can read
+(about 28 px at 1080p); a passage longer than that shows the verses that fit
+and "+N more verses". Raise `height` to fit more.
 
 ### Run the audio pipeline only
 
