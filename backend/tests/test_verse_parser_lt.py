@@ -209,6 +209,25 @@ class TestContextTTL:
         assert [str(r) for r in sp.feed("Mato 24", 0.0)] == ["Matthew 24"]
         assert [str(r) for r in sp.feed("23 eilutė", 10.0)] == ["Matthew 24:23"]
 
+    def test_cut_between_verse_word_and_its_numbers(self):
+        # Live service 2026-10-18 (12 s cut, interpreted sermon): misheard
+        # English after the verse word, the verses open the next utterance.
+        sp = StreamingParser(language="lt", hold_chapter_only=True)
+        assert sp.feed("Jono dvyliktas skyrius, and versis tvinty to, dvide", 0.0) == []
+        assert [str(r) for r in sp.feed("Dvidešim, dvidešim du tarp atėjusių", 8.0)] == [
+            "John 12:20"
+        ]
+        # Ordinary words after a verse word with no chapter number stay put.
+        sp = StreamingParser(language="lt")
+        sp.feed("Jono 3 skyrius", 0.0)
+        assert sp.feed("ši eilutė labai graži", 5.0) == []
+        assert sp.feed("du dalykai", 10.0) == []
+
+    def test_english_cue_words_from_an_interpreter(self):
+        assert refs("Jono 12 skyrius, and verses 20-22") == ["John 12:20-22"]
+        # Lithuanian "versė" (overturned) folds to "verse": not a verse word.
+        assert refs("Jono 3 skyrius. Jėzus versė du stalus") == ["John 3"]
+
     def test_split_citation_dropped_past_ttl(self):
         sp = StreamingParser(language="lt")
         assert [str(r) for r in sp.feed("Mato 24", 0.0)] == ["Matthew 24"]

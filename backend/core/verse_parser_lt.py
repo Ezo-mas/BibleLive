@@ -69,6 +69,11 @@ _WORD_FORMS: dict[str, set[str]] = {
         "skyrus",
         "kyriaus",  # dropped initial s ("20 kyriaus, 21 eilutės")
         "skyriuj",  # spoken locative ("antram skyriuj")
+        # English, kept by interpreters ("Gospel of John chapter one" /
+        # "Jono dvyliktas skyrius, and verses...") and how Kmynas writes it
+        "chapter",
+        "chapters",
+        "capter",
     },
     VERSE: {
         "eilute",
@@ -121,6 +126,10 @@ _WORD_FORMS: dict[str, set[str]] = {
         "posmai",
         "posmu",
         "posmus",
+        # English, as for "chapter" above ("and versis tvinty to"). Not
+        # "verse": Lithuanian "versė" folds to it ("Jėzus versė du stalus").
+        "verses",
+        "versis",
     },
     PSALM: {
         "psalme",
@@ -163,8 +172,9 @@ AND_WORDS = frozenset({"ir", "i"})  # consecutive-verse range: "4 ir 5" -> 4-5
 # "i" is the unstressed reduced "ir" STT actually writes ("nuo pirmos i
 # trečios" for 1-3). A preposition "į" between numbers ("3 i 16") is rare
 # enough that the gap bound (verse pairs within 5) contains the damage.
+# "and" is the interpreter's English "ir" ("12 skyrius, and versis 20").
 FILLERS = frozenset(
-    {"ir", "nuo", "is", "pradedant", "pradedame", "skaitome", "skaitykime", "pati", "pats"}
+    {"ir", "and", "nuo", "is", "pradedant", "pradedame", "skaitome", "skaitykime", "pati", "pats"}
 )
 # Filler words that, right after a chapter number, announce a verse
 # ("4 skyrius nuo 16 iki 20") even when "eilute" itself is not spoken.
@@ -779,6 +789,32 @@ def _citation_slot(out: list[Token]) -> bool:
         and isinstance(out[-2], str)
         and any(out[-2].startswith(w) for w in _book_words())
     )
+
+
+def drop_dangling_tail(carry: list[Token]) -> list[Token]:
+    """Cut the words after a verse word that ends ``carry`` without its number.
+
+    An utterance cut can fall between a chapter's verse word and its verses,
+    with misheard words in between ("Jono dvyliktas skyrius, and versis
+    tvinty to, dvide" | "Dvidešim, dvidešim du ..." for 12:20-22). Called
+    only when the next segment opens with a number: dropping those words
+    lets it reach the verse word. Only right after "skyrius N" (a filler
+    such as "and" may sit between), and only plain words after it.
+    """
+    for k in range(len(carry) - 1, max(len(carry) - 5, 0), -1):
+        t = carry[k]
+        if isinstance(t, int) or t in (CHAPTER, PSALM):
+            return carry
+        if t == VERSE:
+            c = k - 2 if k >= 3 and carry[k - 1] in FILLERS else k - 1
+            after_chapter = c >= 1 and isinstance(carry[c], int) and carry[c - 1] == CHAPTER
+            tail = carry[k + 1 :]
+            if after_chapter and not any(
+                isinstance(w, str) and any(w.startswith(b) for b in _book_words()) for w in tail
+            ):
+                return carry[: k + 1]
+            return carry
+    return carry
 
 
 def _book_words() -> frozenset[str]:

@@ -1128,9 +1128,12 @@ class StreamingParser:
             # book by an utterance break, which tokenize alone cannot see. A
             # citation word or number must follow ("Viena moteris" stays text).
             new = [1, *new[1:]]
-        toks = self.carry + new
+        carry = self.carry
+        if self.parser.language == "lt" and new and isinstance(new[0], int):
+            carry = _lt.drop_dangling_tail(carry)
+        toks = carry + new
         refs = self.parser._scan(toks, self.ctx)
-        fresh = [r for r in refs if r.end > len(self.carry)]  # skip already-reported ones
+        fresh = [r for r in refs if r.end > len(carry)]  # skip already-reported ones
         self.carry = toks[-self.carry_tokens :]
         if fresh and t_s is not None:
             # A newly reported reference means the context now holds this
