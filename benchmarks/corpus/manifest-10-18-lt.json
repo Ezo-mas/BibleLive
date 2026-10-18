@@ -1,0 +1,24 @@
+{
+  "language": "lt",
+  "schema_version": 1,
+  "recordings": [
+    {
+      "id": "10-18-live-lt",
+      "source": "BibleLive session log 2026-10-18_110325.wav sha256 57a494ad22f23ff94d8b7ef15f51127872f417cb67d59b096d74f2c21cd2022d (live service, Blackmagic input as the pipeline heard it)",
+      "file": "benchmark_audio_10-18.wav",
+      "duration_s": 6691.47,
+      "sha256": "57a494ad22f23ff94d8b7ef15f51127872f417cb67d59b096d74f2c21cd2022d",
+      "sample_rate_hz": 16000,
+      "channels": 1,
+      "speakers": [
+        "speaker-en",
+        "interpreter-lt"
+      ],
+      "audio_quality": "live-event desk feed, 16 kHz mono as captured live (not loudness-normalized)",
+      "language": "lt",
+      "annotation_provenance": "partially-verified",
+      "gold_file": "gold/10-18-live-lt.gold.jsonl",
+      "notes": "First live BibleLive service (Kmynas CPU). English speaker with a Lithuanian interpreter. Gold from the user's timestamps; spans are the live utterance spans; John 1:35-42 and John 12:20-22 checked against Canary transcripts of the clip. Ecclesiastes 1:12 is the interpreter's first (wrong) rendering of 12:1, kept as gold by the user. Run with --t-range 2780:5180 (first to last reference, 40 min)."
+    }
+  ]
+}
