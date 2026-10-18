@@ -570,6 +570,22 @@ class TestWhisperMergedAndGluedWords:
             "Antras Timotiejui, laiškas, pirma septyni, pirmas skyrius septintai lūtėje."
         ) == ["2 Timothy 1:7"]
 
+    def test_person_name_and_a_count_is_not_a_chapter(self):
+        # Book names are people too: words then a bare number, with no
+        # chapter word, is narrative (live service 2026-10-18 reported
+        # "John 2" for "Jonas ir du jo mokiniai").
+        assert refs("vėl stojo Jonas ir du jo mokiniai") == []
+        assert refs("Jona buvo žuvies pilve tris dienas") == []
+        assert refs("Danielius ir trys draugai") == []
+        # ...nor a merged chapter:verse ("dvylika" is not James 1:2).
+        assert refs("Jokūbas turėjo dvylika sūnų") == []
+        # A chapter word or a verse still makes it a citation.
+        assert refs("Jonas, sakė jis, trečias skyrius") == ["John 3"]
+        assert refs("Jonas trys šešiolika") == ["John 3:16"]
+        assert refs("Romiečiams 8") == ["Romans 8"]
+        # A count ending the segment stays: "skyrius" may open the next one.
+        assert refs("čia mato Evangelija vėl apie tuos fariziejus, šeštą") == ["Matthew 6"]
+
     def test_bare_jono_label_stays_silent(self):
         # "Jono laiškas" without its digit could be 1/2/3 John: no bridge,
         # no invented John 5.

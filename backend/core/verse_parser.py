@@ -703,6 +703,12 @@ class ReferenceParser:
             ):
                 break
             k += 1
+        # Ordinary words between the book and the number ("Jonas ir du jo
+        # mokiniai", "Jona buvo žuvies pilve tris dienas"): book names are
+        # people too, so a bare number reached that way with more words after
+        # it is only a chapter when a chapter word says so; a verse after it
+        # still counts.
+        skipped_words = k > j and not bridged_label
         if (
             self.language == "lt"
             and canon == "Numbers"
@@ -803,7 +809,11 @@ class ReferenceParser:
             # only when exactly one split is a valid chapter:verse. A verse
             # word with no verse number after it ("289 eilutės") counts as
             # bare: the number is still merged.
-            if not chapter_kw and (kind is None or (kind == "word" and not self._is_num(toks, kk))):
+            if (
+                not chapter_kw
+                and not skipped_words
+                and (kind is None or (kind == "word" and not self._is_num(toks, kk)))
+            ):
                 split = _split_merged(chapter, nch)
                 if split is not None:
                     if self.validator is not None:
@@ -860,6 +870,12 @@ class ReferenceParser:
                     v1, v2 = glued
             conf = "medium" if kind in ("bare", "dash", "intro") else "high"
             return Reference(canon, chapter, v1, v2, conf, end=end)
+        if skipped_words and not chapter_kw and k < n:
+            # Narrative goes on after the count. A number ending the segment
+            # stays: its chapter word may open the next one ("čia mato
+            # Evangelija vėl apie tuos fariziejus, šeštą" + "Skyrius nuo
+            # pirmos eilutės").
+            return None
         return Reference(canon, chapter, None, None, "medium", end=k)
 
     def _context_ref(self, toks: list[Token], i: int, ctx: Context) -> Reference | None:
