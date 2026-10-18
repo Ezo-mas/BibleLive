@@ -103,6 +103,38 @@ def test_missing_saved_version_falls_back_to_configured_database(bible_dir: Path
         assert second.get("/api/bible-version").json()["version"] == "kjv"
 
 
+def test_fresh_start_opens_the_start_languages_bible(bible_dir: Path, monkeypatch):
+    # Live test 2026-10-18: a fresh install started in Lithuanian showed KJV.
+    monkeypatch.setattr(config, "START_LANGUAGE", "lt")
+    with TestClient(create_app()) as started:
+        assert started.get("/api/bible-version").json()["version"] == "ltb"
+
+
+def test_other_languages_saved_bible_gives_way_to_the_start_language(bible_dir: Path, monkeypatch):
+    # The last service ended in English (KJV saved); this one starts in Lithuanian.
+    with TestClient(create_app()) as first:
+        first.post("/api/bible-version", json={"version": "kjv"})
+    monkeypatch.setattr(config, "START_LANGUAGE", "lt")
+    with TestClient(create_app()) as second:
+        assert second.get("/api/bible-version").json()["version"] == "ltb"
+
+
+def test_hand_picked_bible_survives_the_start_language(bible_dir: Path, monkeypatch):
+    _make_bible(bible_dir / "bible_web.sqlite", "web", "For God so loved the world")
+    with TestClient(create_app()) as first:
+        assert first.post("/api/bible-version", json={"version": "web"}).status_code == 200
+    monkeypatch.setattr(config, "START_LANGUAGE", "lt")
+    with TestClient(create_app()) as second:
+        assert second.get("/api/bible-version").json()["version"] == "web"
+
+
+def test_start_language_without_its_bible_keeps_the_configured_one(bible_dir: Path, monkeypatch):
+    (bible_dir / "bible_ltb.sqlite").unlink()
+    monkeypatch.setattr(config, "START_LANGUAGE", "lt")
+    with TestClient(create_app()) as started:
+        assert started.get("/api/bible-version").json()["version"] == "kjv"
+
+
 def test_empty_translation_is_refused_and_old_one_stays(client: TestClient, bible_dir: Path):
     empty = bible_dir / "bible_empty.sqlite"
     _make_bible(empty, "empty", "x")

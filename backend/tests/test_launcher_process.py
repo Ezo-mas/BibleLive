@@ -35,6 +35,8 @@ def test_commands_and_env(tmp_path):
     assert plan.env["BIBLELIVE_HOST"] == "127.0.0.1"
     assert plan.env["BIBLELIVE_PORT"] == "9100"
     assert plan.env["BIBLELIVE_SETTINGS_PATH"] == str(tmp_path / "data" / "server_settings.json")
+    # The server opens the start language's Bible (fresh install showed KJV).
+    assert plan.env["BIBLELIVE_START_LANGUAGE"] == "lt"
     assert plan.env["PYTHONPATH"].split(os.pathsep)[0] == str(tmp_path / "app" / "backend")
     assert plan.ready_url == "http://127.0.0.1:9100/readyz"
 

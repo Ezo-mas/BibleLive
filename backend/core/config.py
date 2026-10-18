@@ -115,6 +115,10 @@ class Config(BaseSettings):
     # override for the map is JSON, e.g. BIBLELIVE_LANGUAGE_BIBLE_VERSIONS='{"lt":"ltb"}'.
     AUTO_BIBLE_VERSION: bool = True
     LANGUAGE_BIBLE_VERSIONS: dict[str, str] = {"en": "kjv", "lt": "ltb"}
+    # The language the audio pipeline starts in (the launcher sets it). At startup
+    # the server opens that language's translation unless the saved choice is one
+    # the operator picked by hand; None leaves startup to the saved choice alone.
+    START_LANGUAGE: str | None = None
 
     # Follow-along: while a passage is on screen, transcripts from the pipeline are
     # matched against the verses just after it, and operators are told which verse

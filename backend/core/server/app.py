@@ -361,6 +361,8 @@ def create_app(bible_lookup: BibleLookup | None = None) -> FastAPI:
                 app_state.switch_bible_version(saved_version)
             except (KeyError, ValueError, OSError, sqlite3.Error) as e:
                 logger.warning(f"Could not restore Bible version {saved_version!r}: {e!r}")
+        # ...unless the pipeline starts in a language whose translation that is not.
+        app_state.apply_start_language_version(config.START_LANGUAGE, saved_version)
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI):
