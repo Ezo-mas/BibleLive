@@ -4,6 +4,7 @@ import logging
 import os
 import threading
 import time
+from operator import mul
 from pathlib import Path
 from queue import Empty, Full, Queue
 
@@ -36,6 +37,30 @@ logger = logging.getLogger(__name__)
 # Seconds without a single audio frame before the operator is told capture has
 # stalled. Frames arrive every 30 ms, so this is far beyond any normal hiccup.
 AUDIO_STALL_S = 5.0
+
+# Seconds with no sound from the microphone before the operator is told it is
+# silent. A dead input keeps delivering frames, so the stall check never fires
+# for it. Incident (Windows, 2026-10): the launcher auto-picked "Microphone
+# (Realtek(R) Audio)", which delivered about -80 dBFS RMS for 100 s; nothing
+# warned and no references were detected.
+SILENT_MIC_S = 30.0
+# A frame counts as sound when its RMS is above this level (dBFS, 16-bit full
+# scale). Room noise sits at -60 to -45 dBFS and the dead input was at -80, so
+# -70 is the midpoint of that gap: 10 dB clear of both, and a quiet room between
+# speech does not trip the warning.
+SOUND_LEVEL_DBFS = -70.0
+_SOUND_MEAN_SQUARE = (32768 * 10 ** (SOUND_LEVEL_DBFS / 20)) ** 2
+
+
+def frame_is_loud(frame: bytes) -> bool:
+    """Whether a 16-bit mono PCM frame's RMS is above SOUND_LEVEL_DBFS.
+
+    Compares mean squares, so there is no square root or logarithm per frame.
+    Native byte order, which is little-endian on every platform this runs on.
+    """
+    samples = memoryview(frame).cast("h")
+    energy: int = sum(map(mul, samples, samples))
+    return energy > _SOUND_MEAN_SQUARE * len(samples)
 
 
 class BibleLiveAudioProcessor:
@@ -130,6 +155,10 @@ class BibleLiveAudioProcessor:
         # time.monotonic() of the last audio frame; a stalled ffmpeg delivers
         # nothing without exiting, so silence from capture is reported too.
         self._last_frame_at: float | None = None
+        # time.monotonic() of the last frame that was sound, and whether the
+        # silent-microphone warning is up (VAD thread, see _note_microphone_level).
+        self._last_loud_at: float | None = None
+        self._mic_silent_logged = False
         self._consecutive_transcription_errors = 0
         self._parser_problems: list[str] = []
         self.heartbeat: HeartbeatSender | None = (
@@ -184,6 +213,8 @@ class BibleLiveAudioProcessor:
 
             self.is_running = True
             self._last_frame_at = time.monotonic()
+            self._last_loud_at = time.monotonic()
+            self._mic_silent_logged = False
 
             if self.config.session_log_dir:
                 self.session_log = self._open_session_log(self.config.session_log_dir)
@@ -353,9 +384,16 @@ class BibleLiveAudioProcessor:
         elif self.is_running and self._last_frame_at is not None:
             # Capture streams continuously (silence included), so a gap means
             # ffmpeg is stuck, not that the room is quiet.
-            silent_s = time.monotonic() - self._last_frame_at
+            now = time.monotonic()
+            silent_s = now - self._last_frame_at
             if silent_s > AUDIO_STALL_S:
                 problems.append(f"No audio has arrived from the microphone for {silent_s:.0f} s")
+            elif self._last_loud_at is not None and now - self._last_loud_at > SILENT_MIC_S:
+                # Frames arrive but none has any sound in it: a dead or muted input.
+                problems.append(
+                    f"The microphone is silent: no sound for {now - self._last_loud_at:.0f} s. "
+                    "Check that the right microphone is selected and not muted."
+                )
         errors = self._consecutive_transcription_errors
         if errors:
             problems.append(
@@ -416,7 +454,9 @@ class BibleLiveAudioProcessor:
                 continue
 
             self._note_capture_healthy()
-            self._last_frame_at = time.monotonic()
+            now = time.monotonic()
+            self._last_frame_at = now
+            self._note_microphone_level(frame, now)
             self.metrics.audio_chunks_captured += 1
             session_log = getattr(self, "session_log", None)
             if session_log is not None:
@@ -484,6 +524,9 @@ class BibleLiveAudioProcessor:
 
             self.metrics.capture_restarts += 1
             self._capture_down = False
+            # The silence clock runs from the new stream, not from before the outage.
+            self._last_loud_at = time.monotonic()
+            self._mic_silent_logged = False
             session_log = getattr(self, "session_log", None)
             if session_log is not None:
                 session_log.event("capture_restarted")
@@ -499,6 +542,29 @@ class BibleLiveAudioProcessor:
         if streamed >= self.config.capture_healthy_s:
             self._capture_restart_attempt = 0
             self._capture_restarted_at_s = None
+
+    def _note_microphone_level(self, frame: bytes, now: float) -> None:
+        """Track whether the microphone is picking up sound (VAD thread only).
+
+        Only the transitions are logged, never every frame: the warning once
+        when the silence passes SILENT_MIC_S, and the all-clear when sound returns.
+        """
+        if frame_is_loud(frame):
+            self._last_loud_at = now
+            if self._mic_silent_logged:
+                self._mic_silent_logged = False
+                logger.info("The microphone is picking up sound again")
+        elif (
+            not self._mic_silent_logged
+            and self._last_loud_at is not None
+            and now - self._last_loud_at > SILENT_MIC_S
+        ):
+            self._mic_silent_logged = True
+            logger.warning(
+                f"The microphone is silent: no sound above {SOUND_LEVEL_DBFS:.0f} dBFS for "
+                f"{SILENT_MIC_S:.0f} s. Check that the right microphone is selected "
+                f"(--input-device) and not muted."
+            )
 
     def _wait_while_running(self, seconds: float) -> bool:
         """Sleep up to ``seconds``, waking early on stop; return whether still running."""

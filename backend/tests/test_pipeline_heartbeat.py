@@ -3,6 +3,7 @@
 import logging
 import threading
 import time
+from array import array
 from types import SimpleNamespace
 
 import pytest
@@ -11,7 +12,7 @@ import requests
 from audio.config import AudioPipelineConfig
 from audio.heartbeat import HeartbeatSender
 from audio.metrics import PipelineMetrics
-from audio.pipeline import AUDIO_STALL_S, BibleLiveAudioProcessor
+from audio.pipeline import AUDIO_STALL_S, SILENT_MIC_S, BibleLiveAudioProcessor, frame_is_loud
 from audio.stt import Transcription
 
 # Requires the optional audio extras (faster-whisper, webrtcvad, numpy).
@@ -49,6 +50,8 @@ def _processor(stt=None, **config) -> BibleLiveAudioProcessor:
     proc.transcript_sender = SimpleNamespace(submit=lambda text, language: None)
     proc._capture_down = False
     proc._last_frame_at = time.monotonic()
+    proc._last_loud_at = time.monotonic()
+    proc._mic_silent_logged = False
     proc._consecutive_transcription_errors = 0
     proc._parser_problems = []
     proc.verse_text_db_path = None  # set by __init__ in the real pipeline
@@ -172,6 +175,89 @@ def test_missing_bible_database_is_reported(tmp_path):
     assert "could not open the Bible database" in problems[0]
     # Parsing itself still works without the validator.
     assert set(proc._local.streaming_parsers) == {"en", "lt"}
+
+
+# ---------------------------------------------------------------------------
+# Microphone level: a dead input still delivers frames, so only the level shows it
+# ---------------------------------------------------------------------------
+def _tone(dbfs: float) -> bytes:
+    """A 30 ms frame at a constant level, whose RMS is ``dbfs`` (16-bit full scale)."""
+    return array("h", [round(32768 * 10 ** (dbfs / 20))] * 480).tobytes()
+
+
+def test_room_noise_and_speech_are_sound():
+    assert frame_is_loud(_tone(-60.0))  # a quiet room
+    assert frame_is_loud(_tone(-45.0))  # a normal room
+    assert frame_is_loud(_tone(-20.0))  # speech
+
+
+def test_dead_input_and_digital_silence_are_not_sound():
+    assert not frame_is_loud(_tone(-80.0))  # the 2026-10 incident
+    assert not frame_is_loud(b"\0" * 960)
+
+
+def test_sound_threshold_is_minus_70_dbfs():
+    assert not frame_is_loud(_tone(-70.3))  # amplitude 10
+    assert frame_is_loud(_tone(-69.4))  # amplitude 11
+
+
+def test_sound_restarts_the_silence_clock_and_silence_does_not():
+    proc = _processor()
+    proc._last_loud_at = 100.0
+
+    proc._note_microphone_level(_tone(-80.0), 110.0)
+    assert proc._last_loud_at == 100.0
+
+    proc._note_microphone_level(_tone(-60.0), 111.0)
+    assert proc._last_loud_at == 111.0
+
+
+def test_dead_microphone_is_reported_after_30_seconds_and_clears_with_sound(caplog):
+    proc = _processor()
+    start = time.monotonic() - 40  # 40 s of silent frames, ending now
+    proc._last_loud_at = start
+
+    with caplog.at_level(logging.INFO, logger="audio.pipeline"):
+        for frame_no in range(int(40 / 0.03)):
+            proc._note_microphone_level(_tone(-80.0), start + frame_no * 0.03)
+
+        [problem] = proc.health_report()["problems"]
+        assert problem.startswith("The microphone is silent: no sound for ")
+        assert "right microphone" in problem
+
+        # Logged once when the silence passes the limit, not on every frame.
+        warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
+        assert len(warnings) == 1
+
+        proc._note_microphone_level(_tone(-45.0), time.monotonic())
+
+        assert proc.health_report()["problems"] == []
+        infos = [r.getMessage() for r in caplog.records if r.levelno == logging.INFO]
+        assert infos == ["The microphone is picking up sound again"]
+
+
+def test_a_quiet_room_between_speech_is_not_reported(caplog):
+    """Room noise at -60 dBFS is sound, so a minute of it never trips the warning."""
+    proc = _processor()
+    start = time.monotonic() - 60
+    proc._last_loud_at = start
+    room = _tone(-60.0)
+
+    with caplog.at_level(logging.WARNING, logger="audio.pipeline"):
+        for frame_no in range(int(60 / 0.03)):
+            proc._note_microphone_level(room, start + frame_no * 0.03)
+
+    assert proc.health_report()["problems"] == []
+    assert not caplog.records
+
+
+def test_a_stalled_capture_is_not_also_reported_as_a_silent_microphone():
+    proc = _processor()
+    proc._last_loud_at = time.monotonic() - (SILENT_MIC_S + 2)
+    proc._last_frame_at = time.monotonic() - (AUDIO_STALL_S + 2)
+
+    [problem] = proc.health_report()["problems"]
+    assert problem.startswith("No audio has arrived from the microphone for")
 
 
 # ---------------------------------------------------------------------------
