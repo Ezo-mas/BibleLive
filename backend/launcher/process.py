@@ -105,6 +105,9 @@ def build_plan(
     env["BIBLELIVE_AUTO_MODE"] = settings.auto_mode
     env["BIBLELIVE_LOG_LEVEL"] = settings.log_level
     env["PYTHONUNBUFFERED"] = "1"
+    # Output goes to log files; Windows would otherwise write them in cp1252, which
+    # cannot hold Lithuanian letters ("ų"), and every such log line would fail.
+    env["PYTHONIOENCODING"] = "utf-8"
     # faster-whisper (huggingface_hub) caches models under HF_HOME/hub: keep them in the
     # machine-local models dir, not the user profile's ~/.cache.
     env["HF_HOME"] = str(hf_models)
