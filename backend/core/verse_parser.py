@@ -703,6 +703,12 @@ class ReferenceParser:
             ):
                 break
             k += 1
+        # Ordinary words between the book and the number ("Jonas ir du jo
+        # mokiniai", "Jona buvo žuvies pilve tris dienas"): book names are
+        # people too, so a bare number reached that way with more words after
+        # it is only a chapter when a chapter word says so; a verse after it
+        # still counts.
+        skipped_words = k > j and not bridged_label
         if (
             self.language == "lt"
             and canon == "Numbers"
@@ -803,7 +809,11 @@ class ReferenceParser:
             # only when exactly one split is a valid chapter:verse. A verse
             # word with no verse number after it ("289 eilutės") counts as
             # bare: the number is still merged.
-            if not chapter_kw and (kind is None or (kind == "word" and not self._is_num(toks, kk))):
+            if (
+                not chapter_kw
+                and not skipped_words
+                and (kind is None or (kind == "word" and not self._is_num(toks, kk)))
+            ):
                 split = _split_merged(chapter, nch)
                 if split is not None:
                     if self.validator is not None:
@@ -860,6 +870,12 @@ class ReferenceParser:
                     v1, v2 = glued
             conf = "medium" if kind in ("bare", "dash", "intro") else "high"
             return Reference(canon, chapter, v1, v2, conf, end=end)
+        if skipped_words and not chapter_kw and k < n:
+            # Narrative goes on after the count. A number ending the segment
+            # stays: its chapter word may open the next one ("čia mato
+            # Evangelija vėl apie tuos fariziejus, šeštą" + "Skyrius nuo
+            # pirmos eilutės").
+            return None
         return Reference(canon, chapter, None, None, "medium", end=k)
 
     def _context_ref(self, toks: list[Token], i: int, ctx: Context) -> Reference | None:
@@ -1112,9 +1128,12 @@ class StreamingParser:
             # book by an utterance break, which tokenize alone cannot see. A
             # citation word or number must follow ("Viena moteris" stays text).
             new = [1, *new[1:]]
-        toks = self.carry + new
+        carry = self.carry
+        if self.parser.language == "lt" and new and isinstance(new[0], int):
+            carry = _lt.drop_dangling_tail(carry)
+        toks = carry + new
         refs = self.parser._scan(toks, self.ctx)
-        fresh = [r for r in refs if r.end > len(self.carry)]  # skip already-reported ones
+        fresh = [r for r in refs if r.end > len(carry)]  # skip already-reported ones
         self.carry = toks[-self.carry_tokens :]
         if fresh and t_s is not None:
             # A newly reported reference means the context now holds this
@@ -1124,13 +1143,39 @@ class StreamingParser:
         if not self.hold_chapter_only:
             return released + fresh
         held_text = self._held_text
+        # A held cut-off verse gives way to a verse of its chapter that follows.
+        renamed = {(r.book, r.chapter) for r in fresh if r.verse_start is not None}
         for ref in _drop_covered_chapters(self.flush(), fresh):
+            if ref.verse_start is not None and (ref.book, ref.chapter) in renamed:
+                continue
             if segment.strip():  # an empty feed only releases, like flush()
                 ref = self._verse_from_text(ref, f"{held_text} {segment}")
             released.append(ref)
-        self._held = [r for r in fresh if r.verse_start is None]
+        hold = [r for r in fresh if r.verse_start is None or self._cut_off_verse(r, toks)]
+        self._held = hold
         self._held_text = segment
-        return released + [r for r in fresh if r.verse_start is not None]
+        return released + [r for r in fresh if not any(r is h for h in hold)]
+
+    def _cut_off_verse(self, ref: Reference, toks: list[Token]) -> bool:
+        """A bare digit verse ending the segment right after "skyrius N".
+
+        An utterance cut inside a spoken number leaves its first syllables as a
+        digit ("...vienuoliktame skyriuje trys" | "Trisdešim šeštoje eilutė" for
+        Romans 11:36): reported at once it is a wrong verse. Held one segment
+        like a chapter-only reference, it gives way to the verse that follows.
+        The short form "Kolosiečiams trys du." has no chapter word and is a
+        whole citation: it is never held.
+        """
+        return (
+            self.parser.language == "lt"
+            and ref.verse_start is not None
+            and ref.verse_end is None
+            and 2 <= ref.verse_start <= 9
+            and ref.end == len(toks) >= 3
+            and isinstance(toks[-1], int)
+            and isinstance(toks[-2], int)
+            and toks[-3] in self.parser._chapter_words
+        )
 
     def _verse_from_text(self, ref: Reference, text: str) -> Reference:
         """``ref`` with the verse being read aloud filled in, if one matches."""

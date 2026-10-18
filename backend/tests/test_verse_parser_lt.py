@@ -209,6 +209,39 @@ class TestContextTTL:
         assert [str(r) for r in sp.feed("Mato 24", 0.0)] == ["Matthew 24"]
         assert [str(r) for r in sp.feed("23 eilutė", 10.0)] == ["Matthew 24:23"]
 
+    def test_cut_inside_a_spoken_verse_number(self):
+        # 2026-10-18 service (benchmark cut): "trisdešimt šeštoje" split into
+        # "trys" | "Trisdešim šeštoje": Romans 11:3 must not go out first.
+        sp = StreamingParser(language="lt", hold_chapter_only=True)
+        assert sp.feed("parašyta laiške romiečiams vienuoliktame skyriuje trys", 0.0) == []
+        assert [str(r) for r in sp.feed("Trisdešim šeštoje eilutė iš jo", 8.0)] == ["Romans 11:36"]
+        # With no verse after it, the held one goes out one segment late.
+        sp = StreamingParser(language="lt", hold_chapter_only=True)
+        assert sp.feed("romiečiams vienuoliktame skyriuje trys", 0.0) == []
+        assert [str(r) for r in sp.feed("Tai labai svarbi vieta", 8.0)] == ["Romans 11:3"]
+        # The short form is a whole citation and is never held.
+        sp = StreamingParser(language="lt", hold_chapter_only=True)
+        assert [str(r) for r in sp.feed("Filipiečiams keturi devyni.", 0.0)] == ["Philippians 4:9"]
+
+    def test_cut_between_verse_word_and_its_numbers(self):
+        # Live service 2026-10-18 (12 s cut, interpreted sermon): misheard
+        # English after the verse word, the verses open the next utterance.
+        sp = StreamingParser(language="lt", hold_chapter_only=True)
+        assert sp.feed("Jono dvyliktas skyrius, and versis tvinty to, dvide", 0.0) == []
+        assert [str(r) for r in sp.feed("Dvidešim, dvidešim du tarp atėjusių", 8.0)] == [
+            "John 12:20"
+        ]
+        # Ordinary words after a verse word with no chapter number stay put.
+        sp = StreamingParser(language="lt")
+        sp.feed("Jono 3 skyrius", 0.0)
+        assert sp.feed("ši eilutė labai graži", 5.0) == []
+        assert sp.feed("du dalykai", 10.0) == []
+
+    def test_english_cue_words_from_an_interpreter(self):
+        assert refs("Jono 12 skyrius, and verses 20-22") == ["John 12:20-22"]
+        # Lithuanian "versė" (overturned) folds to "verse": not a verse word.
+        assert refs("Jono 3 skyrius. Jėzus versė du stalus") == ["John 3"]
+
     def test_split_citation_dropped_past_ttl(self):
         sp = StreamingParser(language="lt")
         assert [str(r) for r in sp.feed("Mato 24", 0.0)] == ["Matthew 24"]
@@ -554,6 +587,24 @@ class TestWhisperMergedAndGluedWords:
             "Pirmoje metraščių knygoje, apie jį, ketvirtame skyriuje, devinta dešimta eilutė"
         ) == ["1 Chronicles 4:9-10"]
 
+    def test_dash_after_chapter_word_is_punctuation(self):
+        # Live service 2026-10-18: the dash split the pair into 1:35 + 1:42.
+        assert refs("Jono pirmas skyrius – trisdešim penkta, keturiasdešim antra eilutės") == [
+            "John 1:35-42"
+        ]
+        assert refs("Jono trečias skyrius – šešiolikta eilutė") == ["John 3:16"]
+        assert refs("Morkaus 12-30") == ["Mark 12:30"]
+
+    def test_stray_digit_inside_a_verse_pair(self):
+        # Kmynas heard a slurred join as "trys" (Canary: "35-42").
+        assert refs("Jono pirmas skyrius, trisdešim penkta, trys keturiasdešim antra eilutės") == [
+            "John 1:35-42"
+        ]
+        # Not a digit above the first verse, a long span, or without a chapter word.
+        assert refs("Jono pirmas skyrius 12, 3, 50 eilutės") == ["John 1:12", "John 1:50"]
+        assert refs("Jono 15, 3, 20 eilutės") == ["John 15:3", "John 15:20"]
+        assert refs("Mato penktas skyrius 3 5 7 eilutės") == ["Matthew 5:3", "Matthew 5:7"]
+
     def test_gap_skip_stops_at_numbers_and_books(self):
         # "Mato" stops the skip: "Jono" finds nothing, "Mato 5" still parses.
         assert refs("Jono. Mato 5 skyrius") == ["Matthew 5"]
@@ -569,6 +620,22 @@ class TestWhisperMergedAndGluedWords:
         assert refs(
             "Antras Timotiejui, laiškas, pirma septyni, pirmas skyrius septintai lūtėje."
         ) == ["2 Timothy 1:7"]
+
+    def test_person_name_and_a_count_is_not_a_chapter(self):
+        # Book names are people too: words then a bare number, with no
+        # chapter word, is narrative (live service 2026-10-18 reported
+        # "John 2" for "Jonas ir du jo mokiniai").
+        assert refs("vėl stojo Jonas ir du jo mokiniai") == []
+        assert refs("Jona buvo žuvies pilve tris dienas") == []
+        assert refs("Danielius ir trys draugai") == []
+        # ...nor a merged chapter:verse ("dvylika" is not James 1:2).
+        assert refs("Jokūbas turėjo dvylika sūnų") == []
+        # A chapter word or a verse still makes it a citation.
+        assert refs("Jonas, sakė jis, trečias skyrius") == ["John 3"]
+        assert refs("Jonas trys šešiolika") == ["John 3:16"]
+        assert refs("Romiečiams 8") == ["Romans 8"]
+        # A count ending the segment stays: "skyrius" may open the next one.
+        assert refs("čia mato Evangelija vėl apie tuos fariziejus, šeštą") == ["Matthew 6"]
 
     def test_bare_jono_label_stays_silent(self):
         # "Jono laiškas" without its digit could be 1/2/3 John: no bridge,
