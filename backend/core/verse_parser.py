@@ -1143,13 +1143,39 @@ class StreamingParser:
         if not self.hold_chapter_only:
             return released + fresh
         held_text = self._held_text
+        # A held cut-off verse gives way to a verse of its chapter that follows.
+        renamed = {(r.book, r.chapter) for r in fresh if r.verse_start is not None}
         for ref in _drop_covered_chapters(self.flush(), fresh):
+            if ref.verse_start is not None and (ref.book, ref.chapter) in renamed:
+                continue
             if segment.strip():  # an empty feed only releases, like flush()
                 ref = self._verse_from_text(ref, f"{held_text} {segment}")
             released.append(ref)
-        self._held = [r for r in fresh if r.verse_start is None]
+        hold = [r for r in fresh if r.verse_start is None or self._cut_off_verse(r, toks)]
+        self._held = hold
         self._held_text = segment
-        return released + [r for r in fresh if r.verse_start is not None]
+        return released + [r for r in fresh if not any(r is h for h in hold)]
+
+    def _cut_off_verse(self, ref: Reference, toks: list[Token]) -> bool:
+        """A bare digit verse ending the segment right after "skyrius N".
+
+        An utterance cut inside a spoken number leaves its first syllables as a
+        digit ("...vienuoliktame skyriuje trys" | "Trisdešim šeštoje eilutė" for
+        Romans 11:36): reported at once it is a wrong verse. Held one segment
+        like a chapter-only reference, it gives way to the verse that follows.
+        The short form "Kolosiečiams trys du." has no chapter word and is a
+        whole citation: it is never held.
+        """
+        return (
+            self.parser.language == "lt"
+            and ref.verse_start is not None
+            and ref.verse_end is None
+            and 2 <= ref.verse_start <= 9
+            and ref.end == len(toks) >= 3
+            and isinstance(toks[-1], int)
+            and isinstance(toks[-2], int)
+            and toks[-3] in self.parser._chapter_words
+        )
 
     def _verse_from_text(self, ref: Reference, text: str) -> Reference:
         """``ref`` with the verse being read aloud filled in, if one matches."""

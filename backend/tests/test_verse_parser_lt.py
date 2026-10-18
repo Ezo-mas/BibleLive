@@ -209,6 +209,20 @@ class TestContextTTL:
         assert [str(r) for r in sp.feed("Mato 24", 0.0)] == ["Matthew 24"]
         assert [str(r) for r in sp.feed("23 eilutė", 10.0)] == ["Matthew 24:23"]
 
+    def test_cut_inside_a_spoken_verse_number(self):
+        # 2026-10-18 service (benchmark cut): "trisdešimt šeštoje" split into
+        # "trys" | "Trisdešim šeštoje": Romans 11:3 must not go out first.
+        sp = StreamingParser(language="lt", hold_chapter_only=True)
+        assert sp.feed("parašyta laiške romiečiams vienuoliktame skyriuje trys", 0.0) == []
+        assert [str(r) for r in sp.feed("Trisdešim šeštoje eilutė iš jo", 8.0)] == ["Romans 11:36"]
+        # With no verse after it, the held one goes out one segment late.
+        sp = StreamingParser(language="lt", hold_chapter_only=True)
+        assert sp.feed("romiečiams vienuoliktame skyriuje trys", 0.0) == []
+        assert [str(r) for r in sp.feed("Tai labai svarbi vieta", 8.0)] == ["Romans 11:3"]
+        # The short form is a whole citation and is never held.
+        sp = StreamingParser(language="lt", hold_chapter_only=True)
+        assert [str(r) for r in sp.feed("Filipiečiams keturi devyni.", 0.0)] == ["Philippians 4:9"]
+
     def test_cut_between_verse_word_and_its_numbers(self):
         # Live service 2026-10-18 (12 s cut, interpreted sermon): misheard
         # English after the verse word, the verses open the next utterance.
