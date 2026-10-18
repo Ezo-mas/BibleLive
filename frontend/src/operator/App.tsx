@@ -18,6 +18,7 @@ import { ConnectionBanner } from './components/ConnectionBanner'
 import { PipelineBanner } from './components/PipelineBanner'
 import { FeedbackNotice } from './components/FeedbackNotice'
 import { TokenPrompt } from './components/TokenPrompt'
+import { useI18n } from '../shared/i18nContext'
 import '../styles/tokens.css'
 import '../styles/global.css'
 import './operator.css'
@@ -79,6 +80,13 @@ export default function App() {
       refreshBibleVersion()
     }
   }, [settingsOpen, isConnected, refreshSpokenLanguage, refreshBibleVersion])
+
+  // The launcher's interface language is asked for again on connect: the operator's
+  // token is often entered only after the first request, which the server refuses.
+  const { refreshServerLanguage } = useI18n()
+  useEffect(() => {
+    if (isConnected) refreshServerLanguage()
+  }, [isConnected, refreshServerLanguage])
 
   function openSettings(section: SettingsSection) {
     setSettingsSection(section)

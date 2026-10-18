@@ -1,4 +1,5 @@
 import { useId } from 'react'
+import { useI18n } from '../../shared/i18nContext'
 import { AUTO_MODE_OPTIONS, autoModeOption } from '../autoMode'
 import type { AutoMode } from '../../shared/types'
 
@@ -25,6 +26,7 @@ export function AutoApproveControls({
   onAutoModeChange,
 }: AutoApproveControlsProps) {
   const descriptionId = useId()
+  const { t } = useI18n()
   const active = autoModeOption(autoMode)
 
   return (
@@ -32,15 +34,15 @@ export function AutoApproveControls({
       {/* Not a display setting, but it reuses the same row and button styling so
           the console keeps one control vocabulary. */}
       <div className="operator-setting-header">
-        <span className="operator-setting-label">Auto-approve</span>
+        <span className="operator-setting-label">{t('settings.sectionAuto')}</span>
         <span className={`operator-setting-value ${autoMode === 'off' ? '' : 'is-on'}`}>
-          {active.label}
+          {t(active.labelKey)}
         </span>
       </div>
       <div
         className="operator-verse-options"
         role="group"
-        aria-label="Auto-approve mode"
+        aria-label={t('auto.mode')}
         aria-describedby={descriptionId}
       >
         {AUTO_MODE_OPTIONS.map(option => (
@@ -52,12 +54,12 @@ export function AutoApproveControls({
             disabled={disabled}
             onClick={() => onAutoModeChange(option.value)}
           >
-            {option.label}
+            {t(option.labelKey)}
           </button>
         ))}
       </div>
       <p className="operator-setting-hint" id={descriptionId}>
-        {active.description}
+        {t(active.descriptionKey)}
       </p>
     </div>
   )

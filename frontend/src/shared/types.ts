@@ -242,10 +242,23 @@ export interface AppStateSnapshot {
  */
 export type PipelineHealth = 'unknown' | 'ok' | 'degraded' | 'offline'
 
+/**
+ * One thing the audio pipeline reports as wrong. `code` is stable and the console
+ * translates it; `params` fill the translation; `text` is the server's English
+ * sentence, shown when the console has no translation for the code.
+ */
+export interface PipelineIssue {
+  code: string
+  params: Record<string, string | number>
+  text: string
+}
+
 export interface PipelineStatus {
   status: PipelineHealth
   language: string | null
   /** One sentence per thing that has stopped working; empty unless degraded. */
   problems: string[]
+  /** The same problems, structured. Absent from older servers, which send only `problems`. */
+  issues?: PipelineIssue[]
   seconds_since_report: number | null
 }

@@ -1,5 +1,8 @@
 import { AlertCircleIcon } from '../../components'
-import type { PipelineStatus } from '../../shared/types'
+import { hasMessage } from '../../shared/i18n'
+import type { Translator } from '../../shared/i18n'
+import { useI18n } from '../../shared/i18nContext'
+import type { PipelineIssue, PipelineStatus } from '../../shared/types'
 
 export interface PipelineBannerProps {
   status: PipelineStatus | null
@@ -15,9 +18,14 @@ export interface PipelineBannerProps {
  * display keep working either way, and the banner says so.
  */
 export function PipelineBanner({ status }: PipelineBannerProps) {
+  const { t } = useI18n()
   if (status === null || (status.status !== 'offline' && status.status !== 'degraded')) {
     return null
   }
+
+  // Structured issues are translated by code; a server without them, or a code this
+  // console has no translation for, falls back to the sentence the server sent.
+  const issues = status.issues ?? []
 
   return (
     <div className="operator-pipeline-banner" role="alert">
@@ -27,21 +35,23 @@ export function PipelineBanner({ status }: PipelineBannerProps) {
       <div className="operator-pipeline-banner-text">
         {status.status === 'offline' ? (
           <p>
-            <strong>Speech detection has stopped.</strong> The audio pipeline is not reporting
-            {status.seconds_since_report !== null &&
-              ` (last heard ${formatAge(status.seconds_since_report)} ago)`}
-            , so no new references will arrive. Find Scripture still works.
+            <strong>{t('pipeline.offlineTitle')}</strong>{' '}
+            {status.seconds_since_report !== null
+              ? t('pipeline.offlineBodyAge', { age: formatAge(status.seconds_since_report, t) })
+              : t('pipeline.offlineBody')}
           </p>
         ) : (
           <>
             <p>
-              <strong>Speech detection has a problem.</strong> References may be missed until it is
-              fixed. Find Scripture still works.
+              <strong>{t('pipeline.degradedTitle')}</strong> {t('pipeline.degradedBody')}
             </p>
             <ul>
-              {status.problems.map(problem => (
-                <li key={problem}>{problem}</li>
-              ))}
+              {issues.length > 0
+                ? issues.map((issue, index) => (
+                    // A code can repeat (one parser_failed per language): index keeps keys unique.
+                    <li key={`${index}-${issue.code}`}>{issueText(issue, t)}</li>
+                  ))
+                : status.problems.map(problem => <li key={problem}>{problem}</li>)}
             </ul>
           </>
         )}
@@ -50,7 +60,20 @@ export function PipelineBanner({ status }: PipelineBannerProps) {
   )
 }
 
-function formatAge(seconds: number): string {
-  if (seconds < 90) return `${Math.round(seconds)} s`
-  return `${Math.round(seconds / 60)} min`
+/** The console's wording for one issue, or the server's own sentence when there is none. */
+function issueText(issue: PipelineIssue, t: Translator): string {
+  const key = `pipeline.issue.${issue.code}`
+  if (!hasMessage(key)) return issue.text
+  const params = { ...issue.params }
+  // The thread's role is a word too, so it is translated before it is put in the sentence.
+  if (issue.code === 'thread_stopped' && typeof params.role === 'string') {
+    const roleKey = `pipeline.role.${params.role}`
+    if (hasMessage(roleKey)) params.role = t(roleKey)
+  }
+  return t(key, params)
+}
+
+function formatAge(seconds: number, t: Translator): string {
+  if (seconds < 90) return t('pipeline.ageSeconds', { seconds: Math.round(seconds) })
+  return t('pipeline.ageMinutes', { minutes: Math.round(seconds / 60) })
 }

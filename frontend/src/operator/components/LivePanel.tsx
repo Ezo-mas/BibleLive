@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import { MonitorIcon } from '../../components'
+import { useI18n } from '../../shared/i18nContext'
 import { PanelHint } from './PanelHint'
 import { previewFontSize } from '../previewFit'
 import { formatReference } from '../../shared/reference'
@@ -25,16 +26,17 @@ export interface LivePanelProps {
  * screen?" without walking over to the projector.
  */
 export function LivePanel({ reference, verseLimit, displayTheme, children }: LivePanelProps) {
+  const { t } = useI18n()
   const verses = selectVerses(reference, verseLimit)
   const hiddenCount = hiddenVerseCount(reference, verseLimit)
 
   return (
-    <section className="operator-stage-panel operator-live" aria-label="On display now">
+    <section className="operator-stage-panel operator-live" aria-label={t('stage.onDisplayAria')}>
       <div className="operator-stage-header">
-        <h2 className="operator-stage-title">On Display</h2>
+        <h2 className="operator-stage-title">{t('stage.onDisplay')}</h2>
         <span className={`operator-live-badge ${reference ? 'is-live' : ''}`}>
           <span className="operator-live-dot" aria-hidden="true" />
-          {reference ? 'Live' : 'Idle'}
+          {reference ? t('stage.live') : t('stage.idle')}
         </span>
       </div>
 
@@ -61,7 +63,7 @@ export function LivePanel({ reference, verseLimit, displayTheme, children }: Liv
 
           {hiddenCount > 0 && (
             <div className="operator-live-note">
-              +{hiddenCount} more verse{hiddenCount === 1 ? '' : 's'}
+              {t('stage.moreVerses', { count: hiddenCount })}
             </div>
           )}
         </div>
@@ -69,8 +71,8 @@ export function LivePanel({ reference, verseLimit, displayTheme, children }: Liv
         <div className="operator-stage is-empty">
           <PanelHint
             icon={<MonitorIcon />}
-            title="Nothing on display"
-            hint="Approved references appear here and on the projector."
+            title={t('stage.nothingOnDisplay')}
+            hint={t('stage.approvedHint')}
           />
         </div>
       )}

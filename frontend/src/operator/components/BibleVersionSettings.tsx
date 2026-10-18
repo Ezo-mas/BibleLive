@@ -1,5 +1,6 @@
 import { useId } from 'react'
 import { AlertCircleIcon } from '../../components'
+import { useI18n } from '../../shared/i18nContext'
 import { bibleVersionLabel } from '../bibleVersionApi'
 import type { BibleVersionState } from '../hooks/useBibleVersion'
 
@@ -19,21 +20,22 @@ export interface BibleVersionSettingsProps {
  */
 export function BibleVersionSettings({ state, disabled }: BibleVersionSettingsProps) {
   const hintId = useId()
+  const { t } = useI18n()
   const { version, available, error, isSwitching, change } = state
   const locked = disabled || isSwitching
 
   return (
     <div className="operator-setting">
       <div className="operator-setting-header">
-        <span className="operator-setting-label">Bible version</span>
+        <span className="operator-setting-label">{t('settings.bibleVersion')}</span>
         <span className="operator-setting-value">
-          {isSwitching ? 'Switching…' : version ? bibleVersionLabel(version) : ''}
+          {isSwitching ? t('settings.switching') : version ? bibleVersionLabel(version, t) : ''}
         </span>
       </div>
       <div
         className="operator-verse-options"
         role="group"
-        aria-label="Bible version"
+        aria-label={t('settings.bibleVersion')}
         aria-describedby={hintId}
       >
         {available.map(id => (
@@ -50,7 +52,7 @@ export function BibleVersionSettings({ state, disabled }: BibleVersionSettingsPr
         ))}
       </div>
       <p className="operator-setting-hint" id={hintId}>
-        Follows the spoken language by default. A passage already on the display stays as it is.
+        {t('settings.versionHint')}
       </p>
       {error && (
         <p className="operator-scripture-error">

@@ -5,6 +5,8 @@ import {
   fetchSpokenLanguage,
   spokenLanguageLabel,
 } from '../languageApi'
+import { useI18n } from '../../shared/i18nContext'
+import type { Translator } from '../../shared/i18n'
 
 /**
  * Where the language reading stands.
@@ -32,8 +34,8 @@ export interface SpokenLanguageState {
 
 type Notify = (tone: 'info' | 'error', text: string) => void
 
-function messageOf(error: unknown): string {
-  return error instanceof Error ? error.message : 'The spoken language could not be changed.'
+function messageOf(error: unknown, t: Translator): string {
+  return error instanceof Error ? error.message : t('language.changeFailed')
 }
 
 /** Whether a failure means the pipeline itself is out of reach (not a refusal). */
@@ -63,19 +65,24 @@ export function useSpokenLanguage(
   const [status, setStatus] = useState<SpokenLanguageStatus>('loading')
   const [error, setError] = useState<string | null>(null)
   const [isSwitching, setIsSwitching] = useState(false)
+  const { t } = useI18n()
 
   // Held in refs so `change` keeps a stable identity and the guards read the
-  // current values rather than the ones from the render that created them.
+  // current values rather than the ones from the render that created them. The
+  // translator is held the same way, so a language switch does not re-read the
+  // pipeline.
   const readSeqRef = useRef(0)
   const switchingRef = useRef(false)
   const languageRef = useRef<string | null>(null)
   languageRef.current = language
   const notifyRef = useRef(notify)
   notifyRef.current = notify
+  const tRef = useRef(t)
+  tRef.current = t
 
   const refresh = useCallback(() => {
     const seq = (readSeqRef.current += 1)
-    fetchSpokenLanguage(token)
+    fetchSpokenLanguage(token, tRef.current)
       .then(current => {
         if (seq !== readSeqRef.current) return
         setLanguage(current)
@@ -85,7 +92,7 @@ export function useSpokenLanguage(
       .catch((failure: unknown) => {
         if (seq !== readSeqRef.current) return
         setStatus('unavailable')
-        setError(messageOf(failure))
+        setError(messageOf(failure, tRef.current))
       })
   }, [token])
 
@@ -111,14 +118,19 @@ export function useSpokenLanguage(
       setError(null)
       // The switch is newer than any read still in flight, so those are dropped.
       readSeqRef.current += 1
-      changeSpokenLanguage(next, token)
+      changeSpokenLanguage(next, token, tRef.current)
         .then(confirmed => {
           setLanguage(confirmed)
           setStatus('ready')
-          notifyRef.current('info', `Spoken language: ${spokenLanguageLabel(confirmed)}`)
+          notifyRef.current(
+            'info',
+            tRef.current('language.changed', {
+              language: spokenLanguageLabel(confirmed, tRef.current),
+            })
+          )
         })
         .catch((failure: unknown) => {
-          const message = messageOf(failure)
+          const message = messageOf(failure, tRef.current)
           setError(message)
           if (isUnreachable(failure)) setStatus('unavailable')
           notifyRef.current('error', message)

@@ -1,4 +1,5 @@
 import { AlertCircleIcon, CheckIcon, InfoIcon, XIcon } from '../../components'
+import { useI18n } from '../../shared/i18nContext'
 import type { OperatorNotice } from '../hooks/useOperatorState'
 
 export interface FeedbackNoticeProps {
@@ -27,6 +28,7 @@ const TONE_ICONS = {
  * region follows the message wherever it sits.
  */
 export function FeedbackNotice({ notice, onDismiss }: FeedbackNoticeProps) {
+  const { t } = useI18n()
   if (!notice) return null
 
   return (
@@ -44,7 +46,7 @@ export function FeedbackNotice({ notice, onDismiss }: FeedbackNoticeProps) {
         type="button"
         className="operator-feedback-dismiss"
         onClick={onDismiss}
-        aria-label="Dismiss message"
+        aria-label={t('app.dismissNotice')}
       >
         <XIcon />
       </button>

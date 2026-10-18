@@ -1,0 +1,267 @@
+/**
+ * The console's English strings. This table defines the message keys: every
+ * other language must list exactly these keys (`messages.lt.ts` is typed that way,
+ * so tsc reports a missing or extra key).
+ *
+ * `{name}` placeholders are filled in by `t`. An object value is a plural message:
+ * the `count` parameter picks the form (see `pluralCategory` in `i18n.ts`).
+ *
+ * Not translated, on purpose: Bible text, book names from the server, reference
+ * strings such as "John 3:16", console log lines, and the brand name.
+ */
+export const en = {
+  // Shared components
+  'connection.connected': 'Connected',
+  'connection.connecting': 'Connecting',
+  'connection.disconnected': 'Disconnected',
+  'connection.statusSr': 'Connection status: {state}',
+  'theme.light': 'Light',
+  'theme.dark': 'Dark',
+  'theme.system': 'System',
+  'theme.lightAria': 'Light theme',
+  'theme.darkAria': 'Dark theme',
+  'theme.systemAria': 'System theme',
+  'theme.group': 'Theme selection',
+
+  // Header, sign-in, connection
+  'app.operatorTitle': 'BibleLive Operator',
+  'app.dismissNotice': 'Dismiss message',
+  'header.settings': 'Settings',
+  'header.logout': 'Logout',
+  'header.displayActive': 'Display Active',
+  'token.label': 'Operator Token',
+  'token.placeholder': 'Enter your operator token',
+  'token.connect': 'Connect',
+  'token.authFailed': 'Authentication failed. Please enter your operator token.',
+  'connection.lost': 'Not connected to the server.',
+  'connection.paused': 'Approvals and settings changes are paused until the connection is back.',
+  'connection.reconnect': 'Reconnect',
+
+  // Pipeline health
+  'pipeline.offlineTitle': 'Speech detection has stopped.',
+  'pipeline.offlineBody':
+    'The audio pipeline is not reporting, so no new references will arrive. Find Scripture still works.',
+  'pipeline.offlineBodyAge':
+    'The audio pipeline is not reporting (last heard {age} ago), so no new references will arrive. Find Scripture still works.',
+  'pipeline.degradedTitle': 'Speech detection has a problem.',
+  'pipeline.degradedBody':
+    'References may be missed until it is fixed. Find Scripture still works.',
+  'pipeline.ageSeconds': '{seconds} s',
+  'pipeline.ageMinutes': '{minutes} min',
+  'pipeline.role.listening': 'listening',
+  'pipeline.role.transcription': 'transcription',
+  'pipeline.issue.thread_stopped': "The pipeline's {role} thread has stopped; restart the pipeline",
+  'pipeline.issue.capture_stopped': 'Audio capture stopped; the pipeline is trying to restart it',
+  'pipeline.issue.audio_stalled': 'No audio has arrived from the microphone for {seconds} s',
+  'pipeline.issue.mic_silent':
+    'The microphone is silent: no sound for {seconds} s. Check that the right microphone is selected and not muted.',
+  'pipeline.issue.stt_failed': {
+    one: 'Speech recognition failed on the last {count} utterance',
+    other: 'Speech recognition failed on the last {count} utterances',
+  },
+  'pipeline.issue.delivery_failed': 'The last detected reference was not delivered: {detail}',
+  'pipeline.issue.bible_db_unavailable':
+    'The pipeline could not open the Bible database, so detections are not checked against it',
+  'pipeline.issue.parser_failed':
+    "The '{language}' reference parser failed to start, so no references are detected in that language",
+
+  // Find Scripture
+  'search.title': 'Find Scripture',
+  'search.looking': 'Looking up…',
+  'search.sectionAria': 'Find scripture',
+  'search.label': 'Find scripture by book or reference',
+  'search.placeholder': 'gen, john 3:16',
+  'search.resultsLabel': 'Scripture search results',
+  'search.retry': 'Retry',
+  'search.stageAria': '{label} — stage in Up Next',
+  'search.bookAria': '{name} — select this book',
+  'search.complete': 'Complete reference',
+  'search.showMore': 'Show {count} more',
+  'search.hintDefault': 'Type a book or a reference, for example "gen", "john 3:16", or "ps 23".',
+  'search.hintLoading': 'Loading the book list…',
+  'search.hintReference': 'Press Enter to stage it in Up Next, or Shift+Enter to show it directly.',
+  'search.hintBook': 'Press Enter to pick {book}, then type a chapter.',
+  'search.hintKeepTyping': 'Keep typing a book name.',
+  'search.wholeChapter': 'Whole chapter — the server opens at verse 1',
+  'search.booksFailed': 'Could not load the book list.',
+  'search.lookupFailed': 'Could not look that up.',
+  'scripture.useChapterVerse':
+    'Use a chapter and verse, for example "{name} 3:16" or "{name} 3:16-18".',
+  'scripture.tooManyNumbers':
+    'Too many numbers — use a chapter and a verse, for example "{name} 3:16-18".',
+  'scripture.ambiguousRange':
+    '"{name} {from}-{to}" is ambiguous (a chapter range, or verses of which chapter?); write a chapter first, for example "{name} {from}:1".',
+  'scripture.chapterMin': 'Chapter numbers start at 1.',
+  'scripture.chapterLimit': {
+    one: '{name} has {count} chapter.',
+    other: '{name} has {count} chapters.',
+  },
+  'scripture.verseMin': 'Verse numbers start at 1.',
+  'scripture.rangeOrder': 'The verse range must start at or before its end.',
+  'scripture.noBook': 'No book matches "{book}".',
+  'scripture.chapterCount': {
+    one: '{count} chapter',
+    other: '{count} chapters',
+  },
+
+  // Settings dialog
+  'settings.title': 'Settings',
+  'settings.close': 'Close settings',
+  'settings.sectionDisplay': 'Display',
+  'settings.sectionAudio': 'Audio',
+  'settings.sectionAuto': 'Auto-approve',
+  'settings.sectionShortcuts': 'Keyboard Shortcuts',
+  'settings.shortcutMove': 'Move the pending selection',
+  'settings.shortcutShow': 'Show the staged reference; in Find Scripture, stage the top result',
+  'settings.shortcutShift': 'In Find Scripture, show the resolved passage directly',
+  'settings.shortcutEsc': 'Clear the selection; close this dialog when it is open',
+  'settings.verses': 'Verses shown',
+  'settings.versesGroup': 'Verses shown on display',
+  'settings.versesAll': 'All',
+  'settings.versesDefault': 'Default {count}. Longer passages shrink to fit.',
+  'settings.background': 'Display background',
+  'settings.backgroundGroup': 'Display background theme',
+  'settings.bgDark': 'Dark',
+  'settings.bgLight': 'Light',
+  'settings.bgHint': 'Dark is easier on the eyes in a lit room.',
+  'settings.appTheme': 'App theme',
+  'settings.appThemeHint':
+    'Light, dark, or follow this computer’s setting. This affects the operator console only.',
+  'settings.interfaceLanguage': 'Interface language',
+  'settings.interfaceEnglish': 'English',
+  'settings.interfaceLithuanian': 'Lietuvių',
+  'settings.interfaceAuto': 'Auto',
+  'settings.interfaceHint':
+    'Applies to this browser only. Auto follows the launcher’s setting, then this computer’s language.',
+  'settings.spokenLanguage': 'Spoken language',
+  'settings.switching': 'Switching…',
+  'settings.checkAgain': 'Check again',
+  'settings.checkingPipeline': 'Checking the audio pipeline…',
+  'settings.takesEffect':
+    'Takes effect immediately, with no restart. Anything being spoken at the moment you switch is dropped.',
+  'settings.bibleVersion': 'Bible version',
+  'settings.versionHint':
+    'Follows the spoken language by default. A passage already on the display stays as it is.',
+
+  // Languages, Bible versions, auto-approve
+  'language.en': 'English',
+  'language.lt': 'Lithuanian',
+  'language.changeFailed': 'The spoken language could not be changed.',
+  'language.controlFailed': 'Language control failed (HTTP {status}).',
+  'language.badReply': 'The server sent a language reply the console could not read.',
+  'language.readUnreachable': 'Could not reach the server to read the spoken language.',
+  'language.changeUnreachable': 'Could not reach the server to change the spoken language.',
+  'language.changed': 'Spoken language: {language}',
+  'version.kjv': 'King James (KJV)',
+  'version.web': 'World English (WEB)',
+  'version.ltb': 'Lithuanian (LTB)',
+  'version.changeFailed': 'The Bible version could not be changed.',
+  'version.requestFailed': 'Bible version request failed (HTTP {status}).',
+  'version.badReply': 'The server sent a Bible version reply the console could not read.',
+  'version.readUnreachable': 'Could not reach the server to read the Bible version.',
+  'version.changeUnreachable': 'Could not reach the server to change the Bible version.',
+  'version.changed': 'Bible version: {version}',
+  'auto.compactLabel': 'Auto-approve: ',
+  'auto.compactTitle': 'Open auto-approve settings',
+  'auto.mode': 'Auto-approve mode',
+  'auto.off': 'Off',
+  'auto.offDesc': 'Every new detection waits for your approval.',
+  'auto.high': 'High',
+  'auto.highDesc': 'New high-confidence detections go straight to the display.',
+  'auto.mediumAndUp': 'Med+',
+  'auto.mediumAndUpDesc': 'New high- and medium-confidence detections go straight to the display.',
+  'auto.all': 'All',
+  'auto.allDesc': 'Every new detection goes straight to the display.',
+
+  // API failures
+  'api.unauthorized': 'Not authorized. Sign in again with your operator token.',
+  'api.lookupFailed': 'Lookup failed (HTTP {status}).',
+  'api.booksUnreachable': 'Could not reach the server to load the book list.',
+  'api.lookupUnreachable': 'Could not reach the server to look up that passage.',
+
+  // Spoken-language chip
+  'chip.speech': 'Speech',
+  'chip.aria': 'Spoken language: {language}. Change in settings',
+  'chip.staleAria':
+    'Spoken language: {language}, but speech detection is not running. Change in settings',
+  'chip.title': 'Spoken language — open settings',
+  'chip.staleTitle': 'Last spoken language — speech detection is not running',
+
+  // Stages and queue
+  'stage.onDisplay': 'On Display',
+  'stage.onDisplayAria': 'On display now',
+  'stage.live': 'Live',
+  'stage.idle': 'Idle',
+  'stage.moreVerses': {
+    one: '+{count} more verse',
+    other: '+{count} more verses',
+  },
+  'stage.nothingOnDisplay': 'Nothing on display',
+  'stage.approvedHint': 'Approved references appear here and on the projector.',
+  'stage.clearDisplay': 'Clear Display',
+  'next.title': 'Up Next',
+  'next.aria': 'Up next',
+  'next.moreHidden': {
+    one: '+{count} more verse hidden by the current limit',
+    other: '+{count} more verses hidden by the current limit',
+  },
+  'next.nothingStaged': 'Nothing staged',
+  'next.stagedHint': 'Select a reference in the queue, or find a passage, to preview it here.',
+  'next.discard': 'Discard',
+  'next.show': 'Show on display',
+  'source.manual': 'Manual',
+  'source.history': 'History',
+  'source.detected': 'Detected',
+  'source.staged': 'Staged',
+  'queue.title': 'Pending References',
+  'queue.empty': 'No pending references',
+  'queue.emptyHint': 'Bible references appear here when the audio pipeline detects them.',
+  'queue.clear': 'Clear Queue',
+  'queue.moveHint': '↑ ↓ to move',
+  'queue.confirmClear': 'Clear all pending references?',
+  'history.title': 'Recent History',
+  'history.aria': 'Recent history',
+  'history.empty': 'No history yet',
+  'history.emptyHint':
+    'References that reach the display appear here — select one to stage it again.',
+  'history.stageAria': 'Stage {ref} from history in Up Next',
+  'follow.aria': 'Follow-along suggestion',
+  'follow.label': 'Reading now',
+  'follow.show': 'Show',
+  'follow.showAria': 'Show {label} on display',
+
+  // Reference cards
+  'ref.confidenceSr': 'Detection confidence: ',
+  'ref.confidence.high': 'High',
+  'ref.confidence.medium': 'Medium',
+  'ref.confidence.low': 'Low',
+  'ref.sourceSr': 'Source: ',
+  'ref.context': 'Context',
+  'ref.verses': {
+    one: '{count} verse',
+    other: '{count} verses',
+  },
+  'ref.staged': 'Staged in Up Next',
+
+  // Operator notices
+  'notice.errApprove': 'Could not show that reference',
+  'notice.errDisplayReference': 'Could not show that passage',
+  'notice.errClear': 'Could not clear the display',
+  'notice.errClearPending': 'Could not clear the queue',
+  'notice.errVerseLimit': 'Could not change the verses shown',
+  'notice.errTheme': 'Could not change the background',
+  'notice.errAutoMode': 'Could not change auto-approve',
+  'notice.errGeneric': 'Action failed',
+  'notice.reverted': '{prefix} — reverted. {reason}',
+  'notice.failed': '{prefix}: {reason}',
+  'notice.shown': 'Shown: {ref}',
+  'notice.shownManual': 'Shown: {ref} (manual)',
+  'notice.displayCleared': 'Display cleared',
+  'notice.queueCleared': 'Pending queue cleared',
+  'notice.saved': 'Saved — {changes}',
+  'notice.changeVerses': 'verses shown {value}',
+  'notice.changeBackground': 'background {value}',
+  'notice.autoApprove': 'Auto-approve: {mode}',
+  'notice.staged': 'Staged: {ref} — press Show to display',
+  'notice.stagedAgain': 'Staged: {ref} — press Show to display it again',
+} as const

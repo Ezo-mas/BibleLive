@@ -1,4 +1,5 @@
 import { BookIcon, Button } from '../../components'
+import { useI18n } from '../../shared/i18nContext'
 import { bookDisplayName } from '../../shared/reference'
 import type { FollowAlongHint as FollowAlongHintData } from '../../shared/types'
 
@@ -33,17 +34,18 @@ function formatHint(hint: FollowAlongHintData): string {
  * chosen to show.
  */
 export function FollowAlongHint({ hint, canShow, onShow }: FollowAlongHintProps) {
+  const { t } = useI18n()
   if (!hint) return null
 
   const label = formatHint(hint)
 
   return (
-    <section className="operator-follow" aria-label="Follow-along suggestion">
+    <section className="operator-follow" aria-label={t('follow.aria')}>
       <span className="operator-follow-icon" aria-hidden="true">
         <BookIcon />
       </span>
       <p className="operator-follow-text">
-        <span className="operator-follow-label">Reading now</span>
+        <span className="operator-follow-label">{t('follow.label')}</span>
         <strong className="operator-follow-reference">{label}</strong>
       </p>
       <Button
@@ -52,9 +54,9 @@ export function FollowAlongHint({ hint, canShow, onShow }: FollowAlongHintProps)
         className="operator-follow-show"
         onClick={onShow}
         disabled={!canShow}
-        aria-label={`Show ${label} on display`}
+        aria-label={t('follow.showAria', { label })}
       >
-        Show
+        {t('follow.show')}
       </Button>
     </section>
   )

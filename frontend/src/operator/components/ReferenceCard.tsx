@@ -1,5 +1,7 @@
 import { formatReference } from '../../shared/reference'
 import { StatusBadge } from '../../components'
+import { useI18n } from '../../shared/i18nContext'
+import type { MessageKey } from '../../shared/i18n'
 import type { BibleReference } from '../../shared/types'
 
 export interface ReferenceCardProps {
@@ -14,11 +16,11 @@ export interface ReferenceCardProps {
   ariaLabel?: string
 }
 
-/** Confidence in plain words. */
-const CONFIDENCE_LABELS: Record<'high' | 'medium' | 'low', string> = {
-  high: 'High',
-  medium: 'Medium',
-  low: 'Low',
+/** Confidence in plain words, as message keys. */
+const CONFIDENCE_LABELS: Record<'high' | 'medium' | 'low', MessageKey> = {
+  high: 'ref.confidence.high',
+  medium: 'ref.confidence.medium',
+  low: 'ref.confidence.low',
 }
 
 /**
@@ -64,6 +66,7 @@ export function ReferenceCard({
   onSelect,
   ariaLabel,
 }: ReferenceCardProps) {
+  const { t } = useI18n()
   const selectable = onSelect !== undefined
   const time = arrivalTime(reference.created_at)
 
@@ -96,16 +99,16 @@ export function ReferenceCard({
                 <span className="ref-card-pips" aria-hidden="true">
                   {CONFIDENCE_PIPS[reference.confidence]}
                 </span>
-                <span className="sr-only">Detection confidence: </span>
-                {CONFIDENCE_LABELS[reference.confidence]}
+                <span className="sr-only">{t('ref.confidenceSr')}</span>
+                {t(CONFIDENCE_LABELS[reference.confidence])}
               </span>
             ) : (
               <StatusBadge variant="neutral">
-                <span className="sr-only">Source: </span>
-                Manual
+                <span className="sr-only">{t('ref.sourceSr')}</span>
+                {t('source.manual')}
               </StatusBadge>
             )}
-            {reference.inferred && <StatusBadge variant="info">Context</StatusBadge>}
+            {reference.inferred && <StatusBadge variant="info">{t('ref.context')}</StatusBadge>}
           </div>
         </div>
 
@@ -122,9 +125,11 @@ export function ReferenceCard({
             </time>
           )}
           {(reference.verses?.length ?? 0) > 1 && (
-            <span className="ref-card-verse-count">{reference.verses.length} verses</span>
+            <span className="ref-card-verse-count">
+              {t('ref.verses', { count: reference.verses.length })}
+            </span>
           )}
-          {selected && <span className="ref-card-staged">Staged in Up Next</span>}
+          {selected && <span className="ref-card-staged">{t('ref.staged')}</span>}
         </div>
       </div>
     </div>

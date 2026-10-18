@@ -1,4 +1,5 @@
 import { ShieldIcon } from '../../components'
+import { useI18n } from '../../shared/i18nContext'
 import { autoModeOption } from '../autoMode'
 import type { AutoMode } from '../../shared/types'
 
@@ -22,6 +23,7 @@ export interface AutoApproveCompactProps {
  * actively approving so "Off" is not the only readable difference.
  */
 export function AutoApproveCompact({ autoMode, onOpenSettings }: AutoApproveCompactProps) {
+  const { t } = useI18n()
   const active = autoModeOption(autoMode)
 
   return (
@@ -30,13 +32,14 @@ export function AutoApproveCompact({ autoMode, onOpenSettings }: AutoApproveComp
       className={`operator-auto-compact ${autoMode === 'off' ? '' : 'is-on'}`}
       onClick={onOpenSettings}
       aria-haspopup="dialog"
-      title="Open auto-approve settings"
+      title={t('auto.compactTitle')}
     >
       <span className="operator-auto-compact-icon" aria-hidden="true">
         <ShieldIcon />
       </span>
       <span className="operator-auto-compact-text">
-        Auto-approve: <strong className="operator-auto-compact-value">{active.label}</strong>
+        {t('auto.compactLabel')}
+        <strong className="operator-auto-compact-value">{t(active.labelKey)}</strong>
       </span>
     </button>
   )

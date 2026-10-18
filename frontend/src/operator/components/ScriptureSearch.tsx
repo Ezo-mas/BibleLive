@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import type { KeyboardEvent, ReactNode } from 'react'
 import { AlertCircleIcon, Button, SearchIcon } from '../../components'
+import { useI18n } from '../../shared/i18nContext'
 import type { ScriptureSearchState } from '../hooks/useScriptureSearch'
 import type { ScriptureResult } from '../scriptureQuery'
 
@@ -54,6 +55,7 @@ function highlighted(result: ScriptureResult): ReactNode {
  * reference it does nothing.
  */
 export function ScriptureSearch({ search, disabled, directEnabled = true }: ScriptureSearchProps) {
+  const { t } = useI18n()
   const {
     input,
     setInput,
@@ -114,18 +116,17 @@ export function ScriptureSearch({ search, disabled, directEnabled = true }: Scri
   const bestBook = results[0]?.kind === 'book' ? results[0] : null
   const listUnavailable = !isLoadingBooks && books.length === 0 && booksError !== null
 
-  let hint = 'Type a book or a reference, for example "gen", "john 3:16", or "ps 23".'
-  if (isLoadingBooks) hint = 'Loading the book list…'
-  else if (results[0]?.kind === 'reference')
-    hint = 'Press Enter to stage it in Up Next, or Shift+Enter to show it directly.'
-  else if (bestBook) hint = `Press Enter to pick ${bestBook.label}, then type a chapter.`
-  else if (input.trim() && !error) hint = 'Keep typing a book name.'
+  let hint = t('search.hintDefault')
+  if (isLoadingBooks) hint = t('search.hintLoading')
+  else if (results[0]?.kind === 'reference') hint = t('search.hintReference')
+  else if (bestBook) hint = t('search.hintBook', { book: bestBook.label })
+  else if (input.trim() && !error) hint = t('search.hintKeepTyping')
 
   return (
-    <section className="operator-section operator-search" aria-label="Find scripture">
+    <section className="operator-section operator-search" aria-label={t('search.sectionAria')}>
       <div className="operator-section-header">
-        <h2 className="operator-section-title">Find Scripture</h2>
-        {isLookingUp && <span className="operator-search-busy">Looking up…</span>}
+        <h2 className="operator-section-title">{t('search.title')}</h2>
+        {isLookingUp && <span className="operator-search-busy">{t('search.looking')}</span>}
       </div>
 
       <div className="operator-section-content">
@@ -140,8 +141,8 @@ export function ScriptureSearch({ search, disabled, directEnabled = true }: Scri
             value={input}
             onChange={event => setInput(event.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="gen, john 3:16"
-            aria-label="Find scripture by book or reference"
+            placeholder={t('search.placeholder')}
+            aria-label={t('search.label')}
             autoComplete="off"
             spellCheck={false}
             disabled={disabled}
@@ -157,13 +158,13 @@ export function ScriptureSearch({ search, disabled, directEnabled = true }: Scri
                 {booksError}
               </p>
               <Button variant="secondary" size="sm" onClick={reloadBooks}>
-                Retry
+                {t('search.retry')}
               </Button>
             </div>
           ) : (
             <>
               {results.length > 0 && (
-                <ul className="operator-search-results" aria-label="Scripture search results">
+                <ul className="operator-search-results" aria-label={t('search.resultsLabel')}>
                   {results.map(result => (
                     <li key={result.id}>
                       <button
@@ -178,13 +179,17 @@ export function ScriptureSearch({ search, disabled, directEnabled = true }: Scri
                         // match), so the label states the whole name instead.
                         aria-label={
                           result.kind === 'reference'
-                            ? `${result.label} — stage in Up Next`
-                            : `${result.label}${result.detail ? `, ${result.detail}` : ''} — select this book`
+                            ? t('search.stageAria', { label: result.label })
+                            : t('search.bookAria', {
+                                name: `${result.label}${result.detail ? `, ${result.detail}` : ''}`,
+                              })
                         }
                       >
                         <span className="operator-search-result-label">{highlighted(result)}</span>
                         {result.kind === 'reference' && (
-                          <span className="operator-search-result-chip">Complete reference</span>
+                          <span className="operator-search-result-chip">
+                            {t('search.complete')}
+                          </span>
                         )}
                         {result.detail && (
                           <span className="operator-search-result-detail">{result.detail}</span>
@@ -197,7 +202,7 @@ export function ScriptureSearch({ search, disabled, directEnabled = true }: Scri
 
               {hiddenCount > 0 && (
                 <Button variant="ghost" size="sm" fullWidth onClick={showMore}>
-                  Show {hiddenCount} more
+                  {t('search.showMore', { count: hiddenCount })}
                 </Button>
               )}
 

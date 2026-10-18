@@ -6,6 +6,8 @@ import {
   parseBibleVersionInfo,
 } from '../bibleVersionApi'
 import type { BibleVersionInfo } from '../bibleVersionApi'
+import { useI18n } from '../../shared/i18nContext'
+import type { Translator } from '../../shared/i18n'
 
 export interface BibleVersionState {
   /** The translation the server last confirmed, or null before the first answer. */
@@ -29,8 +31,8 @@ export interface BibleVersionState {
 
 type Notify = (tone: 'info' | 'error', text: string) => void
 
-function messageOf(error: unknown): string {
-  return error instanceof Error ? error.message : 'The Bible version could not be changed.'
+function messageOf(error: unknown, t: Translator): string {
+  return error instanceof Error ? error.message : t('version.changeFailed')
 }
 
 /**
@@ -59,10 +61,14 @@ export function useBibleVersion(
   versionRef.current = info.version
   const notifyRef = useRef(notify)
   notifyRef.current = notify
+  // The translator is held in a ref so a language switch does not re-read the version.
+  const { t } = useI18n()
+  const tRef = useRef(t)
+  tRef.current = t
 
   const refresh = useCallback(() => {
     const seq = (readSeqRef.current += 1)
-    fetchBibleVersion(token)
+    fetchBibleVersion(token, tRef.current)
       .then(current => {
         if (seq !== readSeqRef.current) return
         setInfo(current)
@@ -70,7 +76,7 @@ export function useBibleVersion(
       })
       .catch((failure: unknown) => {
         if (seq !== readSeqRef.current) return
-        setError(messageOf(failure))
+        setError(messageOf(failure, tRef.current))
       })
   }, [token])
 
@@ -93,16 +99,21 @@ export function useBibleVersion(
       setError(null)
       readSeqRef.current += 1
       const pushSeqAtStart = pushSeqRef.current
-      changeBibleVersion(next, token)
+      changeBibleVersion(next, token, tRef.current)
         .then(confirmed => {
           // A push that landed meanwhile is at least as new as this reply.
           if (pushSeqRef.current === pushSeqAtStart) setInfo(confirmed)
           if (confirmed.version) {
-            notifyRef.current('info', `Bible version: ${bibleVersionLabel(confirmed.version)}`)
+            notifyRef.current(
+              'info',
+              tRef.current('version.changed', {
+                version: bibleVersionLabel(confirmed.version, tRef.current),
+              })
+            )
           }
         })
         .catch((failure: unknown) => {
-          const message = messageOf(failure)
+          const message = messageOf(failure, tRef.current)
           setError(message)
           notifyRef.current('error', message)
         })
@@ -125,7 +136,12 @@ export function useBibleVersion(
     setError(null)
     // The switching operator's own request announces its result; this covers the rest.
     if (changed && confirmed.version && !switchingRef.current) {
-      notifyRef.current('info', `Bible version: ${bibleVersionLabel(confirmed.version)}`)
+      notifyRef.current(
+        'info',
+        tRef.current('version.changed', {
+          version: bibleVersionLabel(confirmed.version, tRef.current),
+        })
+      )
     }
   }, [])
 

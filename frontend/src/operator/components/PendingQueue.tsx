@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import { BookIcon } from '../../components'
+import { useI18n } from '../../shared/i18nContext'
 import { PanelHint } from './PanelHint'
 import { ReferenceCard } from './ReferenceCard'
 import type { BibleReference } from '../../shared/types'
@@ -29,20 +30,17 @@ export function PendingQueue({
   onSelect,
   children,
 }: PendingQueueProps) {
+  const { t } = useI18n()
   return (
     <section className="operator-section operator-pending">
       <div className="operator-section-header">
-        <h2 className="operator-section-title">Pending References</h2>
+        <h2 className="operator-section-title">{t('queue.title')}</h2>
         <span className="operator-section-count">{count}</span>
       </div>
 
       <div className="operator-section-content">
         {pending.length === 0 ? (
-          <PanelHint
-            icon={<BookIcon />}
-            title="No pending references"
-            hint="Bible references appear here when the audio pipeline detects them."
-          />
+          <PanelHint icon={<BookIcon />} title={t('queue.empty')} hint={t('queue.emptyHint')} />
         ) : (
           <div className="ref-card-list">
             {pending.map(reference => (

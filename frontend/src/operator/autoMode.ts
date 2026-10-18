@@ -1,4 +1,5 @@
 import type { AutoMode } from '../shared/types'
+import type { MessageKey } from '../shared/i18n'
 
 /**
  * Auto-approve options, most conservative first. The server owns this setting
@@ -9,24 +10,18 @@ import type { AutoMode } from '../shared/types'
  * will skip the queue. Every one of them says "new" on purpose: changing the
  * mode only affects detections that arrive afterwards, so anything already
  * waiting for approval stays where it is.
+ *
+ * Labels are message keys, so the buttons and the explanation follow the language.
  */
-export const AUTO_MODE_OPTIONS: { value: AutoMode; label: string; description: string }[] = [
-  { value: 'off', label: 'Off', description: 'Every new detection waits for your approval.' },
-  {
-    value: 'high',
-    label: 'High',
-    description: 'New high-confidence detections go straight to the display.',
-  },
-  {
-    value: 'medium_and_up',
-    label: 'Med+',
-    description: 'New high- and medium-confidence detections go straight to the display.',
-  },
-  {
-    value: 'all',
-    label: 'All',
-    description: 'Every new detection goes straight to the display.',
-  },
+export const AUTO_MODE_OPTIONS: {
+  value: AutoMode
+  labelKey: MessageKey
+  descriptionKey: MessageKey
+}[] = [
+  { value: 'off', labelKey: 'auto.off', descriptionKey: 'auto.offDesc' },
+  { value: 'high', labelKey: 'auto.high', descriptionKey: 'auto.highDesc' },
+  { value: 'medium_and_up', labelKey: 'auto.mediumAndUp', descriptionKey: 'auto.mediumAndUpDesc' },
+  { value: 'all', labelKey: 'auto.all', descriptionKey: 'auto.allDesc' },
 ]
 
 /** Coerce an auto mode from the server; an unknown value means manual approval. */

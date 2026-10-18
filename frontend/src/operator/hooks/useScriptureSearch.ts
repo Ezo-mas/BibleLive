@@ -10,6 +10,7 @@ import {
 } from '../scriptureQuery'
 import type { ScriptureResult } from '../scriptureQuery'
 import type { Passage, ScriptureBook } from '../../shared/types'
+import { useI18n } from '../../shared/i18nContext'
 
 /** How long typing settles before the text is matched against the canon. */
 export const SEARCH_DEBOUNCE_MS = 250
@@ -70,6 +71,7 @@ export function useScriptureSearch(
   onDirectDisplay: (request: PassageQuery) => void,
   bibleVersion: string | null = null
 ): ScriptureSearchState {
+  const { t } = useI18n()
   const [input, setInputState] = useState('')
   const [debouncedInput, setDebouncedInput] = useState('')
   const [canon, setCanon] = useState<ScriptureBook[]>([])
@@ -113,17 +115,17 @@ export function useScriptureSearch(
     setIsLoadingBooks(true)
     setBooksError(null)
     try {
-      const loaded = await fetchBooks(token)
+      const loaded = await fetchBooks(token, t)
       if (requestId !== booksIdRef.current) return
       setCanon(loaded)
     } catch (error) {
       if (requestId !== booksIdRef.current) return
       setCanon([])
-      setBooksError(error instanceof Error ? error.message : 'Could not load the book list.')
+      setBooksError(error instanceof Error ? error.message : t('search.booksFailed'))
     } finally {
       if (requestId === booksIdRef.current) setIsLoadingBooks(false)
     }
-  }, [token])
+  }, [token, t])
 
   const ensureBooks = useCallback(() => {
     if (booksRequestedRef.current) return
@@ -165,11 +167,14 @@ export function useScriptureSearch(
   const booksRef = useRef(books)
   booksRef.current = books
 
-  const query = useMemo(() => parseScriptureQuery(debouncedInput, books), [debouncedInput, books])
+  const query = useMemo(
+    () => parseScriptureQuery(debouncedInput, books, t),
+    [debouncedInput, books, t]
+  )
 
   const { results, hiddenCount } = useMemo(
-    () => buildResults(query, showAllBooks ? Number.POSITIVE_INFINITY : BOOK_RESULT_LIMIT),
-    [query, showAllBooks]
+    () => buildResults(query, showAllBooks ? Number.POSITIVE_INFINITY : BOOK_RESULT_LIMIT, t),
+    [query, showAllBooks, t]
   )
 
   const showMore = useCallback(() => setShowAllBooks(true), [])
@@ -181,7 +186,7 @@ export function useScriptureSearch(
       setIsLookingUp(true)
       void (async () => {
         try {
-          const passage = await lookupPassage(request, token)
+          const passage = await lookupPassage(request, token, t)
           if (requestId !== lookupIdRef.current) return
           // The preview reads in the loaded translation's names like everything else; the
           // lookup itself was made, and is shown again later, by canonical name.
@@ -189,13 +194,13 @@ export function useScriptureSearch(
           onPassageRef.current(label ? { ...passage, book_label: label } : passage)
         } catch (error) {
           if (requestId !== lookupIdRef.current) return
-          setLookupError(error instanceof Error ? error.message : 'Could not look that up.')
+          setLookupError(error instanceof Error ? error.message : t('search.lookupFailed'))
         } finally {
           if (requestId === lookupIdRef.current) setIsLookingUp(false)
         }
       })()
     },
-    [token]
+    [token, t]
   )
 
   const choose = useCallback(
