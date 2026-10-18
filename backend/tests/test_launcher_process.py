@@ -39,6 +39,12 @@ def test_commands_and_env(tmp_path):
     assert plan.ready_url == "http://127.0.0.1:9100/readyz"
 
 
+def test_huggingface_advice_stays_out_of_the_logs(tmp_path):
+    plan = _plan(tmp_path)
+    assert plan.env["HF_HUB_DISABLE_SYMLINKS_WARNING"] == "1"
+    assert plan.env["HF_HUB_VERBOSITY"] == "error"
+
+
 def test_cpu_fallback_plan(tmp_path):
     plan = _plan(tmp_path, probe=lambda: [])
     assert plan.device == "cpu" and plan.compute_type == "int8"

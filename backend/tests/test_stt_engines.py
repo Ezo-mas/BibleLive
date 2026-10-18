@@ -404,7 +404,16 @@ def test_neither_model_hearing_anything_is_no_transcription(tmp_path):
     proc = _two_model_processor(_two_model_result(None, None), tmp_path)
     proc._process_utterance("lt", [ONE_SECOND])
     assert proc.sender.sent == []
+    # Hearing nothing is not a failure (the metrics showed "3 failed" for blips).
+    assert proc.metrics.transcription_failures == 0
+    assert proc.metrics.transcriptions_empty == 1
+
+
+def test_a_speech_model_error_counts_as_a_failure(tmp_path):
+    proc = _two_model_processor(Transcription(None, 0.0, failed=True, source="kmynas"), tmp_path)
+    proc._process_utterance("lt", [ONE_SECOND])
     assert proc.metrics.transcription_failures == 1
+    assert proc.metrics.transcriptions_empty == 0
 
 
 def test_primary_parser_error_still_sends_the_second_models_references(tmp_path):
@@ -418,3 +427,19 @@ def test_primary_parser_error_still_sends_the_second_models_references(tmp_path)
     proc._local.streaming_parsers["lt"].feed = boom
     proc._process_utterance("lt", [ONE_SECOND])
     assert [(str(r), r.confidence) for r in proc.sender.sent] == [("Psalms 23:1", "low")]
+
+
+@pytest.mark.parametrize(
+    ("engine", "models", "expected"),
+    [("kmynas", ["kmynas"], "en"), ("whisper", [], "lt")],
+)
+def test_whisper_starts_in_a_language_it_will_hear(monkeypatch, engine, models, expected):
+    # Next to a Lithuanian GGUF engine Whisper only hears English: its load log
+    # said "language=lt" on the installed CPU tier.
+    created: list[str] = []
+    monkeypatch.setattr("audio.pipeline.SpeechToText", lambda **kw: created.append(kw["language"]))
+    proc = BibleLiveAudioProcessor.__new__(BibleLiveAudioProcessor)
+    proc.config = AudioPipelineConfig(language="lt", stt_engine=engine)
+    proc._stt_models = models
+    proc._create_whisper()
+    assert created == [expected]

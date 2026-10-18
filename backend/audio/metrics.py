@@ -15,7 +15,8 @@ class PipelineMetrics:
     vad_segments_detected: int = 0
     transcription_attempts: int = 0
     transcription_successes: int = 0
-    transcription_failures: int = 0
+    transcription_failures: int = 0  # the speech model raised: detection is broken
+    transcriptions_empty: int = 0  # nothing heard (silence, or under 0.5 s): normal
     references_detected: int = 0
     references_low_confidence: int = 0  # downgraded by Whisper segment quality
     references_sent: int = 0
@@ -74,7 +75,7 @@ class PipelineMetrics:
         logger.info(f"  VAD segments: {self.vad_segments_detected}")
         logger.info(
             f"  Transcriptions: {self.transcription_successes}/{self.transcription_attempts} "
-            f"({self.transcription_failures} failed)"
+            f"({self.transcription_failures} failed, {self.transcriptions_empty} empty)"
         )
         logger.info(f"  Avg transcription time: {self.get_avg_transcription_duration():.1f}ms")
         logger.info(

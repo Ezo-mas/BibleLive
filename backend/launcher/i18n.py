@@ -92,6 +92,9 @@ EN: dict[str, str] = {
     "err.projector_failed": "Could not open the display on the projector: {detail}",
     "err.invalid_port": "The port must be a number between 1 and 65535.",
     "err.invalid_args": "The extra audio arguments are not valid: {detail}",
+    "err.choose_microphone": (
+        "Several microphones are connected. Choose the one the sermon comes in on."
+    ),
     "err.unknown": "Something went wrong: {detail}",
 }
 
@@ -182,6 +185,9 @@ LT: dict[str, str] = {
     "err.projector_failed": "Nepavyko atidaryti vaizdo projektoriuje: {detail}",
     "err.invalid_port": "Prievadas turi būti skaičius nuo 1 iki 65535.",
     "err.invalid_args": "Papildomi garso argumentai neteisingi: {detail}",
+    "err.choose_microphone": (
+        "Prijungti keli mikrofonai. Pasirinkite tą, kuriuo ateina pamokslo garsas."
+    ),
     "err.unknown": "Įvyko klaida: {detail}",
 }
 

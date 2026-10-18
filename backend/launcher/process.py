@@ -111,6 +111,11 @@ def build_plan(
     # faster-whisper (huggingface_hub) caches models under HF_HOME/hub: keep them in the
     # machine-local models dir, not the user profile's ~/.cache.
     env["HF_HOME"] = str(hf_models)
+    # Keep huggingface_hub's advice out of the service logs: Windows without Developer
+    # Mode cannot make cache symlinks (copies work), and downloads need no HF_TOKEN.
+    # Its errors are still logged.
+    env.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
+    env.setdefault("HF_HUB_VERBOSITY", "error")
 
     ffmpeg_dir = Path(settings.ffmpeg_dir) if settings.ffmpeg_dir else app_root / "ffmpeg"
     if ffmpeg_dir.is_dir():

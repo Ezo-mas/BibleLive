@@ -175,10 +175,15 @@ class BibleLiveAudioProcessor:
         self.transcription_thread: threading.Thread | None = None
 
     def _create_whisper(self) -> SpeechToText:
+        language = self.config.language
+        if self._stt_models and language in GGUF_LANGUAGES:
+            # Next to GGUF models Whisper only hears the languages they cannot, so
+            # it starts in one of those (its load log named Lithuanian before).
+            language = next(lang for lang in SUPPORTED_LANGUAGES if lang not in GGUF_LANGUAGES)
         return SpeechToText(
             model_size=self.config.whisper_model,
             device=self.config.whisper_device,
-            language=self.config.language,
+            language=language,
             compute_type=self.config.whisper_compute_type,
             beam_size=self.config.beam_size,
             cpu_threads=self.config.cpu_threads,
@@ -833,7 +838,12 @@ class BibleLiveAudioProcessor:
             self._consecutive_transcription_errors = 0
 
         if transcript is None and (alternate is None or alternate.text is None):
-            self.metrics.transcription_failures += 1
+            # An utterance too short to transcribe, or one with no words in it, is
+            # normal; only a speech model error counts as a failure.
+            if result.failed:
+                self.metrics.transcription_failures += 1
+            else:
+                self.metrics.transcriptions_empty += 1
             logger.debug("No transcription produced")
             return result, []
 
