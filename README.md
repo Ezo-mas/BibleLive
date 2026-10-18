@@ -500,7 +500,7 @@ BibleLive/                        # Monorepo root: tooling + shared assets
 ├── static/frontend/              # Built frontend bundle (generated, not committed)
 ├── bible_data/                   # Bible SQLite databases (generated; source JSON in data/)
 ├── data/                         # KJV / LITV JSON text files
-├── docs/                         # Agent guides (docs/agent-guides/) + TECH_DEBT.md
+├── docs/                         # Agent guides (docs/agent-guides/), TECH_DEBT.md, BACKLOG.md
 ├── pyproject.toml                # Root tooling config (ruff, pytest, mypy)
 ├── Makefile                      # Backend + frontend task runner
 ├── start.sh                      # Start server + audio pipeline (POSIX)
@@ -552,4 +552,5 @@ and `/operator` (returns 503 with build instructions if not built).
 - `DEPLOYMENT.md` — production deployment (systemd, nginx, health checks)
 - `SECURITY.md` — authentication endpoints and tokens
 - `docs/TECH_DEBT.md` — known deferred issues
+- `docs/BACKLOG.md` — planned features and checks, with rough size
 - `docs/agent-guides/` — conventions for AI coding agents (entry point: `AGENTS.md`)
