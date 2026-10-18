@@ -834,6 +834,10 @@ def _collapse_psalm_stutter(toks: list[Token]) -> list[Token]:
     return out
 
 
+# Longest range a stray middle digit may sit in ("35 3 42 eilutės" -> 35-42).
+_STRAY_RANGE_SPAN = 15
+
+
 def _verse_span_before_verse_word(toks: list[Token], j: int) -> tuple[list[Token], int] | None:
     """At toks[j]: ``a VERSE``, ``a b VERSE`` (a < b) or ``a joiner b VERSE``.
 
@@ -873,6 +877,9 @@ def postprocess(toks: list[Token]) -> list[Token]:
     not re-run it.
     """
     toks = _collapse_psalm_stutter(toks)
+    # A dash right after the chapter word is punctuation, not a range: there
+    # is no number before it ("pirmas skyrius – trisdešim penkta ...").
+    toks = [t for k, t in enumerate(toks) if not (t == "-" and k and toks[k - 1] == CHAPTER)]
     out: list[Token] = []
     n = len(toks)
     owned = False  # previous token is a chapter/verse word that owns the next number
@@ -967,6 +974,26 @@ def postprocess(toks: list[Token]) -> list[Token]:
                     ):
                         out += [CHAPTER, t, VERSE, num2, "-", num3]
                         i += 5
+                        owned = False
+                        continue
+                    # [num, CHAPTER, a, x, b, VERSE] with a stray digit x ->
+                    # [CHAPTER, num, VERSE, a, -, b]: a slurred join heard as
+                    # a small number ("pirmas skyrius, trisdešim penkta, trys
+                    # keturiasdešim antra eilutės" for 1:35-42; Canary heard
+                    # "35-42"). Only a digit below both ends of a short rising
+                    # pair; a list ("3 5 7 eilutės") rises and stays as is.
+                    num4 = toks[i + 4] if i + 4 < n else None
+                    if (
+                        word == CHAPTER
+                        and i + 5 < n
+                        and isinstance(num2, int)
+                        and isinstance(num3, int)
+                        and isinstance(num4, int)
+                        and num3 < 10 <= num2 < num4 <= num2 + _STRAY_RANGE_SPAN
+                        and toks[i + 5] == VERSE
+                    ):
+                        out += [CHAPTER, t, VERSE, num2, "-", num4]
+                        i += 6
                         owned = False
                         continue
                     # [num, CHAPTER, num2] -> [CHAPTER, num, num2]  ("3 skyrius 16")

@@ -554,6 +554,24 @@ class TestWhisperMergedAndGluedWords:
             "Pirmoje metraščių knygoje, apie jį, ketvirtame skyriuje, devinta dešimta eilutė"
         ) == ["1 Chronicles 4:9-10"]
 
+    def test_dash_after_chapter_word_is_punctuation(self):
+        # Live service 2026-10-18: the dash split the pair into 1:35 + 1:42.
+        assert refs("Jono pirmas skyrius – trisdešim penkta, keturiasdešim antra eilutės") == [
+            "John 1:35-42"
+        ]
+        assert refs("Jono trečias skyrius – šešiolikta eilutė") == ["John 3:16"]
+        assert refs("Morkaus 12-30") == ["Mark 12:30"]
+
+    def test_stray_digit_inside_a_verse_pair(self):
+        # Kmynas heard a slurred join as "trys" (Canary: "35-42").
+        assert refs("Jono pirmas skyrius, trisdešim penkta, trys keturiasdešim antra eilutės") == [
+            "John 1:35-42"
+        ]
+        # Not a digit above the first verse, a long span, or without a chapter word.
+        assert refs("Jono pirmas skyrius 12, 3, 50 eilutės") == ["John 1:12", "John 1:50"]
+        assert refs("Jono 15, 3, 20 eilutės") == ["John 15:3", "John 15:20"]
+        assert refs("Mato penktas skyrius 3 5 7 eilutės") == ["Matthew 5:3", "Matthew 5:7"]
+
     def test_gap_skip_stops_at_numbers_and_books(self):
         # "Mato" stops the skip: "Jono" finds nothing, "Mato 5" still parses.
         assert refs("Jono. Mato 5 skyrius") == ["Matthew 5"]
