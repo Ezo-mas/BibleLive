@@ -155,3 +155,31 @@ describe('display verses', () => {
     expect(screen.queryByText('John 1:1-3')).not.toBeInTheDocument()
   })
 })
+
+describe('idle display', () => {
+  it('shows only the logo when nothing is on screen, with no status text', () => {
+    const { container } = render(<App />)
+    act(() => {
+      socket?.onopen?.()
+    })
+
+    expect(container.querySelector('.display-waiting-icon')).toBeInTheDocument()
+    expect(container.textContent).toBe('')
+  })
+
+  it('goes back to the logo alone after a clear', async () => {
+    const { container } = render(<App />)
+    act(() => {
+      socket?.onopen?.()
+    })
+    push({ type: 'reference', data: reference() })
+    await waitFor(() => expect(screen.getByText('John 1:1-3')).toBeInTheDocument())
+
+    push({ type: 'clear', data: {} })
+
+    await waitFor(() =>
+      expect(container.querySelector('.display-waiting-icon')).toBeInTheDocument()
+    )
+    expect(container.textContent).toBe('')
+  })
+})
