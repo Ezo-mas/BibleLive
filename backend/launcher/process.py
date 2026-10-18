@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import IO
 
 from .gpu import SupportedProbe, cuda_supported_compute_types, resolve_compute_type, resolve_device
+from .i18n import resolve_ui_language
 from .settings import LauncherSettings, app_data_dir
 from .settings import models_dir as default_models_dir
 from .speech import GGUF_LANGUAGES, resolve_speech, speech_threads
@@ -103,6 +104,8 @@ def build_plan(
     env["BIBLELIVE_PORT"] = str(settings.port)
     env["BIBLELIVE_SETTINGS_PATH"] = str(data_dir / "server_settings.json")
     env["BIBLELIVE_AUTO_MODE"] = settings.auto_mode
+    # "auto" is not a language the server knows: resolve it here to the Windows UI language.
+    env["BIBLELIVE_UI_LANGUAGE"] = resolve_ui_language(settings.ui_language)
     env["BIBLELIVE_LOG_LEVEL"] = settings.log_level
     # The server opens this language's Bible at startup (the pipeline gets --language).
     env["BIBLELIVE_START_LANGUAGE"] = settings.language

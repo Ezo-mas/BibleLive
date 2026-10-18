@@ -1,9 +1,10 @@
 """Server side of audio-pipeline health: heartbeats in, status out to the operator."""
 
 import pytest
+from pydantic import ValidationError
 
 from core.config import config
-from core.server.models import PipelineHeartbeat
+from core.server.models import PipelineHeartbeat, PipelineIssue
 from core.server.state import PIPELINE_MISSED_REPORTS_OFFLINE
 
 TOKEN = "pipeline-test-token"
@@ -29,6 +30,7 @@ def test_status_is_unknown_before_any_report(client):
         "status": "unknown",
         "language": None,
         "problems": [],
+        "issues": [],
         "seconds_since_report": None,
     }
 
@@ -114,3 +116,99 @@ def test_status_requires_token_when_auth_enabled(client, auth_enabled):
     response = client.get("/api/pipeline/status", headers=auth_enabled)
     assert response.status_code == 200
     assert response.json()["status"] == "unknown"
+
+
+# ---------------------------------------------------------------------------
+# Issues: the same problems as ``problems``, each with a code the console translates
+# ---------------------------------------------------------------------------
+CAPTURE_TEXT = "Audio capture stopped; the pipeline is trying to restart it"
+
+
+def test_issues_are_passed_through_with_their_codes(client):
+    issues = [
+        {"code": "capture_stopped", "params": {}, "text": CAPTURE_TEXT},
+        {
+            "code": "stt_failed",
+            "params": {"count": 2},
+            "text": "Speech recognition failed on the last 2 utterances",
+        },
+    ]
+    report = _report([issue["text"] for issue in issues])
+    report["issues"] = issues
+    assert client.post("/api/pipeline/heartbeat", json=report).status_code == 204
+
+    body = client.get("/api/pipeline/status").json()
+    assert body["status"] == "degraded"
+    assert body["problems"] == [issue["text"] for issue in issues]
+    assert body["issues"] == issues
+
+
+def test_old_style_heartbeat_gets_no_issues(client):
+    """A pipeline that predates issues still shows its problems; issues stay empty."""
+    client.post("/api/pipeline/heartbeat", json=_report([CAPTURE_TEXT]))
+
+    body = client.get("/api/pipeline/status").json()
+    assert body["problems"] == [CAPTURE_TEXT]
+    assert body["issues"] == []
+
+
+def test_silent_pipeline_drops_its_issues_too(app_state):
+    issue = PipelineIssue(code="capture_stopped", text=CAPTURE_TEXT)
+    report = PipelineHeartbeat(
+        language="en", interval_s=5.0, problems=[CAPTURE_TEXT], issues=[issue]
+    )
+    app_state.record_pipeline_report(report, now=100.0)
+    deadline = 100.0 + 5.0 * PIPELINE_MISSED_REPORTS_OFFLINE
+
+    assert app_state.pipeline_status(now=deadline).issues == [issue]
+
+    offline = app_state.pipeline_status(now=deadline + 0.1)
+    assert offline.status == "offline"
+    assert offline.issues == []
+
+
+def test_valid_issue_is_accepted_at_the_limits():
+    PipelineIssue(code="x" * 64, text="x" * 300)
+    issue = PipelineIssue(
+        code="delivery_failed",
+        params={**{f"k{i}": i for i in range(7)}, "detail": "a" * 300},
+        text="x",
+    )
+    assert len(issue.params) == 8
+
+
+@pytest.mark.parametrize(
+    "issue",
+    [
+        {"code": "Mic_Silent", "text": "x"},  # upper case is not a code
+        {"code": "mic-silent", "text": "x"},
+        {"code": "mic silent", "text": "x"},
+        {"code": "", "text": "x"},
+        {"code": "x" * 65, "text": "x"},
+        {"code": "ok", "text": ""},
+        {"code": "ok", "text": "x" * 301},
+        {"code": "ok", "text": "x", "params": {f"k{i}": i for i in range(9)}},
+        {"code": "ok", "text": "x", "params": {"detail": "a" * 301}},
+        # A long digit run would be read as an int by a lax union, and so slip past the limit.
+        {"code": "ok", "text": "x", "params": {"detail": "1" * 301}},
+    ],
+)
+def test_malformed_issues_are_rejected(issue):
+    with pytest.raises(ValidationError):
+        PipelineIssue(**issue)
+
+
+def test_heartbeat_issues_are_optional_and_bounded():
+    assert PipelineHeartbeat(language="en", interval_s=5.0).issues == []
+
+    too_many = [PipelineIssue(code="capture_stopped", text=CAPTURE_TEXT)] * 11
+    with pytest.raises(ValidationError):
+        PipelineHeartbeat(language="en", interval_s=5.0, issues=too_many)
+
+
+def test_endpoint_rejects_a_malformed_issue(client):
+    report = _report(["x"])
+    report["issues"] = [{"code": "Bad Code", "text": "x"}]
+
+    assert client.post("/api/pipeline/heartbeat", json=report).status_code == 422
+    assert client.get("/api/pipeline/status").json()["status"] == "unknown"

@@ -47,6 +47,14 @@ def test_huggingface_advice_stays_out_of_the_logs(tmp_path):
     assert plan.env["HF_HUB_VERBOSITY"] == "error"
 
 
+def test_ui_language_is_handed_to_the_server(tmp_path, monkeypatch):
+    assert _plan(tmp_path, LauncherSettings(ui_language="lt")).env["BIBLELIVE_UI_LANGUAGE"] == "lt"
+    assert _plan(tmp_path, LauncherSettings(ui_language="en")).env["BIBLELIVE_UI_LANGUAGE"] == "en"
+    # "auto" (the default) is resolved from the Windows UI language, never passed on as "auto".
+    monkeypatch.setattr("launcher.i18n.detect_windows_ui_language", lambda: "lt")
+    assert _plan(tmp_path).env["BIBLELIVE_UI_LANGUAGE"] == "lt"
+
+
 def test_cpu_fallback_plan(tmp_path):
     plan = _plan(tmp_path, probe=lambda: [])
     assert plan.device == "cpu" and plan.compute_type == "int8"

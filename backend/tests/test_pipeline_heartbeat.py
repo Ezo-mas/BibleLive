@@ -53,7 +53,7 @@ def _processor(stt=None, **config) -> BibleLiveAudioProcessor:
     proc._last_loud_at = time.monotonic()
     proc._mic_silent_logged = False
     proc._consecutive_transcription_errors = 0
-    proc._parser_problems = []
+    proc._parser_issues = []
     proc.verse_text_db_path = None  # set by __init__ in the real pipeline
     return proc
 
@@ -64,7 +64,7 @@ def _processor(stt=None, **config) -> BibleLiveAudioProcessor:
 def test_healthy_pipeline_reports_no_problems():
     report = _processor(heartbeat_interval=7.0).health_report()
 
-    assert report == {"language": "en", "interval_s": 7.0, "problems": []}
+    assert report == {"language": "en", "interval_s": 7.0, "problems": [], "issues": []}
 
 
 def test_capture_outage_is_reported():
@@ -76,6 +76,19 @@ def test_capture_outage_is_reported():
     ]
 
 
+def test_capture_outage_issue_has_its_code():
+    proc = _processor()
+    proc._capture_down = True
+
+    assert proc.health_report()["issues"] == [
+        {
+            "code": "capture_stopped",
+            "params": {},
+            "text": "Audio capture stopped; the pipeline is trying to restart it",
+        }
+    ]
+
+
 def test_stalled_capture_is_reported():
     """ffmpeg can hang without exiting; then frames just stop arriving."""
     proc = _processor()
@@ -83,6 +96,17 @@ def test_stalled_capture_is_reported():
 
     [problem] = proc.health_report()["problems"]
     assert problem.startswith("No audio has arrived from the microphone for")
+
+
+def test_stalled_capture_issue_gives_whole_seconds():
+    proc = _processor()
+    proc._last_frame_at = time.monotonic() - (AUDIO_STALL_S + 2)
+
+    [issue] = proc.health_report()["issues"]
+    seconds = issue["params"]["seconds"]
+    assert issue["code"] == "audio_stalled"
+    assert isinstance(seconds, int) and seconds >= AUDIO_STALL_S
+    assert issue["text"] == f"No audio has arrived from the microphone for {seconds} s"
 
 
 def test_a_restart_in_progress_is_not_also_reported_as_a_stall():
@@ -143,12 +167,36 @@ def test_transcription_errors_are_counted_until_one_succeeds():
     assert proc.health_report()["problems"] == []
 
 
+@pytest.mark.parametrize(
+    ("errors", "text"),
+    [
+        (1, "Speech recognition failed on the last 1 utterance"),
+        (2, "Speech recognition failed on the last 2 utterances"),
+    ],
+)
+def test_transcription_failure_issue_counts_the_utterances(errors, text):
+    proc = _processor()
+    proc._consecutive_transcription_errors = errors
+
+    assert proc.health_report()["issues"] == [
+        {"code": "stt_failed", "params": {"count": errors}, "text": text}
+    ]
+
+
 def test_undelivered_reference_is_reported():
     proc = _processor()
     proc.sender.delivery_problem = "the server kept failing or did not answer"
 
     assert proc.health_report()["problems"] == [
         "The last detected reference was not delivered: the server kept failing or did not answer"
+    ]
+    assert proc.health_report()["issues"] == [
+        {
+            "code": "delivery_failed",
+            "params": {"detail": "the server kept failing or did not answer"},
+            "text": "The last detected reference was not delivered: "
+            "the server kept failing or did not answer",
+        }
     ]
 
 
@@ -161,6 +209,13 @@ def test_dead_worker_thread_is_reported():
 
     assert proc.health_report()["problems"] == [
         "The pipeline's transcription thread has stopped; restart the pipeline"
+    ]
+    assert proc.health_report()["issues"] == [
+        {
+            "code": "thread_stopped",
+            "params": {"role": "transcription"},
+            "text": "The pipeline's transcription thread has stopped; restart the pipeline",
+        }
     ]
 
 
@@ -175,6 +230,37 @@ def test_missing_bible_database_is_reported(tmp_path):
     assert "could not open the Bible database" in problems[0]
     # Parsing itself still works without the validator.
     assert set(proc._local.streaming_parsers) == {"en", "lt"}
+    assert proc.health_report()["issues"] == [
+        {
+            "code": "bible_db_unavailable",
+            "params": {},
+            "text": problems[0],
+        }
+    ]
+
+
+def test_failed_parser_issue_names_its_language(tmp_path, monkeypatch):
+    proc = _processor()
+    proc.bible_db_path = str(tmp_path / "missing.sqlite")
+    real_make_parser = BibleLiveAudioProcessor._make_parser
+
+    def make_parser(language, validator, verse_text, source):
+        if language == "lt":
+            raise RuntimeError("model missing")
+        return real_make_parser(language, validator, verse_text, source)
+
+    monkeypatch.setattr(proc, "_make_parser", make_parser)
+    proc._init_thread_local_parsers()
+
+    assert [i for i in proc.health_report()["issues"] if i["code"] == "parser_failed"] == [
+        {
+            "code": "parser_failed",
+            "params": {"language": "lt"},
+            "text": "The 'lt' reference parser failed to start, so no references are "
+            "detected in that language",
+        }
+    ]
+    assert set(proc._local.streaming_parsers) == {"en"}
 
 
 # ---------------------------------------------------------------------------
@@ -260,6 +346,20 @@ def test_a_stalled_capture_is_not_also_reported_as_a_silent_microphone():
     assert problem.startswith("No audio has arrived from the microphone for")
 
 
+def test_silent_microphone_issue_gives_whole_seconds():
+    proc = _processor()
+    proc._last_loud_at = time.monotonic() - (SILENT_MIC_S + 2)
+
+    [issue] = proc.health_report()["issues"]
+    seconds = issue["params"]["seconds"]
+    assert issue["code"] == "mic_silent"
+    assert isinstance(seconds, int) and seconds >= SILENT_MIC_S
+    assert issue["text"] == (
+        f"The microphone is silent: no sound for {seconds} s. "
+        "Check that the right microphone is selected and not muted."
+    )
+
+
 # ---------------------------------------------------------------------------
 # HeartbeatSender
 # ---------------------------------------------------------------------------
@@ -294,6 +394,22 @@ def test_beat_sends_no_auth_header_without_a_token(monkeypatch):
     _sender().beat()
 
     assert calls[0]["headers"] == {}
+
+
+def test_beat_sends_the_issues_of_the_health_report(monkeypatch):
+    proc = _processor()
+    proc._capture_down = True
+    calls = []
+    monkeypatch.setattr(
+        "audio.heartbeat.requests.post",
+        lambda url, **kwargs: calls.append(kwargs) or _Response(204),
+    )
+
+    assert _sender(get_status=proc.health_report).beat() is True
+
+    body = calls[0]["json"]
+    assert [issue["code"] for issue in body["issues"]] == ["capture_stopped"]
+    assert body["problems"] == [issue["text"] for issue in body["issues"]]
 
 
 def test_unauthorized_beat_is_logged_once_as_an_error(monkeypatch, caplog):

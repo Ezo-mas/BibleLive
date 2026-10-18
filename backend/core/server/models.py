@@ -4,7 +4,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, StrictFloat, StrictInt, StrictStr
 
 
 class VerseText(BaseModel):
@@ -190,6 +190,12 @@ class BibleVersionResponse(BaseModel):
     available: list[str]
 
 
+class UiLanguageResponse(BaseModel):
+    """The operator page's interface language as the launcher chose it; null when unset."""
+
+    language: Literal["lt", "en"] | None
+
+
 class BookInfo(BaseModel):
     """One book of the canonical canon, for the operator's passage search.
 
@@ -237,6 +243,35 @@ class PassageResponse(BaseModel):
     text: str
 
 
+# Strict types: a plain ``str | int | float`` would read a long run of digits as an int
+# and let it past the 300-character limit.
+PipelineParam = Annotated[StrictStr, Field(max_length=300)] | StrictInt | StrictFloat
+
+
+class PipelineIssue(BaseModel):
+    """One pipeline problem with a stable code, so the console can translate it.
+
+    ``text`` is the English sentence that also appears in ``problems``; ``code``
+    and ``params`` let the console write its own sentence instead.
+    """
+
+    code: str = Field(
+        ...,
+        min_length=1,
+        max_length=64,
+        pattern=r"^[a-z0-9_]+$",
+        description="Stable problem code, e.g. 'mic_silent'",
+    )
+    params: dict[str, PipelineParam] = Field(
+        default_factory=dict,
+        max_length=8,
+        description="Values the sentence needs, e.g. {'seconds': 30}",
+    )
+    text: str = Field(
+        ..., min_length=1, max_length=300, description="The English sentence, as in 'problems'"
+    )
+
+
 class PipelineHeartbeat(BaseModel):
     """The audio pipeline's periodic health report (``POST /api/pipeline/heartbeat``)."""
 
@@ -246,6 +281,11 @@ class PipelineHeartbeat(BaseModel):
         default_factory=list,
         max_length=10,
         description="One sentence per thing that has stopped working; empty when healthy",
+    )
+    issues: list[PipelineIssue] = Field(
+        default_factory=list,
+        max_length=10,
+        description="The same problems as 'problems', each with a code; empty from older pipelines",
     )
 
 
@@ -261,6 +301,7 @@ class PipelineStatusResponse(BaseModel):
     )
     language: str | None = None
     problems: list[str] = Field(default_factory=list)
+    issues: list[PipelineIssue] = Field(default_factory=list)
     seconds_since_report: float | None = Field(
         default=None, description="Age of the latest report; null when there has been none"
     )

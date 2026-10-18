@@ -349,6 +349,7 @@ in `%APPDATA%\BibleLive\logs\sessions`.
 | GET    | `/api/lookup`       | Look up verse text by coordinates        |
 | GET    | `/api/language`     | Current spoken language (requires auth if enabled) |
 | POST   | `/api/language`     | Switch spoken language (requires auth if enabled) |
+| GET    | `/api/ui-language`  | Operator page language set by the launcher: `lt`, `en`, or `null` (requires auth if enabled) |
 | GET    | `/api/state`        | Current server state snapshot (requires auth if enabled) |
 | POST   | `/api/transcript`   | Audio pipeline transcript line, used only for follow-along suggestions; not stored (token when auth is on) |
 | POST   | `/api/pipeline/heartbeat` | Audio pipeline health report, sent every 5 s (token when auth is on) |

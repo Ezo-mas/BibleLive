@@ -348,7 +348,7 @@ def _two_model_processor(result: Transcription, tmp_path) -> BibleLiveAudioProce
     proc._consecutive_transcription_errors = 0
     proc.bible_db_path = str(tmp_path / "missing.sqlite")  # parse without validation
     proc.verse_text_db_path = None
-    proc._parser_problems = []
+    proc._parser_issues = []
     proc._init_thread_local_parsers()
     return proc
 

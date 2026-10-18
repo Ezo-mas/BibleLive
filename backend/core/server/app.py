@@ -45,6 +45,7 @@ from .models import (
     StateResponse,
     TranscriptSubmitRequest,
     TranscriptSubmitResponse,
+    UiLanguageResponse,
     VerseText,
 )
 from .settings_store import ALLOWED_AUTO_MODES
@@ -922,6 +923,24 @@ def create_app(bible_lookup: BibleLookup | None = None) -> FastAPI:
             version=app_state.active_bible_version(),
             available=sorted(app_state.available_bible_versions()),
         )
+
+    @app.get(
+        "/api/ui-language",
+        response_model=UiLanguageResponse,
+        responses={
+            401: {"model": ErrorResponse, "description": "Unauthorized"},
+            403: {"model": ErrorResponse, "description": "Forbidden"},
+        },
+        dependencies=[Depends(verify_operator_token)],
+    )
+    async def get_ui_language() -> UiLanguageResponse:
+        """Report the interface language the launcher chose for the operator page.
+
+        ``lt`` or ``en``; null when the server was not started by the launcher or
+        the value is not one of those, and the console then keeps its own default.
+        Requires authentication if BIBLELIVE_REQUIRE_AUTH is enabled.
+        """
+        return UiLanguageResponse(language=config.UI_LANGUAGE)
 
     @app.get(
         "/api/state",
