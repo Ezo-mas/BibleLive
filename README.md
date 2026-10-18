@@ -114,8 +114,8 @@ databases) with a launcher that starts the server, the audio pipeline and the
 projector display. During setup you pick the Lithuanian speech model —
 **Kmynas on the processor** (no graphics card needed), **Kmynas + Canary on a
 GPU** (most accurate), or Whisper only — and the installer downloads just those
-models and tests them. For Lithuanian services build it with
-`-ExtraBibleDb bible_data\bible_ltb.sqlite`. Every service is logged to
+models and tests them. The build ships the Lithuanian Bible
+(`bible_data\bible_ltb.sqlite`) when it is there. Every service is logged to
 `%APPDATA%\BibleLive\logs\sessions` (transcript + audio, see "Session log").
 Details, requirements and silent-install switches: `scripts/windows/README.md`.
 

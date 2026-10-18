@@ -11,7 +11,8 @@
 .PARAMETER SkipPortableBuild  Reuse the existing build\BibleLive folder.
 .PARAMETER Iscc               Path to ISCC.exe. Otherwise: $env:ISCC, then the usual Inno Setup 6 folders.
 .PARAMETER BibleDb            Passed on to build-portable.ps1.
-.PARAMETER ExtraBibleDb       Passed on to build-portable.ps1 (e.g. bible_data\bible_ltb.sqlite).
+.PARAMETER ExtraBibleDb       Passed on to build-portable.ps1 (default there: bible_data\bible_ltb.sqlite
+                              when it exists).
 .PARAMETER ReuseDependencies  Passed on to build-portable.ps1: keep the bundled Python and packages when
                               their inputs did not change (app-only changes rebuild in under a minute).
 .PARAMETER Fast               Quick compression (lzma2/fast) for test installers: about a minute instead
@@ -65,7 +66,7 @@ if ($SkipPortableBuild) {
 } else {
     $portableArgs = @{ NoZip = $true }
     if ($BibleDb) { $portableArgs.BibleDb = $BibleDb }
-    if ($ExtraBibleDb.Count) { $portableArgs.ExtraBibleDb = $ExtraBibleDb }
+    if ($PSBoundParameters.ContainsKey('ExtraBibleDb')) { $portableArgs.ExtraBibleDb = $ExtraBibleDb }
     if ($ReuseDependencies) { $portableArgs.ReuseDependencies = $true }
     if ($SkipFrontendBuild) { $portableArgs.SkipFrontendBuild = $true }
     & (Join-Path $PSScriptRoot 'build-portable.ps1') @portableArgs

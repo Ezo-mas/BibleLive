@@ -10,9 +10,11 @@
 
 .PARAMETER SkipFrontendBuild  Reuse an existing static\frontend bundle (no npm ci / build).
 .PARAMETER BibleDb            Bible SQLite file to ship. Default: <repo>\bible_data\biblelive.sqlite.
-.PARAMETER ExtraBibleDb       More translation files to ship beside it, keeping their names (e.g.
-                              bible_data\bible_ltb.sqlite: the Lithuanian text the server switches
-                              to for Lithuanian, and that the pipeline reads verses from).
+.PARAMETER ExtraBibleDb       More translation files to ship beside it, keeping their names.
+                              Default: <repo>\bible_data\bible_ltb.sqlite when it exists (the
+                              Lithuanian text the server switches to for Lithuanian, and that the
+                              pipeline reads verses from); a warning otherwise. -ExtraBibleDb @()
+                              ships none.
 .PARAMETER SkipCuda           Omit the cuda extra (quick test builds; GPU transcription will not work).
 .PARAMETER ReuseDependencies  Keep build\BibleLive\python (the bundled Python and its packages) from the
                               last build when nothing it depends on changed (Python archive, extras,
@@ -42,6 +44,17 @@ $Out = Join-Path $Build 'BibleLive'
 $Dist = Join-Path $Repo 'dist'
 $Deps = Get-Content -Raw -Encoding UTF8 (Join-Path $PSScriptRoot 'deps.json') | ConvertFrom-Json
 if (-not $BibleDb) { $BibleDb = Join-Path $Repo 'bible_data\biblelive.sqlite' }
+if (-not $PSBoundParameters.ContainsKey('ExtraBibleDb')) {
+    # Lithuanian services need it (display text and the verse read aloud); without it the
+    # display shows the English text. Not in git, so a CI build may not have it.
+    $ltb = Join-Path $Repo 'bible_data\bible_ltb.sqlite'
+    if (Test-Path -PathType Leaf $ltb) {
+        $ExtraBibleDb = @($ltb)
+    } else {
+        Write-Warning ("$ltb not found: this build has no Lithuanian Bible text, so Lithuanian " +
+            'services will show the English text. Pass -ExtraBibleDb <path to bible_ltb.sqlite>.')
+    }
+}
 
 function Step($msg) { Write-Host ""; Write-Host "==> $msg" -ForegroundColor Cyan }
 
