@@ -12,20 +12,6 @@ Entry format:
 
 ## Open
 
-### Switching to English with a GGUF engine stalls all transcription while Whisper loads
-- **Where:** `backend/audio/stt_gguf.py` (`MultiModelSpeechToText._get_whisper`), called from the
-  transcription thread in `backend/audio/pipeline.py`
-- **Problem:** With `--stt kmynas` (or canary) Whisper is loaded lazily on the first English
-  utterance, on the transcription thread. If the model is not downloaded (the CPU installer option
-  skips Whisper by default) it is downloaded first. Every queued utterance, Lithuanian ones
-  included, waits until that finishes.
-- **Impact:** A runtime switch to English stops detection for the whole load: about a minute on
-  a live test (download + load of `small` on CPU). Switching back to Lithuanian does not help,
-  because the queued Lithuanian utterances wait behind the English one.
-- **Evidence:** Installed CPU tier, 2026-10-18 00:45: switch to `en` at 00:45:15, Whisper download
-  and load 00:45:22-00:46:18, Lithuanian utterances queued from 00:45:38 transcribed at 00:46:24.
-- **Logged:** 2026-10-18
-
 ### The action row is back at the end of the list in the stacked layout
 - **Where:** `frontend/src/operator/operator.css` (`.operator-pending`,
   `.operator-main-column`) with the media queries at 1024px and 1280px.

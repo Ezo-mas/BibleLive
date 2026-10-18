@@ -146,6 +146,13 @@ class MultiModelSpeechToText:
     Same interface as :class:`audio.stt.SpeechToText` (``language``,
     ``set_language``, ``transcribe_utterance``). With two models the result is
     the first model's transcript with the second one's as ``alternate``.
+
+    Whisper loads in the background when a switch asks for it: loading (and a
+    first download) takes about a minute on a CPU, and on the transcription
+    thread it held up every queued utterance, Lithuanian ones included. Until it
+    is ready, utterances in its languages are skipped as unheard; a failed load
+    reports them as failed (the operator sees the warning) until the next switch
+    tries again. Starting in such a language still loads it before returning.
     """
 
     def __init__(
@@ -163,32 +170,77 @@ class MultiModelSpeechToText:
         self._whisper_factory = whisper_factory
         self._whisper: SpeechToText | None = None
         self._whisper_lock = threading.Lock()
+        self._whisper_loader: threading.Thread | None = None
+        self._whisper_failed = False
         if language not in GGUF_LANGUAGES:
-            self._get_whisper()
+            # Starting in such a language: load now, and a failure stops startup.
+            logger.info("Loading Whisper for non-Lithuanian speech...")
+            self._whisper = whisper_factory()
 
     @property
     def language(self) -> str:
         return self._language
 
     def set_language(self, language: str) -> None:
-        """Switch the transcription language (Whisper loads on first use)."""
+        """Switch the transcription language; Whisper starts loading if it needs to."""
         _validate_language(language)
         self._language = language
         logger.info("Speech-to-text language set to '%s'", language)
+        if language not in GGUF_LANGUAGES:
+            self._start_whisper_load(retry=True)
 
-    def _get_whisper(self) -> SpeechToText:
+    def _start_whisper_load(self, retry: bool = False) -> None:
+        """Load Whisper on its own thread, unless it is loaded or loading.
+
+        After a failed load only an explicit switch (``retry``) tries again, so a
+        missing download is not retried on every utterance.
+        """
         with self._whisper_lock:
-            if self._whisper is None:
-                logger.info("Loading Whisper for non-Lithuanian speech...")
-                self._whisper = self._whisper_factory()
-            return self._whisper
+            if self._whisper is not None:
+                return
+            if self._whisper_loader is not None and self._whisper_loader.is_alive():
+                return
+            if self._whisper_failed and not retry:
+                return
+            self._whisper_failed = False
+            self._whisper_loader = threading.Thread(
+                target=self._load_whisper, name="whisper-load", daemon=True
+            )
+            self._whisper_loader.start()
+
+    def _load_whisper(self) -> None:
+        logger.info("Loading Whisper for non-Lithuanian speech in the background...")
+        try:
+            whisper = self._whisper_factory()
+        except Exception:
+            logger.exception("Whisper failed to load; non-Lithuanian speech is not transcribed")
+            with self._whisper_lock:
+                self._whisper_failed = True
+            return
+        with self._whisper_lock:
+            self._whisper = whisper
+        logger.info("Whisper is ready")
+
+    def wait_for_whisper(self, timeout: float | None = None) -> bool:
+        """Block until a started Whisper load ends; True when Whisper is ready."""
+        loader = self._whisper_loader
+        if loader is not None:
+            loader.join(timeout)
+        return self._whisper is not None
 
     def transcribe_utterance(self, pcm: bytes, language: str | None = None) -> Transcription:
         """Transcribe one utterance of 16 kHz mono int16 PCM in ``language``."""
         language = self._language if language is None else language
         _validate_language(language)
         if language not in GGUF_LANGUAGES:
-            return self._get_whisper().transcribe_utterance(pcm, language)
+            whisper = self._whisper
+            if whisper is not None:
+                return whisper.transcribe_utterance(pcm, language)
+            self._start_whisper_load()
+            if self._whisper_failed:
+                return Transcription(None, 0.0, failed=True)
+            logger.info("Whisper is still loading: skipping this '%s' utterance", language)
+            return Transcription(None, 0.0)
 
         audio = np.frombuffer(pcm, dtype=np.int16).astype(np.float32) / 32768.0
         if len(audio) < self.sample_rate * 0.5:  # as Whisper: skip under 0.5 s
