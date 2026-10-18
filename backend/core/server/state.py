@@ -357,6 +357,27 @@ class AppState:
             logger.info(f"Cleared {dropped} pending reference(s): Bible version changed")
         return version
 
+    def apply_start_language_version(self, language: str | None, saved: str | None) -> None:
+        """At startup, open the translation of the language the pipeline starts in.
+
+        Without this a fresh install, or one whose saved translation is the other
+        language's default (English chosen at the end of the last service), opens
+        on that text while the pipeline listens in Lithuanian. A saved translation
+        that is no language's default (WEB) was picked by hand and is kept. Best
+        effort, like the runtime switch: a missing translation is logged and skipped.
+        """
+        if not config.AUTO_BIBLE_VERSION or not language:
+            return
+        target = config.LANGUAGE_BIBLE_VERSIONS.get(language.strip().lower())
+        if not target or target == self.active_bible_version():
+            return
+        if saved and saved not in config.LANGUAGE_BIBLE_VERSIONS.values():
+            return
+        try:
+            self.switch_bible_version(target)
+        except (KeyError, ValueError, OSError, sqlite3.Error) as e:
+            logger.warning(f"Not opening Bible version {target!r} for language {language!r}: {e!r}")
+
     async def apply_language_default_version(self, language: str) -> None:
         """After a spoken-language switch, move to that language's default translation.
 

@@ -104,6 +104,8 @@ def build_plan(
     env["BIBLELIVE_SETTINGS_PATH"] = str(data_dir / "server_settings.json")
     env["BIBLELIVE_AUTO_MODE"] = settings.auto_mode
     env["BIBLELIVE_LOG_LEVEL"] = settings.log_level
+    # The server opens this language's Bible at startup (the pipeline gets --language).
+    env["BIBLELIVE_START_LANGUAGE"] = settings.language
     env["PYTHONUNBUFFERED"] = "1"
     # Output goes to log files; Windows would otherwise write them in cp1252, which
     # cannot hold Lithuanian letters ("ų"), and every such log line would fail.
