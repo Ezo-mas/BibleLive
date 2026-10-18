@@ -100,7 +100,8 @@ GUI: `python -m launcher --gui` (default when there is no console, e.g.
 strings in `i18n.py` (en/lt, `ui_language` setting, default from the Windows UI
 language). `monitors.py` finds the projector (first non-primary monitor unless
 `projector_monitor` is saved); `projector.py` opens `/display` in an Edge (else
-Chrome) kiosk window on it and never falls back to the operator's screen.
+Chrome) full-screen app window on it (not kiosk mode, so F11 / Alt+F4 still work; Stop
+closes every process on its private profile) and never falls back to the operator's screen.
 
 Installer commands (`commands.py`): `--check-gpu` (exit 0, or 3 without a CUDA GPU), `--download-model [--no-whisper]` (the Lithuanian GGUF models of the engine via `hf_hub_download`, then Whisper unless `--no-whisper`), `--gpu-self-test` (loads each speech model the settings use on its device and transcribes 1 s of silence; exit 0/1; never downloads). `--speech-engine`, `--device`, `--model` and `--save` set what the installer chose. Models are cached under `HF_HOME=%LOCALAPPDATA%\BibleLive\models` (set by `build_plan`; the GGUF files are looked up in its `hub` folder without network access). The installer's speech page and `/SPEECH` switches are in `scripts/windows/installer/BibleLive.iss`; the portable build is `scripts/windows/build-portable.ps1` (see its README).
 

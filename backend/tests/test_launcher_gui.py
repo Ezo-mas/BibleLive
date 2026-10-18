@@ -229,21 +229,25 @@ def test_enumerate_monitors_returns_list():
 # --- projector ------------------------------------------------------------------------
 
 
-def test_build_command_edge_kiosk():
+def test_build_command_edge_fullscreen_app_window():
     cmd = build_command(
         Browser("C:/msedge.exe", "edge"), display_url(8000), SECOND, Path("C:/prof")
     )
     assert cmd[0] == "C:/msedge.exe"
     assert "--app=http://127.0.0.1:8000/display" in cmd
-    assert "--kiosk" in cmd and "--edge-kiosk-type=fullscreen" in cmd
+    # Full screen but not kiosk: F11 / Alt+F4 still work on the projector window.
+    assert "--start-fullscreen" in cmd and "--kiosk" not in cmd
+    # No sign-in, sync or extensions in the private profile (no extension pop-ups).
+    assert {"--disable-sync", "--disable-extensions"} <= set(cmd)
+    assert "--disable-features=msImplicitSignin" in cmd
     assert "--no-first-run" in cmd
     assert "--window-position=1920,0" in cmd
     assert any(a.startswith("--user-data-dir=") and "prof" in a for a in cmd)
 
 
-def test_build_command_chrome_has_no_edge_flag():
+def test_build_command_chrome_same_flags():
     cmd = build_command(Browser("chrome.exe", "chrome"), "http://x", SECOND, Path("p"))
-    assert "--kiosk" in cmd and "--edge-kiosk-type=fullscreen" not in cmd
+    assert "--start-fullscreen" in cmd and not any("kiosk" in a for a in cmd)
 
 
 def test_find_browser_prefers_edge(tmp_path, monkeypatch):
@@ -429,3 +433,23 @@ def test_gui_smoke_constructs_when_display_available(tmp_path, monkeypatch):
     from launcher.gui import main
 
     assert main(smoke=True) == 0
+
+
+def test_projector_close_kills_the_browser_it_handed_off_to(tmp_path):
+    # Edge's first process exits after handing the window to another one (not its
+    # child): closing must still find that one through the private profile.
+    killed: list[int] = []
+    running: list[int] = []
+    pb = ProjectorBrowser(
+        find=lambda: Browser("e.exe", "edge"),
+        popen=lambda cmd, **kw: _FakeProc(code=0),
+        profile_dir=tmp_path / "prof",
+        find_stale=lambda _profile: list(running),
+        kill_pid=killed.append,
+    )
+    assert pb.open(8000, SECOND) is None
+    running.append(33)  # the window now lives in another browser process
+    pb.close()
+    assert killed == [33]
+    pb.close()  # closing again does nothing more
+    assert killed == [33]
