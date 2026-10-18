@@ -42,9 +42,10 @@ Produces `build\BibleLive\` and `dist\BibleLive-portable-<version>.zip` (version
   `licenses\`, `BibleLive.cmd` (GUI), `BibleLive-console.cmd` (CLI).
 - **Bible DB**: `-BibleDb` (default `bible_data\biblelive.sqlite`) is copied as
   `biblelive.sqlite`; `-ExtraBibleDb` adds more translations beside it under their own names.
-  **Lithuanian services need `-ExtraBibleDb bible_data\bible_ltb.sqlite`**: the server switches
-  the display to that translation for Lithuanian, and the pipeline picks the verse being read
-  aloud from it. Without it the display shows the English text.
+  By default `bible_data\bible_ltb.sqlite` is shipped when it exists (the build warns when it
+  does not): Lithuanian services need it, since the server switches the display to that
+  translation for Lithuanian and the pipeline picks the verse being read aloud from it. Without
+  it the display shows the English text. `-ExtraBibleDb @()` ships no extra translation.
 - **Smoke test** (fails the build): bundled Python with an empty temp `APPDATA`/`LOCALAPPDATA`:
   `launcher --dry-run`, imports (including `transcribe_cpp`), `ffmpeg -version` + dshow, and
   `core.server` serving `/readyz`, `/display`, `/operator`.
@@ -86,7 +87,7 @@ Build times on a Ryzen 7 5800X: full build ~12 min (~7 min bundle + ~5 min compr
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts\windows\build-installer.ps1 -SkipFrontendBuild `
-    -ReuseDependencies -Fast -ExtraBibleDb bible_data\bible_ltb.sqlite
+    -ReuseDependencies -Fast
 ```
 The result (~1 GB) is far below Inno's 4.2 GB single-file limit, so no disk spanning. The speech
 models are downloaded at install time, not packed into the exe.

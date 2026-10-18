@@ -25,7 +25,6 @@ const VERSE_LINE_HEIGHT = 1.35
 export default function App() {
   const [reference, setReference] = useState<BibleReference | null>(null)
   const [visible, setVisible] = useState(false)
-  const [status, setStatus] = useState('Connecting to BibleLive server...')
   // Presentation-only: the operator console owns this value and the server
   // pushes it here. localStorage is only a pre-socket fallback for the first
   // render, so a reconnect does not flash a stale verse count.
@@ -59,14 +58,12 @@ export default function App() {
       swapTimerRef.current = window.setTimeout(() => {
         setReference(next)
         setVisible(true)
-        setStatus('')
       }, FADE_MS)
     } else {
       // 'clear': fade out, then return to the waiting state.
       setVisible(false)
       swapTimerRef.current = window.setTimeout(() => {
         setReference(null)
-        setStatus('Waiting for Bible reference...')
       }, FADE_MS)
     }
   }
@@ -75,21 +72,9 @@ export default function App() {
   // that goes dark mid-service cannot be recovered without manual refresh, so
   // keep retrying indefinitely (the operator console keeps the finite budget
   // so auth failures can surface the token prompt).
-  const { status: wsStatus } = useWebSocket<DisplayMessage>('/ws/display', handleMessage, {
+  useWebSocket<DisplayMessage>('/ws/display', handleMessage, {
     maxReconnectAttempts: Infinity,
   })
-
-  // Reflect connection changes in the status line. A reference that is
-  // already on screen keeps the status line empty across reconnects.
-  useEffect(() => {
-    if (wsStatus === 'open') {
-      setStatus(reference ? '' : 'Connected to BibleLive server')
-    } else if (wsStatus === 'closed') {
-      setStatus('Disconnected from server...')
-    } else {
-      setStatus('Connecting to BibleLive server...')
-    }
-  }, [wsStatus, reference])
 
   // Cancel a pending swap when the page goes away.
   useEffect(() => () => window.clearTimeout(swapTimerRef.current), [])
@@ -210,7 +195,6 @@ export default function App() {
                 <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
               </svg>
             </div>
-            <p className="display-waiting-text">{status}</p>
           </div>
         )}
       </div>

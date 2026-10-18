@@ -200,7 +200,8 @@ def test_reference_submit_discards_caller_text(client, app_state):
         display.receive_json()  # display settings
 
         reference_id = _submit(client, text="Words that are not scripture").json()["reference_id"]
-        assert app_state.pending_references[0].text == ""
+        # The queued preview is the database's text too, never the caller's.
+        assert app_state.pending_references[0].text.startswith("For God so loved the world")
 
         assert client.post("/api/approve", json={"reference_id": reference_id}).status_code == 200
         shown = display.receive_json()["data"]
@@ -208,6 +209,22 @@ def test_reference_submit_discards_caller_text(client, app_state):
     assert "not scripture" not in shown["text"]
     assert shown["text"].startswith("For God so loved the world")
     assert [v["verse"] for v in shown["verses"]] == [16]
+
+
+def test_queued_detection_carries_its_verse_text(client, app_state):
+    """The operator can read a detection before approving it (Up Next preview)."""
+    assert _submit(client, verse_start=16, verse_end=17).status_code == 201
+    queued = app_state.pending_references[0]
+    assert [v.verse for v in queued.verses] == [16, 17]
+    assert queued.text.startswith("For God so loved the world")
+
+
+def test_queued_chapter_only_detection_keeps_its_label(client, app_state):
+    """The preview shows the verse approval would show; the label stays the chapter."""
+    assert _submit(client, verse_start=None).status_code == 201
+    queued = app_state.pending_references[0]
+    assert (queued.verse_start, queued.verse_end) == (None, None)
+    assert [v.verse for v in queued.verses] == [1]
 
 
 def test_range_running_past_the_chapter_is_trimmed_in_the_label(client):

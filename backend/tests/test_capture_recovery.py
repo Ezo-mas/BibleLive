@@ -192,6 +192,8 @@ def _processor(capture, **config) -> BibleLiveAudioProcessor:
     proc._capture_restart_attempt = 0
     proc._capture_restarted_at_s = None
     proc._capture_down = False
+    proc._last_loud_at = None
+    proc._mic_silent_logged = False
     return proc
 
 
@@ -207,6 +209,18 @@ def test_restart_queues_the_utterance_in_progress_and_restarts_capture():
     assert proc.audio_capture.failed is False
     assert proc.metrics.capture_failures == 1
     assert proc.metrics.capture_restarts == 1
+
+
+def test_silence_clock_restarts_with_the_stream():
+    """Silence during an outage is not silence from the restarted microphone."""
+    proc = _processor(_FlakyCapture(), capture_restart_base_delay=0.0)
+    proc._last_loud_at = time.monotonic() - 600
+    proc._mic_silent_logged = True
+
+    proc._restart_capture()
+
+    assert time.monotonic() - proc._last_loud_at < 5
+    assert proc._mic_silent_logged is False
 
 
 def test_failed_restarts_back_off_until_one_succeeds(monkeypatch):

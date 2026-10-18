@@ -181,18 +181,6 @@ body {
   opacity: 0.5;
 }
 
-/* The idle and connection messages are for the operator, who is the only person
-   looking at this screen before a reference appears. They stay readable but
-   small, so the audience sees a calm blank slide and not a status line. */
-.display-waiting-text {
-  font-size: clamp(0.875rem, 1.4vw, 1.25rem);
-  font-family: var(--font-sans);
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--color-text-muted);
-  margin: 0;
-}
-
 /* Animations */
 .display-fade-in {
   animation: displayFadeIn 0.4s ease-out;

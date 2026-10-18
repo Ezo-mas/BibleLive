@@ -400,6 +400,7 @@ class AppState:
         mode_at_arrival = self.auto_mode
 
         ref.book_label = self.book_label(ref.book)
+        self._preview_verses(ref)
         self.pending_references.append(ref)
         # Notify operators of new pending reference
         await self._send_pending_update()
@@ -462,6 +463,20 @@ class AppState:
         )
         await self._send_pending_update()
         return ref
+
+    def _preview_verses(self, ref: BibleReference) -> None:
+        """Give a queued detection its verse text, so the operator can read it first.
+
+        A copy is resolved, so the queued reference keeps its own label (a
+        chapter-only one stays chapter-only; its preview is the verse approval
+        would show). Approval resolves the text again from the database, so this
+        is only ever a preview; a translation switch clears the queue, so a
+        preview never outlives the translation it was read from.
+        """
+        preview = ref.model_copy()
+        self._resolve_verses(preview)
+        ref.verses = preview.verses
+        ref.text = preview.text
 
     def _resolve_verses(self, ref: BibleReference) -> None:
         """Fill in verse numbers and text for a reference being displayed.

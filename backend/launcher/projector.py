@@ -1,4 +1,4 @@
-"""Open the audience display full-screen on the projector monitor (Edge/Chrome kiosk)."""
+"""Open the audience display full-screen on the projector monitor (Edge/Chrome app window)."""
 
 import logging
 import os
@@ -65,18 +65,27 @@ def find_browser(env: Mapping[str, str] | None = None) -> Browser | None:
 
 
 def build_command(browser: Browser, url: str, monitor: Monitor, profile_dir: Path) -> list[str]:
-    """Pure: the kiosk command line placing a full-screen window on ``monitor``."""
-    cmd = [
+    """Pure: the command line placing a full-screen app window on ``monitor``.
+
+    A full-screen app window, not kiosk mode: it looks the same on the projector (no
+    browser bars), but F11 leaves full screen and Alt+F4 closes it, which kiosk mode
+    blocks, leaving the operator no way to move or close the window.
+    """
+    return [
         browser.path,
         f"--app={url}",
-        "--kiosk",
+        "--start-fullscreen",
         "--no-first-run",
+        "--no-default-browser-check",
+        # The private profile must stay empty: Edge otherwise signs it into the Windows
+        # account on first launch and syncs that account's extensions into it, which
+        # opens an extra window of extension-install pages next to the display.
+        "--disable-sync",
+        "--disable-extensions",
+        "--disable-features=msImplicitSignin",
         f"--window-position={monitor.x},{monitor.y}",
         f"--user-data-dir={profile_dir}",
     ]
-    if browser.kind == "edge":
-        cmd.insert(3, "--edge-kiosk-type=fullscreen")
-    return cmd
 
 
 def find_profile_processes(profile_dir: Path) -> list[int]:
@@ -180,5 +189,11 @@ class ProjectorBrowser:
 
     def close(self) -> None:
         proc, self._proc = self._proc, None
-        if proc is not None:
-            kill_tree(proc)
+        if proc is None:
+            return
+        kill_tree(proc)
+        # Edge and Chrome often hand the window to another browser process that is not a
+        # child of the one started, so killing that tree can leave the display open. Every
+        # process on our private profile is ours (the user's normal browser never is).
+        for pid in self._find_stale(self._profile_dir or default_profile_dir()):
+            self._kill_pid(pid)
