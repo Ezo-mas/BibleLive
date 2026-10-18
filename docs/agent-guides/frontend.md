@@ -26,6 +26,11 @@ frontend/
   `--max-warnings 0`.
 - Don't add dependencies without asking; the current set is minimal on
   purpose (React + Vite).
+- **User-visible text goes through `t()`** (`useI18n()`, or a `Translator`
+  passed into a non-React helper). Add the key to `shared/messages.en.ts` and
+  its Lithuanian value to `shared/messages.lt.ts`; tsc fails on a missing or
+  extra key. Plurals are objects selected by `count`. Bible text, book names,
+  and reference strings are not translated.
 - **Generated bundle rules:** the prebuilt bundle `static/frontend/` is
   built by `npm run build` (into `../static/frontend`, invariant 6 in
   `architecture.md`) and served by the backend — don't hand-edit it, and
@@ -45,6 +50,7 @@ frontend/
 | Bible-version switch (Settings → Audio) | `frontend/src/operator/bibleVersionApi.ts`, `hooks/useBibleVersion.ts`, `components/BibleVersionSettings.tsx` — HTTP to `/api/bible-version`; changes made elsewhere arrive as `bible_version_confirmed` on the operator socket |
 | Book names from the loaded translation (Lithuanian) | display via `formatReference`/`bookDisplayName` in `frontend/src/shared/reference.ts` (uses the server's `book_label`); search via `localizeBooks`/`bookLabel` in `operator/scriptureQuery.ts` (accent-folded matching, canonical `name` for every request) and `hooks/useScriptureSearch.ts` |
 | Follow-along suggestion line (Reading now · Show) | `frontend/src/operator/components/FollowAlongHint.tsx`, `hooks/useOperatorState.ts` (`follow_along` message; Show sends `display_reference`) |
+| Interface language (strings, Settings → Display → Interface language) | `frontend/src/shared/messages.en.ts`, `messages.lt.ts`, `i18n.ts`, `i18nContext.ts` (`useI18n`), `I18nProvider.tsx` (wired in `shared/renderApp.tsx`) |
 | Change WS message protocol or approval flow | **stop — ask the user first** (Behavior rules) |
 
 ## Related docs

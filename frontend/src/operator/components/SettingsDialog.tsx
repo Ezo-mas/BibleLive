@@ -1,8 +1,10 @@
 import { useEffect, useId, useRef } from 'react'
 import type { KeyboardEvent } from 'react'
 import { ThemeToggle, XIcon } from '../../components'
+import { useI18n } from '../../shared/i18nContext'
 import { DisplaySettings } from './DisplaySettings'
 import { AutoApproveControls } from './AutoApproveControls'
+import { InterfaceLanguageSettings } from './InterfaceLanguageSettings'
 import { LanguageSettings } from './LanguageSettings'
 import type { SpokenLanguageState } from '../hooks/useSpokenLanguage'
 import { BibleVersionSettings } from './BibleVersionSettings'
@@ -94,6 +96,7 @@ export function SettingsDialog({
   const dialogRef = useRef<HTMLDivElement>(null)
   const languageSectionRef = useRef<HTMLElement>(null)
   const autoSectionRef = useRef<HTMLElement>(null)
+  const { t } = useI18n()
 
   // Move focus into the dialog while it is open and put it back afterwards, so
   // the keyboard flow never falls back to the top of the page.
@@ -163,14 +166,14 @@ export function SettingsDialog({
       >
         <div className="operator-dialog-header">
           <h2 className="operator-dialog-title" id={titleId}>
-            Settings
+            {t('settings.title')}
           </h2>
           <button
             type="button"
             className="operator-dialog-close"
             data-dialog-close
             onClick={onClose}
-            aria-label="Close settings"
+            aria-label={t('settings.close')}
           >
             <XIcon />
           </button>
@@ -179,7 +182,7 @@ export function SettingsDialog({
         <div className="operator-dialog-body">
           <section className="operator-dialog-section" aria-labelledby={displaySectionId}>
             <h3 className="operator-dialog-section-title" id={displaySectionId}>
-              Display
+              {t('settings.sectionDisplay')}
             </h3>
             <DisplaySettings
               verseLimit={verseLimit}
@@ -189,13 +192,11 @@ export function SettingsDialog({
               onThemeChange={onThemeChange}
             />
             <div className="operator-setting">
-              <span className="operator-setting-label">App theme</span>
+              <span className="operator-setting-label">{t('settings.appTheme')}</span>
               <ThemeToggle theme={appTheme} onThemeChange={onAppThemeChange} />
-              <p className="operator-setting-hint">
-                Light, dark, or follow this computer&rsquo;s setting. This affects the operator
-                console only.
-              </p>
+              <p className="operator-setting-hint">{t('settings.appThemeHint')}</p>
             </div>
+            <InterfaceLanguageSettings />
           </section>
 
           <section
@@ -204,7 +205,7 @@ export function SettingsDialog({
             ref={languageSectionRef}
           >
             <h3 className="operator-dialog-section-title" id={languageSectionId}>
-              Audio
+              {t('settings.sectionAudio')}
             </h3>
             <LanguageSettings state={spokenLanguage} disabled={disabled} />
             <BibleVersionSettings state={bibleVersion} disabled={disabled} />
@@ -216,7 +217,7 @@ export function SettingsDialog({
             ref={autoSectionRef}
           >
             <h3 className="operator-dialog-section-title" id={autoSectionId}>
-              Auto-approve
+              {t('settings.sectionAuto')}
             </h3>
             <AutoApproveControls
               autoMode={autoMode}
@@ -227,7 +228,7 @@ export function SettingsDialog({
 
           <section className="operator-dialog-section" aria-labelledby={shortcutsSectionId}>
             <h3 className="operator-dialog-section-title" id={shortcutsSectionId}>
-              Keyboard Shortcuts
+              {t('settings.sectionShortcuts')}
             </h3>
             <ul className="operator-dialog-shortcuts">
               <li>
@@ -235,25 +236,25 @@ export function SettingsDialog({
                   <kbd>↑</kbd>
                   <kbd>↓</kbd>
                 </span>
-                Move the pending selection
+                {t('settings.shortcutMove')}
               </li>
               <li>
                 <span className="operator-dialog-shortcut-keys">
                   <kbd>Enter</kbd>
                 </span>
-                Show the staged reference; in Find Scripture, stage the top result
+                {t('settings.shortcutShow')}
               </li>
               <li>
                 <span className="operator-dialog-shortcut-keys">
                   <kbd>Shift</kbd>+<kbd>Enter</kbd>
                 </span>
-                In Find Scripture, show the resolved passage directly
+                {t('settings.shortcutShift')}
               </li>
               <li>
                 <span className="operator-dialog-shortcut-keys">
                   <kbd>Esc</kbd>
                 </span>
-                Clear the selection; close this dialog when it is open
+                {t('settings.shortcutEsc')}
               </li>
             </ul>
           </section>

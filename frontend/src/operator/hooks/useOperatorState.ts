@@ -33,6 +33,9 @@ import { useBibleVersion } from './useBibleVersion'
 import type { BibleVersionState } from './useBibleVersion'
 import type { SpokenLanguageState } from './useSpokenLanguage'
 import type { ConnectionState } from '../../components'
+import { useI18n } from '../../shared/i18nContext'
+import type { MessageKey } from '../../shared/i18n'
+import { OPERATOR_TOKEN_STORAGE_KEY } from '../../shared/operatorToken'
 
 /** How long the button "pressed" feedback lasts after a confirmation. */
 const FLASH_MS = 150
@@ -41,7 +44,7 @@ const FLASH_MS = 150
 const NOTICE_MS: Record<NoticeTone, number> = { success: 3000, info: 4000, error: 6000 }
 
 /** Local storage key for operator token */
-const TOKEN_STORAGE_KEY = 'biblelive_operator_token'
+const TOKEN_STORAGE_KEY = OPERATOR_TOKEN_STORAGE_KEY
 
 /**
  * How many history entries a state snapshot carries (the server sends the last
@@ -71,14 +74,14 @@ export interface OperatorNotice {
  * because it is already written for people ("Reference not found or already
  * processed"); the prefix names which control to try again.
  */
-const ERROR_PREFIXES: Record<string, string> = {
-  approve: 'Could not show that reference',
-  display_reference: 'Could not show that passage',
-  clear: 'Could not clear the display',
-  clear_pending: 'Could not clear the queue',
-  set_verse_limit: 'Could not change the verses shown',
-  set_display_theme: 'Could not change the background',
-  set_auto_mode: 'Could not change auto-approve',
+const ERROR_PREFIX_KEYS: Record<string, MessageKey> = {
+  approve: 'notice.errApprove',
+  display_reference: 'notice.errDisplayReference',
+  clear: 'notice.errClear',
+  clear_pending: 'notice.errClearPending',
+  set_verse_limit: 'notice.errVerseLimit',
+  set_display_theme: 'notice.errTheme',
+  set_auto_mode: 'notice.errAutoMode',
 }
 
 /**
@@ -271,6 +274,7 @@ export interface OperatorState {
  * optimistic settings change also put the confirmed value back.
  */
 export function useOperatorState(): OperatorState {
+  const { t } = useI18n()
   const [token, setToken] = useState<string | null>(() => localStorage.getItem(TOKEN_STORAGE_KEY))
   const [tokenInput, setTokenInput] = useState('')
   const [authFailed, setAuthFailed] = useState(false)
@@ -412,7 +416,7 @@ export function useOperatorState(): OperatorState {
         setCurrentDisplay(shown)
         setShowInFlight(false)
         pulse('approve')
-        showNotice('success', `Shown: ${formatReference(shown)}`)
+        showNotice('success', t('notice.shown', { ref: formatReference(shown) }))
         break
       }
       case 'display_confirmed': {
@@ -428,7 +432,7 @@ export function useOperatorState(): OperatorState {
         // operator staged something else while this request was in flight, which
         // is why the confirmation has to name the passage it belongs to.
         setStaged(prev => (prev && isStagedPassage(prev, shown) ? null : prev))
-        showNotice('success', `Shown: ${formatReference(shown)} (manual)`)
+        showNotice('success', t('notice.shownManual', { ref: formatReference(shown) }))
         break
       }
       case 'follow_along':
@@ -440,11 +444,11 @@ export function useOperatorState(): OperatorState {
         setCurrentDisplay(null)
         setFollowAlongHint(null)
         pulse('clear')
-        showNotice('info', 'Display cleared')
+        showNotice('info', t('notice.displayCleared'))
         break
       case 'pending_cleared':
         pulse('clearPending')
-        showNotice('info', 'Pending queue cleared')
+        showNotice('info', t('notice.queueCleared'))
         break
       case 'connection_status':
         setDisplayConnected(message.data.display > 0)
@@ -456,16 +460,25 @@ export function useOperatorState(): OperatorState {
         // actually moved; an unrelated echo stays quiet.
         const changes: string[] = []
         if (verseLimit !== confirmedRef.current.verseLimit) {
-          changes.push(`verses shown ${verseLimit === 'all' ? 'All' : verseLimit}`)
+          changes.push(
+            t('notice.changeVerses', {
+              value: verseLimit === 'all' ? t('settings.versesAll') : verseLimit,
+            })
+          )
         }
         if (theme !== confirmedRef.current.theme) {
-          changes.push(`background ${theme === 'dark' ? 'Dark' : 'Light'}`)
+          changes.push(
+            t('notice.changeBackground', {
+              value: theme === 'dark' ? t('settings.bgDark') : t('settings.bgLight'),
+            })
+          )
         }
         setVerseLimit(verseLimit)
         setDisplayTheme(theme)
         confirmedRef.current.verseLimit = verseLimit
         confirmedRef.current.theme = theme
-        if (changes.length > 0) showNotice('info', `Saved — ${changes.join(', ')}`)
+        if (changes.length > 0)
+          showNotice('info', t('notice.saved', { changes: changes.join(', ') }))
         break
       }
       case 'auto_mode_confirmed': {
@@ -473,7 +486,12 @@ export function useOperatorState(): OperatorState {
         const changed = autoMode !== confirmedRef.current.autoMode
         setAutoMode(autoMode)
         confirmedRef.current.autoMode = autoMode
-        if (changed) showNotice('info', `Auto-approve: ${autoModeOption(autoMode).label}`)
+        if (changed) {
+          showNotice(
+            'info',
+            t('notice.autoApprove', { mode: t(autoModeOption(autoMode).labelKey) })
+          )
+        }
         break
       }
       case 'bible_version_confirmed':
@@ -484,12 +502,12 @@ export function useOperatorState(): OperatorState {
         console.error('Server error:', reason)
         // A rejected or failed action is over: let the operator try again.
         if (action === 'approve' || action === 'display_reference') setShowInFlight(false)
-        const prefix = ERROR_PREFIXES[action] ?? 'Action failed'
+        const prefix = t(ERROR_PREFIX_KEYS[action] ?? 'notice.errGeneric')
         showNotice(
           'error',
           OPTIMISTIC_ACTIONS.has(action)
-            ? `${prefix} — reverted. ${reason}`
-            : `${prefix}: ${reason}`
+            ? t('notice.reverted', { prefix, reason })
+            : t('notice.failed', { prefix, reason })
         )
         // An optimistic change is only provisional. Put the last confirmed value
         // back so the console matches what the display is really using.
@@ -584,10 +602,10 @@ export function useOperatorState(): OperatorState {
   }, [sendAction])
 
   const clearPendingQueue = useCallback(() => {
-    if (window.confirm('Clear all pending references?')) {
+    if (window.confirm(t('queue.confirmClear'))) {
       sendAction({ action: 'clear_pending' })
     }
-  }, [sendAction])
+  }, [sendAction, t])
 
   // Applied optimistically so the control feels immediate; the server echoes
   // the accepted value back in display_settings_confirmed.
@@ -627,9 +645,9 @@ export function useOperatorState(): OperatorState {
   const selectHistory = useCallback(
     (reference: BibleReference) => {
       setStaged({ kind: 'history', reference })
-      showNotice('info', `Staged: ${formatReference(reference)} — press Show to display it again`)
+      showNotice('info', t('notice.stagedAgain', { ref: formatReference(reference) }))
     },
-    [showNotice]
+    [showNotice, t]
   )
 
   const selectNext = useCallback(() => {
@@ -710,12 +728,9 @@ export function useOperatorState(): OperatorState {
   const stageManualPassage = useCallback(
     (passage: Passage) => {
       setStaged({ kind: 'manual', passage })
-      showNotice(
-        'info',
-        `Staged: ${formatReference(passageToReference(passage))} — press Show to display`
-      )
+      showNotice('info', t('notice.staged', { ref: formatReference(passageToReference(passage)) }))
     },
-    [showNotice]
+    [showNotice, t]
   )
 
   // Shift+Enter in Find Scripture: the resolved coordinates go to the display

@@ -1,4 +1,5 @@
 import { EmptyState, ClockIcon } from '../../components'
+import { useI18n } from '../../shared/i18nContext'
 import { ReferenceCard } from './ReferenceCard'
 import { formatReference } from '../../shared/reference'
 import type { BibleReference } from '../../shared/types'
@@ -31,10 +32,11 @@ export interface HistoryPanelProps {
  * names its source when it was not a detection.
  */
 export function HistoryPanel({ history, count, selectedId, onSelect }: HistoryPanelProps) {
+  const { t } = useI18n()
   return (
-    <section className="operator-section operator-history" aria-label="Recent history">
+    <section className="operator-section operator-history" aria-label={t('history.aria')}>
       <div className="operator-section-header">
-        <h2 className="operator-section-title">Recent History</h2>
+        <h2 className="operator-section-title">{t('history.title')}</h2>
         <span className="operator-section-count">{count}</span>
       </div>
 
@@ -42,8 +44,8 @@ export function HistoryPanel({ history, count, selectedId, onSelect }: HistoryPa
         {history.length === 0 ? (
           <EmptyState
             icon={<ClockIcon />}
-            title="No history yet"
-            description="References that reach the display appear here — select one to stage it again."
+            title={t('history.empty')}
+            description={t('history.emptyHint')}
           />
         ) : (
           <div className="ref-card-list">
@@ -53,7 +55,7 @@ export function HistoryPanel({ history, count, selectedId, onSelect }: HistoryPa
                 reference={reference}
                 selected={reference.id === selectedId}
                 onSelect={() => onSelect(reference)}
-                ariaLabel={`Stage ${formatReference(reference)} from history in Up Next`}
+                ariaLabel={t('history.stageAria', { ref: formatReference(reference) })}
               />
             ))}
           </div>

@@ -1,4 +1,5 @@
 import { Button, MonitorIcon, BookIcon } from '../../components'
+import { useI18n } from '../../shared/i18nContext'
 import { PanelHint } from './PanelHint'
 import { previewFontSize } from '../previewFit'
 import { formatReference } from '../../shared/reference'
@@ -52,24 +53,25 @@ export function NextPanel({
   onShow,
   onDiscard,
 }: NextPanelProps) {
+  const { t } = useI18n()
   const verses = selectVerses(reference, verseLimit)
   const hiddenCount = hiddenVerseCount(reference, verseLimit)
 
   return (
-    <section className="operator-stage-panel operator-next" aria-label="Up next">
+    <section className="operator-stage-panel operator-next" aria-label={t('next.aria')}>
       <div className="operator-stage-header">
-        <h2 className="operator-stage-title">Up Next</h2>
+        <h2 className="operator-stage-title">{t('next.title')}</h2>
         <span
           className={`operator-next-badge ${source ? `is-${source}` : ''}`}
           data-source={source ?? 'none'}
         >
           {source === 'manual'
-            ? 'Manual'
+            ? t('source.manual')
             : source === 'history'
-              ? 'History'
+              ? t('source.history')
               : source === 'detected'
-                ? 'Detected'
-                : 'Staged'}
+                ? t('source.detected')
+                : t('source.staged')}
         </span>
       </div>
 
@@ -95,24 +97,22 @@ export function NextPanel({
             ))}
           </ol>
           {hiddenCount > 0 && (
-            <div className="operator-next-note">
-              +{hiddenCount} more verse{hiddenCount === 1 ? '' : 's'} hidden by the current limit
-            </div>
+            <div className="operator-next-note">{t('next.moreHidden', { count: hiddenCount })}</div>
           )}
         </div>
       ) : (
         <div className="operator-stage is-empty">
           <PanelHint
             icon={<BookIcon />}
-            title="Nothing staged"
-            hint="Select a reference in the queue, or find a passage, to preview it here."
+            title={t('next.nothingStaged')}
+            hint={t('next.stagedHint')}
           />
         </div>
       )}
 
       <div className="operator-stage-footer">
         <Button variant="ghost" size="md" onClick={onDiscard} disabled={reference === null}>
-          Discard
+          {t('next.discard')}
         </Button>
         <Button
           variant="primary"
@@ -122,7 +122,7 @@ export function NextPanel({
           onClick={onShow}
           disabled={!canShow}
         >
-          Show on display
+          {t('next.show')}
           {/* Enter shows a staged detection and nothing else, so the hint is only
               true — and only shown — for that source. */}
           {source === 'detected' && (

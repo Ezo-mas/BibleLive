@@ -7,6 +7,7 @@ import time
 from operator import mul
 from pathlib import Path
 from queue import Empty, Full, Queue
+from typing import Any
 
 from core.bible_lookup import BibleLookup
 from core.verse_parser import Reference, ReferenceParser, StreamingParser
@@ -61,6 +62,11 @@ def frame_is_loud(frame: bytes) -> bool:
     samples = memoryview(frame).cast("h")
     energy: int = sum(map(mul, samples, samples))
     return energy > _SOUND_MEAN_SQUARE * len(samples)
+
+
+def _health_issue(code: str, text: str, **params: str | int | float) -> dict[str, Any]:
+    """One health-report problem: a stable ``code``, its ``params``, and the English ``text``."""
+    return {"code": code, "params": params, "text": text}
 
 
 class BibleLiveAudioProcessor:
@@ -160,7 +166,7 @@ class BibleLiveAudioProcessor:
         self._last_loud_at: float | None = None
         self._mic_silent_logged = False
         self._consecutive_transcription_errors = 0
-        self._parser_problems: list[str] = []
+        self._parser_issues: list[dict[str, Any]] = []
         self.heartbeat: HeartbeatSender | None = (
             HeartbeatSender(server_url, self.config, self.health_report)
             if self.config.heartbeat_interval > 0
@@ -372,10 +378,11 @@ class BibleLiveAudioProcessor:
         """What the heartbeat tells the server: the language and any problems.
 
         Each problem is one sentence for the operator, naming what has stopped
-        working. An empty list means the pipeline is detecting normally (a quiet
-        room is not a problem).
+        working, and comes with a stable code and its parameters so the console
+        can word it in its own language. An empty list means the pipeline is
+        detecting normally (a quiet room is not a problem).
         """
-        problems: list[str] = []
+        issues: list[dict[str, Any]] = []
         # An uncaught exception ends a worker thread silently; this thread
         # would otherwise go on reporting a pipeline that detects nothing.
         for thread, role in (
@@ -383,36 +390,70 @@ class BibleLiveAudioProcessor:
             (self.transcription_thread, "transcription"),
         ):
             if self.is_running and thread is not None and not thread.is_alive():
-                problems.append(f"The pipeline's {role} thread has stopped; restart the pipeline")
+                issues.append(
+                    _health_issue(
+                        "thread_stopped",
+                        f"The pipeline's {role} thread has stopped; restart the pipeline",
+                        role=role,
+                    )
+                )
         if self._capture_down:
-            problems.append("Audio capture stopped; the pipeline is trying to restart it")
+            issues.append(
+                _health_issue(
+                    "capture_stopped",
+                    "Audio capture stopped; the pipeline is trying to restart it",
+                )
+            )
         elif self.is_running and self._last_frame_at is not None:
             # Capture streams continuously (silence included), so a gap means
             # ffmpeg is stuck, not that the room is quiet.
             now = time.monotonic()
             silent_s = now - self._last_frame_at
             if silent_s > AUDIO_STALL_S:
-                problems.append(f"No audio has arrived from the microphone for {silent_s:.0f} s")
+                seconds = round(silent_s)
+                issues.append(
+                    _health_issue(
+                        "audio_stalled",
+                        f"No audio has arrived from the microphone for {seconds} s",
+                        seconds=seconds,
+                    )
+                )
             elif self._last_loud_at is not None and now - self._last_loud_at > SILENT_MIC_S:
                 # Frames arrive but none has any sound in it: a dead or muted input.
-                problems.append(
-                    f"The microphone is silent: no sound for {now - self._last_loud_at:.0f} s. "
-                    "Check that the right microphone is selected and not muted."
+                seconds = round(now - self._last_loud_at)
+                issues.append(
+                    _health_issue(
+                        "mic_silent",
+                        f"The microphone is silent: no sound for {seconds} s. "
+                        "Check that the right microphone is selected and not muted.",
+                        seconds=seconds,
+                    )
                 )
         errors = self._consecutive_transcription_errors
         if errors:
-            problems.append(
-                f"Speech recognition failed on the last {errors} "
-                f"utterance{'s' if errors != 1 else ''}"
+            issues.append(
+                _health_issue(
+                    "stt_failed",
+                    f"Speech recognition failed on the last {errors} "
+                    f"utterance{'s' if errors != 1 else ''}",
+                    count=errors,
+                )
             )
         delivery_problem = self.sender.delivery_problem
         if delivery_problem:
-            problems.append(f"The last detected reference was not delivered: {delivery_problem}")
-        problems.extend(self._parser_problems)
+            issues.append(
+                _health_issue(
+                    "delivery_failed",
+                    f"The last detected reference was not delivered: {delivery_problem}",
+                    detail=delivery_problem,
+                )
+            )
+        issues.extend(self._parser_issues)
         return {
             "language": self.current_language,
             "interval_s": self.config.heartbeat_interval,
-            "problems": problems,
+            "problems": [issue["text"] for issue in issues],
+            "issues": issues,
         }
 
     def _consume_pending_language_switch(self) -> None:
@@ -669,13 +710,16 @@ class BibleLiveAudioProcessor:
 
         lookup = self._local.bible_lookup
         validator = lookup.get_validator_hook() if lookup and lookup.conn else None
-        problems: list[str] = []
+        issues: list[dict[str, Any]] = []
         if validator is None:
             # Parsing still works, but nothing checks that a detected verse
             # exists before it reaches the operator.
-            problems.append(
-                "The pipeline could not open the Bible database, so detections "
-                "are not checked against it"
+            issues.append(
+                _health_issue(
+                    "bible_db_unavailable",
+                    "The pipeline could not open the Bible database, so detections "
+                    "are not checked against it",
+                )
             )
 
         verse_text = self._load_verse_text()
@@ -699,12 +743,16 @@ class BibleLiveAudioProcessor:
                     )
             except Exception as e:
                 logger.error(f"Failed to initialize '{language}' parser: {e}")
-                problems.append(
-                    f"The '{language}' reference parser failed to start, so no "
-                    f"references are detected in that language"
+                issues.append(
+                    _health_issue(
+                        "parser_failed",
+                        f"The '{language}' reference parser failed to start, so no "
+                        f"references are detected in that language",
+                        language=language,
+                    )
                 )
 
-        self._parser_problems = problems
+        self._parser_issues = issues
         self._local.streaming_parsers = parsers
         self._local.alternate_parsers = alternate_parsers
         self._local.last_parser_language = None

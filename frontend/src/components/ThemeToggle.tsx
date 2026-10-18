@@ -1,3 +1,4 @@
+import { useI18n } from '../shared/i18nContext'
 import { useTheme } from '../hooks/useTheme'
 import type { Theme } from '../hooks/useTheme'
 import { SunIcon, MoonIcon, MonitorIcon } from './Icons'
@@ -17,27 +18,33 @@ export function ThemeToggle({ theme: controlled, onThemeChange }: ThemeTogglePro
   // Uncontrolled by default, which is what the display page uses: there the
   // control is the only thing that sets the theme.
   const { theme: stored, setTheme } = useTheme()
+  const { t } = useI18n()
   const theme = controlled ?? stored
   const selectTheme = onThemeChange ?? setTheme
 
   const options = [
-    { value: 'light' as const, label: 'Light', icon: SunIcon },
-    { value: 'dark' as const, label: 'Dark', icon: MoonIcon },
-    { value: 'system' as const, label: 'System', icon: MonitorIcon },
+    { value: 'light' as const, label: t('theme.light'), name: t('theme.lightAria'), icon: SunIcon },
+    { value: 'dark' as const, label: t('theme.dark'), name: t('theme.darkAria'), icon: MoonIcon },
+    {
+      value: 'system' as const,
+      label: t('theme.system'),
+      name: t('theme.systemAria'),
+      icon: MonitorIcon,
+    },
   ]
 
   return (
-    <div className="theme-toggle" role="radiogroup" aria-label="Theme selection">
-      {options.map(({ value, label, icon: Icon }) => (
+    <div className="theme-toggle" role="radiogroup" aria-label={t('theme.group')}>
+      {options.map(({ value, label, name, icon: Icon }) => (
         <button
           key={value}
           type="button"
           role="radio"
           aria-checked={theme === value}
-          aria-label={`${label} theme`}
+          aria-label={name}
           className={`theme-toggle-button ${theme === value ? 'active' : ''}`}
           onClick={() => selectTheme(value)}
-          title={`${label} theme`}
+          title={name}
         >
           <Icon className="theme-toggle-icon" aria-hidden="true" />
           <span className="theme-toggle-label">{label}</span>

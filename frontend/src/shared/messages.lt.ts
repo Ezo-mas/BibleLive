@@ -1,0 +1,276 @@
+import type { MessageEntry, MessageKey } from './i18n'
+
+/**
+ * The console's Lithuanian strings. Typed against the English keys: a missing or
+ * an extra key is a compile error, so the two tables cannot drift apart.
+ *
+ * Terms follow the launcher (`backend/launcher/i18n.py`): "garso apdorojimas" is
+ * the audio pipeline, "serveris" the server.
+ */
+export const lt: Record<MessageKey, MessageEntry> = {
+  // Shared components
+  'connection.connected': 'Prisijungta',
+  'connection.connecting': 'Jungiamasi',
+  'connection.disconnected': 'Atjungta',
+  'connection.statusSr': 'Ryšio būsena: {state}',
+  'theme.light': 'Šviesi',
+  'theme.dark': 'Tamsi',
+  'theme.system': 'Pagal sistemą',
+  'theme.lightAria': 'Šviesi tema',
+  'theme.darkAria': 'Tamsi tema',
+  'theme.systemAria': 'Tema pagal sistemą',
+  'theme.group': 'Temos pasirinkimas',
+
+  // Header, sign-in, connection
+  'app.operatorTitle': 'BibleLive operatorius',
+  'app.dismissNotice': 'Uždaryti pranešimą',
+  'header.settings': 'Nustatymai',
+  'header.logout': 'Atsijungti',
+  'header.displayActive': 'Ekranas aktyvus',
+  'token.label': 'Operatoriaus prieigos raktas',
+  'token.placeholder': 'Įveskite operatoriaus prieigos raktą',
+  'token.connect': 'Prisijungti',
+  'token.authFailed': 'Prisijungti nepavyko. Įveskite operatoriaus prieigos raktą.',
+  'connection.lost': 'Nėra ryšio su serveriu.',
+  'connection.paused': 'Patvirtinimai ir nustatymų keitimas sustabdyti, kol ryšys vėl atsistatys.',
+  'connection.reconnect': 'Prisijungti iš naujo',
+
+  // Pipeline health
+  'pipeline.offlineTitle': 'Nuorodų aptikimas sustojo.',
+  'pipeline.offlineBody':
+    'Garso apdorojimas nebeatsiliepia, todėl naujos nuorodos neaptinkamos. Šventojo Rašto paieška veikia.',
+  'pipeline.offlineBodyAge':
+    'Garso apdorojimas nebeatsiliepia (paskutinį kartą prieš {age}), todėl naujos nuorodos neaptinkamos. Šventojo Rašto paieška veikia.',
+  'pipeline.degradedTitle': 'Nuorodų aptikimas veikia netinkamai.',
+  'pipeline.degradedBody':
+    'Kol problema neišspręsta, dalis nuorodų gali būti praleista. Šventojo Rašto paieška veikia.',
+  'pipeline.ageSeconds': '{seconds} s',
+  'pipeline.ageMinutes': '{minutes} min.',
+  'pipeline.role.listening': 'klausymo',
+  'pipeline.role.transcription': 'atpažinimo',
+  'pipeline.issue.thread_stopped':
+    'Sustojo garso apdorojimo {role} dalis; paleiskite BibleLive iš naujo',
+  'pipeline.issue.capture_stopped':
+    'Garso įrašymas sustojo; garso apdorojimas bando jį paleisti iš naujo',
+  'pipeline.issue.audio_stalled': 'Iš mikrofono garso nebegaunama jau {seconds} s',
+  'pipeline.issue.mic_silent':
+    'Mikrofonas tyli: jau {seconds} s negirdėti jokio garso. Patikrinkite, ar pasirinktas tinkamas mikrofonas ir ar jis neišjungtas.',
+  // Worded so the count needs no case agreement ("paskutiniuose 10 fragmentų" is wrong).
+  'pipeline.issue.stt_failed': {
+    one: 'Nepavykę kalbos atpažinimai iš eilės: {count}',
+    few: 'Nepavykę kalbos atpažinimai iš eilės: {count}',
+    other: 'Nepavykę kalbos atpažinimai iš eilės: {count}',
+  },
+  'pipeline.issue.delivery_failed': 'Paskutinė aptikta nuoroda nebuvo perduota: {detail}',
+  'pipeline.issue.bible_db_unavailable':
+    'Garso apdorojimas negalėjo atidaryti Biblijos duomenų bazės, todėl aptiktos nuorodos su ja netikrinamos',
+  'pipeline.issue.parser_failed':
+    'Nepavyko paleisti nuorodų atpažinimo kalbai „{language}“, todėl šia kalba nuorodos neaptinkamos',
+
+  // Find Scripture
+  'search.title': 'Ieškoti Šventojo Rašto',
+  'search.looking': 'Ieškoma…',
+  'search.sectionAria': 'Ieškoti Šventojo Rašto',
+  'search.label': 'Ieškoti Šventojo Rašto pagal knygą ar nuorodą',
+  'search.placeholder': 'Jono 3:16, ps 23',
+  'search.resultsLabel': 'Šventojo Rašto paieškos rezultatai',
+  'search.retry': 'Bandyti dar kartą',
+  'search.stageAria': '{label} — paruošti skiltyje „Toliau“',
+  'search.bookAria': '{name} — pasirinkti šią knygą',
+  'search.complete': 'Pilna nuoroda',
+  'search.showMore': 'Rodyti dar {count}',
+  'search.hintDefault': 'Įveskite knygą ar nuorodą, pavyzdžiui „Jono“, „Jono 3:16“ arba „ps 23“.',
+  'search.hintLoading': 'Įkeliamas knygų sąrašas…',
+  'search.hintReference':
+    'Spauskite Enter, kad paruoštumėte skiltyje „Toliau“, arba Shift+Enter, kad iškart rodytumėte.',
+  'search.hintBook': 'Spauskite Enter, kad pasirinktumėte {book}, tada įveskite skyrių.',
+  'search.hintKeepTyping': 'Toliau rašykite knygos pavadinimą.',
+  'search.wholeChapter': 'Visas skyrius — rodoma nuo 1 eilutės',
+  'search.booksFailed': 'Nepavyko įkelti knygų sąrašo.',
+  'search.lookupFailed': 'Nepavyko surasti šios ištraukos.',
+  'scripture.useChapterVerse':
+    'Nurodykite skyrių ir eilutę, pavyzdžiui „{name} 3:16“ arba „{name} 3:16-18“.',
+  'scripture.tooManyNumbers':
+    'Per daug skaičių — nurodykite skyrių ir eilutę, pavyzdžiui „{name} 3:16-18“.',
+  'scripture.ambiguousRange':
+    '„{name} {from}-{to}“ yra neaiškus (skyrių intervalas ar kelių skyrių eilutės?). Pirma įrašykite skyrių, pavyzdžiui „{name} {from}:1“.',
+  'scripture.chapterMin': 'Skyrių numeriai prasideda nuo 1.',
+  'scripture.chapterLimit': {
+    one: '{name} turi {count} skyrių.',
+    few: '{name} turi {count} skyrius.',
+    other: '{name} turi {count} skyrių.',
+  },
+  'scripture.verseMin': 'Eilučių numeriai prasideda nuo 1.',
+  'scripture.rangeOrder': 'Eilučių intervalas turi prasidėti ne vėliau, nei baigiasi.',
+  'scripture.noBook': 'Nėra knygos, atitinkančios „{book}“.',
+  'scripture.chapterCount': {
+    one: '{count} skyrius',
+    few: '{count} skyriai',
+    other: '{count} skyrių',
+  },
+
+  // Settings dialog
+  'settings.title': 'Nustatymai',
+  'settings.close': 'Uždaryti nustatymus',
+  'settings.sectionDisplay': 'Ekranas',
+  'settings.sectionAudio': 'Garsas',
+  'settings.sectionAuto': 'Automatinis patvirtinimas',
+  'settings.sectionShortcuts': 'Klaviatūros trumpiniai',
+  'settings.shortcutMove': 'Perkelti pasirinkimą eilėje',
+  'settings.shortcutShow':
+    'Rodyti paruoštą nuorodą; ieškant Šventojo Rašto, paruošti geriausią rezultatą',
+  'settings.shortcutShift': 'Ieškant Šventojo Rašto, iškart rodyti rastą ištrauką',
+  'settings.shortcutEsc': 'Panaikinti pasirinkimą; kai atidarytas šis langas, jį uždaryti',
+  'settings.verses': 'Rodomos eilutės',
+  'settings.versesGroup': 'Ekrane rodomos eilutės',
+  'settings.versesAll': 'Visos',
+  'settings.versesDefault': 'Pagal nutylėjimą {count}. Ilgesnės ištraukos sumažinamos, kad tilptų.',
+  'settings.background': 'Ekrano fonas',
+  'settings.backgroundGroup': 'Ekrano fono tema',
+  'settings.bgDark': 'Tamsus',
+  'settings.bgLight': 'Šviesus',
+  'settings.bgHint': 'Tamsus fonas mažiau vargina akis apšviestoje patalpoje.',
+  'settings.appTheme': 'Konsolės tema',
+  'settings.appThemeHint':
+    'Šviesi, tamsi arba pagal šio kompiuterio nustatymą. Tai keičia tik operatoriaus konsolę.',
+  'settings.interfaceLanguage': 'Sąsajos kalba',
+  'settings.interfaceEnglish': 'English',
+  'settings.interfaceLithuanian': 'Lietuvių',
+  'settings.interfaceAuto': 'Auto',
+  'settings.interfaceHint':
+    'Taikoma tik šiai naršyklei. Auto seka paleidimo programos nustatymą, o tada šio kompiuterio kalbą.',
+  'settings.spokenLanguage': 'Šnekamoji kalba',
+  'settings.switching': 'Keičiama…',
+  'settings.checkAgain': 'Tikrinti dar kartą',
+  'settings.checkingPipeline': 'Tikrinamas garso apdorojimas…',
+  'settings.takesEffect':
+    'Veikia iš karto, be paleidimo iš naujo. Viskas, kas sakoma perjungimo metu, praleidžiama.',
+  'settings.bibleVersion': 'Biblijos vertimas',
+  'settings.versionHint':
+    'Pagal nutylėjimą seka šnekamąją kalbą. Ekrane jau rodoma ištrauka lieka tokia pat.',
+
+  // Languages, Bible versions, auto-approve
+  'language.en': 'Anglų',
+  'language.lt': 'Lietuvių',
+  'language.changeFailed': 'Šnekamosios kalbos pakeisti nepavyko.',
+  'language.controlFailed': 'Kalbos valdymas nepavyko (HTTP {status}).',
+  'language.badReply': 'Serveris atsiuntė kalbos atsakymą, kurio konsolė neperskaitė.',
+  'language.readUnreachable': 'Nepavyko pasiekti serverio, kad nuskaitytų šnekamąją kalbą.',
+  'language.changeUnreachable': 'Nepavyko pasiekti serverio, kad pakeistų šnekamąją kalbą.',
+  'language.changed': 'Šnekamoji kalba: {language}',
+  'version.kjv': 'King James (KJV)',
+  'version.web': 'World English (WEB)',
+  'version.ltb': 'Lietuvių (LTB)',
+  'version.changeFailed': 'Biblijos vertimo pakeisti nepavyko.',
+  'version.requestFailed': 'Biblijos vertimo užklausa nepavyko (HTTP {status}).',
+  'version.badReply': 'Serveris atsiuntė Biblijos vertimo atsakymą, kurio konsolė neperskaitė.',
+  'version.readUnreachable': 'Nepavyko pasiekti serverio, kad nuskaitytų Biblijos vertimą.',
+  'version.changeUnreachable': 'Nepavyko pasiekti serverio, kad pakeistų Biblijos vertimą.',
+  'version.changed': 'Biblijos vertimas: {version}',
+  'auto.compactLabel': 'Automatinis patvirtinimas: ',
+  'auto.compactTitle': 'Atidaryti automatinio patvirtinimo nustatymus',
+  'auto.mode': 'Automatinio patvirtinimo režimas',
+  'auto.off': 'Išjungta',
+  'auto.offDesc': 'Kiekviena nauja nuoroda laukia jūsų patvirtinimo.',
+  'auto.high': 'Aukštas',
+  'auto.highDesc': 'Naujos aukšto tikrumo nuorodos iškart rodomos ekrane.',
+  'auto.mediumAndUp': 'Vid.+',
+  'auto.mediumAndUpDesc': 'Naujos vidutinio ir aukšto tikrumo nuorodos iškart rodomos ekrane.',
+  'auto.all': 'Visos',
+  'auto.allDesc': 'Kiekviena nauja nuoroda iškart rodoma ekrane.',
+
+  // API failures
+  'api.unauthorized': 'Neturite leidimo. Prisijunkite iš naujo su operatoriaus prieigos raktu.',
+  'api.lookupFailed': 'Paieška nepavyko (HTTP {status}).',
+  'api.booksUnreachable': 'Nepavyko pasiekti serverio, kad įkeltų knygų sąrašą.',
+  'api.lookupUnreachable': 'Nepavyko pasiekti serverio, kad surastų tą ištrauką.',
+
+  // Spoken-language chip
+  'chip.speech': 'Kalba',
+  'chip.aria': 'Šnekamoji kalba: {language}. Keisti nustatymuose',
+  'chip.staleAria':
+    'Šnekamoji kalba: {language}, bet nuorodų aptikimas neveikia. Keisti nustatymuose',
+  'chip.title': 'Šnekamoji kalba — atidaryti nustatymus',
+  'chip.staleTitle': 'Paskutinė šnekamoji kalba — nuorodų aptikimas neveikia',
+
+  // Stages and queue
+  'stage.onDisplay': 'Ekrane',
+  'stage.onDisplayAria': 'Dabar ekrane',
+  'stage.live': 'Gyvai',
+  'stage.idle': 'Tuščias',
+  'stage.moreVerses': {
+    one: 'dar {count} eilutė',
+    few: 'dar {count} eilutės',
+    other: 'dar {count} eilučių',
+  },
+  'stage.nothingOnDisplay': 'Ekrane nieko nėra',
+  'stage.approvedHint': 'Patvirtintos nuorodos rodomos čia ir projektoriuje.',
+  'stage.clearDisplay': 'Išvalyti ekraną',
+  'next.title': 'Toliau',
+  'next.aria': 'Toliau',
+  'next.moreHidden': {
+    one: 'dar {count} eilutė paslėpta dėl eilučių limito',
+    few: 'dar {count} eilutės paslėptos dėl eilučių limito',
+    other: 'dar {count} eilučių paslėpta dėl eilučių limito',
+  },
+  'next.nothingStaged': 'Nieko neparuošta',
+  'next.stagedHint': 'Pasirinkite nuorodą eilėje arba raskite ištrauką, kad ją čia peržiūrėtumėte.',
+  'next.discard': 'Atmesti',
+  'next.show': 'Rodyti ekrane',
+  'source.manual': 'Rankinė',
+  'source.history': 'Istorija',
+  'source.detected': 'Aptikta',
+  'source.staged': 'Paruošta',
+  'queue.title': 'Laukiančios nuorodos',
+  'queue.empty': 'Laukiančių nuorodų nėra',
+  'queue.emptyHint': 'Biblijos nuorodos čia atsiranda, kai garso apdorojimas jas aptinka.',
+  'queue.clear': 'Išvalyti eilę',
+  'queue.moveHint': '↑ ↓ perkelti',
+  'queue.confirmClear': 'Išvalyti visas laukiančias nuorodas?',
+  'history.title': 'Neseniai rodyta',
+  'history.aria': 'Neseniai rodyta',
+  'history.empty': 'Istorijos dar nėra',
+  'history.emptyHint':
+    'Ekraną pasiekusios nuorodos rodomos čia — pasirinkite vieną, kad ją vėl paruoštumėte.',
+  'history.stageAria': 'Paruošti {ref} iš istorijos skiltyje „Toliau“',
+  'follow.aria': 'Sekimo pasiūlymas',
+  'follow.label': 'Dabar skaitoma',
+  'follow.show': 'Rodyti',
+  'follow.showAria': 'Rodyti {label} ekrane',
+
+  // Reference cards
+  'ref.confidenceSr': 'Aptikimo tikrumas: ',
+  'ref.confidence.high': 'Aukštas',
+  'ref.confidence.medium': 'Vidutinis',
+  'ref.confidence.low': 'Žemas',
+  'ref.sourceSr': 'Šaltinis: ',
+  'ref.context': 'Kontekstas',
+  'ref.verses': {
+    one: '{count} eilutė',
+    few: '{count} eilutės',
+    other: '{count} eilučių',
+  },
+  'ref.staged': 'Paruošta skiltyje „Toliau“',
+
+  // Operator notices
+  'notice.errApprove': 'Nepavyko rodyti šios nuorodos',
+  'notice.errDisplayReference': 'Nepavyko rodyti šios ištraukos',
+  'notice.errClear': 'Nepavyko išvalyti ekrano',
+  'notice.errClearPending': 'Nepavyko išvalyti eilės',
+  'notice.errVerseLimit': 'Nepavyko pakeisti rodomų eilučių',
+  'notice.errTheme': 'Nepavyko pakeisti fono',
+  'notice.errAutoMode': 'Nepavyko pakeisti automatinio patvirtinimo',
+  'notice.errGeneric': 'Veiksmas nepavyko',
+  'notice.reverted': '{prefix} — grąžinta. {reason}',
+  'notice.failed': '{prefix}: {reason}',
+  'notice.shown': 'Rodoma: {ref}',
+  'notice.shownManual': 'Rodoma: {ref} (rankiniu būdu)',
+  'notice.displayCleared': 'Ekranas išvalytas',
+  'notice.queueCleared': 'Laukiančių nuorodų eilė išvalyta',
+  'notice.saved': 'Išsaugota — {changes}',
+  'notice.changeVerses': 'rodomos eilutės: {value}',
+  'notice.changeBackground': 'fonas: {value}',
+  'notice.autoApprove': 'Automatinis patvirtinimas: {mode}',
+  'notice.staged': 'Paruošta: {ref} — spauskite „Rodyti ekrane“',
+  'notice.stagedAgain': 'Paruošta: {ref} — spauskite „Rodyti ekrane“, kad rodytumėte dar kartą',
+}

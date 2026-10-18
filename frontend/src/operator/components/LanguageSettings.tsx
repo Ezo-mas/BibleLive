@@ -1,5 +1,6 @@
 import { useId } from 'react'
 import { AlertCircleIcon, Button } from '../../components'
+import { useI18n } from '../../shared/i18nContext'
 import { SPOKEN_LANGUAGES, spokenLanguageLabel } from '../languageApi'
 import type { SpokenLanguageState } from '../hooks/useSpokenLanguage'
 
@@ -24,6 +25,7 @@ export interface LanguageSettingsProps {
  */
 export function LanguageSettings({ state, disabled }: LanguageSettingsProps) {
   const hintId = useId()
+  const { t } = useI18n()
   const { language, status, error, isSwitching, refresh, change } = state
   const unavailable = status === 'unavailable'
   const locked = disabled || isSwitching || status !== 'ready'
@@ -31,15 +33,15 @@ export function LanguageSettings({ state, disabled }: LanguageSettingsProps) {
   return (
     <div className="operator-setting">
       <div className="operator-setting-header">
-        <span className="operator-setting-label">Spoken language</span>
+        <span className="operator-setting-label">{t('settings.spokenLanguage')}</span>
         <span className="operator-setting-value">
-          {isSwitching ? 'Switching…' : language ? spokenLanguageLabel(language) : ''}
+          {isSwitching ? t('settings.switching') : language ? spokenLanguageLabel(language, t) : ''}
         </span>
       </div>
       <div
         className="operator-verse-options"
         role="group"
-        aria-label="Spoken language"
+        aria-label={t('settings.spokenLanguage')}
         aria-describedby={hintId}
       >
         {SPOKEN_LANGUAGES.map(option => (
@@ -51,7 +53,7 @@ export function LanguageSettings({ state, disabled }: LanguageSettingsProps) {
             disabled={locked}
             onClick={() => change(option.code)}
           >
-            {option.label}
+            {t(option.labelKey)}
           </button>
         ))}
       </div>
@@ -67,15 +69,13 @@ export function LanguageSettings({ state, disabled }: LanguageSettingsProps) {
             {error}
           </p>
           <Button variant="secondary" size="sm" onClick={refresh} disabled={disabled}>
-            Check again
+            {t('settings.checkAgain')}
           </Button>
         </div>
       ) : (
         <>
           <p className="operator-setting-hint" id={hintId}>
-            {status === 'loading'
-              ? 'Checking the audio pipeline…'
-              : 'Takes effect immediately, with no restart. Anything being spoken at the moment you switch is dropped.'}
+            {status === 'loading' ? t('settings.checkingPipeline') : t('settings.takesEffect')}
           </p>
           {error && (
             <p className="operator-scripture-error">

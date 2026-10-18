@@ -1,4 +1,6 @@
 import { readFailure } from './passageApi'
+import { defaultTranslator } from '../shared/i18n'
+import type { Translator } from '../shared/i18n'
 
 /**
  * The languages the audio pipeline has speech models and reference parsers for.
@@ -9,13 +11,14 @@ import { readFailure } from './passageApi'
  * back as the pipeline's own refusal.
  */
 export const SPOKEN_LANGUAGES = [
-  { code: 'en', label: 'English' },
-  { code: 'lt', label: 'Lithuanian' },
+  { code: 'en', labelKey: 'language.en' },
+  { code: 'lt', labelKey: 'language.lt' },
 ] as const
 
 /** A language's name for the operator; an unknown code is shown as itself. */
-export function spokenLanguageLabel(code: string): string {
-  return SPOKEN_LANGUAGES.find(language => language.code === code)?.label ?? code.toUpperCase()
+export function spokenLanguageLabel(code: string, t: Translator = defaultTranslator): string {
+  const language = SPOKEN_LANGUAGES.find(option => option.code === code)
+  return language ? t(language.labelKey) : code.toUpperCase()
 }
 
 /**
@@ -44,29 +47,32 @@ function headers(token: string | null, json = false): HeadersInit {
   }
 }
 
-async function readLanguage(response: Response): Promise<string> {
+async function readLanguage(response: Response, t: Translator): Promise<string> {
   if (!response.ok) {
     throw new LanguageApiError(
       response.status,
-      await readFailure(response, `Language control failed (HTTP ${response.status}).`)
+      await readFailure(response, t('language.controlFailed', { status: response.status }), t)
     )
   }
   const body = (await response.json()) as { language?: unknown } | null
   if (typeof body?.language !== 'string' || body.language === '') {
-    throw new LanguageApiError(502, 'The server sent a language reply the console could not read.')
+    throw new LanguageApiError(502, t('language.badReply'))
   }
   return body.language
 }
 
 /** The language the audio pipeline is transcribing in right now. */
-export async function fetchSpokenLanguage(token: string | null): Promise<string> {
+export async function fetchSpokenLanguage(
+  token: string | null,
+  t: Translator = defaultTranslator
+): Promise<string> {
   let response: Response
   try {
     response = await fetch('/api/language', { headers: headers(token) })
   } catch {
-    throw new LanguageApiError(0, 'Could not reach the server to read the spoken language.')
+    throw new LanguageApiError(0, t('language.readUnreachable'))
   }
-  return readLanguage(response)
+  return readLanguage(response, t)
 }
 
 /**
@@ -77,7 +83,8 @@ export async function fetchSpokenLanguage(token: string | null): Promise<string>
  */
 export async function changeSpokenLanguage(
   language: string,
-  token: string | null
+  token: string | null,
+  t: Translator = defaultTranslator
 ): Promise<string> {
   let response: Response
   try {
@@ -87,7 +94,7 @@ export async function changeSpokenLanguage(
       body: JSON.stringify({ language }),
     })
   } catch {
-    throw new LanguageApiError(0, 'Could not reach the server to change the spoken language.')
+    throw new LanguageApiError(0, t('language.changeUnreachable'))
   }
-  return readLanguage(response)
+  return readLanguage(response, t)
 }

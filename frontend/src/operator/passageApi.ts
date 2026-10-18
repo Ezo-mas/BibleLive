@@ -1,4 +1,6 @@
 import type { BibleReference, BooksResponse, Passage, ScriptureBook } from '../shared/types'
+import { defaultTranslator } from '../shared/i18n'
+import type { Translator } from '../shared/i18n'
 
 /** A passage the operator wants to look up. Null bounds mean "let the server decide". */
 export interface PassageQuery {
@@ -39,7 +41,8 @@ function authHeaders(token: string | null): HeadersInit {
  */
 export async function readFailure(
   response: Response,
-  fallback = `Lookup failed (HTTP ${response.status}).`
+  fallback?: string,
+  t: Translator = defaultTranslator
 ): Promise<string> {
   try {
     const body: unknown = await response.json()
@@ -54,26 +57,34 @@ export async function readFailure(
   } catch {
     // Not JSON (a proxy error page, an empty body): fall through to the status.
   }
-  if (response.status === 401) return 'Not authorized. Sign in again with your operator token.'
-  return fallback
+  if (response.status === 401) return t('api.unauthorized')
+  return fallback ?? t('api.lookupFailed', { status: response.status })
 }
 
 /** Load the canonical book list the search form is built from. */
-export async function fetchBooks(token: string | null): Promise<ScriptureBook[]> {
+export async function fetchBooks(
+  token: string | null,
+  t: Translator = defaultTranslator
+): Promise<ScriptureBook[]> {
   let response: Response
   try {
     response = await fetch('/api/books', { headers: authHeaders(token) })
   } catch {
-    throw new PassageApiError(0, 'Could not reach the server to load the book list.')
+    throw new PassageApiError(0, t('api.booksUnreachable'))
   }
-  if (!response.ok) throw new PassageApiError(response.status, await readFailure(response))
+  if (!response.ok)
+    throw new PassageApiError(response.status, await readFailure(response, undefined, t))
 
   const data = (await response.json()) as BooksResponse
   return Array.isArray(data?.books) ? data.books : []
 }
 
 /** Resolve a book/chapter/verse passage to the text the display would show. */
-export async function lookupPassage(query: PassageQuery, token: string | null): Promise<Passage> {
+export async function lookupPassage(
+  query: PassageQuery,
+  token: string | null,
+  t: Translator = defaultTranslator
+): Promise<Passage> {
   const params = new URLSearchParams({ book: query.book, chapter: String(query.chapter) })
   if (query.verseStart !== null) params.set('verse_start', String(query.verseStart))
   if (query.verseEnd !== null) params.set('verse_end', String(query.verseEnd))
@@ -84,9 +95,10 @@ export async function lookupPassage(query: PassageQuery, token: string | null): 
   try {
     response = await fetch(url, { headers: authHeaders(token) })
   } catch {
-    throw new PassageApiError(0, 'Could not reach the server to look up that passage.')
+    throw new PassageApiError(0, t('api.lookupUnreachable'))
   }
-  if (!response.ok) throw new PassageApiError(response.status, await readFailure(response))
+  if (!response.ok)
+    throw new PassageApiError(response.status, await readFailure(response, undefined, t))
   return (await response.json()) as Passage
 }
 

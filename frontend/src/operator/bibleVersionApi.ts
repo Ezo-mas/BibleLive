@@ -1,4 +1,6 @@
 import { readFailure } from './passageApi'
+import { defaultTranslator } from '../shared/i18n'
+import type { MessageKey, Translator } from '../shared/i18n'
 
 /** The active Bible translation and the ones the server can switch to. */
 export interface BibleVersionInfo {
@@ -7,15 +9,16 @@ export interface BibleVersionInfo {
 }
 
 /** Names for the translations the project ships; any other id is shown in capitals. */
-const VERSION_LABELS: Record<string, string> = {
-  kjv: 'King James (KJV)',
-  web: 'World English (WEB)',
-  ltb: 'Lithuanian (LTB)',
+const VERSION_LABELS: Record<string, MessageKey> = {
+  kjv: 'version.kjv',
+  web: 'version.web',
+  ltb: 'version.ltb',
 }
 
 /** A translation's name for the operator; an unknown id is shown as itself. */
-export function bibleVersionLabel(id: string): string {
-  return VERSION_LABELS[id] ?? id.toUpperCase()
+export function bibleVersionLabel(id: string, t: Translator = defaultTranslator): string {
+  const key = VERSION_LABELS[id]
+  return key ? t(key) : id.toUpperCase()
 }
 
 /** A Bible-version request that failed; `status` is 0 when it never reached the server. */
@@ -46,38 +49,39 @@ export function parseBibleVersionInfo(body: unknown): BibleVersionInfo | null {
   return { version, available }
 }
 
-async function readInfo(response: Response): Promise<BibleVersionInfo> {
+async function readInfo(response: Response, t: Translator): Promise<BibleVersionInfo> {
   if (!response.ok) {
     throw new BibleVersionApiError(
       response.status,
-      await readFailure(response, `Bible version request failed (HTTP ${response.status}).`)
+      await readFailure(response, t('version.requestFailed', { status: response.status }), t)
     )
   }
   const info = parseBibleVersionInfo(await response.json())
   if (!info) {
-    throw new BibleVersionApiError(
-      502,
-      'The server sent a Bible version reply the console could not read.'
-    )
+    throw new BibleVersionApiError(502, t('version.badReply'))
   }
   return info
 }
 
 /** Which translation is active, and which others can be chosen. */
-export async function fetchBibleVersion(token: string | null): Promise<BibleVersionInfo> {
+export async function fetchBibleVersion(
+  token: string | null,
+  t: Translator = defaultTranslator
+): Promise<BibleVersionInfo> {
   let response: Response
   try {
     response = await fetch('/api/bible-version', { headers: headers(token) })
   } catch {
-    throw new BibleVersionApiError(0, 'Could not reach the server to read the Bible version.')
+    throw new BibleVersionApiError(0, t('version.readUnreachable'))
   }
-  return readInfo(response)
+  return readInfo(response, t)
 }
 
 /** Switch the translation all verse text comes from; resolves with what the server confirms. */
 export async function changeBibleVersion(
   version: string,
-  token: string | null
+  token: string | null,
+  t: Translator = defaultTranslator
 ): Promise<BibleVersionInfo> {
   let response: Response
   try {
@@ -87,7 +91,7 @@ export async function changeBibleVersion(
       body: JSON.stringify({ version }),
     })
   } catch {
-    throw new BibleVersionApiError(0, 'Could not reach the server to change the Bible version.')
+    throw new BibleVersionApiError(0, t('version.changeUnreachable'))
   }
-  return readInfo(response)
+  return readInfo(response, t)
 }

@@ -11,6 +11,7 @@ after setting environment variables.
 
 import logging
 from pathlib import Path
+from typing import Literal
 
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -65,6 +66,11 @@ class Config(BaseSettings):
     # 'medium_and_up' | 'all'. Only used when nothing valid is persisted, and a
     # value that is not one of those modes means 'off'.
     AUTO_MODE: str = "off"
+
+    # Interface language of the operator page: 'lt' or 'en'. The launcher sets it from
+    # its own setting. Anything else (or unset) means null, and the console keeps its
+    # own default.
+    UI_LANGUAGE: Literal["lt", "en"] | None = None
 
     # Bible data
     KJV_JSON_PATH: str = "data/kjv2.json"
@@ -130,6 +136,12 @@ class Config(BaseSettings):
     @classmethod
     def _upper_log_level(cls, value: str) -> str:
         return value.upper()
+
+    @field_validator("UI_LANGUAGE", mode="before")
+    @classmethod
+    def _ui_language(cls, value: object) -> object:
+        language = str(value or "").strip().lower()
+        return language if language in ("en", "lt") else None
 
     @field_validator("AUDIO_CONTROL_URL")
     @classmethod

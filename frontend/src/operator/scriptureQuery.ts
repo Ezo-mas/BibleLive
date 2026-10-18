@@ -1,4 +1,6 @@
 import type { ScriptureBook } from '../shared/types'
+import { defaultTranslator } from '../shared/i18n'
+import type { Translator } from '../shared/i18n'
 
 /**
  * Turn typed scripture text into book matches and a reference the server can
@@ -207,7 +209,8 @@ const RANGE_SEPARATOR = /[-–—]/
 /** Parse the coordinate portion. Numbers only; anything else is reported. */
 function parseCoordinates(
   book: ScriptureBook,
-  coordinatesText: string
+  coordinatesText: string,
+  t: Translator
 ): { coordinates: ScriptureCoordinates | null; error: string | null } {
   if (!coordinatesText) return { coordinates: null, error: null }
 
@@ -216,7 +219,7 @@ function parseCoordinates(
   if (/[a-z]/i.test(coordinatesText)) {
     return {
       coordinates: null,
-      error: `Use a chapter and verse, for example "${name} 3:16" or "${name} 3:16-18".`,
+      error: t('scripture.useChapterVerse', { name }),
     }
   }
 
@@ -231,38 +234,38 @@ function parseCoordinates(
   if (numbers.length > 3) {
     return {
       coordinates: null,
-      error: `Too many numbers — use a chapter and a verse, for example "${name} 3:16-18".`,
+      error: t('scripture.tooManyNumbers', { name }),
     }
   }
 
   if (numbers.length === 2 && RANGE_SEPARATOR.test(separators[0] ?? '')) {
     return {
       coordinates: null,
-      error: `"${name} ${numbers[0]}-${numbers[1]}" is ambiguous (a chapter range, or verses of which chapter?); write a chapter first, for example "${name} ${numbers[0]}:1".`,
+      error: t('scripture.ambiguousRange', { name, from: numbers[0], to: numbers[1] }),
     }
   }
 
   const [chapter, verseStart, verseEnd] = numbers
 
   if (chapter < 1) {
-    return { coordinates: null, error: 'Chapter numbers start at 1.' }
+    return { coordinates: null, error: t('scripture.chapterMin') }
   }
   if (chapter > book.chapters) {
     return {
       coordinates: null,
-      error: `${name} has ${book.chapters} chapter${book.chapters === 1 ? '' : 's'}.`,
+      error: t('scripture.chapterLimit', { name, count: book.chapters }),
     }
   }
 
   const start = verseStart ?? null
   const end = verseEnd ?? null
   if ((start !== null && start < 1) || (end !== null && end < 1)) {
-    return { coordinates: null, error: 'Verse numbers start at 1.' }
+    return { coordinates: null, error: t('scripture.verseMin') }
   }
   if (start !== null && end !== null && end < start) {
     return {
       coordinates: null,
-      error: 'The verse range must start at or before its end.',
+      error: t('scripture.rangeOrder'),
     }
   }
 
@@ -296,7 +299,11 @@ function referenceLabel(book: ScriptureBook, coordinates: ScriptureCoordinates):
  * list stays empty with a message saying so. An incomplete number ("Genesis"
  * with no chapter) is not an error — it is just not stageable yet.
  */
-export function parseScriptureQuery(text: string, books: ScriptureBook[]): ScriptureQuery {
+export function parseScriptureQuery(
+  text: string,
+  books: ScriptureBook[],
+  t: Translator = defaultTranslator
+): ScriptureQuery {
   const trimmed = text.trim()
   const empty: ScriptureQuery = {
     bookText: '',
@@ -328,11 +335,11 @@ export function parseScriptureQuery(text: string, books: ScriptureBook[]): Scrip
       ...empty,
       bookText,
       matches: [],
-      error: hasLetters ? `No book matches "${bookText}".` : null,
+      error: hasLetters ? t('scripture.noBook', { book: bookText }) : null,
     }
   }
 
-  const { coordinates, error } = parseCoordinates(book, coordinatesText)
+  const { coordinates, error } = parseCoordinates(book, coordinatesText, t)
   return {
     bookText,
     book,
@@ -353,7 +360,8 @@ export function parseScriptureQuery(text: string, books: ScriptureBook[]): Scrip
  */
 export function buildResults(
   query: ScriptureQuery,
-  limit: number = BOOK_RESULT_LIMIT
+  limit: number = BOOK_RESULT_LIMIT,
+  t: Translator = defaultTranslator
 ): { results: ScriptureResult[]; hiddenCount: number } {
   if (query.book && query.coordinates && !query.error) {
     return {
@@ -362,10 +370,7 @@ export function buildResults(
           kind: 'reference',
           id: `reference-${query.book.order}`,
           label: query.label ?? bookLabel(query.book),
-          detail:
-            query.coordinates.verseStart === null
-              ? 'Whole chapter — the server opens at verse 1'
-              : null,
+          detail: query.coordinates.verseStart === null ? t('search.wholeChapter') : null,
           book: query.book,
           coordinates: query.coordinates,
           highlight: null,
@@ -381,7 +386,7 @@ export function buildResults(
       kind: 'book' as const,
       id: `book-${match.book.order}`,
       label: bookLabel(match.book),
-      detail: `${match.book.chapters} chapter${match.book.chapters === 1 ? '' : 's'}`,
+      detail: t('scripture.chapterCount', { count: match.book.chapters }),
       book: match.book,
       coordinates: null,
       highlight: match.highlight,

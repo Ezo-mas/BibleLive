@@ -1,5 +1,6 @@
 import { createRoot } from 'react-dom/client'
 import type { ComponentType } from 'react'
+import { I18nProvider } from './I18nProvider'
 
 /**
  * Bootstrap a React app into the #root element.
@@ -11,5 +12,9 @@ export function renderApp(App: ComponentType) {
   const container = document.getElementById('root')
   if (!container) throw new Error('#root container not found')
 
-  createRoot(container).render(<App />)
+  createRoot(container).render(
+    <I18nProvider>
+      <App />
+    </I18nProvider>
+  )
 }

@@ -139,7 +139,7 @@ def _processor(language: str = "en") -> BibleLiveAudioProcessor:
     proc.transcript_sender = _RecordingTranscripts()
     proc._capture_down = False
     proc._consecutive_transcription_errors = 0
-    proc._parser_problems = []
+    proc._parser_issues = []
     return proc
 
 

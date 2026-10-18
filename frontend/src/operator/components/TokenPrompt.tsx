@@ -1,4 +1,5 @@
 import type { FormEvent } from 'react'
+import { useI18n } from '../../shared/i18nContext'
 
 export interface TokenPromptProps {
   /** True when the server rejected the previous token (WebSocket close 1008). */
@@ -18,32 +19,33 @@ export function TokenPrompt({
   onTokenInputChange,
   onSubmit,
 }: TokenPromptProps) {
+  const { t } = useI18n()
   return (
     <div className="operator-app">
       <div className="operator-auth-container">
         <div className="operator-auth-card">
-          <h1 className="operator-auth-title">BibleLive Operator</h1>
+          <h1 className="operator-auth-title">{t('app.operatorTitle')}</h1>
           {authFailed && (
             // Announced when a rejected token brings the operator back here.
             <div className="operator-auth-error" role="alert">
-              Authentication failed. Please enter your operator token.
+              {t('token.authFailed')}
             </div>
           )}
           <form onSubmit={onSubmit} className="operator-auth-form">
             <label htmlFor="token-input" className="operator-auth-label">
-              Operator Token
+              {t('token.label')}
             </label>
             <input
               id="token-input"
               type="password"
               value={tokenInput}
               onChange={e => onTokenInputChange(e.target.value)}
-              placeholder="Enter your operator token"
+              placeholder={t('token.placeholder')}
               className="operator-auth-input"
               autoFocus
             />
             <button type="submit" className="operator-auth-button">
-              Connect
+              {t('token.connect')}
             </button>
           </form>
         </div>

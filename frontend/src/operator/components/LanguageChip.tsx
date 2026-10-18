@@ -1,3 +1,4 @@
+import { useI18n } from '../../shared/i18nContext'
 import { spokenLanguageLabel } from '../languageApi'
 
 export interface LanguageChipProps {
@@ -22,7 +23,10 @@ export interface LanguageChipProps {
  * changed.
  */
 export function LanguageChip({ language, onOpenSettings, stale = false }: LanguageChipProps) {
+  const { t } = useI18n()
   if (!language) return null
+
+  const name = spokenLanguageLabel(language, t)
 
   return (
     <button
@@ -31,17 +35,11 @@ export function LanguageChip({ language, onOpenSettings, stale = false }: Langua
       onClick={onOpenSettings}
       aria-haspopup="dialog"
       aria-label={
-        stale
-          ? `Spoken language: ${spokenLanguageLabel(language)}, but speech detection is not running. Change in settings`
-          : `Spoken language: ${spokenLanguageLabel(language)}. Change in settings`
+        stale ? t('chip.staleAria', { language: name }) : t('chip.aria', { language: name })
       }
-      title={
-        stale
-          ? 'Last spoken language — speech detection is not running'
-          : 'Spoken language — open settings'
-      }
+      title={stale ? t('chip.staleTitle') : t('chip.title')}
     >
-      <span className="operator-language-chip-label">Speech</span>
+      <span className="operator-language-chip-label">{t('chip.speech')}</span>
       <strong className="operator-language-chip-value">{language.toUpperCase()}</strong>
     </button>
   )

@@ -5,6 +5,7 @@ import {
   VERSE_LIMIT_OPTIONS,
 } from '../../shared/verseText'
 import type { DisplayTheme, VerseLimit } from '../../shared/verseText'
+import { useI18n } from '../../shared/i18nContext'
 
 export interface DisplaySettingsProps {
   verseLimit: VerseLimit
@@ -35,11 +36,12 @@ export function DisplaySettings({
   onThemeChange,
   children,
 }: DisplaySettingsProps) {
+  const { t } = useI18n()
   return (
     <div className="operator-display-settings">
       <div className="operator-setting">
-        <span className="operator-setting-label">Verses shown</span>
-        <div className="operator-verse-options" role="group" aria-label="Verses shown on display">
+        <span className="operator-setting-label">{t('settings.verses')}</span>
+        <div className="operator-verse-options" role="group" aria-label={t('settings.versesGroup')}>
           {VERSE_LIMIT_OPTIONS.map(option => (
             <button
               key={option}
@@ -59,17 +61,21 @@ export function DisplaySettings({
             disabled={disabled}
             onClick={() => onVerseLimitChange('all')}
           >
-            All
+            {t('settings.versesAll')}
           </button>
         </div>
         <p className="operator-setting-hint">
-          Default {DEFAULT_VERSE_LIMIT}. Longer passages shrink to fit.
+          {t('settings.versesDefault', { count: DEFAULT_VERSE_LIMIT })}
         </p>
       </div>
 
       <div className="operator-setting">
-        <span className="operator-setting-label">Display background</span>
-        <div className="operator-verse-options" role="group" aria-label="Display background theme">
+        <span className="operator-setting-label">{t('settings.background')}</span>
+        <div
+          className="operator-verse-options"
+          role="group"
+          aria-label={t('settings.backgroundGroup')}
+        >
           {DISPLAY_THEME_OPTIONS.map(option => (
             <button
               key={option}
@@ -79,11 +85,11 @@ export function DisplaySettings({
               disabled={disabled}
               onClick={() => onThemeChange(option)}
             >
-              {option === 'dark' ? 'Dark' : 'Light'}
+              {option === 'dark' ? t('settings.bgDark') : t('settings.bgLight')}
             </button>
           ))}
         </div>
-        <p className="operator-setting-hint">Dark is easier on the eyes in a lit room.</p>
+        <p className="operator-setting-hint">{t('settings.bgHint')}</p>
       </div>
 
       {children}

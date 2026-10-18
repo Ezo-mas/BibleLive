@@ -77,6 +77,11 @@ function stubFetch() {
         seconds_since_report: null,
       })
     }
+    // The launcher's interface language is read on connect; this file is about the
+    // spoken language, so the launcher has no setting here.
+    if (String(input).startsWith('/api/ui-language')) {
+      return jsonResponse({ language: null })
+    }
     expect(String(input)).toBe('/api/language')
     if (fail) {
       const { status, detail } = fail

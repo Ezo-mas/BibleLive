@@ -1,4 +1,5 @@
 import { Button, XIcon } from '../../components'
+import { useI18n } from '../../shared/i18nContext'
 import type { FlashTarget } from '../hooks/useOperatorState'
 
 export interface ClearDisplayButtonProps {
@@ -18,6 +19,7 @@ export function ClearDisplayButton({
   flash,
   onClearDisplay,
 }: ClearDisplayButtonProps) {
+  const { t } = useI18n()
   return (
     <Button
       variant="danger"
@@ -27,7 +29,7 @@ export function ClearDisplayButton({
       disabled={!canClearDisplay}
       className={flash === 'clear' ? 'btn-flash' : ''}
     >
-      Clear Display
+      {t('stage.clearDisplay')}
     </Button>
   )
 }
@@ -47,6 +49,7 @@ export interface QueueFooterProps {
  * has one primary action instead of two that did the same thing.
  */
 export function QueueFooter({ canClearPending, flash, onClearPending }: QueueFooterProps) {
+  const { t } = useI18n()
   return (
     <div className="operator-queue-footer">
       <Button
@@ -56,9 +59,9 @@ export function QueueFooter({ canClearPending, flash, onClearPending }: QueueFoo
         disabled={!canClearPending}
         className={flash === 'clearPending' ? 'btn-flash' : ''}
       >
-        Clear Queue
+        {t('queue.clear')}
       </Button>
-      <span className="operator-queue-hint">↑ ↓ to move</span>
+      <span className="operator-queue-hint">{t('queue.moveHint')}</span>
     </div>
   )
 }

@@ -127,6 +127,7 @@ class AppState:
             language=report.language,
             # Problems from a pipeline that has gone quiet are history, not state.
             problems=[] if status == "offline" else list(report.problems),
+            issues=[] if status == "offline" else list(report.issues),
             seconds_since_report=round(age, 1),
         )
 

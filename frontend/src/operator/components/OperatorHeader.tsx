@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import { BookIcon, ConnectionIndicator, SettingsIcon } from '../../components'
 import type { ConnectionState } from '../../components'
+import { useI18n } from '../../shared/i18nContext'
 
 export interface OperatorHeaderProps {
   connectionState: ConnectionState
@@ -44,6 +45,7 @@ export function OperatorHeader({
   language,
   feedback,
 }: OperatorHeaderProps) {
+  const { t } = useI18n()
   return (
     <header className="operator-header">
       <div className="operator-header-left">
@@ -64,7 +66,7 @@ export function OperatorHeader({
           {displayConnected && (
             <div className="operator-display-status">
               <span className="operator-display-dot" />
-              <span className="operator-display-label">Display Active</span>
+              <span className="operator-display-label">{t('header.displayActive')}</span>
             </div>
           )}
         </div>
@@ -72,15 +74,15 @@ export function OperatorHeader({
           type="button"
           className="operator-icon-button"
           onClick={onOpenSettings}
-          aria-label="Settings"
+          aria-label={t('header.settings')}
           aria-haspopup="dialog"
-          title="Settings"
+          title={t('header.settings')}
         >
           <SettingsIcon />
         </button>
         {showLogout && (
-          <button onClick={onLogout} className="operator-logout-button" title="Logout">
-            Logout
+          <button onClick={onLogout} className="operator-logout-button" title={t('header.logout')}>
+            {t('header.logout')}
           </button>
         )}
       </div>

@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useWebSocket } from '../shared/useWebSocket'
+import { useI18n } from '../shared/i18nContext'
 import { formatReference } from '../shared/reference'
 import {
   coerceDisplayTheme,
@@ -23,6 +24,7 @@ const FADE_MS = 400
 const VERSE_LINE_HEIGHT = 1.35
 
 export default function App() {
+  const { t } = useI18n()
   const [reference, setReference] = useState<BibleReference | null>(null)
   const [visible, setVisible] = useState(false)
   // Presentation-only: the operator console owns this value and the server
@@ -176,7 +178,7 @@ export default function App() {
             {/* Tell the audience when a range was only partly shown */}
             {hiddenCount > 0 && (
               <div className="display-range-note">
-                +{hiddenCount} more verse{hiddenCount === 1 ? '' : 's'}
+                {t('stage.moreVerses', { count: hiddenCount })}
               </div>
             )}
           </div>

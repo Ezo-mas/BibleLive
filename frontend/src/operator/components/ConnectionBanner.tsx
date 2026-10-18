@@ -1,4 +1,5 @@
 import { AlertCircleIcon, Button } from '../../components'
+import { useI18n } from '../../shared/i18nContext'
 
 export interface ConnectionBannerProps {
   onReconnect: () => void
@@ -15,17 +16,17 @@ export interface ConnectionBannerProps {
  * stay readable.
  */
 export function ConnectionBanner({ onReconnect }: ConnectionBannerProps) {
+  const { t } = useI18n()
   return (
     <div className="operator-connection-banner" role="alert">
       <span className="operator-connection-banner-icon" aria-hidden="true">
         <AlertCircleIcon />
       </span>
       <p className="operator-connection-banner-text">
-        <strong>Not connected to the server.</strong> Approvals and settings changes are paused
-        until the connection is back.
+        <strong>{t('connection.lost')}</strong> {t('connection.paused')}
       </p>
       <Button variant="secondary" size="sm" onClick={onReconnect}>
-        Reconnect
+        {t('connection.reconnect')}
       </Button>
     </div>
   )
