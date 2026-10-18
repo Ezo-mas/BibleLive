@@ -189,23 +189,83 @@ def test_short_audio_is_skipped_like_whisper():
     assert model.calls == []
 
 
-def test_english_loads_whisper_once_on_first_use():
+def test_english_loads_whisper_once_in_the_background():
     created: list = []
     model = _FakeModel("kmynas", "jono")
     stt = MultiModelSpeechToText([model], _whisper_factory(created), "lt")
     assert created == []  # a Lithuanian-only service never loads Whisper
 
     stt.set_language("en")
+    assert stt.wait_for_whisper(timeout=5)
     assert stt.transcribe_utterance(ONE_SECOND).text == "John 3:16"
+    stt.set_language("lt")
+    stt.set_language("en")  # switching back and forth loads it only once
     stt.transcribe_utterance(ONE_SECOND, "en")
     assert len(created) == 1 and created[0].calls == ["en", "en"]
     assert model.calls == []
 
 
+def _blocking_whisper_factory(release: threading.Event, created: list):
+    def make():
+        release.wait(5)
+        whisper = _FakeWhisper()
+        created.append(whisper)
+        return whisper
+
+    return make
+
+
+def test_lithuanian_keeps_flowing_while_whisper_loads():
+    # Live test 2026-10-18: the switch to English stalled every utterance ~1 min.
+    release = threading.Event()
+    created: list = []
+    model = _FakeModel("kmynas", "jono")
+    stt = MultiModelSpeechToText([model], _blocking_whisper_factory(release, created), "lt")
+
+    stt.set_language("en")
+    # An English utterance during the load is skipped as unheard, not failed...
+    skipped = stt.transcribe_utterance(ONE_SECOND, "en")
+    assert (skipped.text, skipped.failed) == (None, False)
+    # ...and a Lithuanian one queued behind it is transcribed at once.
+    assert stt.transcribe_utterance(ONE_SECOND, "lt").text == "jono"
+
+    release.set()
+    assert stt.wait_for_whisper(timeout=5)
+    assert stt.transcribe_utterance(ONE_SECOND, "en").text == "John 3:16"
+    assert len(created) == 1
+
+
+def test_failed_whisper_load_is_reported_and_retried_on_the_next_switch():
+    calls: list[int] = []
+
+    def broken():
+        calls.append(1)
+        raise RuntimeError("no model download")
+
+    stt = MultiModelSpeechToText([_FakeModel("kmynas", "x")], broken, "lt")
+    stt.set_language("en")
+    assert not stt.wait_for_whisper(timeout=5)
+    assert stt.transcribe_utterance(ONE_SECOND, "en").failed
+    assert stt.transcribe_utterance(ONE_SECOND, "en").failed
+    assert len(calls) == 1  # not retried on every utterance
+    stt.set_language("en")  # the operator switches again: one more try
+    stt.wait_for_whisper(timeout=5)
+    assert len(calls) == 2
+
+
 def test_starting_in_english_loads_whisper_at_start():
     created: list = []
-    MultiModelSpeechToText([_FakeModel("kmynas", "x")], _whisper_factory(created), "en")
+    stt = MultiModelSpeechToText([_FakeModel("kmynas", "x")], _whisper_factory(created), "en")
     assert len(created) == 1
+    assert stt.transcribe_utterance(ONE_SECOND).text == "John 3:16"
+
+
+def test_starting_in_english_fails_loudly_when_whisper_cannot_load():
+    def broken():
+        raise RuntimeError("no model download")
+
+    with pytest.raises(RuntimeError):
+        MultiModelSpeechToText([_FakeModel("kmynas", "x")], broken, "en")
 
 
 def test_unsupported_language_is_rejected():
