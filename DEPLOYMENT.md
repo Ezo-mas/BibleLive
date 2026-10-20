@@ -93,7 +93,8 @@ BibleLive supports simple token-based authentication for operator controls.
 ### How It Works
 
 - **Display endpoints** (`/display`, `/ws/display`): Always public (read-only)
-- **Operator endpoints** (`/operator`, `/api/approve`, `/api/clear`, `/ws/operator`): Protected when `REQUIRE_AUTH=true`
+- **Operator page** (`/operator`): the HTML is served without a token. Its WebSocket (`/ws/operator`) and API calls need the token when `REQUIRE_AUTH=true`
+- **Operator API** (`/api/reference`, `/api/transcript`, `/api/approve`, `/api/clear`, `/api/clear-pending`, and the other operator endpoints): Protected when `REQUIRE_AUTH=true`
 
 ### Frontend Integration
 
@@ -128,6 +129,39 @@ The operator should prompt for the token on first use and store it:
 - In secure storage for desktop apps
 
 **Security Note:** Tokens are transmitted in headers/query params. Always use HTTPS/WSS in production.
+
+---
+
+## Other Devices on the Network (Windows PC)
+
+On a Windows PC running the launcher, another device on the same Wi-Fi (a laptop,
+phone or tablet) can open the display and operator pages when **Allow other devices on
+this network** is turned on. What the option changes, the token and the firewall rule
+are described in
+[SECURITY.md](SECURITY.md#other-devices-on-the-network-windows-launcher). Setup:
+
+1. Make the Wi-Fi a **Private** network in Windows (Settings, Network & internet, the
+   network's name, Network profile type, Private). The firewall rule covers Private
+   networks only.
+2. Turn on **Allow other devices on this network** in the launcher and let the server
+   start. The launcher window then shows the display and operator addresses and the
+   operator token, each with a **Copy** button.
+3. If the window shows **Allow through Windows Firewall**, press it and accept the Windows
+   administrator prompt (once). The installer does not add the rule; the launcher adds it
+   on request, and the uninstaller removes it (a silent uninstall leaves it; see SECURITY.md).
+4. On the other device, open `http://<lan-ip>:8000/display` (port 8000 unless you chose
+   another port in the launcher) for the audience page, which needs no token. For the
+   operator console, open `http://<lan-ip>:8000/operator` and enter the token shown in the
+   launcher (the same value as `network_token` in `%APPDATA%\BibleLive\launcher.json`).
+   The launcher can also show both addresses as QR codes (press **Show QR codes**, which
+   opens a small window of its own): a phone scans the display code, or the operator code
+   to sign in without typing the token. Show the operator code only on your own screen,
+   never on the projector or the stream.
+5. Before the service, check that a phone on the same Wi-Fi opens the display page. Many
+   routers keep devices from reaching each other; on such a network this setup cannot work.
+
+If a VPN is on, the launcher can show the VPN's address, which other devices cannot reach.
+Turn the VPN off for the service, or use the Wi-Fi adapter's IPv4 address from `ipconfig`.
 
 ---
 
@@ -449,6 +483,7 @@ Use for:
 - [ ] `BIBLELIVE_RELOAD=false` in production
 - [ ] TLS enabled on reverse proxy (HTTPS/WSS)
 - [ ] Firewall allows only reverse proxy to access port 8000
+- [ ] Windows PC: "Allow other devices on this network" off unless other devices need the pages, and the network is Private
 - [ ] Service runs as non-root user with minimal permissions
 - [ ] Database file has appropriate permissions (readable/writable only by service user)
 - [ ] `.env` file owned by root, readable by the service group (`chown root:biblelive`, `chmod 640 .env`)
@@ -495,6 +530,30 @@ Common issues:
        -H "Content-Type: application/json" \
        -d '{"reference_id":"..."}'
   ```
+
+### Other Devices Cannot Open the Pages (Windows PC)
+
+- The network is **Public**: set it to Private (Settings, Network & internet, the network,
+  Network profile type). The firewall rule does not cover Public networks.
+- **Allow other devices on this network** is off: the server listens only on `127.0.0.1`.
+- The firewall rule is missing: the launcher's network panel shows **Allow through Windows
+  Firewall**. Press it and accept the administrator prompt. To check from a command prompt,
+  `netsh advfirewall firewall show rule name=BibleLive` prints "No rules match" when it is
+  missing.
+- Windows blocked the program: if the firewall dialog that appears when `python.exe` first
+  listens was cancelled, Windows keeps block rules for `python.exe` and `pythonw.exe`, and
+  they override the launcher's rule. Allow both in Windows Defender Firewall (Allow an app or
+  feature through Windows Defender Firewall, Private), or delete their block rules under
+  Advanced settings, Inbound Rules. SECURITY.md has the steps.
+- Client isolation: a phone on the same Wi-Fi cannot open the page either. Use a network
+  without isolation (see SECURITY.md).
+- The address changed: the router may have given the PC a new LAN IP. Use the address the
+  launcher shows now.
+- The launcher shows a VPN's address (or none): other devices cannot reach it. Turn the VPN
+  off for the service, or use the Wi-Fi adapter's IPv4 address from `ipconfig`.
+- The operator page refuses the token: check `network_token` in
+  `%APPDATA%\BibleLive\launcher.json`, then restart the launcher. It passes the token to the
+  server when it starts.
 
 ---
 

@@ -29,6 +29,11 @@ signed in with extensions installed.
 ### A second PC on the same Wi-Fi opens the display or operator page
 Size: medium, about 2–3 days.
 
+Status: in progress on branch `feat/lan-access` (launcher option and token, the
+launcher's Windows Firewall button for Private networks, QR codes for both pages
+(**Show QR codes** in the launcher, using `segno`), SECURITY.md and DEPLOYMENT.md).
+Still to do: a phone on the church Wi-Fi opens a page from the PC (see Risk below).
+
 The server can already listen on the network (`BIBLELIVE_HOST=0.0.0.0`) and has
 operator tokens; the launcher deliberately binds `127.0.0.1`
 (`backend/launcher/process.py`). Needed:
