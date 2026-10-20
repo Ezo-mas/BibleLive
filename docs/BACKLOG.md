@@ -63,6 +63,35 @@ cut). Options:
 - **Offer the next verse** as soon as the current one is matched: cheap, helps
   straight reading only.
 
+## Maintenance
+
+### Test suite audit
+Size: medium, about 1–2 days. Not urgent.
+
+Go through `backend/tests` (~1200 tests, ~1.5–2 min locally) and `frontend/src`
+tests:
+
+- Remove tests that assert nothing meaningful (duplicates, tests of mocks,
+  tests that only restate the implementation).
+- Speed: the count is not the problem (~1:1 test-to-code lines). On 2026-10-20
+  the 15 slowest tests took ~53 of the suite's 91 s; the other ~1150 ran in ~40 s.
+  Start there (`pytest --durations=15`):
+  - `test_language_proxy.py::test_a_pipeline_that_is_not_running_is_a_503`
+    (6 s, likely a real timeout — shorten it in the test).
+  - `test_db_path_resolution.py`: four tests at 3–4.6 s (subprocess runs).
+  - `test_control_server.py`, `test_launcher_process.py`,
+    `test_audio_language_switch.py`, `test_capture_recovery.py`: 1.5–2.5 s each
+    (port/process waits).
+  - `test_live_path.py`: three tests at ~6 s with real ffmpeg. Keep them — they
+    are the end-to-end check of the approval flow — but mark them so a quick
+    local run can skip them.
+- Fix the two-socket WebSocket hang first (see `TECH_DEBT.md`, "WebSocket tests
+  with two sockets open can hang forever") and add a CI job timeout.
+- Decide the CI Python matrix: today 3.11/3.12/3.13 while the installer ships
+  3.11 and dev uses 3.12. Either test only what ships, or move everything to 3.13
+  in its own PR (all pinned packages have Windows cp313 wheels, checked
+  2026-10-20) with an installer build and a test service.
+
 ## Experiments
 
 ### Hybrid WebRTC + Silero VAD
