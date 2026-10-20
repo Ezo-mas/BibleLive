@@ -89,6 +89,10 @@ class LauncherSettings:
     )
     # Record each service (session log + WAV) under %APPDATA%\BibleLive\logs\sessions.
     session_audio: bool = True
+    # Let other devices on the network open the pages. The server then listens on all
+    # interfaces and operator actions need network_token (see network.py and process.py).
+    allow_network: bool = False
+    network_token: str | None = None  # made the first time network mode is on
 
 
 def _coerce(value: Any, default: Any) -> Any:

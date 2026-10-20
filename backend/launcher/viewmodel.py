@@ -50,6 +50,7 @@ class FormValues:
     open_display: bool
     open_operator: bool
     speech_engine: str = "auto"
+    allow_network: bool = False
 
 
 def form_from_settings(s: LauncherSettings) -> FormValues:
@@ -68,6 +69,7 @@ def form_from_settings(s: LauncherSettings) -> FormValues:
         open_display=s.open_display_on_start,
         open_operator=s.open_operator_on_start,
         speech_engine=s.speech_engine,
+        allow_network=s.allow_network,
     )
 
 
@@ -99,6 +101,7 @@ def settings_from_form(base: LauncherSettings, form: FormValues) -> LauncherSett
         open_display_on_start=form.open_display,
         open_operator_on_start=form.open_operator,
         speech_engine=form.speech_engine,
+        allow_network=form.allow_network,
     )
 
 
@@ -181,6 +184,25 @@ def load_microphones(
 
         lister = list_input_devices
     return lister()
+
+
+# --- network addresses ----------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class NetworkView:
+    """What the window shows in network mode. Empty URLs mean no network address was found."""
+
+    display_url: str
+    operator_url: str
+    token: str
+
+
+def network_view(port: int, token: str, ip: str | None) -> NetworkView:
+    if not ip:
+        return NetworkView("", "", token)
+    base = f"http://{ip}:{port}"
+    return NetworkView(f"{base}/display", f"{base}/operator", token)
 
 
 # --- status mapping -------------------------------------------------------------------

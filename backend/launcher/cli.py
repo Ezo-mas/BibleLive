@@ -12,6 +12,11 @@ from dataclasses import replace
 from pathlib import Path
 
 from .commands import check_gpu_command, download_speech_command, gpu_self_test_command
+from .network import (
+    ensure_network_token,
+    lan_ip,
+    operator_url_with_token,
+)
 from .process import Launcher, LaunchPlan, build_plan
 from .settings import (
     AUTO_MODES,
@@ -27,6 +32,7 @@ from .settings import (
     models_dir,
     save_settings,
 )
+from .viewmodel import network_view
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -60,6 +66,13 @@ def build_parser() -> argparse.ArgumentParser:
         type=_on_off,
         metavar="on|off",
         help="also record each service as a WAV in logs\\sessions (default on)",
+    )
+    p.add_argument(
+        "--network",
+        dest="allow_network",
+        type=_on_off,
+        metavar="on|off",
+        help="let other devices on this network open the pages; they need the token (default off)",
     )
     p.add_argument("--ffmpeg-dir", help="directory containing ffmpeg (default: <app>/ffmpeg)")
     p.add_argument("--settings-file", type=Path, help="launcher settings JSON path")
@@ -106,6 +119,7 @@ _OVERRIDES = (
     "log_level",
     "ffmpeg_dir",
     "session_audio",
+    "allow_network",
 )
 
 
@@ -136,9 +150,30 @@ def format_plan(plan: LaunchPlan) -> str:
         f"logs:   {plan.log_dir}",
         "env:",
     ]
-    lines += [f"  {k}={plan.env.get(k, '')}" for k in interesting]
+    for k in interesting:
+        # The operator token is a secret: never print it, even in a dry run.
+        shown = "(hidden)" if k == "BIBLELIVE_OPERATOR_TOKEN" else plan.env.get(k, "")
+        lines.append(f"  {k}={shown}")
     lines += [f"WARNING: {w}" for w in plan.warnings]
     return "\n".join(lines)
+
+
+def page_url(plan: LaunchPlan, page: str) -> str:
+    """Local URL of a page; in network mode the operator page carries the token."""
+    if page == "operator" and plan.network_token:
+        return operator_url_with_token(plan.port, plan.network_token)
+    return f"{plan.base_url}/{page}"
+
+
+def network_lines(port: int, token: str) -> list[str]:
+    """The addresses other devices use and the token they need (printed once ready)."""
+    view = network_view(port, token, lan_ip())
+    if not view.display_url:
+        return [f"No network address found for this computer (try ipconfig). Token: {token}"]
+    return [
+        f"Other devices on this network: display {view.display_url}  operator {view.operator_url}",
+        f"Operator token (type it on the other device): {view.token}",
+    ]
 
 
 def run_oneshot(args: argparse.Namespace, settings: LauncherSettings) -> int | None:
@@ -169,7 +204,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         return gui_main(smoke=args.smoke)
     logging.basicConfig(level=logging.WARNING, format="%(levelname)s %(name)s: %(message)s")
     settings_path = args.settings_file or default_settings_path()
-    settings = apply_overrides(load_settings(settings_path), args)
+    saved = load_settings(settings_path)
+    settings = apply_overrides(saved, args)
+    if settings.allow_network and not saved.network_token:
+        # Made once and kept, so the other devices keep working after the next start. Only
+        # the token is written here: other flags given on this run stay per run unless --save.
+        settings = ensure_network_token(settings)
+        save_settings(replace(saved, network_token=settings.network_token), settings_path)
 
     if args.save:
         print(f"Saved settings to {save_settings(settings, settings_path)}")
@@ -202,8 +243,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     def on_event(kind: str, message: str) -> None:
         stream = sys.stderr if kind in ("error", "warning") else sys.stdout
         print(f"[{kind}] {message}", file=stream, flush=True)
+        if kind == "ready" and plan.network_token:
+            for line in network_lines(plan.port, plan.network_token):
+                print(f"[network] {line}", flush=True)
         if kind == "ready" and args.open_page and args.open_page != "none":
-            webbrowser.open(f"{message}/{args.open_page}")
+            webbrowser.open(page_url(plan, args.open_page))
 
     launcher = Launcher(plan, on_event)
     signal.signal(signal.SIGINT, lambda *_: launcher.request_stop())
