@@ -147,3 +147,28 @@ below the fold.
   `AppState.bible_lookup` and is not visible to it. Logged, not fixed.
 - **Logged:** 2026-10-14
 
+### WebSocket tests with two sockets open can hang forever
+- **Where:** `backend/tests/conftest.py` (`client` fixture returns `TestClient(app)`
+  without `with`); every test that holds a display and an operator socket at once
+  (`test_follow_along.py`, `test_websocket_approval.py`, `test_manual_reference.py`,
+  `test_display_safety.py`, `test_auto_mode.py`, `test_history_replay.py`,
+  `test_authentication.py`, `test_api_validation.py`, `test_bible_version_switch.py`).
+- **Problem:** Without the context manager, Starlette's TestClient starts a separate
+  blocking portal (its own event loop on its own thread) for each `websocket_connect()`.
+  A server broadcast then runs on one socket's loop and pushes into the other socket's
+  anyio memory stream, which is not thread-safe. If the test thread is already waiting
+  in `receive_text()` on that socket, the wake-up can be lost; `receive_text()` has no
+  timeout, so the test waits forever.
+- **Impact:** CI occasionally hangs instead of failing. The CI job has no
+  `timeout-minutes`, so a hang holds the job up to GitHub's 6-hour limit. Not
+  version-specific: it depends on timing, so any matrix leg can hit it.
+- **Evidence:** 2026-10-20, run 39485316932 (PR feat/lan-access): Python 3.13 leg
+  stuck in `TestHints::test_only_operators_get_the_hint_never_a_display` for 18+ min
+  while 3.11/3.12 finished in ~2 min; the same test passed on 3.13 on 2026-10-18 with
+  identical server and test code. Cause read from starlette 1.7.0
+  `testclient.py` (`_portal_factory`, `WebSocketTestSession._run`); not reproduced
+  locally. Likely fix: `with TestClient(app) as c: yield c` in the fixture (one shared
+  loop; also runs app lifespan, so re-run the full suite), plus `timeout-minutes: 15`
+  on the CI test job.
+- **Logged:** 2026-10-20
+

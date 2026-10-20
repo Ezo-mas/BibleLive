@@ -58,6 +58,26 @@ cut). Options:
 - **Offer the next verse** as soon as the current one is matched: cheap, helps
   straight reading only.
 
+## Maintenance
+
+### Test suite audit
+Size: medium, about 1–2 days. Not urgent.
+
+Go through `backend/tests` (~1200 tests, ~1.5–2 min locally) and `frontend/src`
+tests:
+
+- Remove tests that assert nothing meaningful (duplicates, tests of mocks,
+  tests that only restate the implementation).
+- Speed: find the slowest tests (`pytest --durations=30`), share expensive
+  fixtures (Bible DBs, app instances) where safe, and keep slow live-path/audio
+  tests clearly marked.
+- Fix the two-socket WebSocket hang first (see `TECH_DEBT.md`, "WebSocket tests
+  with two sockets open can hang forever") and add a CI job timeout.
+- Decide the CI Python matrix: today 3.11/3.12/3.13 while the installer ships
+  3.11 and dev uses 3.12. Either test only what ships, or move everything to 3.13
+  in its own PR (all pinned packages have Windows cp313 wheels, checked
+  2026-10-20) with an installer build and a test service.
+
 ## Experiments
 
 ### Hybrid WebRTC + Silero VAD
