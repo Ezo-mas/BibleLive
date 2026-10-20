@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, fireEvent, render, screen } from '@testing-library/react'
 import App from './App'
+import { I18nProvider } from '../shared/I18nProvider'
 
 /** The subset of WebSocket the operator app uses, plus the URL it was opened with. */
 interface MockSocket {
@@ -161,5 +162,86 @@ describe('operator socket authentication', () => {
       socket.onopen?.()
     })
     expect(sent(socket)).toEqual([{ action: 'authenticate', token: 'typed' }])
+  })
+})
+
+describe('operator token in the launcher link (#token=)', () => {
+  afterEach(() => {
+    window.history.replaceState(null, '', '/')
+  })
+
+  it('takes the token from the fragment, removes it from the address, and sends it first', () => {
+    window.history.replaceState(null, '', '/operator#token=secret')
+    render(<App />)
+
+    expect(window.location.hash).toBe('')
+    expect(window.location.pathname).toBe('/operator')
+    expect(latest().url).not.toContain('secret')
+    act(() => {
+      latest().onopen?.()
+    })
+
+    expect(sent(latest())).toEqual([{ action: 'authenticate', token: 'secret' }])
+    expect(screen.queryByLabelText('Operator Token')).not.toBeInTheDocument()
+    expect(window.localStorage.getItem('biblelive_operator_token')).toBe('secret')
+  })
+
+  it('asks the server for the interface language with the fragment token', () => {
+    const fetchMock = vi.fn(
+      async () => new Response(JSON.stringify({ language: 'en' }), { status: 200 })
+    )
+    vi.stubGlobal('fetch', fetchMock)
+    window.history.replaceState(null, '', '/operator#token=secret')
+    render(
+      <I18nProvider>
+        <App />
+      </I18nProvider>
+    )
+
+    expect(fetchMock).toHaveBeenCalledWith('/api/ui-language', {
+      headers: { Authorization: 'Bearer secret' },
+    })
+  })
+
+  it('replaces a stored token with the fragment token, as a typed one would', () => {
+    window.localStorage.setItem('biblelive_operator_token', 'old')
+    window.history.replaceState(null, '', '/operator#token=new')
+    render(<App />)
+    act(() => {
+      latest().onopen?.()
+    })
+
+    expect(sent(latest())).toEqual([{ action: 'authenticate', token: 'new' }])
+    expect(window.localStorage.getItem('biblelive_operator_token')).toBe('new')
+  })
+
+  it('still uses the fragment token when the browser refuses to store it', () => {
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new DOMException('storage is blocked', 'SecurityError')
+    })
+    window.history.replaceState(null, '', '/operator#token=secret')
+    render(<App />)
+    act(() => {
+      latest().onopen?.()
+    })
+
+    expect(sent(latest())).toEqual([{ action: 'authenticate', token: 'secret' }])
+    expect(screen.queryByLabelText('Operator Token')).not.toBeInTheDocument()
+  })
+
+  it('opens the token prompt with the failure text when the server refuses the fragment token', () => {
+    window.history.replaceState(null, '', '/operator#token=wrong')
+    render(<App />)
+    act(() => {
+      latest().onopen?.()
+    })
+    act(() => {
+      latest().onclose?.({ code: 1008 })
+    })
+
+    expect(window.location.hash).toBe('')
+    expect(screen.getByLabelText('Operator Token')).toBeInTheDocument()
+    expect(screen.getByRole('alert')).toHaveTextContent(/authentication failed/i)
+    expect(window.localStorage.getItem('biblelive_operator_token')).toBeNull()
   })
 })
