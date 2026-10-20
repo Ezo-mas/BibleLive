@@ -18,7 +18,11 @@ from . import i18n
 from .i18n import t
 from .monitors import Monitor, choose_projector, enumerate_monitors
 from .network import (
+    allow_through_firewall,
     ensure_network_token,
+    firewall_applies,
+    firewall_programs,
+    firewall_rule_exists,
     lan_ip,
     operator_url_with_token,
 )
@@ -41,6 +45,7 @@ from .viewmodel import (
     describe_error,
     describe_event,
     describe_speech,
+    firewall_view,
     form_from_settings,
     language_options,
     load_microphones,
@@ -112,6 +117,8 @@ class App:
         self.plan: LaunchPlan | None = None
         self.launcher: Launcher | None = None
         self._network: NetworkView | None = None  # addresses for other devices, while running
+        # Firewall row under them: "missing", "adding", "not_added" or "present" (None = hidden).
+        self._firewall: str | None = None
         self._lock = threading.Lock()
         self._stop_flag = False
         self._log_lines: list[tuple[str, str]] = []
@@ -287,8 +294,8 @@ class App:
     def _build_network(self, main: ttk.Frame) -> None:
         """Addresses and token for other devices, each with a Copy button (hidden until ready).
 
-        Compact on purpose: the tallest state of the window, and it must still fit a
-        1366x768 screen. The token shares the operator page's row.
+        Compact on purpose: with the firewall row it is the tallest state of the window, and
+        it must still fit a 1366x768 screen. The token shares the operator page's row.
         """
         self.net_frame = ttk.LabelFrame(main, text=t("net.title"), padding=(8, 0, 8, 2))
         self.net_frame.columnconfigure(1, weight=1)
@@ -316,6 +323,15 @@ class App:
         )
         self.net_note = ttk.Label(self.net_frame, text="", foreground="#b36b00")
         self.net_note.grid(row=3, column=0, columnspan=6, sticky="w")
+        # Only when the rule is missing (see _check_firewall); hidden otherwise.
+        self.fw_label = ttk.Label(
+            self.net_frame, text="", wraplength=500, justify="left", foreground="#b36b00"
+        )
+        self.fw_label.grid(row=4, column=0, columnspan=4, sticky="w", pady=(2, 0))
+        self.fw_button = ttk.Button(
+            self.net_frame, text=t("btn.allow_firewall"), command=self.on_allow_firewall
+        )
+        self.fw_button.grid(row=4, column=4, columnspan=2, sticky="e", padx=(14, 0), pady=(2, 0))
 
     def _show_advanced(self) -> None:
         arrow = "v" if self.advanced_open else ">"
@@ -541,10 +557,19 @@ class App:
         elif tag == "finished":
             self.running = False
             self._network = None
+            self._firewall = None
             self._refresh_network()
             self.projector.close()
             self._apply_running_state()
             self._refresh_status()
+        elif tag == "firewall" and self._network is not None:  # else the server has stopped
+            status = item[1]
+            if status == "present" and self._firewall == "adding":
+                self._log(t("fw.added"), "info")
+            elif status == "not_added":
+                self._log(t("fw.not_added"), "warning")
+            self._firewall = status
+            self._refresh_network()
         elif tag == "gpu":
             self.gpu_text = item[1]
             self._refresh_status()
@@ -558,6 +583,7 @@ class App:
     def _on_server_ready(self) -> None:
         if self.plan and self.plan.network_token:
             self._show_network(self.plan.port, self.plan.network_token)
+            self._check_firewall()
         if self.settings.open_operator_on_start:
             webbrowser.open(self._operator_page())
         if self.settings.open_display_on_start:
@@ -593,6 +619,38 @@ class App:
         else:
             self.net_note.configure(text=t("net.no_address"))
             self.net_note.grid()
+        fw = firewall_view(self._firewall)
+        if fw.shown:
+            self.fw_label.configure(text=fw.message)
+            self.fw_label.grid()
+            self.fw_button.grid()
+            self.fw_button.state(["!disabled" if fw.button_enabled else "disabled"])
+        else:
+            self.fw_label.grid_remove()
+            self.fw_button.grid_remove()
+
+    def _check_firewall(self) -> None:
+        """Network mode and server ready: look for the BibleLive rule. Never prompts."""
+        if not firewall_applies() or not firewall_programs(sys.executable):
+            return
+
+        def work() -> None:
+            self.queue.put(("firewall", "present" if firewall_rule_exists() else "missing"))
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def on_allow_firewall(self) -> None:
+        """The button: one administrator prompt adds the rules, then the row is updated."""
+        programs = firewall_programs(sys.executable)
+        if not programs:
+            return
+        self._firewall = "adding"
+        self._refresh_network()
+        threading.Thread(target=self._add_firewall, args=(programs,), daemon=True).start()
+
+    def _add_firewall(self, programs: list[str]) -> None:
+        ok = allow_through_firewall(programs)
+        self.queue.put(("firewall", "present" if ok else "not_added"))
 
     def _refresh_status(self) -> None:
         for key, state in (("server", self.status.server), ("audio", self.status.audio)):

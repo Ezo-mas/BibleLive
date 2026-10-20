@@ -14,6 +14,8 @@ from pathlib import Path
 from .commands import check_gpu_command, download_speech_command, gpu_self_test_command
 from .network import (
     ensure_network_token,
+    firewall_applies,
+    firewall_rule_exists,
     lan_ip,
     operator_url_with_token,
 )
@@ -176,6 +178,16 @@ def network_lines(port: int, token: str) -> list[str]:
     ]
 
 
+def firewall_hint() -> str | None:
+    """A console line when Windows Firewall has no BibleLive rule (Windows only), else None."""
+    if not firewall_applies() or firewall_rule_exists():
+        return None
+    return (
+        "Windows Firewall has no BibleLive rule, so other devices may be blocked. "
+        "Allow it from the launcher window (python -m launcher --gui)."
+    )
+
+
 def run_oneshot(args: argparse.Namespace, settings: LauncherSettings) -> int | None:
     """Handle --check-gpu / --download-model / --gpu-self-test; None if none was given."""
     if args.check_gpu:
@@ -246,6 +258,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         if kind == "ready" and plan.network_token:
             for line in network_lines(plan.port, plan.network_token):
                 print(f"[network] {line}", flush=True)
+            hint = firewall_hint()
+            if hint:
+                print(f"[network] {hint}", file=sys.stderr, flush=True)
         if kind == "ready" and args.open_page and args.open_page != "none":
             webbrowser.open(page_url(plan, args.open_page))
 

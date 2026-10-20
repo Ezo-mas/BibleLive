@@ -32,6 +32,7 @@ EN: dict[str, str] = {
     "btn.open_logs": "Open logs folder",
     "btn.refresh": "Refresh",
     "btn.copy": "Copy",
+    "btn.allow_firewall": "Allow through Windows Firewall",
     "mic.automatic": "(automatic)",
     "mic.loading": "Searching for microphones...",
     "projector.automatic": "Automatic (first extra screen)",
@@ -82,6 +83,13 @@ EN: dict[str, str] = {
     ),
     "net.log_addresses": "Other devices on this network: display {display}, operator {operator}",
     "net.log_token": "Operator token for other devices: {token}",
+    "fw.missing": (
+        "Windows Firewall has no BibleLive rule, so other devices may not reach these pages. "
+        "Allowing BibleLive on Private networks asks for administrator approval once."
+    ),
+    "fw.adding": "Waiting for the Windows administrator prompt...",
+    "fw.not_added": "The firewall rule was not added: the prompt was declined or failed. Try again.",
+    "fw.added": "Windows Firewall rule added for Private networks.",
     "warn.no_gpu": (
         "No NVIDIA graphics card found. Running on the processor (emergency mode): "
         "transcription will be slow and less accurate."
@@ -140,6 +148,7 @@ LT: dict[str, str] = {
     "btn.open_logs": "Atidaryti žurnalų aplanką",
     "btn.refresh": "Atnaujinti",
     "btn.copy": "Kopijuoti",
+    "btn.allow_firewall": "Leisti per Windows ugniasienę",
     "mic.automatic": "(automatinis)",
     "mic.loading": "Ieškoma mikrofonų...",
     "projector.automatic": "Automatinis (pirmas papildomas ekranas)",
@@ -190,6 +199,17 @@ LT: dict[str, str] = {
     ),
     "net.log_addresses": "Kiti įrenginiai tinkle: vaizdas {display}, operatorius {operator}",
     "net.log_token": "Operatoriaus raktas kitiems įrenginiams: {token}",
+    "fw.missing": (
+        "Windows ugniasienėje nėra „BibleLive“ taisyklės, todėl kiti įrenginiai gali nepasiekti "
+        "šių puslapių. Leidimas privačiuose tinkluose reikalauja administratoriaus patvirtinimo "
+        "vieną kartą."
+    ),
+    "fw.adding": "Laukiama Windows administratoriaus patvirtinimo...",
+    "fw.not_added": (
+        "Ugniasienės taisyklės nepavyko pridėti: patvirtinimas atmestas arba įvyko klaida. "
+        "Bandykite dar kartą."
+    ),
+    "fw.added": "Windows ugniasienės taisyklė pridėta privatiems tinklams.",
     "warn.no_gpu": (
         "NVIDIA vaizdo plokštė nerasta. Veikia procesorius (avarinis režimas): "
         "atpažinimas bus lėtas ir mažiau tikslus."

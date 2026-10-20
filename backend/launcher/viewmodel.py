@@ -205,6 +205,26 @@ def network_view(port: int, token: str, ip: str | None) -> NetworkView:
     return NetworkView(f"{base}/display", f"{base}/operator", token)
 
 
+@dataclass(frozen=True)
+class FirewallView:
+    """The Windows Firewall row under the addresses. ``shown`` False hides the row."""
+
+    shown: bool
+    message: str = ""
+    button_enabled: bool = False
+
+
+def firewall_view(status: str | None) -> FirewallView:
+    """The row for a window status: "missing" (no rule), "adding" or "not_added".
+
+    None (not checked yet, the rule is there, or not Windows) hides the row.
+    """
+    messages = {"missing": "fw.missing", "adding": "fw.adding", "not_added": "fw.not_added"}
+    if status is None or status not in messages:
+        return FirewallView(shown=False)
+    return FirewallView(shown=True, message=t(messages[status]), button_enabled=status != "adding")
+
+
 # --- status mapping -------------------------------------------------------------------
 
 

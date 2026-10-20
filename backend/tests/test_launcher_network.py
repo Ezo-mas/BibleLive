@@ -2,6 +2,8 @@
 
 import gc
 import json
+import subprocess
+import sys
 import threading
 from dataclasses import replace
 from urllib.parse import parse_qs
@@ -11,23 +13,33 @@ from launcher import cli, i18n, network
 from launcher.cli import (
     apply_overrides,
     build_parser,
+    firewall_hint,
     format_plan,
     main,
     network_lines,
     page_url,
 )
 from launcher.network import (
+    FIREWALL_RULE_NAME,
     TOKEN_ALPHABET,
     TOKEN_LENGTH,
+    add_firewall_rule,
+    allow_through_firewall,
     ensure_network_token,
+    firewall_add_script,
+    firewall_applies,
+    firewall_programs,
+    firewall_rule_exists,
     lan_ip,
     new_token,
     operator_url_with_token,
+    wait_until,
 )
 from launcher.process import build_plan
 from launcher.settings import LauncherSettings, load_settings, save_settings
 from launcher.viewmodel import (
     NetworkView,
+    firewall_view,
     form_from_settings,
     network_view,
     settings_from_form,
@@ -312,3 +324,264 @@ def test_window_shows_addresses_token_and_operator_fragment(tk_root, tmp_path, m
         _close_window(root, threads_before)
 
 
+# --- Windows Firewall -----------------------------------------------------------------
+# Nothing here touches the real firewall: netsh and ShellExecute are always passed in as fakes.
+
+SYSTEM32 = r"C:\Windows\System32"
+FW_PY = r"C:\BibleLive\python\python.exe"
+FW_PYW = r"C:\BibleLive\python\pythonw.exe"
+NETSH = r'"C:\Windows\System32\netsh.exe" advfirewall firewall add rule name=BibleLive '
+RULE_ARGS = "dir=in action=allow profile=private enable=yes"
+
+
+def _completed(code: int, out: bytes = b"") -> subprocess.CompletedProcess[bytes]:
+    return subprocess.CompletedProcess(args=[], returncode=code, stdout=out, stderr=b"")
+
+
+def test_firewall_rule_name_matches_the_installer():
+    assert FIREWALL_RULE_NAME == "BibleLive"
+
+
+def test_firewall_add_script_adds_one_private_inbound_rule_per_program():
+    script = firewall_add_script([FW_PY, FW_PYW], system32=SYSTEM32)
+    assert script == f'{NETSH}{RULE_ARGS} program="{FW_PY}" & {NETSH}{RULE_ARGS} program="{FW_PYW}"'
+    assert "profile=private" in script
+    assert "profile=public" not in script and "profile=any" not in script
+
+
+def test_firewall_programs_are_the_interpreters_beside_sys_executable(tmp_path):
+    (tmp_path / "python.exe").touch()
+    (tmp_path / "pythonw.exe").touch()
+    exe = str(tmp_path / "python.exe")
+    assert firewall_programs(exe) == [str(tmp_path / "python.exe"), str(tmp_path / "pythonw.exe")]
+    (tmp_path / "pythonw.exe").unlink()  # whichever exist
+    assert firewall_programs(exe) == [str(tmp_path / "python.exe")]
+    assert firewall_programs(str(tmp_path / "elsewhere" / "python.exe")) == []
+
+
+def test_firewall_rule_exists_shows_the_rule_unelevated():
+    calls = []
+
+    def fake_run(args, **kwargs):
+        calls.append((args, kwargs))
+        return _completed(0, b"Rule Name:  BibleLive\r\nEnabled:  Yes\r\n")
+
+    assert firewall_rule_exists(fake_run, system32=SYSTEM32) is True
+    args, kwargs = calls[0]
+    assert args == [
+        r"C:\Windows\System32\netsh.exe",
+        "advfirewall",
+        "firewall",
+        "show",
+        "rule",
+        "name=BibleLive",
+    ]
+    assert kwargs["capture_output"] is True and kwargs["check"] is False
+    if sys.platform == "win32":
+        assert kwargs["creationflags"] == subprocess.CREATE_NO_WINDOW
+
+
+def test_firewall_rule_exists_reads_the_exit_code_and_the_name():
+    # netsh exits 1 and says "No rules match" when the rule is not there.
+    none = b"No rules match the specified criteria.\r\n"
+    assert firewall_rule_exists(lambda *a, **k: _completed(1, none)) is False
+    # Exit 0 without the rule's name is not this rule.
+    assert firewall_rule_exists(lambda *a, **k: _completed(0, b"")) is False
+
+    def cannot_run(*args, **kwargs):
+        raise FileNotFoundError("netsh.exe")
+
+    assert firewall_rule_exists(cannot_run) is False
+
+
+def test_add_firewall_rule_is_one_elevated_cmd_and_reports_the_prompt():
+    calls = []
+
+    def accepted(file, params):
+        calls.append((file, params))
+        return 42  # ShellExecute: above 32 means the elevated command started
+
+    assert add_firewall_rule([FW_PY, FW_PYW], accepted, system32=SYSTEM32) is True
+    assert len(calls) == 1  # one prompt for both rules
+    file, params = calls[0]
+    assert file == r"C:\Windows\System32\cmd.exe"
+    assert params == f'/c "{firewall_add_script([FW_PY, FW_PYW], SYSTEM32)}"'
+    # 5 is SE_ERR_ACCESSDENIED (prompt declined); 32 and below are errors too.
+    assert add_firewall_rule([FW_PY], lambda f, p: 5, system32=SYSTEM32) is False
+    assert add_firewall_rule([FW_PY], lambda f, p: 32, system32=SYSTEM32) is False
+
+
+def test_allow_through_firewall_looks_for_the_rule_after_the_prompt():
+    seen = []
+
+    def run(args, **kwargs):
+        seen.append(args)
+        return _completed(0, b"Rule Name: BibleLive")
+
+    assert allow_through_firewall([FW_PY], shell_execute=lambda f, p: 42, run=run) is True
+    assert len(seen) == 1
+    # A declined prompt is not waited for: one look, and no rule.
+    declined = allow_through_firewall(
+        [FW_PY], shell_execute=lambda f, p: 5, run=lambda *a, **k: _completed(1)
+    )
+    assert declined is False
+
+
+def test_wait_until_polls_until_true_or_the_deadline():
+    now = [0.0]
+    sleeps = []
+
+    def sleep(seconds):
+        sleeps.append(seconds)
+        now[0] += seconds
+
+    answers = iter([False, False, True])
+    got = wait_until(
+        lambda: next(answers), timeout=10, interval=2, sleep=sleep, clock=lambda: now[0]
+    )
+    assert got is True and sleeps == [2, 2]
+    now[0] = 0.0
+    assert (
+        wait_until(lambda: False, timeout=5, interval=2, sleep=sleep, clock=lambda: now[0]) is False
+    )
+    assert now[0] >= 5
+
+
+def test_firewall_row_is_for_windows_only():
+    assert firewall_applies("win32") is True
+    assert firewall_applies("linux") is False
+    assert firewall_applies("darwin") is False
+
+
+def test_firewall_row_states():
+    i18n.set_language("en")
+    assert firewall_view(None).shown is False
+    assert firewall_view("present").shown is False
+    missing = firewall_view("missing")
+    assert missing.shown and missing.button_enabled
+    assert "Windows Firewall" in missing.message
+    adding = firewall_view("adding")
+    assert adding.shown and not adding.button_enabled  # one prompt at a time
+    again = firewall_view("not_added")
+    assert again.shown and again.button_enabled
+    assert "not added" in again.message
+
+
+def test_console_hint_only_on_windows_without_the_rule(monkeypatch):
+    monkeypatch.setattr(cli, "firewall_applies", lambda: True)
+    monkeypatch.setattr(cli, "firewall_rule_exists", lambda: False)
+    assert "--gui" in (firewall_hint() or "")
+    monkeypatch.setattr(cli, "firewall_rule_exists", lambda: True)
+    assert firewall_hint() is None
+    monkeypatch.setattr(cli, "firewall_applies", lambda: False)
+    monkeypatch.setattr(cli, "firewall_rule_exists", lambda: False)
+    assert firewall_hint() is None
+
+
+@pytest.fixture
+def firewall_window(tk_root, tmp_path, monkeypatch):
+    """A launcher window in network mode; microphones, addresses and firewall are fakes."""
+    for var in ("APPDATA", "LOCALAPPDATA", "USERPROFILE", "HOME"):
+        monkeypatch.setenv(var, str(tmp_path))
+    monkeypatch.setattr("launcher.gui.load_microphones", lambda settings: [])
+    monkeypatch.setattr("launcher.gui.lan_ip", lambda: "192.168.1.23")
+    monkeypatch.setattr("launcher.gui.firewall_applies", lambda: True)
+    monkeypatch.setattr("launcher.gui.firewall_programs", lambda executable: [FW_PY])
+    monkeypatch.setattr("launcher.gui.firewall_rule_exists", lambda: False)
+    save_settings(
+        LauncherSettings(
+            allow_network=True,
+            network_token="tok123abc",
+            open_display_on_start=False,
+            open_operator_on_start=False,
+        ),
+        tmp_path / "BibleLive" / "launcher.json",
+    )
+    from launcher.gui import App
+
+    root = tk_root
+    threads_before = set(threading.enumerate())
+    try:
+        yield App(root)
+    finally:
+        i18n.set_language("en")
+        _close_window(root, threads_before)
+
+
+def _handle_until(app, tag):
+    """Handle queued events, as the window's poll does, up to the one with ``tag``."""
+    while True:
+        item = app.queue.get(timeout=5)  # worker threads post here
+        app._handle(item)
+        if item[0] == tag:
+            return item
+
+
+def test_window_firewall_row_checks_then_adds_the_rule(firewall_window, monkeypatch):
+    app = firewall_window
+    results = iter([False, True])  # first prompt declined, then accepted
+    added = []
+
+    def fake_allow(programs):
+        added.append(list(programs))
+        return next(results)
+
+    monkeypatch.setattr("launcher.gui.allow_through_firewall", fake_allow)
+    app._show_network(8000, "tok123abc")
+    app._check_firewall()
+    assert _handle_until(app, "firewall") == ("firewall", "missing")
+    assert app.fw_label.winfo_manager() == "grid"
+    assert app.fw_button.instate(["!disabled"])
+    app.on_allow_firewall()
+    assert app.fw_button.instate(["disabled"])  # waiting for the prompt
+    _handle_until(app, "firewall")  # declined
+    assert app.fw_label.winfo_manager() == "grid"
+    assert "not added" in app.fw_label.cget("text")
+    assert app.fw_button.instate(["!disabled"])
+    app.on_allow_firewall()
+    _handle_until(app, "firewall")  # accepted: the rule is there now
+    assert added == [[FW_PY], [FW_PY]]
+    assert app.fw_label.winfo_manager() == ""
+    assert app.net_frame.winfo_manager() == "grid"
+
+
+def test_window_checks_the_firewall_only_when_network_mode_is_on(firewall_window, tmp_path):
+    app = firewall_window
+    checked = []
+    app._check_firewall = lambda: checked.append(True)  # type: ignore[method-assign]
+    app.plan = _plan(tmp_path, LauncherSettings())  # network off
+    app._on_server_ready()
+    assert checked == []
+    app.plan = _plan(tmp_path, app.settings)  # network on
+    app._on_server_ready()
+    assert checked == [True]
+
+
+def test_late_firewall_result_after_stop_is_ignored(firewall_window):
+    app = firewall_window
+    app._show_network(8000, "tok123abc")
+    app._handle(("finished", 0))  # the server stopped
+    app._handle(("firewall", "missing"))  # a check that was still running
+    assert app._firewall is None
+    assert app.fw_label.winfo_manager() == ""
+
+
+def test_window_fits_a_1366x768_screen_with_the_network_and_firewall_rows(firewall_window):
+    """The tallest state: network mode, server ready, firewall row shown.
+
+    A 1366x768 laptop leaves about 697 px of client height; the log pane must keep its lines.
+    """
+    app = firewall_window
+    app.root.update_idletasks()
+    off = app.root.winfo_reqheight()
+    app._show_network(8000, "tok123abc")
+    app.root.update_idletasks()
+    on = app.root.winfo_reqheight()
+    app._firewall = "missing"
+    app._refresh_network()
+    app.root.update_idletasks()
+    tallest = app.root.winfo_reqheight()
+    assert app.fw_label.winfo_manager() == "grid"
+    assert on > off  # the panel is there
+    assert tallest <= 690, f"requests {tallest} px of height (off {off}, on {on})"
+    assert int(app.log.cget("height")) >= 4  # the log keeps at least four lines
