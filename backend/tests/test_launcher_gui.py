@@ -1,6 +1,7 @@
 """Launcher window support: settings validation, stop safety, i18n, monitors, projector, view-model."""
 
 import json
+import os
 import subprocess
 import sys
 import threading
@@ -432,19 +433,26 @@ def test_find_profile_processes_parses_pids_and_skips_self(monkeypatch, tmp_path
     assert seen["env"]["BL_PROFILE"] == str(tmp_path)
 
 
-def test_gui_smoke_constructs_when_display_available(tmp_path, monkeypatch):
+def test_gui_smoke_constructs_when_display_available(tmp_path):
+    # The window runs in its own process. A window left in this process would share Tcl with
+    # the window tests in test_launcher_network.py, and the next tk.Tk() there would fail.
+    pytest.importorskip("tkinter")
+    backend = Path(__file__).resolve().parents[1]
+    env = {**os.environ, "PYTHONPATH": str(backend)}
     for var in ("APPDATA", "LOCALAPPDATA", "USERPROFILE", "HOME"):
-        monkeypatch.setenv(var, str(tmp_path))
-    monkeypatch.setattr("launcher.gui.load_microphones", lambda settings: [])
-    tk = pytest.importorskip("tkinter")
-    try:
-        root = tk.Tk()
-    except tk.TclError:
+        env[var] = str(tmp_path)
+    code = (
+        "import sys\n"
+        "import launcher.gui as gui\n"
+        "gui.load_microphones = lambda settings: []\n"
+        "sys.exit(gui.main(smoke=True))\n"
+    )
+    done = subprocess.run(
+        [sys.executable, "-c", code], env=env, capture_output=True, text=True, timeout=120
+    )
+    if "Cannot open a window" in done.stderr:
         pytest.skip("no display available")
-    root.destroy()
-    from launcher.gui import main
-
-    assert main(smoke=True) == 0
+    assert done.returncode == 0, done.stderr
 
 
 def test_projector_close_kills_the_browser_it_handed_off_to(tmp_path):
