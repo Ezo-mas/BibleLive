@@ -68,9 +68,18 @@ tests:
 
 - Remove tests that assert nothing meaningful (duplicates, tests of mocks,
   tests that only restate the implementation).
-- Speed: find the slowest tests (`pytest --durations=30`), share expensive
-  fixtures (Bible DBs, app instances) where safe, and keep slow live-path/audio
-  tests clearly marked.
+- Speed: the count is not the problem (~1:1 test-to-code lines). On 2026-10-20
+  the 15 slowest tests took ~53 of the suite's 91 s; the other ~1150 ran in ~40 s.
+  Start there (`pytest --durations=15`):
+  - `test_language_proxy.py::test_a_pipeline_that_is_not_running_is_a_503`
+    (6 s, likely a real timeout — shorten it in the test).
+  - `test_db_path_resolution.py`: four tests at 3–4.6 s (subprocess runs).
+  - `test_control_server.py`, `test_launcher_process.py`,
+    `test_audio_language_switch.py`, `test_capture_recovery.py`: 1.5–2.5 s each
+    (port/process waits).
+  - `test_live_path.py`: three tests at ~6 s with real ffmpeg. Keep them — they
+    are the end-to-end check of the approval flow — but mark them so a quick
+    local run can skip them.
 - Fix the two-socket WebSocket hang first (see `TECH_DEBT.md`, "WebSocket tests
   with two sockets open can hang forever") and add a CI job timeout.
 - Decide the CI Python matrix: today 3.11/3.12/3.13 while the installer ships
