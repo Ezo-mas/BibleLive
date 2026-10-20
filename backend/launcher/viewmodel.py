@@ -10,6 +10,7 @@ from dataclasses import dataclass, replace
 
 from .i18n import t
 from .monitors import Monitor
+from .network import operator_url_with_token, qr_png
 from .process import MSG_STARTING_AUDIO, MSG_STARTING_SERVER_PREFIX, build_plan
 from .settings import (
     AUTO_MODES,
@@ -203,6 +204,22 @@ def network_view(port: int, token: str, ip: str | None) -> NetworkView:
         return NetworkView("", "", token)
     base = f"http://{ip}:{port}"
     return NetworkView(f"{base}/display", f"{base}/operator", token)
+
+
+@dataclass(frozen=True)
+class QrCodes:
+    """The two codes the window shows, as PNG bytes. The operator code carries the token."""
+
+    display_png: bytes
+    operator_png: bytes
+
+
+def network_qr(port: int, token: str, ip: str | None) -> QrCodes | None:
+    """QR codes for the display page and the operator page; None when there is no address."""
+    if not ip:
+        return None
+    view = network_view(port, token, ip)
+    return QrCodes(qr_png(view.display_url), qr_png(operator_url_with_token(port, token, ip)))
 
 
 @dataclass(frozen=True)

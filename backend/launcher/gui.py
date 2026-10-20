@@ -1,5 +1,6 @@
 """Tk window for non-technical operators. Thin: logic lives in ``viewmodel``."""
 
+import base64
 import contextlib
 import logging
 import os
@@ -50,6 +51,7 @@ from .viewmodel import (
     language_options,
     load_microphones,
     microphone_options,
+    network_qr,
     network_view,
     plain_options,
     projector_options,
@@ -100,6 +102,11 @@ class Choice:
         self.box.bind("<<ComboboxSelected>>", lambda _e: callback())
 
 
+def _photo(master: tk.Misc, png: bytes) -> tk.PhotoImage:
+    """A Tk image from PNG bytes. Tk 8.6 reads PNG itself, so no imaging library is needed."""
+    return tk.PhotoImage(master=master, data=base64.b64encode(png).decode("ascii"))
+
+
 class App:
     def __init__(self, root: tk.Tk) -> None:
         self.root = root
@@ -117,6 +124,11 @@ class App:
         self.plan: LaunchPlan | None = None
         self.launcher: Launcher | None = None
         self._network: NetworkView | None = None  # addresses for other devices, while running
+        # QR codes for those addresses; the App keeps the Tk images alive here, and shows them
+        # in a window of their own (the main window has no room for them on a small screen).
+        self._qr_photos: dict[str, tk.PhotoImage] = {}
+        self.qr_window: tk.Toplevel | None = None
+        self.qr_labels: dict[str, ttk.Label] = {}
         # Firewall row under them: "missing", "adding", "not_added" or "present" (None = hidden).
         self._firewall: str | None = None
         self._lock = threading.Lock()
@@ -137,6 +149,7 @@ class App:
     def _build(self) -> None:
         if self.main is not None:
             self.main.destroy()
+        self._close_qr_window()  # its captions are in the old language
         self.root.title(t("app.title"))
         f = self.form
         main = ttk.Frame(self.root, padding=12)
@@ -295,7 +308,8 @@ class App:
         """Addresses and token for other devices, each with a Copy button (hidden until ready).
 
         Compact on purpose: with the firewall row it is the tallest state of the window, and
-        it must still fit a 1366x768 screen. The token shares the operator page's row.
+        it must still fit a 1366x768 screen. The token shares the operator page's row, the
+        QR button the display page's.
         """
         self.net_frame = ttk.LabelFrame(main, text=t("net.title"), padding=(8, 0, 8, 2))
         self.net_frame.columnconfigure(1, weight=1)
@@ -318,6 +332,11 @@ class App:
             ttk.Button(self.net_frame, text=t("btn.copy"), command=partial(self._copy, key)).grid(
                 row=r, column=c + 2, padx=(6, 0), pady=1
             )
+        # Opens the QR window; needs an address, so it is hidden without one (see _refresh_qr).
+        self.qr_button = ttk.Button(
+            self.net_frame, text=t("net.show_qr"), command=self.on_show_qr_codes
+        )
+        self.qr_button.grid(row=0, column=3, columnspan=3, sticky="ew", padx=(14, 0), pady=1)
         ttk.Label(self.net_frame, text=t("net.hint"), wraplength=640, justify="left").grid(
             row=2, column=0, columnspan=6, sticky="w"
         )
@@ -462,6 +481,7 @@ class App:
     def on_stop(self) -> None:
         self._log(t("log.stopping"), "info")
         self.b_stop.state(["disabled"])
+        self._close_qr_window()
         with self._lock:
             self._stop_flag = True
             launcher = self.launcher
@@ -476,6 +496,7 @@ class App:
         if launcher is not None:
             launcher.stop()
         self.projector.close()
+        self._close_qr_window()
         self.root.destroy()
 
     # ---- buttons --------------------------------------------------------------------
@@ -557,6 +578,7 @@ class App:
         elif tag == "finished":
             self.running = False
             self._network = None
+            self._qr_photos = {}
             self._firewall = None
             self._refresh_network()
             self.projector.close()
@@ -595,6 +617,13 @@ class App:
         ip = lan_ip()
         view = network_view(port, token, ip)
         self._network = view
+        codes = network_qr(port, token, ip)
+        self._qr_photos = {}
+        if codes is not None:
+            self._qr_photos = {
+                "display": _photo(self.root, codes.display_png),
+                "operator": _photo(self.root, codes.operator_png),
+            }
         if view.display_url:
             self._log(
                 t("net.log_addresses", display=view.display_url, operator=view.operator_url),
@@ -609,6 +638,7 @@ class App:
         view = self._network
         if view is None:
             self.net_frame.grid_remove()
+            self._close_qr_window()
             return
         self.net_frame.grid()
         self.net_vars["display"].set(view.display_url)
@@ -628,6 +658,58 @@ class App:
         else:
             self.fw_label.grid_remove()
             self.fw_button.grid_remove()
+        self._refresh_qr()
+
+    def _refresh_qr(self) -> None:
+        """The QR button needs an address; without one there is nothing to show."""
+        if not self._qr_photos:
+            self.qr_button.grid_remove()
+            self._close_qr_window()
+            return
+        self.qr_button.grid()
+        if self.qr_window is not None:  # open while the addresses changed: show the new codes
+            for key, label in self.qr_labels.items():
+                label.configure(image=self._qr_photos[key])
+
+    def on_show_qr_codes(self) -> None:
+        """The button: open the QR window, or bring the open one to the front."""
+        if not self._qr_photos:
+            return
+        if self.qr_window is not None and self.qr_window.winfo_exists():
+            self.qr_window.deiconify()
+            self.qr_window.lift()
+            self.qr_window.focus_set()
+            return
+        win = tk.Toplevel(self.root)
+        win.title(t("net.qr_title"))
+        win.resizable(False, False)
+        win.protocol("WM_DELETE_WINDOW", self._close_qr_window)
+        body = ttk.Frame(win, padding=12)
+        body.pack(fill="both", expand=True)
+        self.qr_labels = {}
+        captions = {"display": t("net.display"), "operator": t("net.qr_operator")}
+        for col, (key, caption) in enumerate(captions.items()):
+            ttk.Label(body, text=caption).grid(row=0, column=col, padx=8)
+            label = ttk.Label(body, image=self._qr_photos[key])
+            label.grid(row=1, column=col, padx=8, pady=(4, 0), sticky="n")
+            self.qr_labels[key] = label
+        self.qr_warning = ttk.Label(
+            body, text=t("net.qr_warning"), wraplength=400, justify="center", foreground="#c62828"
+        )
+        self.qr_warning.grid(row=2, column=0, columnspan=2, padx=8, pady=(10, 0))
+        # Beside the main window, not on top of its buttons.
+        win.geometry(
+            f"+{max(self.root.winfo_rootx() + 40, 0)}+{max(self.root.winfo_rooty() + 40, 0)}"
+        )
+        self.qr_window = win
+
+    def _close_qr_window(self) -> None:
+        """Close the QR window if it is open (Stop, the window closing, a new language)."""
+        win, self.qr_window = self.qr_window, None
+        self.qr_labels = {}
+        if win is not None:
+            with contextlib.suppress(tk.TclError):
+                win.destroy()
 
     def _check_firewall(self) -> None:
         """Network mode and server ready: look for the BibleLive rule. Never prompts."""

@@ -83,6 +83,13 @@ EN: dict[str, str] = {
     ),
     "net.log_addresses": "Other devices on this network: display {display}, operator {operator}",
     "net.log_token": "Operator token for other devices: {token}",
+    "net.show_qr": "Show QR codes",
+    "net.qr_title": "BibleLive – QR codes",
+    "net.qr_operator": "Operator page (signs in)",
+    "net.qr_warning": (
+        "Anyone who scans this code gets operator control. Do not show it on the projector "
+        "or the stream."
+    ),
     "fw.missing": (
         "Windows Firewall has no BibleLive rule, so other devices may not reach these pages. "
         "Allowing BibleLive on Private networks asks for administrator approval once."
@@ -199,6 +206,13 @@ LT: dict[str, str] = {
     ),
     "net.log_addresses": "Kiti įrenginiai tinkle: vaizdas {display}, operatorius {operator}",
     "net.log_token": "Operatoriaus raktas kitiems įrenginiams: {token}",
+    "net.show_qr": "Rodyti QR kodus",
+    "net.qr_title": "BibleLive – QR kodai",
+    "net.qr_operator": "Operatoriaus puslapis (prisijungia automatiškai)",
+    "net.qr_warning": (
+        "Kas nuskaitys šį kodą, gaus operatoriaus valdymą. Nerodykite jo projektoriuje "
+        "ar transliacijoje."
+    ),
     "fw.missing": (
         "Windows ugniasienėje nėra „BibleLive“ taisyklės, todėl kiti įrenginiai gali nepasiekti "
         "šių puslapių. Leidimas privačiuose tinkluose reikalauja administratoriaus patvirtinimo "

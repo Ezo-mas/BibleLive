@@ -7,6 +7,7 @@ The display pages stay view-only and need no token.
 """
 
 import ctypes
+import io
 import ntpath
 import os
 import secrets
@@ -17,6 +18,8 @@ import time
 from collections.abc import Callable, Sequence
 from dataclasses import replace
 from urllib.parse import quote
+
+import segno
 
 from .settings import LauncherSettings
 
@@ -78,6 +81,22 @@ def lan_ip() -> str | None:
     if route and _usable(route):
         return route
     return next((ip for ip in _host_ips() if _usable(ip)), None)
+
+
+# --- QR codes -------------------------------------------------------------------------
+# For a phone's camera. A module is QR_MODULE_PX pixels, so a code is about 185-205 px square.
+# Micro QR is never used: many phone cameras cannot read it.
+QR_MODULE_PX = 5
+QR_QUIET_ZONE_MODULES = 4
+
+
+def qr_png(text: str) -> bytes:
+    """``text`` as a QR code in PNG: black on white, quiet zone included. Needs no Pillow."""
+    buf = io.BytesIO()
+    segno.make(text, error="m", micro=False).save(
+        buf, kind="png", scale=QR_MODULE_PX, border=QR_QUIET_ZONE_MODULES
+    )
+    return buf.getvalue()
 
 
 # --- Windows Firewall -----------------------------------------------------------------------

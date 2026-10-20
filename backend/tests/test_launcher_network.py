@@ -2,6 +2,7 @@
 
 import gc
 import json
+import struct
 import subprocess
 import sys
 import threading
@@ -9,6 +10,7 @@ from dataclasses import replace
 from urllib.parse import parse_qs
 
 import pytest
+import segno
 from launcher import cli, i18n, network
 from launcher.cli import (
     apply_overrides,
@@ -21,6 +23,8 @@ from launcher.cli import (
 )
 from launcher.network import (
     FIREWALL_RULE_NAME,
+    QR_MODULE_PX,
+    QR_QUIET_ZONE_MODULES,
     TOKEN_ALPHABET,
     TOKEN_LENGTH,
     add_firewall_rule,
@@ -33,6 +37,7 @@ from launcher.network import (
     lan_ip,
     new_token,
     operator_url_with_token,
+    qr_png,
     wait_until,
 )
 from launcher.process import build_plan
@@ -41,6 +46,7 @@ from launcher.viewmodel import (
     NetworkView,
     firewall_view,
     form_from_settings,
+    network_qr,
     network_view,
     settings_from_form,
 )
@@ -322,6 +328,175 @@ def test_window_shows_addresses_token_and_operator_fragment(tk_root, tmp_path, m
     finally:
         i18n.set_language("en")
         _close_window(root, threads_before)
+
+
+# --- QR codes -------------------------------------------------------------------------
+
+
+def _png_size(png: bytes) -> tuple[int, int]:
+    """Width and height from the IHDR chunk, the first chunk after the 8-byte PNG signature."""
+    assert png[:8] == b"\x89PNG\r\n\x1a\n"
+    return struct.unpack(">II", png[16:24])
+
+
+def _assert_image_is_the_code(photo, text):
+    """Each module of the Tk image is the module of the code for ``text``: dark is black, no shift."""
+    rows = segno.make(text, error="m", micro=False).matrix_iter(
+        scale=1, border=QR_QUIET_ZONE_MODULES
+    )
+    for r, row in enumerate(rows):
+        for c, dark in enumerate(row):
+            want = (0, 0, 0) if dark else (255, 255, 255)
+            assert photo.get(c * QR_MODULE_PX + 2, r * QR_MODULE_PX + 2) == want
+
+
+@pytest.fixture
+def encoded_texts(monkeypatch):
+    """Record each text handed to segno; segno still encodes it as usual."""
+    texts = []
+    real_make = segno.make
+
+    def make(content, *args, **kwargs):
+        texts.append(content)
+        return real_make(content, *args, **kwargs)
+
+    monkeypatch.setattr(network.segno, "make", make)
+    return texts
+
+
+def test_qr_png_encodes_exactly_the_url_it_is_given(encoded_texts):
+    url = "http://192.168.1.23:8000/display"
+    png = qr_png(url)
+    assert encoded_texts == [url]
+    # The image is the code's modules plus the quiet zone, QR_MODULE_PX pixels each.
+    qr = segno.make(url, error="m", micro=False)
+    assert qr.version == 3  # 32 bytes at error level M: 29 modules
+    assert _png_size(png) == qr.symbol_size(scale=QR_MODULE_PX, border=QR_QUIET_ZONE_MODULES)
+    assert _png_size(png) == (185, 185)
+
+
+def test_operator_qr_carries_the_token_in_the_fragment(encoded_texts):
+    codes = network_qr(8100, "a+b", "192.168.1.23")
+    assert codes is not None
+    assert encoded_texts == [
+        "http://192.168.1.23:8100/display",
+        "http://192.168.1.23:8100/operator#token=a%2Bb",
+    ]
+    # The page reads the fragment as URLSearchParams does: a raw "+" would become a space.
+    assert parse_qs(encoded_texts[1].split("#", 1)[1]) == {"token": ["a+b"]}
+    assert _png_size(codes.operator_png)[0] == _png_size(codes.operator_png)[1] > 0
+
+
+def test_operator_qr_text_has_the_saved_token_unchanged(encoded_texts):
+    token = new_token()
+    assert network_qr(8000, token, "192.168.0.7") is not None
+    assert encoded_texts[-1] == f"http://192.168.0.7:8000/operator#token={token}"
+
+
+def test_no_qr_without_a_network_address(encoded_texts):
+    assert network_qr(8000, "tok", None) is None
+    assert encoded_texts == []  # nothing is encoded
+
+
+@pytest.fixture
+def qr_window(tk_root, tmp_path, monkeypatch):
+    """A launcher window in network mode with a LAN address (a test may change the address)."""
+    for var in ("APPDATA", "LOCALAPPDATA", "USERPROFILE", "HOME"):
+        monkeypatch.setenv(var, str(tmp_path))
+    monkeypatch.setattr("launcher.gui.load_microphones", lambda settings: [])
+    monkeypatch.setattr("launcher.gui.lan_ip", lambda: "192.168.1.23")
+    save_settings(
+        LauncherSettings(
+            allow_network=True,
+            network_token="tok123abc",
+            open_display_on_start=False,
+            open_operator_on_start=False,
+        ),
+        tmp_path / "BibleLive" / "launcher.json",
+    )
+    from launcher.gui import App
+
+    root = tk_root
+    threads_before = set(threading.enumerate())
+    try:
+        yield App(root)
+    finally:
+        i18n.set_language("en")
+        _close_window(root, threads_before)
+
+
+def test_window_qr_button_opens_one_window_with_both_codes(qr_window):
+    tk = pytest.importorskip("tkinter")
+    app = qr_window
+    app._show_network(8100, "tok123abc")
+    assert app.qr_button.winfo_manager() == "grid"
+    assert app.qr_window is None  # nothing opens by itself
+    app.on_show_qr_codes()
+    win = app.qr_window
+    assert isinstance(win, tk.Toplevel) and win.master is app.root
+    assert win.winfo_exists() and "QR" in win.title()
+    app.on_show_qr_codes()  # a second click raises the same window
+    assert app.qr_window is win
+    assert [w for w in app.root.winfo_children() if isinstance(w, tk.Toplevel)] == [win]
+    display, operator = app._qr_photos["display"], app._qr_photos["operator"]
+    shown = {key: label.tk.splitlist(label.cget("image")) for key, label in app.qr_labels.items()}
+    assert shown == {"display": (str(display),), "operator": (str(operator),)}
+    assert all(label.winfo_toplevel() is win for label in app.qr_labels.values())
+    assert (display.width(), display.height()) == (185, 185)  # version 3: 37 modules x 5 px
+    assert (operator.width(), operator.height()) == (205, 205)  # version 4: 41 modules x 5 px
+    _assert_image_is_the_code(display, "http://192.168.1.23:8100/display")
+    _assert_image_is_the_code(operator, "http://192.168.1.23:8100/operator#token=tok123abc")
+    assert "operator control" in app.qr_warning.cget("text")
+    assert app.qr_warning.winfo_toplevel() is win
+    assert app.qr_warning.grid_info()["columnspan"] == 2  # under both codes
+    win.update_idletasks()
+    assert win.winfo_reqheight() < 400  # small: it sits beside the main window
+
+
+def test_window_qr_window_can_be_closed_and_opened_again(qr_window):
+    app = qr_window
+    app._show_network(8100, "tok123abc")
+    app.on_show_qr_codes()
+    first = app.qr_window
+    first.tk.call(first.protocol("WM_DELETE_WINDOW"))  # what the title bar's X runs
+    assert app.qr_window is None and not first.winfo_exists()
+    assert set(app._qr_photos) == {"display", "operator"}  # the images outlive the window
+    app.on_show_qr_codes()
+    assert app.qr_window is not None and app.qr_window.winfo_exists()
+    assert app.qr_window is not first
+
+
+def test_window_qr_window_goes_away_with_the_server_and_the_window(qr_window, monkeypatch):
+    app = qr_window
+    app._show_network(8100, "tok123abc")
+    app.on_show_qr_codes()
+    win = app.qr_window
+    app._handle(("finished", 0))  # the server stopped
+    assert app.qr_window is None and not win.winfo_exists()
+    assert app.net_frame.winfo_manager() == ""  # with the panel and its button
+    app._show_network(8100, "tok123abc")
+    app.on_show_qr_codes()
+    win = app.qr_window
+    app.on_stop()  # Stop does not wait for the server
+    assert app.qr_window is None and not win.winfo_exists()
+    app._show_network(8100, "tok123abc")
+    app.on_show_qr_codes()
+    win = app.qr_window
+    destroyed = []
+    monkeypatch.setattr(app.root, "destroy", lambda: destroyed.append(True))  # the shared root
+    app.on_close()
+    assert destroyed == [True]
+    assert app.qr_window is None and not win.winfo_exists()
+
+
+def test_window_has_no_qr_codes_without_an_address(qr_window, monkeypatch):
+    app = qr_window
+    monkeypatch.setattr("launcher.gui.lan_ip", lambda: None)
+    app._show_network(8100, "tok123abc")
+    assert app.qr_button.winfo_manager() == ""
+    app.on_show_qr_codes()
+    assert app.qr_window is None
+    assert app._qr_photos == {}
 
 
 # --- Windows Firewall -----------------------------------------------------------------

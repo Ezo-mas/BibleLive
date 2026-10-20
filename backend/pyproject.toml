@@ -18,6 +18,8 @@ dependencies = [
     "pydantic>=2.0.0",
     "pydantic-settings>=2.0.0",
     "requests>=2.28.0",
+    # QR codes in the launcher's "Other devices" panel (pure Python, no dependencies).
+    "segno>=1.6.0",
 ]
 
 [project.optional-dependencies]
