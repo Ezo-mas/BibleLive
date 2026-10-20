@@ -60,6 +60,7 @@ class LaunchPlan:
     compute_type: str
     warnings: list[str] = field(default_factory=list)
     speech_engine: str = "whisper"  # the Lithuanian engine actually run (after fallbacks)
+    network_token: str | None = None  # set only in network mode (see network.py)
 
     @property
     def base_url(self) -> str:
@@ -100,8 +101,17 @@ def build_plan(
     backend = str(app_root / "backend")
     existing = [p for p in env.get("PYTHONPATH", "").split(os.pathsep) if p and p != backend]
     env["PYTHONPATH"] = os.pathsep.join([backend, *existing])
-    env["BIBLELIVE_HOST"] = LOOPBACK
+    network_token = settings.network_token if settings.allow_network else None
+    if settings.allow_network and not network_token:
+        raise ValueError("network mode needs a token; see network.ensure_network_token")
+    env["BIBLELIVE_HOST"] = "0.0.0.0" if network_token else LOOPBACK
     env["BIBLELIVE_PORT"] = str(settings.port)
+    if network_token:
+        # Other devices reach the server over the LAN, so every operator action needs the
+        # token. The audio pipeline reads the same variable (core.config, audio/cli.py), so
+        # its POSTs to /api/reference stay authorized. The launcher still uses 127.0.0.1.
+        env["BIBLELIVE_REQUIRE_AUTH"] = "true"
+        env["BIBLELIVE_OPERATOR_TOKEN"] = network_token
     env["BIBLELIVE_SETTINGS_PATH"] = str(data_dir / "server_settings.json")
     env["BIBLELIVE_AUTO_MODE"] = settings.auto_mode
     # "auto" is not a language the server knows: resolve it here to the Windows UI language.
@@ -168,6 +178,7 @@ def build_plan(
         compute_type=compute_type,
         warnings=warnings,
         speech_engine=speech.engine,
+        network_token=network_token,
     )
 
 

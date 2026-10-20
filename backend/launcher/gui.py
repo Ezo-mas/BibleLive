@@ -1,5 +1,6 @@
 """Tk window for non-technical operators. Thin: logic lives in ``viewmodel``."""
 
+import base64
 import contextlib
 import logging
 import os
@@ -9,6 +10,7 @@ import threading
 import tkinter as tk
 import webbrowser
 from dataclasses import replace
+from functools import partial
 from pathlib import Path
 from tkinter import messagebox, ttk
 from typing import Any
@@ -16,6 +18,15 @@ from typing import Any
 from . import i18n
 from .i18n import t
 from .monitors import Monitor, choose_projector, enumerate_monitors
+from .network import (
+    allow_through_firewall,
+    ensure_network_token,
+    firewall_applies,
+    firewall_programs,
+    firewall_rule_exists,
+    lan_ip,
+    operator_url_with_token,
+)
 from .process import Launcher, LaunchPlan, build_plan
 from .projector import ProjectorBrowser, ProjectorError, operator_url
 from .settings import LauncherSettings, app_data_dir, load_settings, save_settings
@@ -26,6 +37,7 @@ from .viewmodel import (
     MODEL_OPTIONS,
     FormError,
     FormValues,
+    NetworkView,
     Option,
     StatusState,
     apply_event,
@@ -34,10 +46,13 @@ from .viewmodel import (
     describe_error,
     describe_event,
     describe_speech,
+    firewall_view,
     form_from_settings,
     language_options,
     load_microphones,
     microphone_options,
+    network_qr,
+    network_view,
     plain_options,
     projector_options,
     settings_from_form,
@@ -87,10 +102,16 @@ class Choice:
         self.box.bind("<<ComboboxSelected>>", lambda _e: callback())
 
 
+def _photo(master: tk.Misc, png: bytes) -> tk.PhotoImage:
+    """A Tk image from PNG bytes. Tk 8.6 reads PNG itself, so no imaging library is needed."""
+    return tk.PhotoImage(master=master, data=base64.b64encode(png).decode("ascii"))
+
+
 class App:
     def __init__(self, root: tk.Tk) -> None:
         self.root = root
-        self.settings = load_settings()
+        # Network mode needs a token before the server can start; Start saves it.
+        self.settings = ensure_network_token(load_settings())
         i18n.set_language(i18n.resolve_ui_language(self.settings.ui_language))
         self.queue: queue.Queue[tuple[Any, ...]] = queue.Queue()
         self.projector = ProjectorBrowser()
@@ -102,6 +123,14 @@ class App:
         self.running = False
         self.plan: LaunchPlan | None = None
         self.launcher: Launcher | None = None
+        self._network: NetworkView | None = None  # addresses for other devices, while running
+        # QR codes for those addresses; the App keeps the Tk images alive here, and shows them
+        # in a window of their own (the main window has no room for them on a small screen).
+        self._qr_photos: dict[str, tk.PhotoImage] = {}
+        self.qr_window: tk.Toplevel | None = None
+        self.qr_labels: dict[str, ttk.Label] = {}
+        # Firewall row under them: "missing", "adding", "not_added" or "present" (None = hidden).
+        self._firewall: str | None = None
         self._lock = threading.Lock()
         self._stop_flag = False
         self._log_lines: list[tuple[str, str]] = []
@@ -120,6 +149,7 @@ class App:
     def _build(self) -> None:
         if self.main is not None:
             self.main.destroy()
+        self._close_qr_window()  # its captions are in the old language
         self.root.title(t("app.title"))
         f = self.form
         main = ttk.Frame(self.root, padding=12)
@@ -172,9 +202,13 @@ class App:
         k_display.grid(row=5, column=0, columnspan=2, sticky="w")
         k_operator.grid(row=6, column=0, columnspan=2, sticky="w")
 
+        self.v_network = tk.BooleanVar(value=f.allow_network)
+        k_network = ttk.Checkbutton(main, text=t("label.allow_network"), variable=self.v_network)
+        k_network.grid(row=7, column=0, columnspan=2, sticky="w")
+
         # Advanced (collapsible)
         self.b_adv = ttk.Button(main, command=self.toggle_advanced, width=28)
-        self.b_adv.grid(row=7, column=0, columnspan=2, sticky="w", pady=(8, 0))
+        self.b_adv.grid(row=8, column=0, columnspan=2, sticky="w", pady=(8, 0))
         self.adv = ttk.Frame(main, padding=(12, 4, 0, 4))
         self.adv.columnconfigure(1, weight=1)
         self.c_model = Choice(self.adv, plain_options(MODEL_OPTIONS), f.model, 22)
@@ -202,7 +236,7 @@ class App:
 
         # Buttons
         buttons = ttk.Frame(main)
-        buttons.grid(row=9, column=0, columnspan=2, sticky="ew", pady=(10, 4))
+        buttons.grid(row=10, column=0, columnspan=2, sticky="ew", pady=(10, 4))
         self.b_start = ttk.Button(buttons, text=t("btn.start"), command=self.on_start)
         self.b_stop = ttk.Button(buttons, text=t("btn.stop"), command=self.on_stop)
         self.b_operator = ttk.Button(
@@ -219,7 +253,7 @@ class App:
 
         # Status
         status = ttk.Frame(main)
-        status.grid(row=10, column=0, columnspan=2, sticky="ew", pady=4)
+        status.grid(row=11, column=0, columnspan=2, sticky="ew", pady=4)
         self.s_labels: dict[str, ttk.Label] = {}
         for i, key in enumerate(("server", "audio", "gpu")):
             ttk.Label(status, text=t(f"status.{key}") + ":").grid(
@@ -229,10 +263,13 @@ class App:
             lbl.grid(row=i, column=1, sticky="w")
             self.s_labels[key] = lbl
 
+        # Other devices on this network: shown while running in network mode.
+        self._build_network(main)
+
         # Log pane
         log_frame = ttk.Frame(main)
-        log_frame.grid(row=11, column=0, columnspan=2, sticky="nsew")
-        main.rowconfigure(11, weight=1)
+        log_frame.grid(row=13, column=0, columnspan=2, sticky="nsew")
+        main.rowconfigure(13, weight=1)
         log_frame.columnconfigure(0, weight=1)
         log_frame.rowconfigure(0, weight=1)
         self.log = tk.Text(log_frame, height=10, width=80, state="disabled", wrap="word")
@@ -261,15 +298,65 @@ class App:
             self.c_log.box,
             e_port,
             e_extra,
+            k_network,
         ]
+        self._refresh_network()
         self._refresh_status()
         self._apply_running_state()
+
+    def _build_network(self, main: ttk.Frame) -> None:
+        """Addresses and token for other devices, each with a Copy button (hidden until ready).
+
+        Compact on purpose: with the firewall row it is the tallest state of the window, and
+        it must still fit a 1366x768 screen. The token shares the operator page's row, the
+        QR button the display page's.
+        """
+        self.net_frame = ttk.LabelFrame(main, text=t("net.title"), padding=(8, 0, 8, 2))
+        self.net_frame.columnconfigure(1, weight=1)
+        self.net_frame.grid(row=12, column=0, columnspan=2, sticky="ew", pady=(2, 0))
+        self.net_vars: dict[str, tk.StringVar] = {}
+        # (key, grid row, first column, entry width); a field is label, entry, Copy button.
+        for key, r, c, width in (
+            ("display", 0, 0, 36),
+            ("operator", 1, 0, 36),
+            ("token", 1, 3, 12),
+        ):
+            ttk.Label(self.net_frame, text=t(f"net.{key}")).grid(
+                row=r, column=c, sticky="w", padx=(0 if c == 0 else 14, 8), pady=1
+            )
+            var = tk.StringVar()
+            self.net_vars[key] = var
+            ttk.Entry(self.net_frame, textvariable=var, state="readonly", width=width).grid(
+                row=r, column=c + 1, sticky="ew", pady=1
+            )
+            ttk.Button(self.net_frame, text=t("btn.copy"), command=partial(self._copy, key)).grid(
+                row=r, column=c + 2, padx=(6, 0), pady=1
+            )
+        # Opens the QR window; needs an address, so it is hidden without one (see _refresh_qr).
+        self.qr_button = ttk.Button(
+            self.net_frame, text=t("net.show_qr"), command=self.on_show_qr_codes
+        )
+        self.qr_button.grid(row=0, column=3, columnspan=3, sticky="ew", padx=(14, 0), pady=1)
+        ttk.Label(self.net_frame, text=t("net.hint"), wraplength=640, justify="left").grid(
+            row=2, column=0, columnspan=6, sticky="w"
+        )
+        self.net_note = ttk.Label(self.net_frame, text="", foreground="#b36b00")
+        self.net_note.grid(row=3, column=0, columnspan=6, sticky="w")
+        # Only when the rule is missing (see _check_firewall); hidden otherwise.
+        self.fw_label = ttk.Label(
+            self.net_frame, text="", wraplength=500, justify="left", foreground="#b36b00"
+        )
+        self.fw_label.grid(row=4, column=0, columnspan=4, sticky="w", pady=(2, 0))
+        self.fw_button = ttk.Button(
+            self.net_frame, text=t("btn.allow_firewall"), command=self.on_allow_firewall
+        )
+        self.fw_button.grid(row=4, column=4, columnspan=2, sticky="e", padx=(14, 0), pady=(2, 0))
 
     def _show_advanced(self) -> None:
         arrow = "v" if self.advanced_open else ">"
         self.b_adv.configure(text=f"{arrow} {t('advanced')}")
         if self.advanced_open:
-            self.adv.grid(row=8, column=0, columnspan=2, sticky="ew")
+            self.adv.grid(row=9, column=0, columnspan=2, sticky="ew")
         else:
             self.adv.grid_remove()
 
@@ -295,6 +382,7 @@ class App:
             open_display=self.v_open_display.get(),
             open_operator=self.v_open_operator.get(),
             speech_engine=self.c_speech.get() or "auto",
+            allow_network=self.v_network.get(),
         )
 
     def on_ui_language(self) -> None:
@@ -349,7 +437,7 @@ class App:
 
     def on_start(self) -> None:
         try:
-            settings = settings_from_form(self.settings, self._read_form())
+            settings = ensure_network_token(settings_from_form(self.settings, self._read_form()))
             check_microphone(settings.input_device, self.mic_names)
         except FormError as exc:
             msg = describe_error(exc.code, exc.detail)
@@ -393,6 +481,7 @@ class App:
     def on_stop(self) -> None:
         self._log(t("log.stopping"), "info")
         self.b_stop.state(["disabled"])
+        self._close_qr_window()
         with self._lock:
             self._stop_flag = True
             launcher = self.launcher
@@ -407,6 +496,7 @@ class App:
         if launcher is not None:
             launcher.stop()
         self.projector.close()
+        self._close_qr_window()
         self.root.destroy()
 
     # ---- buttons --------------------------------------------------------------------
@@ -415,7 +505,19 @@ class App:
         return self.plan.port if self.plan else self.settings.port
 
     def on_open_operator(self) -> None:
-        webbrowser.open(operator_url(self._port()))
+        webbrowser.open(self._operator_page())
+
+    def _operator_page(self) -> str:
+        """The operator page; in network mode the token rides in the URL fragment."""
+        if self.plan and self.plan.network_token:
+            return operator_url_with_token(self.plan.port, self.plan.network_token)
+        return operator_url(self._port())
+
+    def _copy(self, key: str) -> None:
+        value = self.net_vars[key].get()
+        if value:
+            self.root.clipboard_clear()
+            self.root.clipboard_append(value)
 
     def on_show_projector(self) -> None:
         self.refresh_monitors()
@@ -475,9 +577,21 @@ class App:
             self._refresh_status()
         elif tag == "finished":
             self.running = False
+            self._network = None
+            self._qr_photos = {}
+            self._firewall = None
+            self._refresh_network()
             self.projector.close()
             self._apply_running_state()
             self._refresh_status()
+        elif tag == "firewall" and self._network is not None:  # else the server has stopped
+            status = item[1]
+            if status == "present" and self._firewall == "adding":
+                self._log(t("fw.added"), "info")
+            elif status == "not_added":
+                self._log(t("fw.not_added"), "warning")
+            self._firewall = status
+            self._refresh_network()
         elif tag == "gpu":
             self.gpu_text = item[1]
             self._refresh_status()
@@ -489,11 +603,136 @@ class App:
                 self._log(error, "warning")
 
     def _on_server_ready(self) -> None:
+        if self.plan and self.plan.network_token:
+            self._show_network(self.plan.port, self.plan.network_token)
+            self._check_firewall()
         if self.settings.open_operator_on_start:
-            webbrowser.open(operator_url(self._port()))
+            webbrowser.open(self._operator_page())
         if self.settings.open_display_on_start:
             self.refresh_monitors()
             self._open_projector(self.settings.projector_monitor)
+
+    def _show_network(self, port: int, token: str) -> None:
+        """Show and log the addresses other devices use (the server is ready)."""
+        ip = lan_ip()
+        view = network_view(port, token, ip)
+        self._network = view
+        codes = network_qr(port, token, ip)
+        self._qr_photos = {}
+        if codes is not None:
+            self._qr_photos = {
+                "display": _photo(self.root, codes.display_png),
+                "operator": _photo(self.root, codes.operator_png),
+            }
+        if view.display_url:
+            self._log(
+                t("net.log_addresses", display=view.display_url, operator=view.operator_url),
+                "info",
+            )
+        else:
+            self._log(t("net.no_address"), "warning")
+        self._log(t("net.log_token", token=token), "info")
+        self._refresh_network()
+
+    def _refresh_network(self) -> None:
+        view = self._network
+        if view is None:
+            self.net_frame.grid_remove()
+            self._close_qr_window()
+            return
+        self.net_frame.grid()
+        self.net_vars["display"].set(view.display_url)
+        self.net_vars["operator"].set(view.operator_url)
+        self.net_vars["token"].set(view.token)
+        if view.display_url:
+            self.net_note.grid_remove()  # an empty label would still take a line
+        else:
+            self.net_note.configure(text=t("net.no_address"))
+            self.net_note.grid()
+        fw = firewall_view(self._firewall)
+        if fw.shown:
+            self.fw_label.configure(text=fw.message)
+            self.fw_label.grid()
+            self.fw_button.grid()
+            self.fw_button.state(["!disabled" if fw.button_enabled else "disabled"])
+        else:
+            self.fw_label.grid_remove()
+            self.fw_button.grid_remove()
+        self._refresh_qr()
+
+    def _refresh_qr(self) -> None:
+        """The QR button needs an address; without one there is nothing to show."""
+        if not self._qr_photos:
+            self.qr_button.grid_remove()
+            self._close_qr_window()
+            return
+        self.qr_button.grid()
+        if self.qr_window is not None:  # open while the addresses changed: show the new codes
+            for key, label in self.qr_labels.items():
+                label.configure(image=self._qr_photos[key])
+
+    def on_show_qr_codes(self) -> None:
+        """The button: open the QR window, or bring the open one to the front."""
+        if not self._qr_photos:
+            return
+        if self.qr_window is not None and self.qr_window.winfo_exists():
+            self.qr_window.deiconify()
+            self.qr_window.lift()
+            self.qr_window.focus_set()
+            return
+        win = tk.Toplevel(self.root)
+        win.title(t("net.qr_title"))
+        win.resizable(False, False)
+        win.protocol("WM_DELETE_WINDOW", self._close_qr_window)
+        body = ttk.Frame(win, padding=12)
+        body.pack(fill="both", expand=True)
+        self.qr_labels = {}
+        captions = {"display": t("net.display"), "operator": t("net.qr_operator")}
+        for col, (key, caption) in enumerate(captions.items()):
+            ttk.Label(body, text=caption).grid(row=0, column=col, padx=8)
+            label = ttk.Label(body, image=self._qr_photos[key])
+            label.grid(row=1, column=col, padx=8, pady=(4, 0), sticky="n")
+            self.qr_labels[key] = label
+        self.qr_warning = ttk.Label(
+            body, text=t("net.qr_warning"), wraplength=400, justify="center", foreground="#c62828"
+        )
+        self.qr_warning.grid(row=2, column=0, columnspan=2, padx=8, pady=(10, 0))
+        # Beside the main window, not on top of its buttons.
+        win.geometry(
+            f"+{max(self.root.winfo_rootx() + 40, 0)}+{max(self.root.winfo_rooty() + 40, 0)}"
+        )
+        self.qr_window = win
+
+    def _close_qr_window(self) -> None:
+        """Close the QR window if it is open (Stop, the window closing, a new language)."""
+        win, self.qr_window = self.qr_window, None
+        self.qr_labels = {}
+        if win is not None:
+            with contextlib.suppress(tk.TclError):
+                win.destroy()
+
+    def _check_firewall(self) -> None:
+        """Network mode and server ready: look for the BibleLive rule. Never prompts."""
+        if not firewall_applies() or not firewall_programs(sys.executable):
+            return
+
+        def work() -> None:
+            self.queue.put(("firewall", "present" if firewall_rule_exists() else "missing"))
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def on_allow_firewall(self) -> None:
+        """The button: one administrator prompt adds the rules, then the row is updated."""
+        programs = firewall_programs(sys.executable)
+        if not programs:
+            return
+        self._firewall = "adding"
+        self._refresh_network()
+        threading.Thread(target=self._add_firewall, args=(programs,), daemon=True).start()
+
+    def _add_firewall(self, programs: list[str]) -> None:
+        ok = allow_through_firewall(programs)
+        self.queue.put(("firewall", "present" if ok else "not_added"))
 
     def _refresh_status(self) -> None:
         for key, state in (("server", self.status.server), ("audio", self.status.audio)):

@@ -161,3 +161,23 @@ def client(app):
     from fastapi.testclient import TestClient
 
     return TestClient(app)
+
+
+@pytest.fixture(scope="session")
+def tk_root():
+    """The one Tk root for the launcher window tests, or a skip when there is no display.
+
+    Each tk.Tk() is a new Tcl interpreter. On Windows, creating one after a launcher window
+    has been used fails under pytest's default output capture ("Can't find a usable
+    init.tcl"), and the test then skips. So the window tests in this process share this root,
+    and each one removes the widgets it built. Do not call tk.Tk() elsewhere in this process;
+    a window that must be built on its own (test_gui_smoke) runs in a subprocess.
+    """
+    tk = pytest.importorskip("tkinter")
+    try:
+        root = tk.Tk()
+    except tk.TclError:
+        pytest.skip("no display available")
+    root.withdraw()
+    yield root
+    root.destroy()

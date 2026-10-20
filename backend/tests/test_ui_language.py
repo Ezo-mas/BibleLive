@@ -31,14 +31,23 @@ def test_ui_language_is_what_the_config_says(client, monkeypatch, language):
     assert response.json() == {"language": language}
 
 
-def test_ui_language_requires_auth_like_bible_version(client, monkeypatch, auth_enabled):
+def test_ui_language_needs_no_token_with_auth_on(client, monkeypatch, auth_enabled):
+    # The display page (no token, projector browser) reads the language on load.
     monkeypatch.setattr(config, "UI_LANGUAGE", "lt")
     wrong = {"Authorization": "Bearer not-the-token"}
 
-    for path in ("/api/ui-language", "/api/bible-version"):
-        assert client.get(path).status_code == 401, path
-        assert client.get(path, headers=wrong).status_code == 401, path
-        assert client.get(path, headers=auth_enabled).status_code == 200, path
+    assert client.get("/api/ui-language").json() == {"language": "lt"}
+    assert client.get("/api/ui-language", headers=wrong).json() == {"language": "lt"}
+    assert client.get("/api/ui-language", headers=auth_enabled).json() == {"language": "lt"}
+
+
+def test_bible_version_still_requires_auth_with_auth_on(client, monkeypatch, auth_enabled):
+    monkeypatch.setattr(config, "UI_LANGUAGE", "lt")
+    wrong = {"Authorization": "Bearer not-the-token"}
+
+    assert client.get("/api/bible-version").status_code == 401
+    assert client.get("/api/bible-version", headers=wrong).status_code == 401
+    assert client.get("/api/bible-version", headers=auth_enabled).status_code == 200
 
 
 @pytest.mark.parametrize(

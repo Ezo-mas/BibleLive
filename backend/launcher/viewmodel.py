@@ -10,6 +10,7 @@ from dataclasses import dataclass, replace
 
 from .i18n import t
 from .monitors import Monitor
+from .network import operator_url_with_token, qr_png
 from .process import MSG_STARTING_AUDIO, MSG_STARTING_SERVER_PREFIX, build_plan
 from .settings import (
     AUTO_MODES,
@@ -50,6 +51,7 @@ class FormValues:
     open_display: bool
     open_operator: bool
     speech_engine: str = "auto"
+    allow_network: bool = False
 
 
 def form_from_settings(s: LauncherSettings) -> FormValues:
@@ -68,6 +70,7 @@ def form_from_settings(s: LauncherSettings) -> FormValues:
         open_display=s.open_display_on_start,
         open_operator=s.open_operator_on_start,
         speech_engine=s.speech_engine,
+        allow_network=s.allow_network,
     )
 
 
@@ -99,6 +102,7 @@ def settings_from_form(base: LauncherSettings, form: FormValues) -> LauncherSett
         open_display_on_start=form.open_display,
         open_operator_on_start=form.open_operator,
         speech_engine=form.speech_engine,
+        allow_network=form.allow_network,
     )
 
 
@@ -181,6 +185,61 @@ def load_microphones(
 
         lister = list_input_devices
     return lister()
+
+
+# --- network addresses ----------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class NetworkView:
+    """What the window shows in network mode. Empty URLs mean no network address was found."""
+
+    display_url: str
+    operator_url: str
+    token: str
+
+
+def network_view(port: int, token: str, ip: str | None) -> NetworkView:
+    if not ip:
+        return NetworkView("", "", token)
+    base = f"http://{ip}:{port}"
+    return NetworkView(f"{base}/display", f"{base}/operator", token)
+
+
+@dataclass(frozen=True)
+class QrCodes:
+    """The two codes the window shows, as PNG bytes. The operator code carries the token."""
+
+    display_png: bytes
+    operator_png: bytes
+
+
+def network_qr(port: int, token: str, ip: str | None) -> QrCodes | None:
+    """QR codes for the display page and the operator page; None when there is no address."""
+    if not ip:
+        return None
+    view = network_view(port, token, ip)
+    return QrCodes(qr_png(view.display_url), qr_png(operator_url_with_token(port, token, ip)))
+
+
+@dataclass(frozen=True)
+class FirewallView:
+    """The Windows Firewall row under the addresses. ``shown`` False hides the row."""
+
+    shown: bool
+    message: str = ""
+    button_enabled: bool = False
+
+
+def firewall_view(status: str | None) -> FirewallView:
+    """The row for a window status: "missing" (no rule), "adding" or "not_added".
+
+    None (not checked yet, the rule is there, or not Windows) hides the row.
+    """
+    messages = {"missing": "fw.missing", "adding": "fw.adding", "not_added": "fw.not_added"}
+    if status is None or status not in messages:
+        return FirewallView(shown=False)
+    return FirewallView(shown=True, message=t(messages[status]), button_enabled=status != "adding")
 
 
 # --- status mapping -------------------------------------------------------------------

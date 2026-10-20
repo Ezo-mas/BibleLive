@@ -15,6 +15,7 @@ EN: dict[str, str] = {
     "label.ui_language": "Interface language",
     "label.open_display": "Open the display on the projector when starting",
     "label.open_operator": "Open the operator page when starting",
+    "label.allow_network": "Allow other devices on this network",
     "ui.auto": "Automatic",
     "advanced": "Advanced",
     "adv.model": "Model",
@@ -30,6 +31,8 @@ EN: dict[str, str] = {
     "btn.show_projector": "Show on Projector",
     "btn.open_logs": "Open logs folder",
     "btn.refresh": "Refresh",
+    "btn.copy": "Copy",
+    "btn.allow_firewall": "Allow through Windows Firewall",
     "mic.automatic": "(automatic)",
     "mic.loading": "Searching for microphones...",
     "projector.automatic": "Automatic (first extra screen)",
@@ -66,6 +69,34 @@ EN: dict[str, str] = {
     "log.stopping": "Stopping...",
     "log.projector_opened": "Display opened on the projector ({detail}).",
     "log.logs_in": "Logs are stored in {detail}",
+    "net.title": "Other devices on this network",
+    "net.display": "Display page",
+    "net.operator": "Operator page",
+    "net.token": "Operator token",
+    "net.hint": (
+        "Devices on the same network can open these pages; the operator page asks for "
+        "the token. If a device cannot connect, allow BibleLive through Windows Firewall."
+    ),
+    "net.no_address": (
+        "This computer's network address was not found. Connect to a network, or run "
+        "ipconfig and use its IPv4 address with the same port."
+    ),
+    "net.log_addresses": "Other devices on this network: display {display}, operator {operator}",
+    "net.log_token": "Operator token for other devices: {token}",
+    "net.show_qr": "Show QR codes",
+    "net.qr_title": "BibleLive – QR codes",
+    "net.qr_operator": "Operator page (signs in)",
+    "net.qr_warning": (
+        "Anyone who scans this code gets operator control. Do not show it on the projector "
+        "or the stream."
+    ),
+    "fw.missing": (
+        "Windows Firewall has no BibleLive rule, so other devices may not reach these pages. "
+        "Allowing BibleLive on Private networks asks for administrator approval once."
+    ),
+    "fw.adding": "Waiting for the Windows administrator prompt...",
+    "fw.not_added": "The firewall rule was not added: the prompt was declined or failed. Try again.",
+    "fw.added": "Windows Firewall rule added for Private networks.",
     "warn.no_gpu": (
         "No NVIDIA graphics card found. Running on the processor (emergency mode): "
         "transcription will be slow and less accurate."
@@ -107,6 +138,7 @@ LT: dict[str, str] = {
     "label.ui_language": "Sąsajos kalba",
     "label.open_display": "Paleidžiant atidaryti vaizdą projektoriuje",
     "label.open_operator": "Paleidžiant atidaryti operatoriaus puslapį",
+    "label.allow_network": "Leisti kitiems įrenginiams šiame tinkle",
     "ui.auto": "Automatinė",
     "advanced": "Papildomi nustatymai",
     "adv.model": "Modelis",
@@ -122,6 +154,8 @@ LT: dict[str, str] = {
     "btn.show_projector": "Rodyti projektoriuje",
     "btn.open_logs": "Atidaryti žurnalų aplanką",
     "btn.refresh": "Atnaujinti",
+    "btn.copy": "Kopijuoti",
+    "btn.allow_firewall": "Leisti per Windows ugniasienę",
     "mic.automatic": "(automatinis)",
     "mic.loading": "Ieškoma mikrofonų...",
     "projector.automatic": "Automatinis (pirmas papildomas ekranas)",
@@ -158,6 +192,38 @@ LT: dict[str, str] = {
     "log.stopping": "Stabdoma...",
     "log.projector_opened": "Vaizdas atidarytas projektoriuje ({detail}).",
     "log.logs_in": "Žurnalai saugomi: {detail}",
+    "net.title": "Kiti įrenginiai šiame tinkle",
+    "net.display": "Vaizdo puslapis",
+    "net.operator": "Operatoriaus puslapis",
+    "net.token": "Operatoriaus raktas",
+    "net.hint": (
+        "Šio tinklo įrenginiai gali atidaryti šiuos puslapius; operatoriaus puslapis "
+        "paprašo rakto. Jei įrenginys nesijungia, leiskite BibleLive per Windows ugniasienę."
+    ),
+    "net.no_address": (
+        "Nepavyko rasti šio kompiuterio tinklo adreso. Prisijunkite prie tinklo arba "
+        "komandoje ipconfig raskite IPv4 adresą ir naudokite tą patį prievadą."
+    ),
+    "net.log_addresses": "Kiti įrenginiai tinkle: vaizdas {display}, operatorius {operator}",
+    "net.log_token": "Operatoriaus raktas kitiems įrenginiams: {token}",
+    "net.show_qr": "Rodyti QR kodus",
+    "net.qr_title": "BibleLive – QR kodai",
+    "net.qr_operator": "Operatoriaus puslapis (prisijungia automatiškai)",
+    "net.qr_warning": (
+        "Kas nuskaitys šį kodą, gaus operatoriaus valdymą. Nerodykite jo projektoriuje "
+        "ar transliacijoje."
+    ),
+    "fw.missing": (
+        "Windows ugniasienėje nėra „BibleLive“ taisyklės, todėl kiti įrenginiai gali nepasiekti "
+        "šių puslapių. Leidimas privačiuose tinkluose reikalauja administratoriaus patvirtinimo "
+        "vieną kartą."
+    ),
+    "fw.adding": "Laukiama Windows administratoriaus patvirtinimo...",
+    "fw.not_added": (
+        "Ugniasienės taisyklės nepavyko pridėti: patvirtinimas atmestas arba įvyko klaida. "
+        "Bandykite dar kartą."
+    ),
+    "fw.added": "Windows ugniasienės taisyklė pridėta privatiems tinklams.",
     "warn.no_gpu": (
         "NVIDIA vaizdo plokštė nerasta. Veikia procesorius (avarinis režimas): "
         "atpažinimas bus lėtas ir mažiau tikslus."

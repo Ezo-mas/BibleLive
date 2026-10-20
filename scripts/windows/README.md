@@ -127,6 +127,13 @@ What the installer does:
   `/WITHENGLISH` with the CPU option also downloads Whisper `small`, `/SKIPGPUCHECK` (testing only),
   `/SKIPMODEL`.
 - Start Menu: BibleLive, BibleLive (console), Logs folder, Uninstall; optional desktop icon.
+- **Windows Firewall**: Setup adds no rule and asks for no administrator approval. The launcher
+  adds the `BibleLive` rule (Private networks only) when you press *Allow through Windows
+  Firewall* in its network panel, with one administrator prompt (see SECURITY.md). Uninstall
+  removes that rule if it exists, with an administrator prompt; a declined prompt is logged and
+  the uninstall carries on. A silent uninstall (`/SILENT` or `/VERYSILENT`) cannot show that
+  prompt, so it leaves the rule and logs that. Remove it from an administrator command prompt
+  with `netsh advfirewall firewall delete rule name=BibleLive`.
 - Uninstall removes the install folder (ends processes running from it; a browser window is not
   touched) and asks whether to delete settings, logs (`%APPDATA%\BibleLive`) and the speech models
   (`%LOCALAPPDATA%\BibleLive`). Default No; silent uninstall keeps them unless `/DELETEUSERDATA`.

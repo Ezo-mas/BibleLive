@@ -73,14 +73,17 @@ On Windows there is no `make`: use `.venv\Scripts\python.exe -m ...` with
 
 ## Windows launcher (`backend/launcher/`)
 
-`python -m launcher` (PYTHONPATH=backend) starts the server on 127.0.0.1 and
-the audio pipeline, waits for `/readyz`, and kills both process trees on exit.
+`python -m launcher` (PYTHONPATH=backend) starts the server on 127.0.0.1 (all
+interfaces with `--network on`) and the audio pipeline, waits for `/readyz`, and
+kills both process trees on exit.
 Defaults: `large-v3-turbo`, device `auto` (CUDA if present, else CPU `int8`
 with a warning), compute type `auto` (float16 > int8_float16 > int8). Settings
 live in `%APPDATA%\BibleLive\launcher.json` (server settings and `logs\`
 beside it); CLI flags override them and `--save` persists them. Useful flags:
 `--list-mics`, `--mic`, `--language`, `--port`, `--open operator|display`,
-`--dry-run` (print resolved commands/env). Args after `--` go to `audio.cli`.
+`--dry-run` (print resolved commands/env), `--network on|off` (other devices on
+the network may open the pages; default off; the token lives in
+`launcher.json`). Args after `--` go to `audio.cli`.
 A `ffmpeg/` dir next to the app is prepended to PATH if present.
 `start.ps1` is unchanged. Modules: `settings.py` (incl. allowed enum values,
 shared with `cli.py`), `gpu.py`, `speech.py` (Lithuanian engine: `GGUF_MODELS`
@@ -89,7 +92,10 @@ falls back to Whisper when a GGUF file is missing, `speech_threads` = physical
 cores − 1 capped at 6), `process.py` (UI-agnostic `Launcher`, thread-safe
 `stop()`, `on_event` callback, `error_code` for translation; `build_plan` maps
 the speech setting to `--stt`, `--kmynas-model`, `--canary-model`, `--cpu-threads`,
-`--session-log-dir logs\sessions` and `--session-audio`), `cli.py`.
+`--session-log-dir logs\sessions` and `--session-audio`), `cli.py`, `network.py`
+(network mode: the operator token, the LAN address and the Windows Firewall rule;
+`netsh` and `ShellExecuteW` are injectable, so tests never touch the firewall).
+The window's network panel is in `gui.py`, with its row states in `viewmodel.py`.
 Speech setting `speech_engine`: `auto` (Kmynas + Canary on an NVIDIA GPU, Kmynas
 alone otherwise) | `whisper` | `kmynas` | `kmynas+canary`. The GGUF engines run on
 the `device` setting (the audio CLI has one `--device` for Whisper and GGUF), and

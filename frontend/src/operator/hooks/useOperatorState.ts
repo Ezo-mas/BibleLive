@@ -35,7 +35,11 @@ import type { SpokenLanguageState } from './useSpokenLanguage'
 import type { ConnectionState } from '../../components'
 import { useI18n } from '../../shared/i18nContext'
 import type { MessageKey } from '../../shared/i18n'
-import { OPERATOR_TOKEN_STORAGE_KEY } from '../../shared/operatorToken'
+import {
+  OPERATOR_TOKEN_STORAGE_KEY,
+  readStoredOperatorToken,
+  takeOperatorTokenFragment,
+} from '../../shared/operatorToken'
 
 /** How long the button "pressed" feedback lasts after a confirmation. */
 const FLASH_MS = 150
@@ -275,7 +279,20 @@ export interface OperatorState {
  */
 export function useOperatorState(): OperatorState {
   const { t } = useI18n()
-  const [token, setToken] = useState<string | null>(() => localStorage.getItem(TOKEN_STORAGE_KEY))
+  const [token, setToken] = useState<string | null>(() => {
+    // A console the launcher opened carries its token in the fragment. It is saved
+    // the same way a typed token is (handleTokenSubmit), so a refusal and the rest
+    // of the flow are identical. This runs during the first render, before the
+    // I18nProvider's mount-time language request reads storage.
+    const fromLink = takeOperatorTokenFragment()
+    if (fromLink === null) return readStoredOperatorToken()
+    try {
+      localStorage.setItem(TOKEN_STORAGE_KEY, fromLink)
+    } catch {
+      // Storage is blocked (private browsing): the link's token still works on this page.
+    }
+    return fromLink
+  })
   const [tokenInput, setTokenInput] = useState('')
   const [authFailed, setAuthFailed] = useState(false)
 

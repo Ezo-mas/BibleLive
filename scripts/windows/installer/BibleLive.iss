@@ -17,6 +17,7 @@
 ;   /SKIPMODEL      skip the speech settings, model downloads and self-test after copying files
 ; Uninstall switch:
 ;   /DELETEUSERDATA with a silent uninstall, also delete settings, logs and the model
+;   A silent uninstall leaves the BibleLive Windows Firewall rule and logs the command that removes it.
 
 #if VER < EncodeVer(6, 5, 0)
   #error BibleLive.iss needs Inno Setup 6.5.0 or newer.
@@ -194,6 +195,7 @@ const
   MinMemMiB = 4096;
   WarnMemMiB = 6144;
   Quote = '''';
+  FirewallRuleName = 'BibleLive';
 
 type
   TGpu = record
@@ -502,6 +504,77 @@ begin
 end;
 
 // ---------------------------------------------------------------------------------------------
+// Windows Firewall: the rule the launcher adds for other devices ("Allow other devices" option).
+// Setup does not add it; it removes it on uninstall.
+// ---------------------------------------------------------------------------------------------
+
+// A netsh command line: netsh.exe advfirewall firewall <Args>.
+function FirewallCommand(const Args: String): String;
+begin
+  Result := ExpandConstant('{sys}\netsh.exe') + ' advfirewall firewall ' + Args;
+end;
+
+// True if the BibleLive rule exists. "show rule" needs no administrator rights, and netsh exits with
+// a non-zero code when no rule matches. If netsh cannot run, the rule counts as absent.
+function FirewallRuleExists(): Boolean;
+var
+  ResultCode: Integer;
+  Args: String;
+begin
+  Result := False;
+  Args := 'advfirewall firewall show rule name=' + FirewallRuleName;
+  try
+    if Exec(ExpandConstant('{sys}\netsh.exe'), Args, '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
+      Result := ResultCode = 0;
+  except
+    Log('netsh show rule failed: ' + GetExceptionMessage);
+  end;
+end;
+
+// Runs netsh commands joined with "&" in an elevated cmd.exe. netsh needs administrator rights and
+// Setup runs as the current user, so Windows asks for consent (UAC). True if the last command
+// succeeded. A declined prompt or a failure is only logged, and Setup carries on.
+function RunElevatedNetsh(const Commands: String): Boolean;
+var
+  ResultCode: Integer;
+begin
+  Result := False;
+  try
+    if ShellExec('runas', ExpandConstant('{sys}\cmd.exe'), '/c "' + Commands + '"', '', SW_HIDE,
+      ewWaitUntilTerminated, ResultCode) then
+    begin
+      Log(Format('elevated netsh exited with %d', [ResultCode]));
+      Result := ResultCode = 0;
+    end
+    else
+      Log('elevated netsh did not start: the administrator prompt was declined or failed.');
+  except
+    Log('elevated netsh failed: ' + GetExceptionMessage);
+  end;
+end;
+
+// Removes the rule, but only if it exists: a PC where the launcher never added it gets no
+// administrator prompt. A declined prompt or a failure is only logged, and uninstall carries on.
+// A silent uninstall cannot show that prompt (UAC would block it), so it leaves the rule and logs
+// the command that removes it.
+procedure RemoveFirewallRules;
+begin
+  if not FirewallRuleExists() then
+  begin
+    Log('No Windows Firewall rule named ' + FirewallRuleName + ' to remove.');
+    Exit;
+  end;
+  if UninstallSilent then
+  begin
+    Log('Windows Firewall rule ' + FirewallRuleName + ' left in place (silent uninstall). '
+      + 'Remove it with: netsh advfirewall firewall delete rule name=' + FirewallRuleName);
+    Exit;
+  end;
+  if not RunElevatedNetsh(FirewallCommand('delete rule name=' + FirewallRuleName)) then
+    Log('Windows Firewall rule not removed (the administrator prompt was declined or failed).');
+end;
+
+// ---------------------------------------------------------------------------------------------
 // Model download and GPU self-test (after the files are copied)
 // ---------------------------------------------------------------------------------------------
 
@@ -715,7 +788,10 @@ var
   DeleteData: Boolean;
 begin
   if CurUninstallStep = usUninstall then
+  begin
     StopAppProcesses;
+    RemoveFirewallRules;
+  end;
 
   if CurUninstallStep = usPostUninstall then
   begin
