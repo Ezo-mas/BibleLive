@@ -130,7 +130,7 @@ export function writeStoredLanguage(language: Language | null): void {
 
 /**
  * The launcher's interface language from `GET /api/ui-language`, or null when the
- * server does not say: an older server, a refused token, or no connection. The
+ * server does not say: an older server or no connection. The
  * page renders without it and switches once it arrives.
  */
 export async function fetchServerLanguage(token: string | null): Promise<Language | null> {
