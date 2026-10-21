@@ -69,6 +69,58 @@ On Windows there is no `make`: use `.venv\Scripts\python.exe -m ...` with
 | Change authentication or WS connection management | `backend/core/server/auth.py`, `connections.py` |
 | Change WS message protocol or approval flow | **stop — ask the user first** (Behavior rules) |
 
+## Lithuanian parser: lessons from past fixes
+
+How the parser works is in the module docstring of `core/verse_parser_lt.py`.
+These are the mistakes that keep coming back; each was found on a real
+recording or service.
+
+**Working method**
+- Start from the real transcript. Replay the service (`benchmarks/session_replay.py`)
+  and add the exact text as a test in `test_verse_parser_lt.py`, with a comment
+  naming the service or recording it came from, as the existing tests do.
+- Next to each positive case, assert what must stay untouched (see
+  `test_person_name_and_a_count_is_not_a_chapter`).
+- Check every speech model's way of writing it. Kmynas writes numbers as words;
+  Canary often writes digits in its own formats; Whisper's prompt makes it
+  format citations. A model's own mishearings ("Psmė", "Salme") go in its map in
+  `audio/spelling_maps.py`, not into the shared parser.
+- Every false positive is a wrong verse offered to the operator, and a medium
+  or high one can be auto-approved onto the screen. Prefer silence or a
+  chapter-only reference over a guessed verse. Benchmark before and after;
+  parser changes replay from the cache in seconds.
+
+**Traps**
+- Book names are also people and ordinary words. "Jonas ir du jo mokiniai" is
+  not John 2; "skaičiau" (I read) is not Numbers, though "Skaičiuose" is;
+  "versė" (overturned) folds to "verse". Words followed by a bare number with no
+  chapter word is narrative. Diacritic folding creates more such collisions, so
+  check the folded form.
+- A wrong book is worse than a miss: the Bible-database check cannot catch a
+  valid but wrong reference. A chapter 1–3 followed by "Jono" once became
+  1 John at high confidence; a numbered-book restart needs an explicit label
+  word ("laiškas").
+- Utterance cuts (12 s maximum) split citations: the verse word in one
+  utterance and its numbers in the next, or one spoken number cut in two
+  ("trys" | "trisdešim šeštoje" is 36, not 3). That is why chapter-only
+  references and a bare trailing verse digit are held one utterance
+  (`hold_chapter_only`). Don't release them early.
+- Ranges and lists:
+  - A dash after the chapter word is punctuation ("skyrius – šešiolikta").
+  - "12-30" is chapter:verse, but "8-12" may be chapters.
+  - A stray digit inside a verse pair can be a slurred join, but "12, 3, 50"
+    is a list.
+  - "dvidešimta, penkta eilutė" is 20:5, but "dvidešimt penkta" is 25.
+- Merged numbers ("Filipiečiams 46") are split only when exactly one
+  chapter:verse reading is valid.
+- Book and chapter context expires (600 s by default; live measures it on the
+  wall clock), and only newly reported references refresh it, so a stale book
+  cannot claim stray numbers.
+- Interpreted services put English cue words into Lithuanian transcripts
+  ("and verses 20-22"). An utterance is parsed with the parser for the language
+  it was captured in.
+- Open gap: the "Timotiej-" spelling of Timothy (`docs/TECH_DEBT.md`).
+
 ## Windows launcher (`backend/launcher/`)
 
 `python -m launcher` (PYTHONPATH=backend) starts the server on 127.0.0.1 (all

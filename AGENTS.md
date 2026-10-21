@@ -46,6 +46,9 @@ Before reporting done:
   parser patterns): unit tests are not enough — run the benchmark before and after
   on the same corpus and report TP/FP/FN and runtime for both
   ([testing guide](docs/agent-guides/testing.md#detection-accuracy-benchmark)).
+- **Network, auth or token changes** (the list in `SECURITY.md`, "Changes
+  that need a security review"): a security review is required. Run
+  `/security-review` if you can; otherwise say it still needs running.
 - Report failures honestly, including which check failed and why; don't
   report "done" with a failing or unrun check (see Behavior rules on
   skipped tests).
