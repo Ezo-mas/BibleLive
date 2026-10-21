@@ -87,6 +87,19 @@ tests:
     local run can skip them.
 - Fix the two-socket WebSocket hang first (see `TECH_DEBT.md`, "WebSocket tests
   with two sockets open can hang forever") and add a CI job timeout.
+- Linux only: on the Fedora dev box (2026-10-21, Python 3.13, with a
+  display) three `test_launcher_network.py` window tests fail and one errors
+  at teardown, alone or in the full run (43 passed, 3 failed, 1 error); they
+  pass on Windows. They assume Windows: the firewall only applies on win32
+  (`launcher/network.py` `firewall_applies`), and the settings/height checks
+  likely depend on it or on Linux font metrics:
+  `test_window_shows_addresses_token_and_operator_fragment` (`network_token`
+  is `None`), `test_window_checks_the_firewall_only_when_network_mode_is_on`
+  (firewall never checked; plus the teardown error), and
+  `test_window_fits_a_1366x768_screen_with_the_network_and_firewall_rows`
+  (793 px requested vs. 690 px allowed). Patch the platform in the tests or
+  mark them Windows-only. CI never sees this: it has no display, so the
+  window tests skip there.
 - Decide the CI Python matrix: today 3.11/3.12/3.13 while the installer ships
   3.11 and dev uses 3.12. Either test only what ships, or move everything to 3.13
   in its own PR (all pinned packages have Windows cp313 wheels, checked

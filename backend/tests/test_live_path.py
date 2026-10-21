@@ -285,7 +285,7 @@ class VadInput:
     """Every frame the VAD/segmenter was fed, and every utterance it closed.
 
     STT receives one joined PCM blob per utterance, so exact 30 ms framing can
-    only be checked where frames enter the segmenter (architecture invariant 4).
+    only be checked where frames enter the segmenter (architecture invariant 3).
     ``closed`` holds ``(reason, frames)`` for every utterance handed on, whether
     closed by the audio (silence, pause, cap) or by ``flush()`` at a capture
     failure.
@@ -814,7 +814,7 @@ def test_unexpected_ffmpeg_exit_flushes_then_restarts(
 
 
 # --------------------------------------------------------------------------- #
-# VAD frame carry-over (architecture invariant 4), no ffmpeg needed
+# VAD frame carry-over (architecture invariant 3), no ffmpeg needed
 # --------------------------------------------------------------------------- #
 
 

@@ -16,10 +16,11 @@ facts that are not agent rules stay in `README.md`, `DATABASE_SETUP.md`,
   reformat files, or "improve" unrelated comments. Preserve user changes
   already in the working tree. If you spot other issues, report them
   separately instead of fixing them silently.
-- **Report test results honestly.** If the audio tests *skip* because the
-  optional extras (faster-whisper, webrtcvad) aren't installed, say "skipped"
-  in your summary — a skip is not a pass, and the full suite can look green
-  while covering nothing.
+- **Report test results honestly.** A skip is not a pass: name each skipped
+  test and its reason in your summary. Locally, tests skip when ffmpeg is not
+  on PATH (live-path tests), there is no display (launcher window tests), the
+  KJV source is missing, or no Whisper tokenizer is cached. Missing audio
+  extras show up as import errors, not skips.
 - If a command fails because of missing tooling or services, say so and stop
   instead of working around it. Running the documented install commands
   (`make install-dev`, `make frontend-install` / `npm install` from
@@ -52,7 +53,7 @@ Before reporting done:
   (permitted) and retry before reporting. On Windows `make` itself is
   missing: run the same tools via `.venv\Scripts\python.exe -m ...` (exact
   commands in the testing guide) instead of stopping.
-- Full command reference and caveats (incl. audio-test skips):
+- Full command reference and caveats (incl. test skips):
   [testing guide](docs/agent-guides/testing.md).
 
 ## What this project is
@@ -84,25 +85,28 @@ operator approval → display page`.
 
 ## Non-negotiables (summary; details in architecture.md)
 
-1. Edit `core/server/` and `audio/` — never the `biblelive_*`
-   back-compat shims.
-2. Port 8000 is the default everywhere; no config knob defaults elsewhere.
-3. `_send_display_reference` is called only from operator-authorized
+1. The web server's port is 8000 by default everywhere; don't add a server
+   port setting that defaults elsewhere. (The pipeline's language-control
+   server on 8001 is a separate service.)
+2. `_send_display_reference` is called only from operator-authorized
    server paths (`approve_pending` / `display_manual_passage`); `display_reference`
    carries coordinates only and the server re-resolves them. No third door.
-4. VAD frames must be exactly the size the active VAD requires at 16 kHz
+3. VAD frames must be exactly the size the active VAD requires at 16 kHz
    (WebRTC: 10/20/30 ms) with no dropped carry-over.
-5. No StrictMode in frontend entry points (two WebSockets); both `main.tsx`
+4. No StrictMode in frontend entry points (two WebSockets); both `main.tsx`
    files go through `shared/renderApp.tsx`.
-6. Pages live at `/display` and `/operator`; the bundle at `/static/frontend/`
+5. Pages live at `/display` and `/operator`; the bundle at `/static/frontend/`
    is generated — don't hand-edit, don't rebuild unless asked.
-7. The SQLite DB is read-only on the request path (no writes).
+6. The SQLite DB is read-only on the request path (no writes).
 
 ## Repo sketch
 
 ```
-backend/    Python server (core/, audio/), tests, scripts, data JSON
+backend/    Python server (core/), audio pipeline (audio/), Windows launcher
+            (launcher/), tests, DB scripts
 frontend/   React UI (operator/, display/, shared/), built into static/frontend/
+docs/       Agent guides, TECH_DEBT.md, BACKLOG.md
+scripts/    Linux setup, CPU benchmark, Windows installer/portable builds
 static/frontend/  Prebuilt bundle served by FastAPI — generated, don't hand-edit
 bible_data/ SQLite Bible database — ask before changing anything under it
 data/       Source JSON for Bible imports

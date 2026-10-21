@@ -20,9 +20,7 @@ approval → display page`.
 backend/
   core/            FastAPI server, verse parser, Bible lookup (imported as core.*)
     server/app.py  The real server. Entry: uvicorn --factory core.server.app:create_app
-    biblelive_server.py  Thin back-compat shim — do NOT edit; real code is in server/
   audio/           Capture/VAD/STT/sender pipeline (imported as audio.*)
-    biblelive_audio_pipeline.py  Thin back-compat shim — same rule
     segmenter.py   VAD frames → utterances; shared by pipeline.py and the benchmark
   scripts/         DB import / maintenance scripts
   tests/           pytest suite

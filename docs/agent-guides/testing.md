@@ -47,7 +47,8 @@ python benchmarks/run_benchmark.py \
     --out results/<change>-before.json      # then -after.json with the change
 ```
 
-- The canonical corpus is 13 Lithuanian services, 158 gold references:
+- The canonical corpus is 14 Lithuanian services, 164 gold references
+  (results dated before 2026-10-19 used the first 13, 158 gold):
   the runs listed in `benchmarks/corpus/lt-sermons.txt` (manifest, record,
   and the `--t-range` of the sermon part where a recording has one), with
   `--mode offline --context-ttl-s 600`. Results so far are in
@@ -101,10 +102,14 @@ npm run screenshots   # visual regression (needs the stack running)
 
 ## Caveats
 
-- **Audio-test skips are not passes.** Tests marked `audio` need the
-  optional extras (`faster-whisper`, `webrtcvad`) and skip gracefully
-  without them. If a summary says a suite is green while audio tests
-  skipped, count what was actually covered and say so plainly.
+- **Skips are not passes.** Locally, tests skip when ffmpeg is not on
+  PATH (`test_live_path.py`; CI fails instead), there is no display (the
+  launcher window tests; CI has none, so they never run there), the KJV
+  source is missing, or no Whisper tokenizer is cached. Run with `-rs` and
+  list every skip and its reason in the summary. Tests marked `audio` need
+  the optional extras (`faster-whisper`, `webrtcvad`, installed by
+  `make install-dev`); without them they fail with import errors rather
+  than skip.
 - Test markers: `integration`, `audio` (pytest config in the root
   `pyproject.toml`).
 - If a check fails with "command not found", run `make install-dev` once
@@ -125,6 +130,6 @@ npm run screenshots   # visual regression (needs the stack running)
 ## Invariant coverage pointers
 
 Two suites directly cover the load-bearing approval invariants (see
-`architecture.md` invariant 3): `backend/tests/test_websocket_approval.py`
+`architecture.md` invariant 2): `backend/tests/test_websocket_approval.py`
 and `backend/tests/test_manual_reference.py`. When editing that flow,
 run them explicitly.
