@@ -147,7 +147,7 @@ below the fold.
   `AppState.bible_lookup` and is not visible to it. Logged, not fixed.
 - **Logged:** 2026-10-14
 
-### WebSocket tests with two sockets open can hang forever
+### WebSocket tests with two sockets open can hang forever (resolved)
 - **Where:** `backend/tests/conftest.py` (`client` fixture returns `TestClient(app)`
   without `with`); every test that holds a display and an operator socket at once
   (`test_follow_along.py`, `test_websocket_approval.py`, `test_manual_reference.py`,
@@ -171,4 +171,9 @@ below the fold.
   loop; also runs app lifespan, so re-run the full suite), plus `timeout-minutes: 15`
   on the CI test job.
 - **Logged:** 2026-10-20
+- **Resolved:** 2026-10-21 — reproduced locally (a display + operator socket pair hung within
+  34–1176 theme round-trips); the `client` fixture now enters `with TestClient(app)` so the
+  test shares one event loop (20,000 round-trips clean), the shared session app gets a no-op
+  lifespan so per-test shutdown no longer closes its database, and every CI job has
+  `timeout-minutes`.
 
