@@ -15,14 +15,7 @@ How to work:
 - Add or update a focused test when you fix a bug or add behavior.
 - If the task turns out to be ambiguous or bigger than described, stop and report what you found instead of guessing.
 
-Non-negotiables (from AGENTS.md):
-1. The web server's port is 8000 by default everywhere.
-2. _send_display_reference is called only from approve_pending / display_manual_passage. No third door.
-3. VAD frames must be exactly the size the active VAD requires at 16 kHz (WebRTC: 10/20/30 ms) with no dropped carry-over.
-4. No StrictMode. Both main.tsx files go through shared/renderApp.tsx.
-5. Don't hand-edit or rebuild static/frontend/ unless asked.
-6. SQLite is read-only on the request path.
-Ask, don't change: the WebSocket protocol (models.py / types.ts), the operator-approval flow, or anything under bible_data/.
+Follow the AGENTS.md non-negotiables and its "ask before changing" list (WebSocket protocol, operator-approval flow, bible_data/); if the task needs one of those changed, stop and report.
 Never commit or push. Don't install anything beyond `make install-dev` / `npm install` in frontend/.
 
 Definition of done:
