@@ -32,7 +32,7 @@ frontend/
   extra key. Plurals are objects selected by `count`. Bible text, book names,
   and reference strings are not translated.
 - **Generated bundle rules:** the prebuilt bundle `static/frontend/` is
-  built by `npm run build` (into `../static/frontend`, invariant 6 in
+  built by `npm run build` (into `../static/frontend`, invariant 5 in
   `architecture.md`) and served by the backend — don't hand-edit it, and
   don't rebuild it unless asked (rebuild diffs are big and generated;
   after `frontend/src` changes the UI only updates once rebuilt).

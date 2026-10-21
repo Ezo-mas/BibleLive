@@ -11,15 +11,14 @@ easy to break by accident.
 
 ## Architecture invariants (don't break these)
 
-1. **The server is `core.server.app`, not `core.biblelive_server`** — the
-   latter (and `audio.biblelive_audio_pipeline`) are compat shims kept for
-   old imports. Edit `core/server/`, not the shims.
-2. **Port 8000 is the default everywhere** — `core/config.py`, the audio
-   sender/CLI, the Vite dev proxy, and docs all assume it (`start.sh`
-   allows a `BIBLELIVE_PORT` override, but 8000 stays the default). Don't
-   introduce a config knob that defaults elsewhere. Frontend WS URLs use
-   `window.location.host`, so they follow whatever port serves the page.
-3. **Operator approval flow**: audio pipeline POSTs references to
+1. **The web server's port is 8000 by default everywhere** — `core/config.py`,
+   the audio sender/CLI, the Vite dev proxy, and docs all assume it
+   (`start.sh` allows a `BIBLELIVE_PORT` override, but 8000 stays the
+   default). Don't introduce a server port setting that defaults elsewhere.
+   The pipeline's language-control server (`--control-port`, default 8001)
+   is a separate service. Frontend WS URLs use `window.location.host`, so
+   they follow whatever port serves the page.
+2. **Operator approval flow**: audio pipeline POSTs references to
    `/api/reference` (token-protected when auth is on; the server rejects any
    book/chapter/verse not in its canon and Bible database, and discards
    submitted `text` — `_resolve_verses` only ever shows database text, since
@@ -65,7 +64,7 @@ easy to break by accident.
    that has aged out of the server's 20-entry snapshot window can still
    be shown again, because the canon and the Bible database — not the
    history list — are the authority.
-4. **VAD frame discipline**: frames must be exactly the size the active
+3. **VAD frame discipline**: frames must be exactly the size the active
    VAD requires at 16 kHz — WebRTC VAD (the default): 10/20/30 ms. The
    optional Silero VAD (`--vad silero`) takes the same 30 ms frames and
    re-chunks them into its 512-sample windows, carrying leftover samples
@@ -75,15 +74,15 @@ easy to break by accident.
    between calls (it keeps a `_frame_buffer`). Swapping the VAD (e.g. to
    one with a different chunk size) is allowed, but is a detection-accuracy
    change: benchmark it (see `testing.md`).
-5. **No StrictMode in the frontend entry points** — it double-mounts in
+4. **No StrictMode in the frontend entry points** — it double-mounts in
    dev and would open two WebSockets. The shared `shared/renderApp.tsx`
    helper documents this; keep both `main.tsx` files using it.
-6. **Frontend is served by the backend**: pages at `/display` and
+5. **Frontend is served by the backend**: pages at `/display` and
    `/operator`, built assets under `/static/frontend/` (Vite `base` in
    `frontend/vite.config.ts`, which also proxies `/ws` to the backend in
    dev). Dev uses the same paths via a Vite middleware — don't
    "simplify" to `/operator.html` links.
-7. **SQLite DB** at `bible_data/biblelive.sqlite` is opened with
+6. **SQLite DB** at `bible_data/biblelive.sqlite` is opened with
    `check_same_thread=False` (cross-thread reads in FastAPI workers).
    Treat it as read-only: don't add writes on the request path.
    Import procedures live in `../../DATABASE_SETUP.md`.
@@ -95,4 +94,5 @@ easy to break by accident.
 - `bible_lookup.py` has no abbreviation-mapping dict — lookups go through
   the SQLite `books` table.
 - Tests marked `audio` need the optional extras (faster-whisper,
-  webrtcvad); they skip gracefully without them.
+  webrtcvad, installed by `make install-dev`); without them they fail with
+  import errors rather than skip.
