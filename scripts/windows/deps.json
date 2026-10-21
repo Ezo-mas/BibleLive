@@ -1,9 +1,9 @@
 {
   "python": {
-    "description": "python-build-standalone CPython 3.11 (install_only, includes tkinter)",
-    "file": "cpython-3.11.17+20261013-x86_64-pc-windows-msvc-install_only.tar.gz",
-    "url": "https://github.com/astral-sh/python-build-standalone/releases/download/20261013/cpython-3.11.17%2B20261013-x86_64-pc-windows-msvc-install_only.tar.gz",
-    "sha256": "7616ab1f74aab975bd91eb0a657a74a092a63a46cac38c5f3f9415c79fd781f5"
+    "description": "python-build-standalone CPython 3.13 (install_only, includes tkinter)",
+    "file": "cpython-3.13.16+20261013-x86_64-pc-windows-msvc-install_only.tar.gz",
+    "url": "https://github.com/astral-sh/python-build-standalone/releases/download/20261013/cpython-3.13.16%2B20261013-x86_64-pc-windows-msvc-install_only.tar.gz",
+    "sha256": "e1f9233e780fbe951e531b0eb207d794e1c3fb39d523a6f481f4fc01ef2b6ca5"
   },
   "ffmpeg": {
     "description": "BtbN FFmpeg-Builds win64 LGPL (static, no GPL parts) n8.1.3",

@@ -29,7 +29,7 @@ Produces `build\BibleLive\` and `dist\BibleLive-portable-<version>.zip` (version
 `backend\pyproject.toml`). Needs Windows 10+ (`tar.exe`), Node/npm (unless
 `-SkipFrontendBuild`) and internet access for the first run.
 
-- **Pinned inputs**: `deps.json` (URL + SHA256) for python-build-standalone CPython 3.11 and an
+- **Pinned inputs**: `deps.json` (URL + SHA256) for python-build-standalone CPython 3.13 and an
   LGPL FFmpeg build. Downloads are cached in `build\cache\` and verified; a mismatch fails the build.
   To update a pin, change the URL and the SHA256 together.
 - **Python packages**: only third-party dependencies (`core` + `audio` + `gguf` extras, plus `cuda`

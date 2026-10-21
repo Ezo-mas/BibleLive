@@ -3,7 +3,7 @@
 #
 #   ./scripts/setup-linux.sh                # install system packages + venv + deps
 #   ./scripts/setup-linux.sh --no-system    # skip dnf; just the venv and pip install
-#   ./scripts/setup-linux.sh --python /usr/bin/python3.12
+#   ./scripts/setup-linux.sh --python /usr/bin/python3.13
 #
 # Safe to re-run. System packages need sudo; everything else stays inside .venv.
 set -euo pipefail
@@ -11,10 +11,10 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
 
-# The audio dependencies (ctranslate2, faster-whisper, webrtcvad) are only proven
-# on these interpreters (the CI matrix). A new distro default such as 3.14 may
-# have no wheels yet, so never trust a bare `python3`.
-SUPPORTED_MINORS=(13 12 11)
+# BibleLive runs on one Python version everywhere (the Windows installer bundles
+# 3.13 and CI tests 3.13). A distro default such as 3.14 is not tested, so never
+# trust a bare `python3`.
+SUPPORTED_MINORS=(13)
 
 SYSTEM=1
 PYTHON_BIN=""
@@ -44,13 +44,13 @@ python_minor() { "$1" -c 'import sys; print(sys.version_info[0]*100+sys.version_
 is_supported_python() {
     local v
     v="$(python_minor "$1")" || return 1
-    [ "$v" -ge 311 ] && [ "$v" -le 313 ]
+    [ "$v" -eq 313 ]
 }
 
 find_python() {
     if [ -n "$PYTHON_BIN" ]; then
         is_supported_python "$PYTHON_BIN" || {
-            echo "error: $PYTHON_BIN is not Python 3.11-3.13" >&2; return 1; }
+            echo "error: $PYTHON_BIN is not Python 3.13" >&2; return 1; }
         echo "$PYTHON_BIN"; return 0
     fi
     local m
@@ -87,13 +87,13 @@ if [ "$SYSTEM" -eq 1 ]; then
     # newest the distro offers (package names assumed python3.N / python3.N-devel).
     if ! PY="$(find_python)"; then
         command -v dnf >/dev/null 2>&1 || {
-            echo "error: no Python 3.11-3.13 and no dnf; install one and re-run" >&2; exit 1; }
+            echo "error: no Python 3.13 and no dnf; install one and re-run" >&2; exit 1; }
         for m in "${SUPPORTED_MINORS[@]}"; do
             echo "Trying python3.$m ..."
             if sudo dnf install -y "python3.$m" "python3.$m-devel"; then break; fi
         done
         PY="$(find_python)" || {
-            echo "error: could not install a supported Python (3.11-3.13) with dnf." >&2; exit 1; }
+            echo "error: could not install a supported Python (3.13) with dnf." >&2; exit 1; }
     fi
     # Headers for the chosen interpreter (webrtcvad compiles against them).
     HDR_DIR="$("$PY" -c 'import sysconfig; print(sysconfig.get_paths()["include"])')"
@@ -105,7 +105,7 @@ fi
 # ---------------------------------------------------------------- python venv
 say "Selecting Python"
 if ! PY="$(find_python)"; then
-    echo "error: no Python 3.11-3.13 found (this machine's python3 is $(python3 --version 2>&1))." >&2
+    echo "error: no Python 3.13 found (this machine's python3 is $(python3 --version 2>&1))." >&2
     echo "On Fedora: sudo dnf install python3.13 python3.13-devel   (or pass --python PATH)" >&2
     exit 1
 fi

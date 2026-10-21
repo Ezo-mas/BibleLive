@@ -8,15 +8,20 @@
 # can behave differently and a broken upstream release reaches production the
 # next time someone reinstalls. A constraint only applies when the package is
 # installed, so one file serves every platform and extra; the few lines that
-# differ by platform or Python version carry markers.
+# differ by platform carry markers.
+#
+# BibleLive runs on one Python version, 3.13: the Windows installer bundles it,
+# CI tests it, and development uses it.
 #
 # Verified (2026-10-13):
 #   - the full backend suite and mypy pass against these versions on Windows,
 #     Python 3.12 (with the audio extras and the CUDA wheels);
 #   - every pin resolves with Linux x86_64 wheels on Python 3.11, 3.12 and 3.13
-#     (the CI matrix), apart from webrtcvad, which only ships as source there.
-#   The Linux-only lines (uvloop, webrtcvad) and the Python 3.11 lines (numpy,
-#   av) were not exercised by that local run; CI exercises them.
+#     (the CI matrix then), apart from webrtcvad, which only ships as source there.
+# Verified (2026-10-21), for the move to 3.13 only:
+#   - every pin that applies on Windows has a CPython 3.13 win_amd64 (or abi3 or
+#     pure-Python) wheel on PyPI;
+#   - the full backend suite and mypy pass on Linux, Python 3.13.
 #
 # Updating (deliberately, not as a side effect of an install):
 #   1. In a fresh venv: pip install -e "./backend[dev,audio,cuda]" --upgrade
@@ -26,14 +31,13 @@
 #      that can change what is detected: run the benchmark before and after.
 #   3. pip list --format=freeze --exclude-editable, and copy the new versions in
 #      here, keeping the marker lines. Leave out pip itself.
-#   4. Let CI confirm Python 3.11-3.13 on Linux.
+#   4. Let CI confirm Python 3.13 on Linux.
 
 annotated-doc==0.0.5
 annotated-types==0.8.0
 anyio==4.15.1
 ast_serialize==0.12.1
-av==19.0.1; python_version >= "3.12"
-av==18.1.0; python_version < "3.12"
+av==19.0.1
 certifi==2026.7.22
 charset-normalizer==3.5.2
 click==8.5.0
@@ -56,8 +60,7 @@ iniconfig==2.3.1
 librt==0.16.0
 mypy==2.4.0
 mypy_extensions==1.1.0
-numpy==2.5.3; python_version >= "3.12"
-numpy==2.4.6; python_version < "3.12"
+numpy==2.5.3
 onnxruntime==1.30.0
 opentelemetry-api==1.45.1
 packaging==26.3

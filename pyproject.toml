@@ -61,7 +61,7 @@ exclude_lines = [
 ]
 
 [tool.ruff]
-target-version = "py311"
+target-version = "py313"
 line-length = 100
 extend-exclude = ["frontend", "static", "data", "bible_data"]
 
@@ -91,7 +91,7 @@ ignore = [
 known-first-party = ["core", "audio"]
 
 [tool.mypy]
-python_version = "3.11"
+python_version = "3.13"
 mypy_path = "backend"
 warn_return_any = true
 warn_unused_configs = true
