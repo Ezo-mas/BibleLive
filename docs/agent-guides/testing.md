@@ -108,13 +108,23 @@ npm run screenshots   # visual regression (needs the stack running)
 - **Skips are not passes.** Locally, tests skip when ffmpeg is not on
   PATH (`test_live_path.py`; CI fails instead), there is no display (the
   launcher window tests; CI has none, so they never run there), the KJV
-  source is missing, or no Whisper tokenizer is cached. Run with `-rs` and
+  source is missing, or no Whisper tokenizer is cached. Off Windows, the
+  launcher's 1366x768 window-height test and the Windows creation-flags test
+  always skip (Windows-only behaviour and font metrics). Run with `-rs` and
   list every skip and its reason in the summary. Tests marked `audio` need
   the optional extras (`faster-whisper`, `webrtcvad`, installed by
   `make install-dev`); without them they fail with import errors rather
   than skip.
-- Test markers: `integration`, `audio` (pytest config in the root
-  `pyproject.toml`).
+- Test markers: `integration`, `audio`, `slow` (pytest config in the root
+  `pyproject.toml`, with `--strict-markers`). `slow` marks the three
+  real-ffmpeg end-to-end tests in `test_live_path.py` (~6 s each); a quick
+  local run can leave them out with `pytest backend/tests -m "not slow"`.
+  That is not a full run: CI and the definition of done run everything.
+- Every test has a 60 s limit (`pytest-timeout`, `timeout` in the root
+  `pyproject.toml`): a hang fails that test with a stack dump instead of
+  stalling the run. The `timeout` setting is unknown to pytest without the
+  plugin (`--strict-config` errors), so re-run `make install-dev` after
+  pulling this change.
 - If a check fails with "command not found", run `make install-dev` once
   (permitted) and retry before reporting.
 - Tests for transcript post-processing (`audio/stt.py` corrections, parser

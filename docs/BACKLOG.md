@@ -66,44 +66,35 @@ cut). Options:
 ## Maintenance
 
 ### Test suite audit
-Size: medium, about 1–2 days. Not urgent.
+Size: small, what is left. Not urgent.
 
-Go through `backend/tests` (~1200 tests, ~1.5–2 min locally) and `frontend/src`
-tests:
+First pass done 2026-10-21 on the Fedora box (Python 3.13): the two-socket
+WebSocket hang is fixed (`TECH_DEBT.md`, resolved), every CI job has
+`timeout-minutes`, the control-server and language-proxy tests no longer wait
+0.5 s per server stop, the three real-ffmpeg `test_live_path.py` tests are
+marked `slow` (`-m "not slow"` for a quick local run; CI runs everything), and
+the Linux-only launcher window failures are fixed (the tests saved settings to
+the Windows `%APPDATA%` layout; the 1366x768 height test is now Windows-only,
+because Linux Tk's default fonts make the same window ~790 px tall). Full suite
+there: 59 s to 38 s, 20 s without `slow`. No test was clearly meaningless, so
+none was removed. Left:
 
-- Remove tests that assert nothing meaningful (duplicates, tests of mocks,
-  tests that only restate the implementation).
-- Speed: the count is not the problem (~1:1 test-to-code lines). On 2026-10-20
-  the 15 slowest tests took ~53 of the suite's 91 s; the other ~1150 ran in ~40 s.
-  Start there (`pytest --durations=15`):
-  - `test_language_proxy.py::test_a_pipeline_that_is_not_running_is_a_503`
-    (6 s, likely a real timeout — shorten it in the test).
-  - `test_db_path_resolution.py`: four tests at 3–4.6 s (subprocess runs).
-  - `test_control_server.py`, `test_launcher_process.py`,
-    `test_audio_language_switch.py`, `test_capture_recovery.py`: 1.5–2.5 s each
-    (port/process waits).
-  - `test_live_path.py`: three tests at ~6 s with real ffmpeg. Keep them — they
-    are the end-to-end check of the approval flow — but mark them so a quick
-    local run can skip them.
-- Fix the two-socket WebSocket hang first (see `TECH_DEBT.md`, "WebSocket tests
-  with two sockets open can hang forever") and add a CI job timeout.
-- Linux only: on the Fedora dev box (2026-10-21, Python 3.13, with a
-  display) three `test_launcher_network.py` window tests fail and one errors
-  at teardown, alone or in the full run (43 passed, 3 failed, 1 error); they
-  pass on Windows. They assume Windows: the firewall only applies on win32
-  (`launcher/network.py` `firewall_applies`), and the settings/height checks
-  likely depend on it or on Linux font metrics:
-  `test_window_shows_addresses_token_and_operator_fragment` (`network_token`
-  is `None`), `test_window_checks_the_firewall_only_when_network_mode_is_on`
-  (firewall never checked; plus the teardown error), and
-  `test_window_fits_a_1366x768_screen_with_the_network_and_firewall_rows`
-  (793 px requested vs. 690 px allowed). Patch the platform in the tests or
-  mark them Windows-only. CI never sees this: it has no display, so the
-  window tests skip there.
+- Windows-only slowness, not measurable on Linux (all under 0.2 s there):
+  `test_db_path_resolution.py` (3–4.6 s each on Windows on 2026-10-20; the
+  tests import a tiny 66-book canon in-process, no subprocess, so likely
+  SQLite or antivirus file cost) and `test_launcher_process.py` (1.5–2.5 s).
+  Profile them on Windows with `pytest --durations=15`.
+- Smaller fixed waits left in production code: the transcript sender's 0.2 s
+  queue poll (`audio/transcript_sender.py`) costs ~0.2 s per stopping test,
+  and `test_capture_recovery.py::test_vad_loop_resumes_after_ffmpeg_dies`
+  takes 0.5 s. Shortening them needs a production change (a constant tests can
+  patch); worth ~2 s.
 - Decide the CI Python matrix: today 3.11/3.12/3.13 while the installer ships
   3.11 and dev uses 3.12. Either test only what ships, or move everything to 3.13
   in its own PR (all pinned packages have Windows cp313 wheels, checked
   2026-10-20) with an installer build and a test service.
+- Optional: a per-test timeout (`pytest-timeout`, a new dev dependency) would
+  turn any future hang into one failing test instead of a cancelled CI job.
 
 ## Experiments
 

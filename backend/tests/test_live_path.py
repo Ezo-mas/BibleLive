@@ -623,6 +623,7 @@ def _run_detect_then_approve(
         assert books["framed"] == vad_input.frame_count * VAD_FRAME_BYTES, books
 
 
+@pytest.mark.slow
 def test_detected_reference_reaches_display_only_via_operator_approval(
     kjv_db, tmp_path, live_server, ffmpeg_seam, install_fake_stt
 ):
@@ -646,6 +647,7 @@ def test_detected_reference_reaches_display_only_via_operator_approval(
     )
 
 
+@pytest.mark.slow
 def test_low_confidence_detection_is_not_auto_displayed_under_auto_high(
     kjv_db, tmp_path, live_server, ffmpeg_seam, install_fake_stt
 ):
@@ -687,6 +689,7 @@ def test_low_confidence_detection_is_not_auto_displayed_under_auto_high(
 RESTART_DELAY_S = 0.5
 
 
+@pytest.mark.slow
 def test_unexpected_ffmpeg_exit_flushes_then_restarts(
     kjv_db, tmp_path, live_server, ffmpeg_seam, install_fake_stt
 ):

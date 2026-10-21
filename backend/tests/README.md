@@ -33,6 +33,7 @@ pytest
 pytest backend/tests -q         # All backend tests
 pytest -m integration           # Database/server tests only
 pytest -m "not audio"           # Skip tests needing the audio extras
+pytest -m "not slow"            # Skip the ~6 s real-ffmpeg tests (CI runs them)
 ```
 
 ### With coverage
@@ -89,7 +90,11 @@ Common fixtures are defined in `conftest.py`:
 - `bible_db` - Temporary SQLite database built from `sample_bible_data`
 - `kjv_db` - Full KJV database built once per session from `data/kjv2.json`
 - `app` / `app_state` - FastAPI app (session-scoped) backed by `kjv_db`
-- `client` - FastAPI TestClient bound to the shared app
+- `client` - FastAPI TestClient bound to the shared app, entered with `with` so a
+  test's requests and WebSockets share one event loop (separate loops hung
+  two-socket tests)
+- `fast_control_server_stop` - makes the language-control server stop in
+  milliseconds; for tests that start real control servers (needs the audio extras)
 
 The app fixtures build their own database, so tests do not depend on a
 pre-imported `bible_data/biblelive.sqlite` (which is gitignored).

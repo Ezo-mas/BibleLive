@@ -41,7 +41,12 @@ from launcher.network import (
     wait_until,
 )
 from launcher.process import build_plan
-from launcher.settings import LauncherSettings, load_settings, save_settings
+from launcher.settings import (
+    LauncherSettings,
+    default_settings_path,
+    load_settings,
+    save_settings,
+)
 from launcher.viewmodel import (
     NetworkView,
     firewall_view,
@@ -302,7 +307,7 @@ def test_window_shows_addresses_token_and_operator_fragment(tk_root, tmp_path, m
     monkeypatch.setattr("launcher.gui.lan_ip", lambda: "192.168.1.23")
     save_settings(
         LauncherSettings(allow_network=True, network_token="tok123abc"),
-        tmp_path / "BibleLive" / "launcher.json",
+        default_settings_path(),  # under tmp_path: the env vars above point there
     )
     from launcher.gui import App
 
@@ -412,7 +417,7 @@ def qr_window(tk_root, tmp_path, monkeypatch):
             open_display_on_start=False,
             open_operator_on_start=False,
         ),
-        tmp_path / "BibleLive" / "launcher.json",
+        default_settings_path(),  # under tmp_path: the env vars above point there
     )
     from launcher.gui import App
 
@@ -670,7 +675,7 @@ def firewall_window(tk_root, tmp_path, monkeypatch):
             open_display_on_start=False,
             open_operator_on_start=False,
         ),
-        tmp_path / "BibleLive" / "launcher.json",
+        default_settings_path(),  # under tmp_path: the env vars above point there
     )
     from launcher.gui import App
 
@@ -741,10 +746,18 @@ def test_late_firewall_result_after_stop_is_ignored(firewall_window):
     assert app.fw_label.winfo_manager() == ""
 
 
+@pytest.mark.skipif(
+    sys.platform != "win32",
+    reason="the 690 px budget is for Windows' default Tk fonts (Segoe UI 9 pt); Linux Tk "
+    "defaults (e.g. Noto Sans 10 pt, 19 px lines) make the same layout ~790 px tall",
+)
 def test_window_fits_a_1366x768_screen_with_the_network_and_firewall_rows(firewall_window):
     """The tallest state: network mode, server ready, firewall row shown.
 
     A 1366x768 laptop leaves about 697 px of client height; the log pane must keep its lines.
+    The launcher ships for Windows, and the window uses Tk's default fonts, whose size is
+    platform-specific; measured 2026-10-21 on Fedora, the same window requests 793 px with
+    Noto Sans 10 pt and 684 px with 8 pt (16 px lines, close to Segoe UI 9 pt).
     """
     app = firewall_window
     app.root.update_idletasks()
