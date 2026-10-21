@@ -27,6 +27,6 @@ Hard limits (from AGENTS.md):
 - Stay in scope. No drive-by refactors or reformatting of unrelated files.
 - Never commit or push.
 
-Verify before reporting: from frontend/ run `npm run lint && npm run typecheck && npm run format:check && npm test -- --run`. If visual snapshots are relevant, scripts/screenshot.mjs exists. Report honestly which checks passed or failed.
+Verify before reporting: from frontend/ run `npm run lint && npm run typecheck && npm run format:check && npm test -- --run`. If visual snapshots are relevant, use `npm run screenshots` (frontend/scripts/screenshot.mjs). Report honestly which checks passed or failed.
 
 Report: what changed visually and why, the files you touched, check results, and any design debt you noticed but left alone.

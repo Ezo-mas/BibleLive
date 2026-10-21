@@ -21,7 +21,7 @@ Never commit or push. Don't install anything beyond `make install-dev` / `npm in
 Definition of done:
 - Backend: `make check` and `make typecheck`. On Windows without make, run them via `.venv\Scripts\python.exe -m ...` as described in docs/agent-guides/testing.md.
 - Frontend: from frontend/ run `npm run lint && npm run typecheck && npm run format:check && npm test -- --run`.
-- Detection-accuracy changes (Whisper settings, VAD, segmentation, post-processing, parser patterns): unit tests are not enough. Say the benchmark needs running before and after (the detection-benchmark skill) rather than skipping it silently.
+- Detection-accuracy changes (the list in AGENTS.md's Definition of done, including spelling maps and the agreement rule): unit tests are not enough. Say the benchmark needs running before and after (the detection-benchmark skill) rather than skipping it silently.
 - Network, auth or token changes (SECURITY.md, "Changes that need a security review"): you can't run /security-review, so say in your report that it is still needed.
 - A skipped test is not a pass. Name each skip and its reason (no ffmpeg, no display, missing KJV source, no cached tokenizer).
 
