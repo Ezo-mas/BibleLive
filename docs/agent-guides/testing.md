@@ -38,14 +38,14 @@ their spelling maps, VAD choice or tuning, utterance segmentation, transcript
 post-processing, parser patterns — needs a
 before/after run on the same corpus and settings. Before proposing one,
 check "Tried and not adopted" in `benchmarks/BASELINE_NOTES.md` (rolling
-windows, longer caps, vocal isolation, denoise/gate already measured):
+windows, longer caps, vocal isolation, denoise/gate already measured).
 
-```bash
-python benchmarks/run_benchmark.py \
-    --manifest benchmarks/corpus/manifest-07-05-lt.json \
-    --audio-dir bench_audio --mode windowed --model small --device cuda \
-    --out results/<change>-before.json      # then -after.json with the change
-```
+Run it with the `detection-benchmark` skill
+(`.claude/skills/detection-benchmark/SKILL.md`): it has the exact offline
+GGUF command for the shipped engines (`--stt kmynas` and
+`--stt kmynas+canary`) over every corpus service, which change needs a fresh
+transcription, and how to report the result. Don't hand-build a smaller run
+in its place.
 
 - The canonical corpus is 14 Lithuanian services, 164 gold references
   (results dated before 2026-10-19 used the first 13, 158 gold):

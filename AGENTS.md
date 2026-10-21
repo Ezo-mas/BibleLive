@@ -38,7 +38,9 @@ facts that are not agent rules stay in `README.md`, `DATABASE_SETUP.md`,
 Before reporting done:
 
 - **Backend changes**: run `make check` (ruff lint + format-check + pytest)
-  and `make typecheck` (mypy — separate from `check`).
+  and `make typecheck` (mypy — separate from `check`). While iterating, run
+  the touched test file or `pytest backend/tests -m "not slow"` (~20 s);
+  the full suite once at the end.
 - **Frontend changes**: from `frontend/` run `npm run lint && npm run typecheck && npm run format:check && npm test -- --run`.
 - **Detection-accuracy changes** (Whisper prompt/hotwords/beam/model, the
   `--stt` speech models, per-model spelling maps or the two-model agreement
