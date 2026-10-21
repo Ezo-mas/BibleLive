@@ -469,7 +469,6 @@ BibleLive/                        # Monorepo root: tooling + shared assets
 │   │   │   ├── settings_store.py # Persisted operator settings (auto-approve mode)
 │   │   │   └── state.py          # AppState (pending queue, display, history)
 │   │   ├── config.py             # Env-driven configuration
-│   │   ├── biblelive_server.py   # Compat shim -> core.server
 │   │   ├── verse_parser.py       # Reference parsing (English)
 │   │   ├── verse_parser_lt.py    # Lithuanian language data for the parser
 │   │   ├── passage.py, books.py  # Manual passage validation + canon
