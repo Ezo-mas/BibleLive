@@ -64,8 +64,13 @@ static/frontend/
 *.tmp
 tmp/
 
-# Local tooling config (per-developer, not shared)
-.claude/
+# Claude Code: share agents, settings, skills and rules; keep personal
+# settings (settings.local.json) and worktrees local
+.claude/*
+!.claude/agents/
+!.claude/settings.json
+!.claude/skills/
+!.claude/rules/
 
 # Runtime server settings (written by the server, e.g. the auto-approve mode)
 data/server_settings.json
