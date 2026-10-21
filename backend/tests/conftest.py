@@ -104,6 +104,10 @@ def kjv_db(tmp_path_factory: pytest.TempPathFactory) -> Path:
     return db_path
 
 
+async def _keep_database_open() -> None:
+    """Stands in for the shared app's ``AppState.shutdown`` until the session ends."""
+
+
 @pytest.fixture(scope="session")
 def app(kjv_db: Path, tmp_path_factory: pytest.TempPathFactory):
     """Build the FastAPI app once per test session, backed by the test database.
@@ -121,6 +125,13 @@ def app(kjv_db: Path, tmp_path_factory: pytest.TempPathFactory):
     config.DB_PATH = str(kjv_db)
     config.SETTINGS_PATH = str(tmp_path_factory.mktemp("settings") / "server_settings.json")
     application = create_app()
+    # Every test's ``client`` enters a TestClient, which runs the app's lifespan on entry and
+    # exit; its exit awaits ``AppState.shutdown()``, which closes the database, and this app is
+    # shared by the whole session. So the shared state's shutdown does nothing, and the
+    # teardown below closes the database once. Patching our own AppState rather than
+    # Starlette's router keeps this independent of Starlette internals. Apps a test builds
+    # itself with ``create_app()`` keep the real shutdown.
+    application.state.app_state.shutdown = _keep_database_open
     try:
         yield application
     finally:
@@ -157,10 +168,38 @@ def reset_app_state(app_state, tmp_path: Path):
 
 @pytest.fixture
 def client(app):
-    """FastAPI TestClient bound to the shared app (state reset via autouse)."""
+    """FastAPI TestClient bound to the shared app (state reset via autouse).
+
+    Entered with ``with`` so that every request and WebSocket of the test runs on one event
+    loop. Without it, Starlette starts a separate loop on its own thread per
+    ``websocket_connect()`` (and per request); a server broadcast from one socket's handler
+    then wakes a reader waiting on another socket's loop from the wrong thread, the wake-up is
+    lost, and ``receive_text()``, which has no timeout, waits forever. That hung CI with a
+    display and an operator socket open (TECH_DEBT.md, resolved 2026-10-21).
+    """
     from fastapi.testclient import TestClient
 
-    return TestClient(app)
+    with TestClient(app) as test_client:
+        yield test_client
+
+
+@pytest.fixture
+def fast_control_server_stop(monkeypatch):
+    """Make ``LanguageControlServer.stop()`` return in milliseconds instead of ~0.5 s.
+
+    ``stop()`` calls ``shutdown()``, which waits for ``serve_forever`` to notice, and that only
+    looks every ``poll_interval`` (0.5 s by default). The tests that start real control servers
+    use a 10 ms interval; the server, its socket and what the tests assert are unchanged.
+    Imported lazily: ``audio.control`` needs the optional audio extras.
+    """
+    from socketserver import BaseServer
+
+    from audio import control
+
+    def serve_forever(self, poll_interval=0.01):
+        BaseServer.serve_forever(self, poll_interval)
+
+    monkeypatch.setattr(control._ControlHTTPServer, "serve_forever", serve_forever)
 
 
 @pytest.fixture(scope="session")

@@ -76,7 +76,10 @@ class _FakePipeline:
                 pass
 
         self._httpd = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
-        threading.Thread(target=self._httpd.serve_forever, daemon=True).start()
+        # A 10 ms poll lets stop() return at once instead of after the default 0.5 s.
+        threading.Thread(
+            target=self._httpd.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True
+        ).start()
         return f"http://127.0.0.1:{self._httpd.server_address[1]}"
 
     def stop(self) -> None:
@@ -148,7 +151,11 @@ def test_a_malformed_request_is_rejected_before_it_reaches_the_pipeline(client, 
     assert pipeline.seen_auth == []  # nothing was forwarded
 
 
-def test_a_pipeline_that_is_not_running_is_a_503(client):
+def test_a_pipeline_that_is_not_running_is_a_503(client, monkeypatch):
+    # Refused on Linux at once; on Windows a connect to a closed loopback port is retried
+    # for seconds and can reach the 3 s timeout instead. Both are the 503 checked below, so
+    # a short timeout keeps the test fast on either platform.
+    monkeypatch.setattr(config, "AUDIO_CONTROL_TIMEOUT", 0.5)
     original = config.AUDIO_CONTROL_URL
     config.AUDIO_CONTROL_URL = f"http://127.0.0.1:{_unused_port()}"
     try:

@@ -242,6 +242,30 @@ server {
 }
 ```
 
+## Changes that need a security review
+
+A change to any of these needs a security review before it is called done:
+
+- **Authentication and tokens:** `backend/core/server/auth.py`, the WebSocket
+  `authenticate` handshake (`core/server/app.py`, `connections.py`), and token
+  handling in the clients (`frontend/src/shared/operatorToken.ts`,
+  `useWebSocket.ts`, the `#token=` link, `audio/sender.py`).
+- **Which endpoints are public or protected:** the lists under "Security
+  Architecture" above, and any new route in `core/server/app.py`.
+- **Who can reach the server:** `HOST`, `REQUIRE_AUTH` and `CORS_ORIGINS` in
+  `core/config.py`; the launcher's network mode, bind address, firewall rule
+  and token (`backend/launcher/network.py`, `process.py`, `settings.py`); the
+  pipeline's language-control server (`audio/control.py`,
+  `core/server/language_control.py`, bound to `127.0.0.1`).
+- **Log redaction:** `core/server/log_redaction.py`.
+
+How to run it: in Claude Code, the main session runs the built-in
+`/security-review` skill on the branch itself. A subagent without the Skill
+tool, or another coding tool, cannot run it. It says in its report that the
+security review is still needed, so the user (or the main session) runs it.
+Report the findings, or "security review not run". Never drop the step
+silently.
+
 ## Security Checklist
 
 - [ ] `BIBLELIVE_REQUIRE_AUTH=true` set

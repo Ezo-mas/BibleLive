@@ -26,7 +26,7 @@ from audio.stt import SUPPORTED_LANGUAGES, WHISPER_INITIAL_PROMPTS, SpeechToText
 from core.verse_parser import ReferenceParser, StreamingParser
 
 # Requires the optional audio extras (faster-whisper, webrtcvad, numpy).
-pytestmark = pytest.mark.audio
+pytestmark = [pytest.mark.audio, pytest.mark.usefixtures("fast_control_server_stop")]
 
 
 # ---------------------------------------------------------------------------
