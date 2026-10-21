@@ -104,21 +104,10 @@ operator approval → display page`.
    is generated — don't hand-edit, don't rebuild unless asked.
 6. The SQLite DB is read-only on the request path (no writes).
 
-## Repo sketch
+## Local directories
 
-```
-backend/    Python server (core/), audio pipeline (audio/), Windows launcher
-            (launcher/), tests, DB scripts
-frontend/   React UI (operator/, display/, shared/), built into static/frontend/
-docs/       Agent guides, TECH_DEBT.md, BACKLOG.md
-scripts/    Linux setup, CPU benchmark, Windows installer/portable builds
-static/frontend/  Prebuilt bundle served by FastAPI — generated, don't hand-edit
-bible_data/ SQLite Bible database — ask before changing anything under it
-data/       Source JSON for Bible imports
-benchmarks/ Detection-accuracy benchmark: runner, manifests, gold annotations
-results/    Local benchmark outputs + transcript cache — not committed
-bench_audio/  Local sermon recordings for the benchmark — not committed, read-only
-```
+`results/` and `bench_audio/` are local and not committed; `bench_audio/`
+(sermon recordings) is read-only.
 
 Commands, conventions, and the task → files mapping live in the guides;
 the root DoD above is the authority for required checks.
