@@ -64,11 +64,12 @@ static/frontend/
 *.tmp
 tmp/
 
-# Claude Code: share agents, settings, skills and rules; keep personal
+# Claude Code: share agents, settings, hooks, skills and rules; keep personal
 # settings (settings.local.json) and worktrees local
 .claude/*
 !.claude/agents/
 !.claude/settings.json
+!.claude/hooks/
 !.claude/skills/
 !.claude/rules/
 
