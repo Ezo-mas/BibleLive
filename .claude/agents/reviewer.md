@@ -14,6 +14,7 @@ Review the current working-tree changes (git diff) against AGENTS.md, in this or
 3. Scope: flag unrelated refactors, reformatting, or comment edits. Changes outside what was asked should be reported, not accepted.
 4. Verification: were make check / make typecheck (backend) or lint, typecheck, and tests (frontend) run? Did anything skip (no ffmpeg, no display, missing KJV source, no cached tokenizer)? A skip is not a pass.
 5. Correctness: root causes, edge cases, race conditions around the audio pipeline and WebSockets.
+6. Security: if the diff touches anything in SECURITY.md's "Changes that need a security review", say that a /security-review is required (you can't run it yourself) and point at the risky lines.
 
 You may run read-only commands (git diff, git status, tests, make check) but nothing that changes files.
 
