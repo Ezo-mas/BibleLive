@@ -10,7 +10,7 @@ import pytest
 from audio.control import LanguageControlServer
 
 # Requires the optional audio extras (importing audio.control loads audio.stt).
-pytestmark = pytest.mark.audio
+pytestmark = [pytest.mark.audio, pytest.mark.usefixtures("fast_control_server_stop")]
 
 
 class _FakeLanguage:

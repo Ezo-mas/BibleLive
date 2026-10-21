@@ -17,6 +17,7 @@ addopts = [
 markers = [
     "integration: Tests that build a database or exercise a server",
     "audio: Tests that require the optional audio extras (faster-whisper, webrtcvad)",
+    "slow: Real-ffmpeg end-to-end tests (~6 s each); CI runs them, skip locally with -m 'not slow'",
 ]
 filterwarnings = [
     "error",
