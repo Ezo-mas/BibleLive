@@ -82,9 +82,12 @@ python benchmarks/run_benchmark.py \
 - The transcript cache (`results/.bench-cache`) is keyed on audio hash,
   model/device/compute type, beam size, prompt + hotwords, mode/window
   settings and (offline/rt) the segmentation settings — **not** on any code
-  change (STT post-processing, parser, VAD). For those, pass `--no-cache`
-  (or a fresh `--cache-dir`) to the "after" run, or it silently replays the
-  old transcripts.
+  change. The cache holds transcripts, and the parser and spelling maps run
+  again on every replay, so a parser-pattern or spelling-map change is
+  measured from the cache in seconds. A code change upstream of the
+  transcript (STT post-processing in `audio/stt.py`, VAD, segmentation)
+  needs `--no-cache` (or a fresh `--cache-dir`) on the "after" run, or it
+  silently replays the old transcripts.
 - `bench_audio/` is the user's recordings: read-only. If it or CUDA is
   unavailable, report the benchmark as not run — don't substitute a
   smaller or synthetic run and call it a result.
