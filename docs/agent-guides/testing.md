@@ -117,6 +117,11 @@ npm run screenshots   # visual regression (needs the stack running)
   real-ffmpeg end-to-end tests in `test_live_path.py` (~6 s each); a quick
   local run can leave them out with `pytest backend/tests -m "not slow"`.
   That is not a full run: CI and the definition of done run everything.
+- Every test has a 60 s limit (`pytest-timeout`, `timeout` in the root
+  `pyproject.toml`): a hang fails that test with a stack dump instead of
+  stalling the run. The `timeout` setting is unknown to pytest without the
+  plugin (`--strict-config` errors), so re-run `make install-dev` after
+  pulling this change.
 - If a check fails with "command not found", run `make install-dev` once
   (permitted) and retry before reporting.
 - Tests for transcript post-processing (`audio/stt.py` corrections, parser

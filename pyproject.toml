@@ -19,6 +19,9 @@ markers = [
     "audio: Tests that require the optional audio extras (faster-whisper, webrtcvad)",
     "slow: Real-ffmpeg end-to-end tests (~6 s each); CI runs them, skip locally with -m 'not slow'",
 ]
+# pytest-timeout: a test that hangs fails after this many seconds (with a stack dump) instead
+# of stalling the whole run. The slowest test takes ~6 s; this leaves room for slow machines.
+timeout = 60
 filterwarnings = [
     "error",
     "ignore::DeprecationWarning",
