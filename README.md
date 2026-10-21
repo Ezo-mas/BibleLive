@@ -28,7 +28,7 @@ references before they go on screen.
 
 ## Requirements
 
-- Python 3.11+
+- Python 3.13 (the version the Windows installer bundles and CI tests)
 - Node.js 18+ (required to build the frontend into `static/frontend/`; that
   directory is generated and not committed, so it must be built once after
   cloning)

@@ -34,9 +34,9 @@ different copy stops with a clear error instead of giving wrong numbers.
 
 It installs `gcc`, `gcc-c++`, `ffmpeg-free` and a supported Python with `dnf`
 (asks for sudo), makes `.venv`, installs the backend + audio extras, checks the
-imports, and prints a hardware report. **Python 3.11 to 3.13 only**: Fedora 44's
-default `python3` is probably 3.14, which has no proven wheels, so the script
-installs and uses `python3.13` (or 3.12 / 3.11) explicitly.
+imports, and prints a hardware report. **Python 3.13 only**, the one version
+BibleLive runs on: Fedora 44's default `python3` is probably 3.14, which is not
+tested, so the script installs and uses `python3.13` explicitly.
 
 If it prints a "Problems" line (no AVX2, no MP3 decoder, ...) read it before going on.
 

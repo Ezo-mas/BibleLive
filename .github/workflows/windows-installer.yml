@@ -35,7 +35,7 @@ jobs:
       - name: Set up Python (only to build the Bible database)
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: '3.13'
 
       - name: Build the Bible database from data/kjv2.json
         # bible_data/biblelive.sqlite is gitignored, but it is generated from the tracked

@@ -11,7 +11,7 @@ make install-dev      # pip install -e "./backend[dev,audio]" — permitted, onc
 make test             # pytest backend/tests -v
 make check            # ruff lint + format-check + tests in one go
 make typecheck        # mypy core audio (separate from check)
-make lint / format    # ruff check / ruff format (line-length 100, target py311)
+make lint / format    # ruff check / ruff format (line-length 100, target py313)
 make dev              # uvicorn --factory core.server.app:create_app --reload, port 8000
 ```
 

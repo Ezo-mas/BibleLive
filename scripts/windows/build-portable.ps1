@@ -4,7 +4,7 @@
 
 .DESCRIPTION
   Windows PowerShell 5.1 compatible. Downloads (into build\cache, SHA256-verified against
-  scripts\windows\deps.json): python-build-standalone CPython 3.11 and an LGPL FFmpeg build.
+  scripts\windows\deps.json): python-build-standalone CPython 3.13 and an LGPL FFmpeg build.
   Installs only third-party dependencies into the bundled Python (pinned by backend\constraints.txt);
   the biblelive source stays in app\backend and is put on sys.path by a .pth file.
 
