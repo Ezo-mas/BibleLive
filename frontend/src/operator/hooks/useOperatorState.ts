@@ -86,6 +86,7 @@ const ERROR_PREFIX_KEYS: Record<string, MessageKey> = {
   set_verse_limit: 'notice.errVerseLimit',
   set_display_theme: 'notice.errTheme',
   set_auto_mode: 'notice.errAutoMode',
+  set_follow_auto: 'notice.errFollowAuto',
 }
 
 /**
@@ -93,7 +94,12 @@ const ERROR_PREFIX_KEYS: Record<string, MessageKey> = {
  * control has to go back to the last confirmed value or it would keep claiming
  * a setting the display is not using.
  */
-const OPTIMISTIC_ACTIONS = new Set(['set_verse_limit', 'set_display_theme', 'set_auto_mode'])
+const OPTIMISTIC_ACTIONS = new Set([
+  'set_verse_limit',
+  'set_display_theme',
+  'set_auto_mode',
+  'set_follow_auto',
+])
 
 /**
  * What Up Next is holding: a queued detection the operator selected, a passage
@@ -263,6 +269,13 @@ export interface OperatorState {
   /** Which new detections the server displays without waiting for approval. */
   autoMode: AutoMode
   setAutoApproveMode: (next: AutoMode) => void
+
+  /**
+   * Follow-along auto-show: whether the server shows the verses a speaker reads on to
+   * by itself. Server-held, so every console shows the same value.
+   */
+  followAuto: boolean
+  setFollowAutoEnabled: (next: boolean) => void
 }
 
 /**
@@ -326,6 +339,8 @@ export function useOperatorState(): OperatorState {
   // Auto-approve mode. Server-side state (persisted there too), so the console
   // only mirrors it: the snapshot on connect is the source of truth.
   const [autoMode, setAutoMode] = useState<AutoMode>('off')
+  // Follow-along auto-show, mirrored the same way: the server's value wins.
+  const [followAuto, setFollowAuto] = useState(false)
   // Whether this session ever reached the server. A socket that opened and then
   // closed is a dropped connection, which is a different situation from a server
   // refusing us for want of a token.
@@ -336,7 +351,7 @@ export function useOperatorState(): OperatorState {
   const noticeTimerRef = useRef<number | undefined>(undefined)
   // The last values the server confirmed. Optimistic control changes fall back
   // to these when the server rejects them.
-  const confirmedRef = useRef({ verseLimit, theme: displayTheme, autoMode })
+  const confirmedRef = useRef({ verseLimit, theme: displayTheme, autoMode, followAuto: false })
 
   // Brief "pressed" pulse on a button once the server confirms its action.
   const pulse = useCallback((target: FlashTarget) => {
@@ -414,6 +429,11 @@ export function useOperatorState(): OperatorState {
           setAutoMode(autoMode)
           confirmedRef.current.autoMode = autoMode
         }
+        // Absent when talking to an older server, which leaves follow-along auto-show off.
+        if (typeof message.data.follow_auto === 'boolean') {
+          setFollowAuto(message.data.follow_auto)
+          confirmedRef.current.followAuto = message.data.follow_auto
+        }
         // A reconnect can land while something is staged; keep it if the queue
         // still holds it so a dropped socket does not undo the operator's work.
         keepStagedReference(message.data.pending)
@@ -444,12 +464,19 @@ export function useOperatorState(): OperatorState {
         setHistory(prev => [shown, ...prev].slice(0, HISTORY_WINDOW))
         setHistoryCount(count => count + 1)
         setCurrentDisplay(shown)
-        setShowInFlight(false)
-        // It is on screen now, so it is no longer waiting in Up Next — unless the
-        // operator staged something else while this request was in flight, which
-        // is why the confirmation has to name the passage it belongs to.
-        setStaged(prev => (prev && isStagedPassage(prev, shown) ? null : prev))
-        showNotice('success', t('notice.shownManual', { ref: formatReference(shown) }))
+        // A passage follow-along showed by itself answers no Show of this console:
+        // the operator's own request stays in flight and Up Next stays as it is.
+        const followed = shown.source === 'follow'
+        if (!followed) {
+          setShowInFlight(false)
+          // It is on screen now, so it is no longer waiting in Up Next — unless the
+          // operator staged something else while this request was in flight, which
+          // is why the confirmation has to name the passage it belongs to.
+          setStaged(prev => (prev && isStagedPassage(prev, shown) ? null : prev))
+        }
+        // A passage follow-along showed by itself is not one the operator picked.
+        const noticeKey = followed ? 'notice.shownFollow' : 'notice.shownManual'
+        showNotice('success', t(noticeKey, { ref: formatReference(shown) }))
         break
       }
       case 'follow_along':
@@ -511,6 +538,19 @@ export function useOperatorState(): OperatorState {
         }
         break
       }
+      case 'follow_auto_confirmed': {
+        const enabled = message.data.follow_auto
+        const changed = enabled !== confirmedRef.current.followAuto
+        setFollowAuto(enabled)
+        confirmedRef.current.followAuto = enabled
+        if (changed) {
+          showNotice(
+            'info',
+            t('notice.followAuto', { state: t(enabled ? 'follow.on' : 'follow.off') })
+          )
+        }
+        break
+      }
       case 'bible_version_confirmed':
         applyBibleVersionRef.current(message.data)
         break
@@ -536,6 +576,8 @@ export function useOperatorState(): OperatorState {
           writeStoredDisplayTheme(confirmedRef.current.theme, window.localStorage)
         } else if (action === 'set_auto_mode') {
           setAutoMode(confirmedRef.current.autoMode)
+        } else if (action === 'set_follow_auto') {
+          setFollowAuto(confirmedRef.current.followAuto)
         }
         break
       }
@@ -650,6 +692,15 @@ export function useOperatorState(): OperatorState {
     (next: AutoMode) => {
       setAutoMode(next)
       sendAction({ action: 'set_auto_mode', auto_mode: next })
+    },
+    [sendAction]
+  )
+
+  // Same pattern as the auto-approve mode: applied at once, confirmed by the server.
+  const setFollowAutoEnabled = useCallback(
+    (next: boolean) => {
+      setFollowAuto(next)
+      sendAction({ action: 'set_follow_auto', follow_auto: next })
     },
     [sendAction]
   )
@@ -886,5 +937,8 @@ export function useOperatorState(): OperatorState {
 
     autoMode,
     setAutoApproveMode,
+
+    followAuto,
+    setFollowAutoEnabled,
   }
 }

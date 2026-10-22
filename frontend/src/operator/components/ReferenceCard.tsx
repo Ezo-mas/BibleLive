@@ -58,7 +58,8 @@ function arrivalTime(createdAt: string): { label: string; iso: string } | null {
  * another during a live service.
  *
  * A manual passage carries no confidence — it was never a detection — so its
- * badge names its source instead of implying a confidence it does not have.
+ * badge names its source instead of implying a confidence it does not have. The
+ * same goes for a passage follow-along showed by itself ('follow').
  */
 export function ReferenceCard({
   reference,
@@ -94,7 +95,12 @@ export function ReferenceCard({
         <div className="ref-card-header">
           <h3 className="ref-card-title">{formatReference(reference)}</h3>
           <div className="ref-card-badges">
-            {reference.confidence !== null && reference.source !== 'manual' ? (
+            {reference.source === 'follow' ? (
+              <StatusBadge variant="info">
+                <span className="sr-only">{t('ref.sourceSr')}</span>
+                {t('ref.followed')}
+              </StatusBadge>
+            ) : reference.confidence !== null && reference.source !== 'manual' ? (
               <span className="ref-card-confidence" data-confidence={reference.confidence}>
                 <span className="ref-card-pips" aria-hidden="true">
                   {CONFIDENCE_PIPS[reference.confidence]}

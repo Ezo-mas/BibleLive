@@ -178,6 +178,11 @@ export const lt: Record<MessageKey, MessageEntry> = {
   'auto.mediumAndUpDesc': 'Naujos vidutinio ir aukšto tikrumo nuorodos iškart rodomos ekrane.',
   'auto.all': 'Visos',
   'auto.allDesc': 'Kiekviena nauja nuoroda iškart rodoma ekrane.',
+  'settings.followAuto': 'Automatiškai sekti skaitymą',
+  'settings.followAutoHint':
+    'Kai kalbėtojas skaito toliau nei ekrane rodoma ištrauka, kitos eilutės (ne daugiau kaip 3 į priekį) rodomos pačios. Galioja visoms konsolėms.',
+  'follow.on': 'Įjungta',
+  'follow.off': 'Išjungta',
 
   // API failures
   'api.unauthorized': 'Neturite leidimo. Prisijunkite iš naujo su operatoriaus prieigos raktu.',
@@ -245,6 +250,7 @@ export const lt: Record<MessageKey, MessageEntry> = {
   'ref.confidence.low': 'Žemas',
   'ref.sourceSr': 'Šaltinis: ',
   'ref.context': 'Kontekstas',
+  'ref.followed': 'Sekta automatiškai',
   'ref.verses': {
     one: '{count} eilutė',
     few: '{count} eilutės',
@@ -260,17 +266,20 @@ export const lt: Record<MessageKey, MessageEntry> = {
   'notice.errVerseLimit': 'Nepavyko pakeisti rodomų eilučių',
   'notice.errTheme': 'Nepavyko pakeisti fono',
   'notice.errAutoMode': 'Nepavyko pakeisti automatinio patvirtinimo',
+  'notice.errFollowAuto': 'Nepavyko pakeisti automatinio sekimo',
   'notice.errGeneric': 'Veiksmas nepavyko',
   'notice.reverted': '{prefix} — grąžinta. {reason}',
   'notice.failed': '{prefix}: {reason}',
   'notice.shown': 'Rodoma: {ref}',
   'notice.shownManual': 'Rodoma: {ref} (rankiniu būdu)',
+  'notice.shownFollow': 'Rodoma: {ref} (sekta automatiškai)',
   'notice.displayCleared': 'Ekranas išvalytas',
   'notice.queueCleared': 'Laukiančių nuorodų eilė išvalyta',
   'notice.saved': 'Išsaugota — {changes}',
   'notice.changeVerses': 'rodomos eilutės: {value}',
   'notice.changeBackground': 'fonas: {value}',
   'notice.autoApprove': 'Automatinis patvirtinimas: {mode}',
+  'notice.followAuto': 'Automatiškai sekti skaitymą: {state}',
   'notice.staged': 'Paruošta: {ref} — spauskite „Rodyti ekrane“',
   'notice.stagedAgain': 'Paruošta: {ref} — spauskite „Rodyti ekrane“, kad rodytumėte dar kartą',
 }

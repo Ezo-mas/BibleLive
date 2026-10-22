@@ -9,7 +9,8 @@ export interface VerseText {
  *
  * `confidence` is null for passages the operator picked by hand: those are not
  * detections, so they carry no confidence rather than an invented one.
- * `source` says which kind it is (absent when talking to an older server).
+ * `source` says which kind it is (absent when talking to an older server): 'follow'
+ * is a passage the server showed by itself for follow-along, with no confidence either.
  */
 export interface BibleReference {
   id: string
@@ -27,7 +28,7 @@ export interface BibleReference {
   text: string
   /** Individual verses; empty when the server has not resolved text yet. */
   verses: VerseText[]
-  source?: 'detected' | 'manual'
+  source?: 'detected' | 'manual' | 'follow'
   created_at: string
 }
 
@@ -137,6 +138,8 @@ export type OperatorMessage =
         display_settings?: DisplaySettings
         /** Absent when talking to an older server. */
         auto_mode?: AutoMode
+        /** Absent when talking to an older server, which leaves follow-along auto-show off. */
+        follow_auto?: boolean
       }
     }
   | { type: 'pending_update'; data: { pending: BibleReference[]; count: number } }
@@ -146,6 +149,8 @@ export type OperatorMessage =
   | { type: 'connection_status'; data: { display: number; operator: number } }
   | { type: 'display_settings_confirmed'; data: DisplaySettings }
   | { type: 'auto_mode_confirmed'; data: { auto_mode: AutoMode } }
+  /** Follow-along auto-show was turned on or off (`set_follow_auto`), for every console. */
+  | { type: 'follow_auto_confirmed'; data: { follow_auto: boolean } }
   /** The Bible translation changed (an operator's choice, or a language switch). */
   | { type: 'bible_version_confirmed'; data: { version: string | null; available: string[] } }
   /** Confirms a manual passage reached the display (action `display_reference`). */
@@ -184,6 +189,15 @@ export interface SetAutoModeAction {
 }
 
 /**
+ * Turn follow-along auto-show on or off. Server-held, like the auto-approve mode: the
+ * server shows the verses a speaker reads on to, and every console hears the result.
+ */
+export interface SetFollowAutoAction {
+  action: 'set_follow_auto'
+  follow_auto: boolean
+}
+
+/**
  * Ask the server to put an operator-selected passage on the display.
  *
  * Coordinates only: there is no reference ID (nothing is queued), no confidence,
@@ -217,6 +231,7 @@ export type OperatorAction =
   | SetVerseLimitAction
   | SetDisplayThemeAction
   | SetAutoModeAction
+  | SetFollowAutoAction
   | DisplayReferenceAction
 
 /** Snapshot of server state returned by GET /api/state. */
@@ -230,6 +245,7 @@ export interface AppStateSnapshot {
   operator_connections: number
   display_settings?: DisplaySettings
   auto_mode?: AutoMode
+  follow_auto?: boolean
 }
 
 /**
