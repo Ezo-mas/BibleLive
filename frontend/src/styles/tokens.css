@@ -162,7 +162,6 @@
 
   --color-danger: #dc3545;
   --color-danger-hover: #c82333;
-  --color-danger-active: #bd2130;
   --color-danger-bg: #f8d7da;
   --color-danger-text: #721c24;
 
@@ -217,7 +216,6 @@
 
   --color-danger: #f87171;
   --color-danger-hover: #ef4444;
-  --color-danger-active: #dc2626;
   --color-danger-bg: #7f1d1d;
   --color-danger-text: #fca5a5;
 
@@ -250,12 +248,11 @@
    chips are the only other hues (success, warning, danger).
 
    Retheming the console means editing these two blocks and nothing else: no raw
-   colour appears in operator.css, controls.css or the component CSS. The five
+   colour appears in operator.css, controls.css or the component CSS. The four
    console-only surface tokens are:
      --app-bg       page background
      --panel-bg     panels, header, dialog, the recessed Up Next block
      --card-bg      raised surface on a panel (list items, hovered rows)
-     --selected-bg  muted fill (selected row, counts, hover on secondary buttons)
      --accent-text  the accent as text (AA contrast on --panel-bg and the subtle fill)
    `--color-text-inverse` is the text colour on a primary (amber) fill in both
    themes. The tinted backgrounds are mixed from the hue and the surface, so a new
@@ -265,7 +262,6 @@
   --app-bg: #f4f2ee;
   --panel-bg: #f9f8f5;
   --card-bg: #fcfbf9;
-  --selected-bg: #e8e5de;
   --accent-text: #6e4a00;
 
   --font-sans:
@@ -286,8 +282,6 @@
   --color-border-focus: #6e4a00;
   --color-primary: #e9a919;
   --color-primary-subtle: #f8ecc9;
-  --color-accent: #b57a06;
-  --color-accent-hover: #6e4a00;
   --color-success: #166d3f;
   --color-success-text: #166d3f;
   --color-warning-text: #7a5200;
@@ -302,7 +296,6 @@
   --app-bg: #222220;
   --panel-bg: #292927;
   --card-bg: #30302d;
-  --selected-bg: #3a3a36;
   --accent-text: #f7cf6a;
 
   --color-canvas: #222220;
@@ -319,8 +312,6 @@
   --color-border-focus: #f0b429;
   --color-primary: #f0b429;
   --color-primary-subtle: #463a14;
-  --color-accent: #f0b429;
-  --color-accent-hover: #f7cf6a;
   --color-success: #5fd38d;
   --color-success-text: #5fd38d;
   --color-warning-text: #f2c04d;
@@ -337,7 +328,6 @@
   --color-primary-active: color-mix(in srgb, var(--color-primary) 76%, var(--color-text));
   --color-primary-edge: color-mix(in srgb, var(--color-primary) 70%, var(--color-text));
   --color-danger-hover: color-mix(in srgb, var(--color-danger) 85%, var(--color-text));
-  --color-danger-active: color-mix(in srgb, var(--color-danger) 70%, var(--color-text));
   --color-danger-bg: color-mix(in srgb, var(--color-danger) 12%, var(--color-surface));
   --color-success-bg: color-mix(in srgb, var(--color-success) 14%, var(--color-surface));
   --color-warning-bg: color-mix(in srgb, var(--color-warning-text) 14%, var(--color-surface));

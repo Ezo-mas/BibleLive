@@ -1,5 +1,5 @@
 import { useId, useRef } from 'react'
-import { AlertCircleIcon, Button } from '../../components'
+import { AlertCircleIcon, Button, SegmentedOption } from '../../components'
 import { useI18n } from '../../shared/i18nContext'
 import { IDLE_SCREEN_FITS, idleImageUrl } from '../../shared/idleScreen'
 import type { IdleScreenState } from '../hooks/useIdleScreen'
@@ -84,16 +84,14 @@ export function IdleScreenSettings({ state, disabled }: IdleScreenSettingsProps)
           aria-describedby={hintId}
         >
           {IDLE_SCREEN_FITS.map(fit => (
-            <button
+            <SegmentedOption
               key={fit}
-              type="button"
-              className="segmented-option"
               aria-pressed={info?.fit === fit}
               disabled={locked}
               onClick={() => changeFit(fit)}
             >
               {fit === 'fill' ? t('idle.fitFill') : t('idle.fitLogo')}
-            </button>
+            </SegmentedOption>
           ))}
         </div>
         <p className="operator-setting-hint" id={hintId}>

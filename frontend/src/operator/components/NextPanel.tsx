@@ -29,7 +29,7 @@ export interface NextPanelProps {
  * approval path (the server owns the display). The block is deliberately not a
  * second preview: it is recessed, dashed ("queued, not live") and set apart from
  * the display preview above it, but it shares that card's anatomy: a header row
- * (label, reference, then Remove and Show on display at the right) and the verse
+ * (label, reference, then Unstage and Show on display at the right) and the verse
  * text below it, up to three lines.
  *
  * Show sends a different request for each door the staged scripture came through
@@ -89,7 +89,7 @@ export function NextPanel({
         </span>
         <span className="operator-card-grow" />
         <Button variant="secondary" onClick={onDiscard} disabled={reference === null}>
-          {t('next.discard')}
+          {t('next.unstage')}
         </Button>
         <Button
           variant="primary"

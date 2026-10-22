@@ -113,7 +113,6 @@ describe('stream overlay', () => {
 
   it('never shows the idle picture, even when the server sends one (it sits over a camera)', async () => {
     const { container } = render(<StreamOverlay />)
-    // `idle_image` is the pending protocol field (shared/idleScreen.ts), so the cast is deliberate.
     push({
       type: 'display_settings',
       data: {
@@ -121,7 +120,7 @@ describe('stream overlay', () => {
         theme: 'dark',
         idle_image: { version: '0123456789abcdef', fit: 'fill' },
       },
-    } as unknown as DisplayMessage)
+    })
     expect(container.querySelector('img')).toBeNull()
     expect(container.textContent).toBe('')
 

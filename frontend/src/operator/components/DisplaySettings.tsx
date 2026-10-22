@@ -5,6 +5,7 @@ import {
   VERSE_LIMIT_OPTIONS,
 } from '../../shared/verseText'
 import type { DisplayTheme, VerseLimit } from '../../shared/verseText'
+import { SegmentedOption } from '../../components'
 import { useI18n } from '../../shared/i18nContext'
 
 export interface DisplaySettingsProps {
@@ -43,26 +44,22 @@ export function DisplaySettings({
         <span className="operator-setting-label">{t('settings.verses')}</span>
         <div className="segmented" role="group" aria-label={t('settings.versesGroup')}>
           {VERSE_LIMIT_OPTIONS.map(option => (
-            <button
+            <SegmentedOption
               key={option}
-              type="button"
-              className="segmented-option"
               aria-pressed={verseLimit === option}
               disabled={disabled}
               onClick={() => onVerseLimitChange(option)}
             >
               {option}
-            </button>
+            </SegmentedOption>
           ))}
-          <button
-            type="button"
-            className="segmented-option"
+          <SegmentedOption
             aria-pressed={verseLimit === 'all'}
             disabled={disabled}
             onClick={() => onVerseLimitChange('all')}
           >
             {t('settings.versesAll')}
-          </button>
+          </SegmentedOption>
         </div>
         <p className="operator-setting-hint">
           {t('settings.versesDefault', { count: DEFAULT_VERSE_LIMIT })}
@@ -73,16 +70,14 @@ export function DisplaySettings({
         <span className="operator-setting-label">{t('settings.background')}</span>
         <div className="segmented" role="group" aria-label={t('settings.backgroundGroup')}>
           {DISPLAY_THEME_OPTIONS.map(option => (
-            <button
+            <SegmentedOption
               key={option}
-              type="button"
-              className="segmented-option"
               aria-pressed={displayTheme === option}
               disabled={disabled}
               onClick={() => onThemeChange(option)}
             >
               {option === 'dark' ? t('settings.bgDark') : t('settings.bgLight')}
-            </button>
+            </SegmentedOption>
           ))}
         </div>
         <p className="operator-setting-hint">{t('settings.bgHint')}</p>

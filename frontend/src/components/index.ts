@@ -10,6 +10,9 @@ export type { EmptyStateProps } from './EmptyState'
 export { ConnectionIndicator } from './ConnectionIndicator'
 export type { ConnectionIndicatorProps, ConnectionState } from './ConnectionIndicator'
 
+export { SegmentedOption } from './SegmentedOption'
+export type { SegmentedOptionProps } from './SegmentedOption'
+
 export { ThemeToggle } from './ThemeToggle'
 
 export * from './Icons'

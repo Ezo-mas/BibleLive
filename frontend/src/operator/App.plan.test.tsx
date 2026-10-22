@@ -503,6 +503,19 @@ describe('plan row actions', () => {
   })
 })
 
+describe('plan row Show while disconnected', () => {
+  it('is disabled while the socket is closed, as a pending row is; Stage and Remove are not', () => {
+    seedPlan(seeded)
+    render(<App />)
+    const panel = planPanel()
+    const row = within(panel.getAllByRole('listitem')[0])
+
+    expect(row.getByRole('button', { name: 'Show' })).toBeDisabled()
+    expect(row.getByRole('button', { name: 'Stage' })).toBeEnabled()
+    expect(row.getByRole('button', { name: /^Remove / })).toBeEnabled()
+  })
+})
+
 describe('the start of the text on plan rows', () => {
   it('shows the remembered text under the reference', () => {
     seedPlan(seeded)

@@ -20,7 +20,7 @@ shared class instead of writing a one-off. Display page styling is separate
 
 - No raw colour (`#hex`, `rgb()`, `rgba()`) outside `tokens.css`. Components and
   CSS files use `var(--color-*)` and the console surface tokens `--app-bg`,
-  `--panel-bg`, `--card-bg`, `--selected-bg`, `--accent-text`. Tints are
+  `--panel-bg`, `--card-bg`, `--accent-text`. Tints are
   `color-mix()` of a token with a surface token, never a second hex.
 - No raw radius, height, weight or letter-spacing either: use the tokens below.
   The only literal sizes left in `operator.css` are layout dimensions (column
@@ -46,8 +46,7 @@ background).
 
 The preview is a 16:9 miniature of the audience screen drawn in the display's own
 theme (`data-theme`). It spans the card's inner width exactly, with the same 12px
-inset as the control row under it, so it is never letterboxed; its text is sized in
-`cqw`, so it scales with the box. It is presentational only. Spanning the width
+inset as the control row under it, so it is never letterboxed; its text is fitted the way the display fits its own (`usePreviewFit`, reusing `fitText.ts`: shrink until the verses fit, bounds scaled from the display's), so ten verses or all of them shrink to fit; if they ever overflow they start at the top, never a clipped middle. It is presentational only. Spanning the width
 makes the left column's width a function of the height: `.operator-main` is a size
 container, and the column is `min(width left after the side panel's minimum,
 max(--operator-column-min, (height - --operator-chrome) x 16/9 + card padding))`.
@@ -66,7 +65,7 @@ and there is no Live chip. Text goes below in the muted serif (`.operator-card-v
 preview, Up Next text and follow-along text share a left edge. The three are told
 apart by treatment, not by badges: the preview is a raised card; UP NEXT has a
 recessed fill and a dashed `--color-border-strong` edge with extra space above it
-("queued, not live") and Remove then Show on display in its header; follow-along is a
+("queued, not live") and Unstage then Show on display in its header; follow-along is a
 neutral raised surface with a trace of the accent (about 6% fill, 28% edge), normal
 body colours, and only its label in `--accent-text`. The control row under the
 monitor is Clear display, Verses (3, 5, 10, All: the values the server accepts) and an
@@ -92,7 +91,7 @@ change colours, so every button in a row has the same size.
 | Variant | Look | Use |
 | --- | --- | --- |
 | `primary` | filled `--color-primary`, edge `--color-primary-edge` (a darker mix) | The main action of a card or row: Show on display, Show, Connect |
-| `secondary` | `--color-surface-raised`, border `--color-border-strong` | Default for any action: Remove (Up Next), Clear display, Stage, Clear queue, Reconnect, gear, Logout |
+| `secondary` | `--color-surface-raised`, border `--color-border-strong` | Default for any action: Unstage (Up Next), Clear display, Stage, Clear queue, Reconnect, gear, Logout |
 | `danger` | secondary box, danger border and text | Removing a plan row |
 | `ghost` | no box until hovered | Only inside something that already frames it: dialog close, toast dismiss, reorder arrows |
 
@@ -166,7 +165,11 @@ One design for the whole dialog (`SettingsDialog.tsx`, styles in `operator.css`)
   its cell. The track keeps its own width (an inline grid), every option in one control
   is the same width (the widest label sets it, never less than `--segment-w`, 44px), so
   the track is exactly the sum of its options plus the border. A 36px track has 34px
-  options. State comes from `aria-pressed` or `aria-checked`. Auto-approve under the
+  options. The selected option is also bold (not colour alone); each label carries a
+  hidden bold copy of itself (`SegmentedOption`), so selecting never changes a track's
+  width. The focus ring is the normal ring on unselected options and the inverse text
+  colour inside the selected fill, so it contrasts with both. State comes from
+  `aria-pressed` or `aria-checked`. Auto-approve under the
   preview is an Off / On segmented control: On restores the last mode that was on (High
   until one has been chosen, in memory only), Off sends `off`. A caption over a
   control aligns the control to its start, and the Auto-approve group at the right edge

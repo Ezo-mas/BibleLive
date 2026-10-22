@@ -197,8 +197,6 @@ export const lt: Record<MessageKey, MessageEntry> = {
   'idle.unreachable': 'Nepavyko pasiekti serverio laukimo ekranui pakeisti.',
   'idle.readUnreachable': 'Nepavyko pasiekti serverio laukimo ekrano nustatymui perskaityti.',
   'idle.badReply': 'Serveris atsiuntė laukimo ekrano atsakymą, kurio konsolė neperskaitė.',
-  'auto.compactLabel': 'Automatinis patvirtinimas: ',
-  'auto.compactTitle': 'Atidaryti automatinio patvirtinimo nustatymus',
   'auto.mode': 'Automatinio patvirtinimo režimas',
   'auto.off': 'Išjungta',
   'auto.offDesc': 'Kiekviena nauja nuoroda laukia jūsų patvirtinimo.',
@@ -231,8 +229,6 @@ export const lt: Record<MessageKey, MessageEntry> = {
   // Stages and queue
   'stage.onDisplay': 'Ekrane',
   'stage.onDisplayAria': 'Dabar ekrane',
-  'stage.live': 'Gyvai',
-  'stage.idle': 'Tuščias',
   'stage.moreVerses': {
     one: 'dar {count} eilutė',
     few: 'dar {count} eilutės',
@@ -250,7 +246,7 @@ export const lt: Record<MessageKey, MessageEntry> = {
   },
   'next.nothingStaged': 'Nieko neparuošta',
   'next.stagedHint': 'Pasirinkite nuorodą eilėje arba raskite ištrauką, kad ją čia peržiūrėtumėte.',
-  'next.discard': 'Pašalinti',
+  'next.unstage': 'Atšaukti paruošimą',
   'next.show': 'Rodyti ekrane',
   'source.manual': 'Rankinė',
   'source.history': 'Istorija',

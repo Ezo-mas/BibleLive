@@ -412,8 +412,9 @@
 .operator-monitor {
   display: flex;
   flex-direction: column;
-  justify-content: center;
-  gap: 2.4cqw;
+  /* A percentage, not `cqw`: on the container itself, `cqw` would resolve against
+     the console's own container instead of this box. */
+  gap: 2%;
   box-sizing: border-box;
   width: 100%;
   aspect-ratio: 16 / 9;
@@ -474,9 +475,23 @@
   font-size: var(--font-size-xs);
 }
 
+/* The block the verses are fitted to (see usePreviewFit): it takes the box's height
+   above the citation. If the verses ever run past it they start at its top
+   (`safe center`), so the cut-off is at the bottom and the beginning always shows.
+   The stylesheet's size is only the first paint; the fit sets the real one. */
+.operator-live-fit {
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  justify-content: safe center;
+  min-height: 0;
+  overflow: hidden;
+  font-size: 2cqw;
+}
+
 /* Verse text in the preview: the same order and grouping as the projector — a
-   number column and the text. The size is set inline in `cqw` by the fit logic,
-   so the passage fills the same share of the box at any size. The numbers share
+   number column and the text. The size is set by the fit logic (usePreviewFit),
+   as the display sets its own, so a long passage shrinks to fit. The numbers share
    one right edge so verse 9 and verse 10 sit against the text they label. */
 .operator-live-verses {
   display: flex;
@@ -717,6 +732,7 @@
    as tall as a card's header row (control height plus the card padding) so the two
    columns' headers line up. */
 .operator-tabs {
+  --tab-underline: 3px;
   display: flex;
   align-items: stretch;
   height: calc(var(--control-h-md) + var(--card-pad));
@@ -739,7 +755,7 @@
   color: var(--color-text-muted);
   background: none;
   border: none;
-  border-bottom: 2px solid transparent;
+  border-bottom: var(--tab-underline) solid transparent;
   margin-bottom: calc(-1 * var(--border-width));
   cursor: pointer;
   transition: color var(--transition-fast);
@@ -749,9 +765,12 @@
   color: var(--color-text);
 }
 
+/* The active tab is bold and underlined in the accent text colour, which holds 3:1
+   against the panel in both themes (the fill colour does not on a light panel). */
 .operator-tab.is-active {
   color: var(--color-text);
-  border-bottom-color: var(--color-primary);
+  font-weight: var(--weight-bold);
+  border-bottom-color: var(--accent-text);
 }
 
 .operator-tab:focus-visible {

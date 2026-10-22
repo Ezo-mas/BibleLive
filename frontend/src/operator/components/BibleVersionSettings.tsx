@@ -1,5 +1,5 @@
 import { useId } from 'react'
-import { AlertCircleIcon } from '../../components'
+import { AlertCircleIcon, SegmentedOption } from '../../components'
 import { useI18n } from '../../shared/i18nContext'
 import { bibleVersionLabel } from '../bibleVersionApi'
 import type { BibleVersionState } from '../hooks/useBibleVersion'
@@ -39,16 +39,14 @@ export function BibleVersionSettings({ state, disabled }: BibleVersionSettingsPr
         aria-describedby={hintId}
       >
         {available.map(id => (
-          <button
+          <SegmentedOption
             key={id}
-            type="button"
-            className="segmented-option"
             aria-pressed={version === id}
             disabled={locked}
             onClick={() => change(id)}
           >
             {id.toUpperCase()}
-          </button>
+          </SegmentedOption>
         ))}
       </div>
       <p className="operator-setting-hint" id={hintId}>

@@ -1,8 +1,9 @@
+import { useRef } from 'react'
 import type { ReactNode } from 'react'
 import { MonitorIcon, StatusBadge } from '../../components'
 import { useI18n } from '../../shared/i18nContext'
 import { PanelHint } from './PanelHint'
-import { previewFontCqw } from '../previewFit'
+import { usePreviewFit } from '../hooks/usePreviewFit'
 import { formatReference } from '../../shared/reference'
 import { hiddenVerseCount, selectVerses } from '../../shared/verseText'
 import type { DisplayTheme, VerseLimit } from '../../shared/verseText'
@@ -31,6 +32,18 @@ export function LivePanel({ reference, verseLimit, displayTheme, children }: Liv
   const { t } = useI18n()
   const verses = selectVerses(reference, verseLimit)
   const hiddenCount = hiddenVerseCount(reference, verseLimit)
+  const monitorRef = useRef<HTMLDivElement>(null)
+  const blockRef = useRef<HTMLDivElement>(null)
+  const innerRef = useRef<HTMLDivElement>(null)
+  // Sized the way the audience display sizes it: shrunk until the verses fit.
+  usePreviewFit(
+    monitorRef,
+    blockRef,
+    innerRef,
+    verses.reduce((sum, verse) => sum + verse.text.length, 0),
+    verses.length,
+    `${reference?.id ?? ''}|${verses.length}`
+  )
 
   return (
     <section className="operator-stage-panel operator-live" aria-label={t('stage.onDisplayAria')}>
@@ -50,23 +63,25 @@ export function LivePanel({ reference, verseLimit, displayTheme, children }: Liv
              shows the background the projectors are actually using. */
           <div
             className="operator-monitor"
+            ref={monitorRef}
             data-theme={displayTheme}
             data-testid="live-stage"
+            role="group"
             aria-label={t('stage.previewAria')}
           >
-            <div
-              className="operator-live-verses"
-              data-testid="live-verses"
-              style={{ fontSize: `${previewFontCqw(verses)}cqw` }}
-            >
-              {verses.map(verse => (
-                <p className="operator-live-verse" key={verse.verse}>
-                  <span className="operator-live-verse-number" aria-hidden="true">
-                    {verse.verse}
-                  </span>
-                  <span className="operator-live-verse-text">{verse.text}</span>
-                </p>
-              ))}
+            {/* The block the verses are fitted to; they start at its top if they ever
+                run past it, so the beginning of the passage is what shows. */}
+            <div className="operator-live-fit" ref={blockRef}>
+              <div className="operator-live-verses" data-testid="live-verses" ref={innerRef}>
+                {verses.map(verse => (
+                  <p className="operator-live-verse" key={verse.verse}>
+                    <span className="operator-live-verse-number" aria-hidden="true">
+                      {verse.verse}
+                    </span>
+                    <span className="operator-live-verse-text">{verse.text}</span>
+                  </p>
+                ))}
+              </div>
             </div>
 
             <div className="operator-live-reference">{formatReference(reference)}</div>
@@ -81,6 +96,7 @@ export function LivePanel({ reference, verseLimit, displayTheme, children }: Liv
           <div
             className="operator-monitor is-idle"
             data-theme={displayTheme}
+            role="group"
             aria-label={t('stage.previewAria')}
           >
             <PanelHint

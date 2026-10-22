@@ -59,13 +59,32 @@
   background: var(--color-surface-muted);
 }
 
-/* The selected option fills its cell; its divider and the next one disappear into
-   the fill. */
+/* The selected option fills its cell and is bold, so it does not rely on colour
+   alone; its divider and the next one disappear into the fill. */
 .segmented-option[aria-pressed='true'],
 .segmented-option[aria-checked='true'] {
   color: var(--color-text-inverse);
+  font-weight: var(--weight-bold);
   background: var(--color-primary);
   border-left-color: transparent;
+}
+
+/* Bold is wider than semibold. The label carries a hidden bold copy of its own text
+   (see SegmentedOption), so every option is already as wide as its bold label and
+   selecting one never changes the width of the track. */
+.segmented-label {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.segmented-label::after {
+  content: attr(data-label);
+  height: 0;
+  overflow: hidden;
+  visibility: hidden;
+  font-weight: var(--weight-bold);
+  pointer-events: none;
 }
 
 .segmented-option[aria-pressed='true'] + .segmented-option,
@@ -78,10 +97,17 @@
   background: var(--color-primary-hover);
 }
 
-/* Inside the track, so the clipped corners never cut the ring. */
+/* Inside the track, so the clipped corners never cut the ring. The normal ring
+   contrasts with the unselected track; the selected option is filled with the
+   accent, where that ring would vanish, so it takes the inverse text colour. */
 .segmented-option:focus-visible {
   border-radius: 0;
   outline-offset: calc(-1 * var(--focus-ring-width));
+}
+
+.segmented-option[aria-pressed='true']:focus-visible,
+.segmented-option[aria-checked='true']:focus-visible {
+  outline-color: var(--color-text-inverse);
 }
 
 .segmented-option svg {

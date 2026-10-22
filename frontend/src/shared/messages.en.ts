@@ -192,8 +192,6 @@ export const en = {
   'idle.unreachable': 'Could not reach the server to change the idle screen.',
   'idle.readUnreachable': 'Could not reach the server to read the idle screen setting.',
   'idle.badReply': 'The server sent an idle screen reply the console could not read.',
-  'auto.compactLabel': 'Auto-approve: ',
-  'auto.compactTitle': 'Open auto-approve settings',
   'auto.mode': 'Auto-approve mode',
   'auto.off': 'Off',
   'auto.offDesc': 'Every new detection waits for your approval.',
@@ -226,8 +224,6 @@ export const en = {
   // Stages and queue
   'stage.onDisplay': 'On Display',
   'stage.onDisplayAria': 'On display now',
-  'stage.live': 'Live',
-  'stage.idle': 'Idle',
   'stage.moreVerses': {
     one: '+{count} more verse',
     other: '+{count} more verses',
@@ -243,7 +239,7 @@ export const en = {
   },
   'next.nothingStaged': 'Nothing staged',
   'next.stagedHint': 'Select a reference in the queue, or find a passage, to preview it here.',
-  'next.discard': 'Remove',
+  'next.unstage': 'Unstage',
   'next.show': 'Show on display',
   'source.manual': 'Manual',
   'source.history': 'History',

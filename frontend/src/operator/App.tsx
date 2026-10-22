@@ -208,6 +208,7 @@ export default function App() {
             <PlanPanel
               items={operator.plan.items}
               snippets={operator.planSnippets}
+              canShow={operator.isConnected}
               onStage={operator.stagePlanItem}
               onShow={operator.showPlanItem}
               onRemove={operator.plan.remove}

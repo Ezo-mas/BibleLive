@@ -1,5 +1,5 @@
 import { useId } from 'react'
-import { AlertCircleIcon, Button } from '../../components'
+import { AlertCircleIcon, Button, SegmentedOption } from '../../components'
 import { useI18n } from '../../shared/i18nContext'
 import { SPOKEN_LANGUAGES, spokenLanguageLabel } from '../languageApi'
 import type { SpokenLanguageState } from '../hooks/useSpokenLanguage'
@@ -45,16 +45,14 @@ export function LanguageSettings({ state, disabled }: LanguageSettingsProps) {
         aria-describedby={hintId}
       >
         {SPOKEN_LANGUAGES.map(option => (
-          <button
+          <SegmentedOption
             key={option.code}
-            type="button"
-            className="segmented-option"
             aria-pressed={language === option.code}
             disabled={locked}
             onClick={() => change(option.code)}
           >
             {t(option.labelKey)}
-          </button>
+          </SegmentedOption>
         ))}
       </div>
 

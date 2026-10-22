@@ -9,6 +9,8 @@ export interface PlanPanelProps {
   items: PlanItem[]
   /** Text looked up for items that were saved without any, by item id. */
   snippets?: Record<string, string>
+  /** False while the socket is closed: Show then has nowhere to go (Stage still looks up). */
+  canShow?: boolean
   /** Click: look the passage up and stage it in Up Next. */
   onStage: (item: PlanItem) => void
   /** Double-click: show it at once, without staging. */
@@ -41,6 +43,7 @@ function itemLabel(item: PlanItem): string {
 export function PlanPanel({
   items,
   snippets = {},
+  canShow = true,
   onStage,
   onShow,
   onRemove,
@@ -108,6 +111,7 @@ export function PlanPanel({
                       variant="primary"
                       size="sm"
                       aria-describedby={titleId}
+                      disabled={!canShow}
                       onClick={() => onShow(item)}
                     >
                       {t('row.show')}

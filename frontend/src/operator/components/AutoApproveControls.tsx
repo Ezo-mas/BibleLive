@@ -1,4 +1,5 @@
 import { useId } from 'react'
+import { SegmentedOption } from '../../components'
 import { useI18n } from '../../shared/i18nContext'
 import { AUTO_MODE_OPTIONS, autoModeOption } from '../autoMode'
 import type { AutoMode } from '../../shared/types'
@@ -46,16 +47,14 @@ export function AutoApproveControls({
         aria-describedby={descriptionId}
       >
         {AUTO_MODE_OPTIONS.map(option => (
-          <button
+          <SegmentedOption
             key={option.value}
-            type="button"
-            className="segmented-option"
             aria-pressed={autoMode === option.value}
             disabled={disabled}
             onClick={() => onAutoModeChange(option.value)}
           >
             {t(option.labelKey)}
-          </button>
+          </SegmentedOption>
         ))}
       </div>
       <p className="operator-setting-hint" id={descriptionId}>

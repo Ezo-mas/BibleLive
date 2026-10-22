@@ -152,6 +152,13 @@ describe('LIVE panel', () => {
     expect(screen.queryByText('Live')).not.toBeInTheDocument()
   })
 
+  it('labels the preview as a group that still exposes the verse text', () => {
+    openWith({ currentDisplay: psalms })
+
+    const preview = screen.getByRole('group', { name: 'Audience display preview' })
+    expect(within(preview).getByText('Psalms 23:1 text')).toBeInTheDocument()
+  })
+
   it('shows an empty state when nothing is on the display', () => {
     openWith()
 
@@ -256,7 +263,7 @@ describe('NEXT panel', () => {
     selectCard(/Romans 8:28/)
 
     act(() => {
-      screen.getByRole('button', { name: 'Remove' }).click()
+      screen.getByRole('button', { name: 'Unstage' }).click()
     })
 
     expect(screen.getByText('Nothing staged')).toBeInTheDocument()

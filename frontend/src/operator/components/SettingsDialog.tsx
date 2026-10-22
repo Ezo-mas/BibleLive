@@ -16,15 +16,12 @@ import type { Theme } from '../../hooks/useTheme'
 import type { DisplayTheme, VerseLimit } from '../../shared/verseText'
 import type { AutoMode } from '../../shared/types'
 
-/**
- * Which part of the dialog to open on: the display, the spoken language, or the
- * auto-approve block.
- */
-export type SettingsSection = 'display' | 'language' | 'auto'
+/** Which part of the dialog to open on: the display, or the spoken language. */
+export type SettingsSection = 'display' | 'language'
 
 export interface SettingsDialogProps {
   open: boolean
-  /** The section the dialog opens onto (the compact auto-approve control lands here). */
+  /** The section the dialog opens onto. */
   section: SettingsSection
   onClose: () => void
   verseLimit: VerseLimit
@@ -107,7 +104,6 @@ export function SettingsDialog({
   const shortcutsSectionId = useId()
   const dialogRef = useRef<HTMLDivElement>(null)
   const languageSectionRef = useRef<HTMLElement>(null)
-  const autoSectionRef = useRef<HTMLElement>(null)
   const { t } = useI18n()
 
   // Move focus into the dialog while it is open and put it back afterwards, so
@@ -117,11 +113,7 @@ export function SettingsDialog({
     const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null
     const dialog = dialogRef.current
     const sectionSelector =
-      section === 'auto'
-        ? '.operator-dialog-auto [aria-pressed="true"]'
-        : section === 'language'
-          ? '.operator-dialog-language [aria-pressed="true"]'
-          : null
+      section === 'language' ? '.operator-dialog-language [aria-pressed="true"]' : null
     // The control for the section asked for, or the close button when it has
     // nothing to focus yet (the language buttons are off until the pipeline answers).
     const target =
@@ -129,7 +121,6 @@ export function SettingsDialog({
       dialog?.querySelector<HTMLElement>('[data-dialog-close]')
     target?.focus()
     // jsdom has no scrollIntoView; the optional call is what keeps the tests honest.
-    if (section === 'auto') autoSectionRef.current?.scrollIntoView?.({ block: 'nearest' })
     if (section === 'language') languageSectionRef.current?.scrollIntoView?.({ block: 'nearest' })
     return () => previous?.focus()
   }, [open, section])
@@ -229,11 +220,7 @@ export function SettingsDialog({
             <BibleVersionSettings state={bibleVersion} disabled={disabled} />
           </section>
 
-          <section
-            className="operator-dialog-section operator-dialog-auto"
-            aria-labelledby={autoSectionId}
-            ref={autoSectionRef}
-          >
+          <section className="operator-dialog-section" aria-labelledby={autoSectionId}>
             <h3 className="operator-dialog-section-title" id={autoSectionId}>
               {t('settings.sectionAuto')}
             </h3>

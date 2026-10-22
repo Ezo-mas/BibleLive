@@ -1,5 +1,5 @@
 import { useRef } from 'react'
-import { Button, XIcon } from '../../components'
+import { Button, XIcon, SegmentedOption } from '../../components'
 import { useI18n } from '../../shared/i18nContext'
 import { VERSE_LIMIT_OPTIONS } from '../../shared/verseText'
 import { autoModeOption } from '../autoMode'
@@ -65,16 +65,14 @@ export function DisplayQuickControls({
         <span className="operator-quick-label">{t('quick.versesLabel')}</span>
         <div className="segmented" role="group" aria-label={t('quick.versesAria')}>
           {options.map(option => (
-            <button
+            <SegmentedOption
               key={option}
-              type="button"
-              className="segmented-option"
               aria-pressed={verseLimit === option}
               disabled={disabled}
               onClick={() => onVerseLimitChange(option)}
             >
               {option === 'all' ? t('settings.versesAll') : option}
-            </button>
+            </SegmentedOption>
           ))}
         </div>
       </div>
@@ -82,18 +80,14 @@ export function DisplayQuickControls({
       <div className="operator-quick-group operator-quick-auto">
         <span className="operator-quick-label">{t('quick.autoLabel')}</span>
         <div className="segmented" role="group" aria-label={t('quick.autoLabel')}>
-          <button
-            type="button"
-            className="segmented-option"
+          <SegmentedOption
             aria-pressed={!on}
             disabled={disabled}
             onClick={() => on && onAutoModeChange('off')}
           >
             {t('quick.autoOff')}
-          </button>
-          <button
-            type="button"
-            className="segmented-option"
+          </SegmentedOption>
+          <SegmentedOption
             aria-pressed={on}
             // Which mode On stands for: the one that is on now, or the one it will restore.
             title={t(autoModeOption(on ? autoMode : lastOnMode.current).labelKey)}
@@ -101,7 +95,7 @@ export function DisplayQuickControls({
             onClick={() => !on && onAutoModeChange(lastOnMode.current)}
           >
             {t('quick.autoOn')}
-          </button>
+          </SegmentedOption>
         </div>
       </div>
     </div>

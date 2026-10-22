@@ -357,7 +357,7 @@ describe('staging a history entry', () => {
     selectHistory(/John 3:16/)
 
     act(() => {
-      screen.getByRole('button', { name: 'Remove' }).click()
+      screen.getByRole('button', { name: 'Unstage' }).click()
     })
 
     expect(screen.getByText('Nothing staged')).toBeInTheDocument()

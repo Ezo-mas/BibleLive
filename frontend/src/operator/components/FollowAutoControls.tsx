@@ -1,4 +1,5 @@
 import { useId } from 'react'
+import { SegmentedOption } from '../../components'
 import { useI18n } from '../../shared/i18nContext'
 
 export interface FollowAutoControlsProps {
@@ -39,24 +40,20 @@ export function FollowAutoControls({
         aria-label={t('settings.followAuto')}
         aria-describedby={descriptionId}
       >
-        <button
-          type="button"
-          className="segmented-option"
+        <SegmentedOption
           aria-pressed={!followAuto}
           disabled={disabled}
           onClick={() => onFollowAutoChange(false)}
         >
           {t('follow.off')}
-        </button>
-        <button
-          type="button"
-          className="segmented-option"
+        </SegmentedOption>
+        <SegmentedOption
           aria-pressed={followAuto}
           disabled={disabled}
           onClick={() => onFollowAutoChange(true)}
         >
           {t('follow.on')}
-        </button>
+        </SegmentedOption>
       </div>
       <p className="operator-setting-hint" id={descriptionId}>
         {t('settings.followAutoHint')}

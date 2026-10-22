@@ -37,10 +37,6 @@ const CONFIDENCE_LABELS: Record<'high' | 'medium' | 'low', MessageKey> = {
 }
 
 /**
- * The same confidence as a three-pip meter. Shape carries the level, so it reads
- * without colour; the word beside it is what a screen reader gets.
- */
-/**
  * Arrival time as a local clock reading, or null when the timestamp is unusable.
  *
  * Seeing when a detection came in is part of judging whether it is still worth
