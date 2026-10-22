@@ -34,6 +34,8 @@ import type { ScriptureSearchState } from './useScriptureSearch'
 import { useSpokenLanguage } from './useSpokenLanguage'
 import { useBibleVersion } from './useBibleVersion'
 import type { BibleVersionState } from './useBibleVersion'
+import { useIdleScreen } from './useIdleScreen'
+import type { IdleScreenState } from './useIdleScreen'
 import type { SpokenLanguageState } from './useSpokenLanguage'
 import type { ConnectionState } from '../../components'
 import { useI18n } from '../../shared/i18nContext'
@@ -222,6 +224,9 @@ export interface OperatorState {
    * change made elsewhere arrives as `bible_version_confirmed` on the socket.
    */
   bibleVersion: BibleVersionState
+
+  /** The picture shown while the display is idle. Read and changed over HTTP. */
+  idleScreen: IdleScreenState
 
   /** Reference ID of the selected pending item, or null when nothing is selected. */
   selectedId: string | null
@@ -905,6 +910,7 @@ export function useOperatorState(): OperatorState {
   const spokenLanguage = useSpokenLanguage(token, isConnected, showNotice)
 
   const bibleVersion = useBibleVersion(token, isConnected, showNotice)
+  const idleScreen = useIdleScreen(token)
   applyBibleVersionRef.current = bibleVersion.applyConfirmed
 
   const plan = usePlan()
@@ -1014,6 +1020,7 @@ export function useOperatorState(): OperatorState {
     search,
     spokenLanguage,
     bibleVersion,
+    idleScreen,
 
     selectedId,
     selectPending,
