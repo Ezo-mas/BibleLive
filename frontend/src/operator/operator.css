@@ -394,6 +394,7 @@
    the largest 16:9 that fits, centred, with the bezel showing as bars at the sides
    (a tall frame) or above and below (a wide one). Not the display's theme colour. */
 .operator-monitor-wrap {
+  position: relative;
   display: grid;
   flex: 1 1 0;
   place-items: center;
@@ -619,29 +620,55 @@
   color: var(--color-text-muted);
 }
 
-/* Follow-along: a suggestion that the speaker has read on. A neutral raised
-   surface with only a trace of the accent (about 6% fill, 28% edge); the body text
-   keeps the normal colours and only the label takes the accent text colour. It
-   takes no keyboard shortcut. */
+/* Follow-along: a suggestion that the speaker has read on. One slim strip laid over
+   the top of the preview frame, so it takes no space of its own and nothing in the
+   page moves when it appears or goes. A neutral raised surface with only a trace of
+   the accent (about 10% fill, 35% edge); the verse keeps the normal colours and only
+   the label takes the accent text colour. It takes no keyboard shortcut. The Show
+   button is a control tall (36px), so the strip is 36px plus 6px of padding each side. */
 .operator-follow {
+  position: absolute;
+  z-index: 2;
+  top: var(--card-gap);
+  right: var(--card-gap);
+  left: var(--card-gap);
   display: flex;
-  flex-direction: column;
-  flex: none;
+  align-items: center;
+  gap: var(--card-pad);
   min-width: 0;
-  background: color-mix(in srgb, var(--color-primary) 6%, var(--color-surface-raised));
+  padding: calc(var(--card-gap) * 0.75) calc(var(--card-gap) * 0.75) calc(var(--card-gap) * 0.75)
+    var(--card-pad);
+  background: color-mix(in srgb, var(--color-primary) 10%, var(--color-surface-raised));
   border: var(--border-width) solid
-    color-mix(in srgb, var(--color-primary) 28%, var(--color-border));
-  border-radius: var(--radius-card);
+    color-mix(in srgb, var(--color-primary) 35%, var(--color-border));
+  border-radius: var(--radius-control);
+  box-shadow: var(--shadow-md);
+}
+
+.operator-follow .operator-card-title {
+  flex: none;
 }
 
 .operator-follow .operator-stage-title {
   color: var(--accent-text);
 }
 
-/* Follow-along always points at a single verse, so its text is one line,
-   ellipsized. Padding is the cards' own. */
-.operator-follow .operator-card-verse {
-  -webkit-line-clamp: 1;
+/* Follow-along always points at a single verse, so its text is one line, ellipsized;
+   it gives way before the label, the reference or the button do. */
+.operator-follow-verse {
+  flex: 1 1 0;
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  font-family: var(--font-serif);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.operator-follow .btn {
+  flex: none;
 }
 
 .btn-flash {

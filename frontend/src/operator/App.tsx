@@ -153,6 +153,14 @@ export default function App() {
             reference={operator.currentDisplay}
             verseLimit={operator.verseLimit}
             displayTheme={operator.displayTheme}
+            overlay={
+              <FollowAlongHint
+                hint={operator.followAlong}
+                text={operator.followAlongText}
+                canShow={operator.canShowFollowAlong}
+                onShow={operator.showFollowAlong}
+              />
+            }
           >
             <DisplayQuickControls
               canClearDisplay={operator.canClearDisplay}
@@ -174,13 +182,6 @@ export default function App() {
             flashing={operator.flash === 'approve'}
             onShow={operator.showNext}
             onDiscard={operator.clearNext}
-          />
-
-          <FollowAlongHint
-            hint={operator.followAlong}
-            text={operator.followAlongText}
-            canShow={operator.canShowFollowAlong}
-            onShow={operator.showFollowAlong}
           />
         </div>
 

@@ -40,7 +40,8 @@ Two columns inside the 16px page gutter, which is the only space at the window's
 sides: nothing is centred and nothing has a maximum width. Right: one tabbed panel
 (Pending, Plan, History) pinned to the right edge at `clamp(300px, 34vw, 560px)`
 (`--operator-side-w`), filling the height. Left, top to bottom: the ON DISPLAY preview
-with its control row in the same card, UP NEXT, follow-along; the column takes every
+with its control row in the same card, then UP NEXT (follow-along is a strip laid over
+the top of the preview, not a card of its own); the column takes every
 pixel of width the panel does not (`flex: 1`, `min-width: 0`). Below 1100px it is one
 column, the page scrolls, and the preview takes its height from 16:9. The gear in the
 header opens Settings, which holds everything not needed mid-service (language, Bible
@@ -49,11 +50,10 @@ background).
 
 **Heights.** The left column is a flex column of the full height. ON DISPLAY takes
 all the height the others leave (`flex: 1`, with a floor of `--operator-frame-min`,
-160px, for the monitor frame: a window shorter than that scrolls the column). UP NEXT,
-the control row and follow-along are `flex: none`, their natural height, never
-squeezed. So the left column's last card ends exactly where the right panel ends,
-with or without follow-along and however long Up Next's text is. There is no
-measured constant to keep in step with the cards.
+160px, for the monitor frame: a window shorter than that scrolls the column). UP NEXT
+and the control row are `flex: none`, their natural height, never squeezed. So the
+left column's last card ends exactly where the right panel ends, however long Up
+Next's text is. There is no measured constant to keep in step with the cards.
 
 **The preview.** Inside ON DISPLAY, the monitor frame (`.operator-monitor-wrap`) is a
 neutral bezel (`--bezel-bg`, recessed in both themes; not the display's colour) that
@@ -68,28 +68,30 @@ scaled from the display's, from the miniature's real width), so ten verses or al
 them shrink to fit; if they ever overflow they start at the top, never a clipped
 middle. It is presentational only.
 
-**Known trade-off.** Because the preview card takes what is left, it gives up the
-follow-along card's height (plus the 12px gap) when that card appears and takes it
-back when it goes, so a height-bound miniature resizes a little at that moment, and
-the control row and Up Next, which sit above the follow-along card, move up by the
-same amount. The tabs panel never moves. On a short window with a four-line Up Next and
-follow-along showing, the miniature can be small (about 370px wide at 1280x720);
-the frame never goes under its 160px floor, below which the column scrolls instead.
+**Follow-along overlay.** The follow-along strip (`.operator-follow`) is positioned
+absolutely inside the monitor frame, 8px from its top and sides: label, reference, the
+start of the verse on one line, Show at the right (a 36px control, so the strip is
+48px tall). It takes no space, so when it appears or goes nothing in the page moves or
+resizes: the control row, Up Next, the miniature and the tabs panel stay exactly
+where they are. The cost is that it covers the top of the miniature while it shows
+(about 56px of it, usually padding, but the first line of a passage that fills the
+screen). It is a neutral raised surface with a trace of the accent and a shadow, so it
+reads as laid over the preview, and it takes no keyboard shortcut. The frame never goes
+under its 160px floor, below which the column scrolls instead.
 
 ## Cards share one anatomy
 
-ON DISPLAY, UP NEXT and follow-along use `.operator-card-head`: one group on the text
-baseline (`.operator-card-title`: the 12px uppercase label, then the reference as
-14px bold), centred against the card's actions at the right, with free space between.
-ON DISPLAY has only its label; whether it is live is read from the monitor itself
-and there is no Live chip. Text goes below in the muted serif (`.operator-card-verse`,
-3 lines, 2 in follow-along). Same 12px side padding and 36px (`md`) controls, so the
-preview, Up Next text and follow-along text share a left edge. The three are told
-apart by treatment, not by badges: the preview is a raised card; UP NEXT has a
-recessed fill and a dashed `--color-border-strong` edge with extra space above it
-("queued, not live") and Unstage then Show on display in its header; follow-along is a
-neutral raised surface with a trace of the accent (about 6% fill, 28% edge), normal
-body colours, and only its label in `--accent-text`. The control row under the
+ON DISPLAY and UP NEXT use `.operator-card-head`: one group on the text baseline
+(`.operator-card-title`: the 12px uppercase label, then the reference as 14px bold),
+centred against the card's actions at the right, with free space between. ON DISPLAY
+has only its label; whether it is live is read from the monitor itself and there is
+no Live chip. Text goes below in the muted serif (`.operator-card-verse`, 3 lines).
+Same 12px side padding and 36px (`md`) controls, so the preview and Up Next text share
+a left edge. They are told apart by treatment, not by badges: the preview is a raised
+card; UP NEXT has a recessed fill and a dashed `--color-border-strong` edge with
+extra space above it ("queued, not live") and Unstage then Show on display in its
+header. Follow-along is not a card: it is the strip laid over the preview (see
+Layout), with the same label-and-reference group and a 36px Show. The control row under the
 monitor is three groups, each a caption over one 36px control on one baseline: Screen
 (Clear display), Verses (3, 5, 10, All: the values the server accepts) and Auto-approve
 (Off / On). The captions are short on purpose (Lithuanian uses "Automatinis" over the
@@ -105,8 +107,8 @@ padding, with or without actions), `--card-gap` (8px) from the header to the bod
 between a row's parts, 12px under the last element, and 12px between stacked cards.
 Cards differ only in text size and line count. The three left-column cards and the
 side panel's rows use it; the control row under the preview is padded the same 12px,
-with 36px controls. Up Next and follow-along are `flex: none`, never squeezed (ON DISPLAY
-is the one card that gives and takes height, see Layout); the column scrolls instead. The tab bar is also 48px, so the two columns' headers line up, and its tabs
+with 36px controls. Up Next is `flex: none`, never squeezed (ON DISPLAY is the one
+card that gives and takes height, see Layout); the column scrolls instead. The tab bar is also 48px, so the two columns' headers line up, and its tabs
 share the whole bar equally with no outer padding or gaps.
 
 ## Buttons

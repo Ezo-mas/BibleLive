@@ -24,12 +24,12 @@ function formatHint(hint: FollowAlongHintData): string {
  * Follow-along: a quiet suggestion that the speaker has read on past the passage
  * on screen, with a Show button for the verses that come next.
  *
- * It is a convenience, never a prompt. It is a card under Up Next with the same
- * anatomy (label, reference, Show at the right, a line or two of the verse below),
- * tinted with the accent so it reads as a suggestion, and it takes no keyboard
- * shortcut of its own, so a stray Enter can never put it on the projector. It
- * renders nothing without a hint, and pushes only the history list down when it
- * appears, never the stages or the queue.
+ * It is a convenience, never a prompt. It is one slim strip (label, reference, the
+ * start of the verse, Show at the right) laid over the top of the ON DISPLAY preview,
+ * so it takes no space of its own: when it appears or goes, nothing in the page
+ * moves. It is tinted with the accent so it reads as a suggestion, and it takes no
+ * keyboard shortcut, so a stray Enter can never put it on the projector. It renders
+ * nothing without a hint.
  *
  * The button sends a normal manual `display_reference` for the hint's coordinates;
  * the server re-resolves them, so nothing here can show text the operator has not
@@ -42,28 +42,25 @@ export function FollowAlongHint({ hint, text, canShow, onShow }: FollowAlongHint
   const label = formatHint(hint)
 
   return (
-    <section className="operator-follow operator-card" aria-label={t('follow.aria')}>
-      <div className="operator-card-head">
-        <div className="operator-card-title">
-          <span className="operator-stage-title">{t('follow.label')}</span>
-          <strong className="operator-card-ref">{label}</strong>
-        </div>
-        <span className="operator-card-grow" />
-        <Button
-          variant="primary"
-          onClick={onShow}
-          disabled={!canShow}
-          aria-label={t('follow.showAria', { label })}
-        >
-          {t('follow.show')}
-        </Button>
+    <section className="operator-follow" aria-label={t('follow.aria')}>
+      <div className="operator-card-title">
+        <span className="operator-stage-title">{t('follow.label')}</span>
+        <strong className="operator-card-ref">{label}</strong>
       </div>
-      {/* The words come from a lookup; until they arrive the card is the reference alone. */}
-      {text && (
-        <div className="operator-card-body">
-          <p className="operator-card-verse operator-follow-verse">{text}</p>
-        </div>
+      {/* The words come from a lookup; until they arrive the strip is the reference alone. */}
+      {text ? (
+        <p className="operator-follow-verse">{text}</p>
+      ) : (
+        <span className="operator-card-grow" />
       )}
+      <Button
+        variant="primary"
+        onClick={onShow}
+        disabled={!canShow}
+        aria-label={t('follow.showAria', { label })}
+      >
+        {t('follow.show')}
+      </Button>
     </section>
   )
 }

@@ -16,6 +16,8 @@ export interface LivePanelProps {
   displayTheme: DisplayTheme
   /** The row of controls under the preview (Clear display, verses, auto-approve). */
   children?: ReactNode
+  /** Laid over the top of the preview frame, taking no space (the follow-along strip). */
+  overlay?: ReactNode
 }
 
 /**
@@ -29,7 +31,13 @@ export interface LivePanelProps {
  * limit, so the operator can answer "what is on screen?" without walking over to
  * the projector. It is presentational only: nothing here sends anything.
  */
-export function LivePanel({ reference, verseLimit, displayTheme, children }: LivePanelProps) {
+export function LivePanel({
+  reference,
+  verseLimit,
+  displayTheme,
+  children,
+  overlay,
+}: LivePanelProps) {
   const { t } = useI18n()
   const verses = selectVerses(reference, verseLimit)
   const hiddenCount = hiddenVerseCount(reference, verseLimit)
@@ -107,6 +115,7 @@ export function LivePanel({ reference, verseLimit, displayTheme, children }: Liv
             />
           </div>
         )}
+        {overlay}
       </div>
 
       {children}
