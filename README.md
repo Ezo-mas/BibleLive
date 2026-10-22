@@ -201,6 +201,15 @@ Options:
   --silero-neg-threshold P
                           Speech lasts until the probability drops below this
                           (default: threshold - 0.15, as in faster-whisper)
+  --partial-transcripts on|off
+                          Post transcripts of the utterance still being spoken,
+                          for follow-along, while the server has it armed (default: on)
+  --partial-interval-s S  Utterance time between partial transcripts (default: 1.5)
+  --partial-mode grow|chunk
+                          grow: the whole utterance so far; chunk: only the new
+                          audio, texts joined (default: chunk)
+  --partial-min-s S       No partial transcript until the utterance is this long
+                          (default: 1.5)
   --input-device NAME     Microphone: exact DirectShow name on Windows, PulseAudio
                           source on Linux, avfoundation index on macOS (default:
                           first Windows input, system default elsewhere)
@@ -317,10 +326,30 @@ Set `BIBLELIVE_AUTO_BIBLE_VERSION=false` to turn the automatic switch off.
 While a passage is on the display, the speaker often reads on into the next
 verses. The pipeline posts each transcript line to `/api/transcript`; the server
 matches it against the verses right after the displayed passage, in the spoken
-language's default translation (`BIBLELIVE_LANGUAGE_BIBLE_VERSIONS`), and offers
+language's default translation (`BIBLELIVE_LANGUAGE_BIBLE_VERSIONS`): a verse
+counts when enough of its distinctive words were heard, or, for the next verse,
+when its first few words are heard in order while the verse before it is read. It offers
 the operator a "Reading now: Luke 16:13-15 · Show" line. Nothing changes on the
 display until the operator clicks Show, which is the same request as picking that
-passage by hand. Set `BIBLELIVE_FOLLOW_ALONG=false` to turn the suggestions off.
+passage by hand. Set `BIBLELIVE_FOLLOW_ALONG=false` to turn the suggestions off, and
+the automatic switch below with them (it reads off and cannot be turned on).
+Operators can instead have the server show such a verse itself: the "Follow the
+reading automatically" switch under Settings → Auto-approve (off by default, shared by
+every console, saved with the auto-approve mode) does it for a verse that starts at
+most 3 verses past the passage on screen; a bigger jump stays a suggestion.
+
+A whole utterance can end several seconds after the verse began, so the pipeline
+also transcribes the utterance still being spoken: every `--partial-interval-s`
+seconds (1.5) it transcribes the audio since the last one and posts the text so far,
+but only while the server's reply to `/api/transcript` says follow-along is armed (a
+passage with a verse on screen that the speaker may still be reading). In two-model
+mode only Kmynas transcribes these; Whisper (English, or `--stt whisper`) takes
+none, since it was not measured and runs close to real time on a CPU. Partial
+transcripts only feed these hints: they never reach reference detection, the
+operator's approval or the display. On the 14 benchmark services, a hint now
+arrives a median of about 3 s after the verse begins (before: 9.5 s), and about 9 in
+10 while it is still being read (before: 42%); see `benchmarks/BASELINE_NOTES.md`.
+Turn partial transcripts off with `--partial-transcripts off`.
 
 #### Pipeline logging
 
@@ -370,7 +399,7 @@ in `%APPDATA%\BibleLive\logs\sessions`.
 | POST   | `/api/language`     | Switch spoken language (requires auth if enabled) |
 | GET    | `/api/ui-language`  | Operator page language set by the launcher: `lt`, `en`, or `null` (no token needed, even with auth on) |
 | GET    | `/api/state`        | Current server state snapshot (requires auth if enabled) |
-| POST   | `/api/transcript`   | Audio pipeline transcript line, used only for follow-along suggestions; not stored (token when auth is on) |
+| POST   | `/api/transcript`   | Audio pipeline transcript line, used only for follow-along suggestions; not stored; the reply's `follow_along_active` says whether to keep sending partial transcripts (token when auth is on) |
 | POST   | `/api/pipeline/heartbeat` | Audio pipeline health report, sent every 5 s (token when auth is on) |
 | GET    | `/api/pipeline/status` | Pipeline health for the operator console: `unknown`, `ok`, `degraded` (with problems), or `offline` after three missed reports (requires auth if enabled) |
 | GET    | `/healthz`          | Liveness probe                           |
@@ -382,7 +411,7 @@ in `%APPDATA%\BibleLive\logs\sessions`.
   `display_settings`, and `connection_status` events
 - `ws://<host>/ws/operator` — operator clients receive `pending_update`,
   `approval_confirmed`, `clear_confirmed`, `pending_cleared`, `state_snapshot`,
-  `auto_mode_confirmed`, `display_settings_confirmed`,
+  `auto_mode_confirmed`, `follow_auto_confirmed`, `display_settings_confirmed`,
   `bible_version_confirmed` (`{version, available}`), and `connection_status`
   events; they send these actions:
   - `{action: 'authenticate', token}` — first, when authentication is enabled
@@ -393,6 +422,8 @@ in `%APPDATA%\BibleLive\logs\sessions`.
   - `{action: 'set_verse_limit', verse_limit: 3 | 5 | 10 | 'all'}`
   - `{action: 'set_display_theme', theme: 'dark' | 'light'}`
   - `{action: 'set_auto_mode', auto_mode: 'off' | 'high' | 'medium_and_up' | 'all'}`
+  - `{action: 'set_follow_auto', follow_auto: true | false}` — follow-along auto-show
+    (see Follow-along); the confirmation goes to every operator console
   - `{action: 'display_reference', book, chapter, verse_start?, verse_end?}` —
     show a passage the operator picked by hand (coordinates only; the server
     re-resolves them). Also used for Show Again from display history.
@@ -414,7 +445,8 @@ The mode is server-side state, persisted to `BIBLELIVE_SETTINGS_PATH`
 restarts and takes precedence over the `BIBLELIVE_AUTO_MODE` default, which only
 applies when nothing is persisted. Settings that are missing, malformed, or
 invalid log a warning and fall back to that default; an invalid
-`BIBLELIVE_AUTO_MODE` means `off`.
+`BIBLELIVE_AUTO_MODE` means `off`. The follow-along auto-show switch is saved in the
+same file.
 
 ## Configuration (environment variables)
 

@@ -51,6 +51,7 @@ frontend/
 | Bible-version switch (Settings → Audio) | `frontend/src/operator/bibleVersionApi.ts`, `hooks/useBibleVersion.ts`, `components/BibleVersionSettings.tsx` — HTTP to `/api/bible-version`; changes made elsewhere arrive as `bible_version_confirmed` on the operator socket |
 | Book names from the loaded translation (Lithuanian) | display via `formatReference`/`bookDisplayName` in `frontend/src/shared/reference.ts` (uses the server's `book_label`); search via `localizeBooks`/`bookLabel` in `operator/scriptureQuery.ts` (accent-folded matching, canonical `name` for every request) and `hooks/useScriptureSearch.ts` |
 | Follow-along suggestion line (Reading now · Show) | `frontend/src/operator/components/FollowAlongHint.tsx`, `hooks/useOperatorState.ts` (`follow_along` message; Show sends `display_reference`) |
+| Follow-along auto-show switch (Settings → Auto-approve) | `frontend/src/operator/components/FollowAutoControls.tsx`, `SettingsDialog.tsx`, `hooks/useOperatorState.ts` (`set_follow_auto`, `follow_auto_confirmed`); the auto-followed tag is in `LivePanel.tsx` and `ReferenceCard.tsx` |
 | Interface language (strings, Settings → Display → Interface language) | `frontend/src/shared/messages.en.ts`, `messages.lt.ts`, `i18n.ts`, `i18nContext.ts` (`useI18n`), `I18nProvider.tsx` (wired in `shared/renderApp.tsx`) |
 | Change WS message protocol or approval flow | **stop — ask the user first** (Behavior rules) |
 
