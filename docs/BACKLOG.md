@@ -6,6 +6,15 @@ built yet.
 
 ## Follow-ups
 
+### Idle screen picture: check it on a projector
+The operator can upload a picture (Settings → Display → Idle screen), choose Logo or
+Fill screen, and remove it; it is stored beside the settings file and survives a
+restart (`backend/core/server/idle_screen.py`). The server sends its version and fit
+to the displays as the optional `idle_image: {version, fit} | null` field of
+`display_settings` (approved protocol change, in `models.py` and `types.ts`). The
+Logo and Fill CSS (`frontend/src/display/display.css`) has not been seen in a real
+browser or on a projector yet, and the OBS overlay must keep ignoring the picture.
+
 ### Translate the stream overlay's "+N more verses"
 The OBS overlay (`/display?mode=obs`, `frontend/src/display/StreamOverlay.tsx`)
 writes its note in English only. Use the i18n layer: `t('stage.moreVerses', { count })`.
