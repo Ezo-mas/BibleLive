@@ -121,6 +121,17 @@ class ClearPendingResponse(BaseModel):
 AutoMode = Literal["off", "high", "medium_and_up", "all"]
 
 
+class IdleScreenPicture(BaseModel):
+    """The idle-screen picture the display shows while nothing is on screen."""
+
+    version: str = Field(
+        description="Tag of this upload; the display URL carries it as a cache-buster"
+    )
+    fit: Literal["logo", "fill"] = Field(
+        description="'logo' centres it at its own size; 'fill' covers the screen"
+    )
+
+
 class DisplaySettings(BaseModel):
     """Operator-controlled presentation settings for the audience display.
 
@@ -135,6 +146,10 @@ class DisplaySettings(BaseModel):
     theme: Literal["dark", "light"] = Field(
         default="dark",
         description="Projector background theme; dark avoids washing out the panel",
+    )
+    idle_image: IdleScreenPicture | None = Field(
+        default=None,
+        description="Picture shown while nothing is on screen; null means a blank screen",
     )
 
 

@@ -337,7 +337,8 @@ NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=true
-# Writable: data/ holds server_settings.json (auto-approve persistence).
+# Writable: data/ holds server_settings.json (auto-approve persistence) and the
+# idle-screen picture (idle_screen.png/.jpg/.webp), uploaded from the operator console.
 # bible_data/ stays read-only under strict (the DB opens read-only); do not
 # add it here.
 ReadWritePaths=/opt/biblelive/data
