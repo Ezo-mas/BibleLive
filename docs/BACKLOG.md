@@ -14,6 +14,56 @@ to the displays as the optional `idle_image: {version, fit} | null` field of
 `display_settings` (approved protocol change, in `models.py` and `types.ts`). The
 Logo and Fill CSS (`frontend/src/display/display.css`) has not been seen in a real
 browser or on a projector yet, and the OBS overlay must keep ignoring the picture.
+Small follow-ups found in review (2026-10-22), none urgent:
+- A same-format upload replaces the file before its record is saved
+  (`AppState.set_idle_image`). If that save fails, the console gets a 500 but the new
+  picture is already on disk, and a reloading display shows it.
+- A file chosen in the native picker while a refresh is running is silently ignored
+  (`useIdleScreen`), and an open Settings dialog does not see a change made on another
+  console until it is reopened.
+- The Settings hint no longer says the picture never shows on the OBS overlay (it
+  still does not). Add it back if operators ask.
+- `CORSMiddleware` allows only GET and POST, so a cross-origin console cannot use the
+  PUT and DELETE idle-screen routes. Only matters with `BIBLELIVE_CORS_ORIGINS` set.
+- With auth off, a cross-site page can send a simple `POST /api/idle-screen` and change
+  the projected picture (same as `/api/clear`; the security review noted it as accepted
+  under the auth-off model). Requiring `Content-Type: application/octet-stream` on the
+  upload would force a preflight and close it; the console's upload call must send it.
+
+### Redesigned operator console: check on a real service
+Built on branch `worktree-operator-design-pass` (amber palette, the Original layout
+with the ON DISPLAY preview, one spacing system, `DESIGN.md`, a redesigned Settings
+dialog), merged with the idle-screen work. Checked with Playwright and the test suite,
+not yet seen on a real service, not pushed, and `static/frontend/` is not rebuilt (run
+`npm run build` from `frontend/` first). At the next service look at: the preview's text
+size at 10 and All verses (9 px and 7 px on a 1440x900 window, 7.4 px and 5.4 px at
+1280x720), the left column scrolling by about 66 px at 1280x720, the single-column
+layout below 1100 px (not re-checked after the last CSS edit), and the light theme's
+selected segmented fill (1.85:1 against its track; the bold label is the second cue).
+
+### Clear the display to blank, not to the idle picture
+When an idle picture is set, Clear display brings it back. The user wants a setting
+("When the display is cleared": idle screen or fully blank) so the picture can be
+skipped. It needs a protocol change (for example an optional flag on the `clear`
+message and a persisted setting in `settings_store.py`), so ask before building it.
+The mock of the Settings row is in the design thread, not in the repo.
+
+### Remove a single Pending row
+Pending rows have Show and Stage only; the server can only approve one or clear the
+whole queue (`clear_pending`). A per-row Remove needs a new operator action (for
+example `discard_pending` with a `reference_id`) that drops the entry from
+`pending_references` and sends the usual `pending_update`. It never puts anything on
+the display, but it changes the operator protocol, so ask first.
+
+### Small console follow-ups
+- The source label (detected, manual, history) on Up Next is now screen-reader-only, so a
+  sighted operator cannot see whether Show approves a queued detection or re-shows
+  coordinates. Show it again if that matters.
+- `usePlanSnippets` fires one lookup per Plan item without text, never retries a
+  failure, and keeps text in the old translation after a Bible-version switch.
+- Settings still lists "Verses shown", which duplicates the control under the preview.
+- Up Next has a 1.5 px dashed border and the other cards 1 px, so their text edges differ
+  by half a pixel (kept on purpose so Up Next reads as queued).
 
 ### Translate the stream overlay's "+N more verses"
 The OBS overlay (`/display?mode=obs`, `frontend/src/display/StreamOverlay.tsx`)
