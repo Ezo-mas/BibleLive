@@ -25,6 +25,10 @@ class PipelineMetrics:
     references_dropped: int = 0  # queued but discarded: queue full, or too old to send
     transcripts_failed: int = 0  # follow-along transcripts the server did not take
     transcripts_dropped: int = 0  # follow-along transcripts discarded: queue full
+    partials_transcribed: int = 0  # partial transcripts run (follow-along only)
+    partials_dropped: int = 0  # partials that failed or were not confident
+    partial_audio_seconds: float = 0.0  # audio the partial transcripts covered, in total
+    partial_transcription_ms: float = 0.0  # time the partial transcripts took, in total
     api_retries: int = 0
     capture_failures: int = 0  # ffmpeg exits that capture did not ask for
     capture_restarts: int = 0  # successful restarts after such an exit
@@ -90,6 +94,12 @@ class PipelineMetrics:
         logger.info(
             f"  Follow-along transcripts: {self.transcripts_failed} failed, "
             f"{self.transcripts_dropped} dropped"
+        )
+        logger.info(
+            f"  Partial transcripts: {self.partials_transcribed} "
+            f"({self.partial_audio_seconds:.1f}s audio, "
+            f"{self.partial_transcription_ms / 1000:.1f}s to transcribe, "
+            f"{self.partials_dropped} dropped)"
         )
         logger.info(f"  API retries: {self.api_retries}")
         logger.info(f"  Avg API request time: {self.get_avg_api_duration():.1f}ms")

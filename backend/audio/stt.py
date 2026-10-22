@@ -418,6 +418,15 @@ class SpeechToText:
             logger.error(f"Unexpected transcription error: {e}", exc_info=True)
             return Transcription(None, duration_ms, failed=True)
 
+    def transcribe_partial(self, pcm: bytes, language: str) -> Transcription | None:  # noqa: ARG002 - interface parity
+        """Whisper takes no partial transcripts: always None, so the caller skips it.
+
+        Partials were measured only with Kmynas (benchmarks/BASELINE_NOTES.md; there is no
+        English gold corpus), and Whisper on a CPU runs close to real time already, so the
+        extra transcription could make the final utterances, and the references, late.
+        """
+        return None
+
     def _collapse_repetition(self, text: str) -> tuple[str, str | None]:
         return collapse_repetition(text)
 

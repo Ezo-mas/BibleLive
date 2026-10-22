@@ -19,6 +19,7 @@ from .control import LanguageControlServer
 from .ensemble import merge_agreement
 from .heartbeat import HeartbeatSender
 from .metrics import PipelineMetrics
+from .partials import PartialMailbox, PartialScheduler, PartialSnapshot, PartialTranscript
 from .segmenter import FRAME_DURATION_MS, Segmenter, SegmentEvent
 from .sender import ReferenceSender
 from .session_log import SessionLog
@@ -38,6 +39,12 @@ logger = logging.getLogger(__name__)
 # Seconds without a single audio frame before the operator is told capture has
 # stalled. Frames arrive every 30 ms, so this is far beyond any normal hiccup.
 AUDIO_STALL_S = 5.0
+
+# 16 kHz, 16-bit mono PCM: the bytes of one second of audio (the VAD frames are this format).
+PCM_BYTES_PER_SECOND = 2 * 16000
+# Seconds the transcription thread waits for a final utterance before it checks for a
+# partial transcript to run. Short, so a snapshot posted while it waits is picked up promptly.
+PARTIAL_POLL_S = 0.1
 
 # Seconds with no sound from the microphone before the operator is told it is
 # silent. A dead input keeps delivering frames, so the stall check never fires
@@ -133,6 +140,20 @@ class BibleLiveAudioProcessor:
         self.sender = ReferenceSender(server_url, self.config, self.metrics)
         # Confident transcripts for follow-along hints (best effort, never blocks).
         self.transcript_sender = TranscriptSender(server_url, self.config, self.metrics)
+        # Partial transcripts of the utterance still being spoken, for follow-along only
+        # (see partials.py). The VAD thread owns the scheduler and the utterance number;
+        # the mailbox hands snapshots to the transcription thread, which owns the accumulator.
+        # The scheduler and the accumulator are built only with partials on, so a bad
+        # partial setting cannot stop a service that does not use them.
+        partials_on = self.config.partial_transcripts
+        self._partial_schedule: PartialScheduler | None = (
+            PartialScheduler.from_config(self.config) if partials_on else None
+        )
+        self._partial_mailbox = PartialMailbox()
+        self._partial_transcript: PartialTranscript | None = (
+            PartialTranscript(self.config.partial_mode) if partials_on else None
+        )
+        self._utterance_seq = 0  # VAD thread: bumped at each utterance start
 
         # Thread-local storage for BibleLookup + per-language parsers (owned by
         # the transcription thread).
@@ -471,6 +492,7 @@ class BibleLiveAudioProcessor:
             return
 
         dropped = self.segmenter.reset()
+        self._partial_mailbox.discard(self._utterance_seq)
         session_log = getattr(self, "session_log", None)
         if session_log is not None:
             session_log.event("language", language=pending, dropped_frames=dropped)
@@ -511,12 +533,17 @@ class BibleLiveAudioProcessor:
             event = self.segmenter.push(frame)
             if event is not None:
                 if event.kind == "start":
+                    self._utterance_seq += 1
                     session_log = getattr(self, "session_log", None)
                     if session_log is not None:
                         session_log.speech_started(event.onset_frames)
                     logger.info("Voice activity detected, capturing utterance...")
                 else:
+                    # The final covers the utterance from here on: drop its partial.
+                    self._partial_mailbox.discard(self._utterance_seq)
                     self._queue_speech_segment(event)
+            if self.config.partial_transcripts:
+                self._offer_partial(event)
 
             # Update queue depth metrics
             self.metrics.audio_queue_depth = self.audio_capture.audio_queue.qsize()
@@ -526,6 +553,22 @@ class BibleLiveAudioProcessor:
             if time.time() - self.last_metrics_log > self.config.metrics_log_interval:
                 self.metrics.log_summary()
                 self.last_metrics_log = time.time()
+
+    def _offer_partial(self, event: SegmentEvent | None) -> None:
+        """Hand the transcription thread a snapshot of the open utterance when one is due.
+
+        Called for every frame, armed or not, so the scheduler sees each utterance start
+        and its timing stays right when follow-along arms mid-utterance. A snapshot is
+        handed over only while the server says follow-along is armed (VAD thread only).
+        """
+        if self._partial_schedule is None:  # partials off: the VAD loop does not call this
+            return
+        due = self._partial_schedule.due(self.segmenter, event)
+        if due and self.transcript_sender.armed:
+            snapshot = PartialSnapshot(
+                self._utterance_seq, self._capture_language, tuple(self.segmenter.speech_frames)
+            )
+            self._partial_mailbox.put(snapshot)
 
     def _restart_capture(self) -> None:
         """Restart capture after ffmpeg exited on its own (VAD thread only).
@@ -541,6 +584,7 @@ class BibleLiveAudioProcessor:
         self.metrics.capture_failures += 1
         self._capture_down = True
         event = self.segmenter.flush()
+        self._partial_mailbox.discard(self._utterance_seq)
         if event is not None:
             self._queue_speech_segment(event)
 
@@ -654,11 +698,26 @@ class BibleLiveAudioProcessor:
 
         try:
             while self.is_running:
+                # Finals first (each carries the language it was captured in): a queued
+                # utterance waits behind at most the one partial already running.
                 try:
-                    # Get speech segment (with the language it was captured in)
-                    language, speech_frames = self.vad_queue.get(timeout=0.5)
+                    language, speech_frames = self.vad_queue.get_nowait()
                 except Empty:
-                    continue
+                    snapshot = self._partial_mailbox.take()
+                    if snapshot is not None:
+                        try:
+                            self._process_partial(snapshot)
+                        except Exception as e:
+                            # Follow-along only: a failed partial is dropped. It must not end
+                            # this thread, which transcribes the finals too.
+                            self.metrics.partials_dropped += 1
+                            logger.warning(f"Partial transcript dropped after an error: {e}")
+                            logger.debug("Partial transcript error", exc_info=True)
+                        continue
+                    try:
+                        language, speech_frames = self.vad_queue.get(timeout=PARTIAL_POLL_S)
+                    except Empty:
+                        continue
 
                 # Process the utterance
                 self._process_utterance(language, speech_frames)
@@ -855,6 +914,34 @@ class BibleLiveAudioProcessor:
             logger.info("Selected '%s' parser (context reset)", language)
 
         return parser
+
+    def _process_partial(self, snapshot: PartialSnapshot) -> None:
+        """Transcribe the utterance still being spoken, for follow-along only (worker thread).
+
+        One pass of the primary speech model. Nothing here reaches the parser, the
+        reference sender, the session log or the transcription failure counters. A
+        partial that failed or is not confident is dropped, and counted as such.
+        """
+        # Disarmed since the snapshot was taken: partials are only sent while armed.
+        accumulator = self._partial_transcript
+        if accumulator is None or not self.transcript_sender.armed:
+            return
+        audio = accumulator.audio_for(snapshot)
+        if audio is None:
+            return
+        result = self.stt.transcribe_partial(audio, snapshot.language)
+        if result is None:  # this engine takes no partials for this language (Whisper)
+            return
+        self.metrics.partials_transcribed += 1
+        self.metrics.partial_audio_seconds += len(audio) / PCM_BYTES_PER_SECOND
+        self.metrics.partial_transcription_ms += result.duration_ms
+        usable = not result.failed and result.low_confidence_reason is None
+        if not usable:
+            self.metrics.partials_dropped += 1
+        # Every audio chunk is passed on, usable or not, so the accumulator stays in step.
+        text = accumulator.add(snapshot, result.text if usable else None)
+        if text:
+            self.transcript_sender.submit(text, snapshot.language)
 
     def _process_utterance(self, language: str, speech_frames: list[bytes]):
         """Process a completed utterance captured in ``language``"""

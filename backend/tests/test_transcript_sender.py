@@ -19,12 +19,19 @@ from audio.transcript_sender import TranscriptSender
 TEXT = "šeimininkas reikalauja sąskaitų atsiskaitymo"
 
 
+def _reply(status: int, body=None) -> SimpleNamespace:
+    """A server answer. ``body`` is its JSON (default: a success reply, follow-along off)."""
+    payload = {"status": "success", "follow_along_active": False} if body is None else body
+    return SimpleNamespace(status_code=status, text="", json=lambda: payload)
+
+
 @pytest.fixture
 def posts(monkeypatch):
     """Record each POST to the transcript endpoint.
 
     ``answers`` is consumed one entry per call: a status code is returned as the
-    response, an exception is raised. Once it is empty every call gets a 200.
+    response, a ready-made reply is returned as it is, an exception is raised.
+    Once it is empty every call gets a 200.
     """
     calls = []
     answers = []
@@ -35,8 +42,8 @@ def posts(monkeypatch):
             answer = answers.pop(0)
             if isinstance(answer, Exception):
                 raise answer
-            return SimpleNamespace(status_code=answer, text="")
-        return SimpleNamespace(status_code=200, text="")
+            return _reply(answer) if isinstance(answer, int) else answer
+        return _reply(200)
 
     monkeypatch.setattr("audio.transcript_sender.requests.post", fake_post)
     return SimpleNamespace(calls=calls, answers=answers)
@@ -210,7 +217,7 @@ def test_stop_empties_the_queue_behind_a_post_still_in_flight(monkeypatch):
         texts.append(json["text"])
         in_flight.set()
         release.wait(5)
-        return SimpleNamespace(status_code=200, text="")
+        return _reply(200)
 
     monkeypatch.setattr("audio.transcript_sender.requests.post", slow_post)
     sender = _sender()
@@ -230,3 +237,90 @@ def test_stop_empties_the_queue_behind_a_post_still_in_flight(monkeypatch):
         worker.join(2)
     assert not worker.is_alive()
     assert texts == ["one"]  # "two" and "three" were drained, never posted
+
+
+# --- armed: the server's follow_along_active answer -----------------------------
+
+
+def _armed_reply(active: bool = True) -> SimpleNamespace:
+    return _reply(200, {"status": "success", "follow_along_active": active})
+
+
+def _not_json():
+    raise ValueError("no JSON here")
+
+
+def test_a_success_reply_with_the_flag_true_arms_the_sender(posts):
+    posts.answers.append(_armed_reply(True))
+    sender = _sender()
+
+    sender._post(TEXT, "lt")
+
+    assert sender.armed is True
+
+
+def test_a_success_reply_with_the_flag_false_disarms_it(posts):
+    posts.answers.extend([_armed_reply(True), _armed_reply(False)])
+    sender = _sender()
+
+    sender._post(TEXT, "lt")
+    sender._post(TEXT, "lt")
+
+    assert sender.armed is False
+
+
+@pytest.mark.parametrize(
+    "reply",
+    [
+        _reply(200, {"status": "success"}),  # no field: an older server that answers 200
+        _reply(200, {"status": "success", "follow_along_active": "true"}),  # not a JSON boolean
+        _reply(200, ["follow_along_active"]),  # not an object
+        SimpleNamespace(status_code=200, text="<html>", json=_not_json),  # not JSON at all
+    ],
+    ids=["missing-field", "string-flag", "not-an-object", "not-json"],
+)
+def test_a_reply_that_does_not_say_armed_leaves_it_disarmed(posts, reply):
+    posts.answers.append(reply)
+    sender = _sender()
+
+    sender._post(TEXT, "lt")
+
+    assert sender.armed is False
+
+
+@pytest.mark.parametrize(
+    "failure",
+    [requests.exceptions.ConnectionError("refused"), 404, 500],
+    ids=["request-failed", "not-found", "server-error"],
+)
+def test_a_failed_post_disarms_the_sender(posts, failure):
+    posts.answers.extend([_armed_reply(True), failure])
+    sender = _sender()
+
+    sender._post(TEXT, "lt")
+    assert sender.armed is True
+    sender._post(TEXT, "lt")
+
+    assert sender.armed is False
+
+
+def test_stop_disarms_the_sender(posts):
+    posts.answers.append(_armed_reply(True))
+    sender = _sender()
+    sender._post(TEXT, "lt")
+    assert sender.armed is True
+
+    sender.stop()
+
+    assert sender.armed is False
+
+
+def test_the_worker_thread_arms_the_sender_from_its_reply(posts):
+    posts.answers.append(_armed_reply(True))
+    sender = _sender()
+    sender.start()
+    try:
+        sender.submit(TEXT, "lt")
+        _wait_for(lambda: sender.armed)
+    finally:
+        sender.stop()

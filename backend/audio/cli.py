@@ -46,8 +46,17 @@ def _stt_engine(value: str) -> str:
     return value
 
 
+def _partial_mode(value: str) -> str:
+    """Parse a partial-transcript mode name."""
+    if value not in ("grow", "chunk"):
+        raise argparse.ArgumentTypeError(f"expected grow or chunk, got {value!r}")
+    return value
+
+
 # (flag, config field, type, help) — shared with benchmarks/run_benchmark.py so
-# every live tuning knob can be swept there under the same name.
+# every live tuning knob can be swept there under the same name. The partial-transcript
+# flags are in PARTIAL_ARGUMENTS instead: only the live CLI and follow_along_bench.py
+# take them, so run_benchmark.py does not accept (and silently ignore) them.
 TUNING_ARGUMENTS: list[tuple[str, str, Callable[[str], Any], str]] = [
     ("--beam-size", "beam_size", int, "Whisper beam width; lower is faster"),
     ("--cpu-threads", "cpu_threads", int, "STT CPU threads (0 = library default)"),
@@ -79,10 +88,40 @@ TUNING_ARGUMENTS: list[tuple[str, str, Callable[[str], Any], str]] = [
     ),
 ]
 
+# Partial transcripts of the utterance still being spoken, for follow-along (see partials.py).
+PARTIAL_ARGUMENTS: list[tuple[str, str, Callable[[str], Any], str]] = [
+    (
+        "--partial-transcripts",
+        "partial_transcripts",
+        _flag,
+        "send transcripts of the utterance still being spoken while follow-along is armed",
+    ),
+    ("--partial-interval-s", "partial_interval_s", float, "utterance time between partials"),
+    (
+        "--partial-mode",
+        "partial_mode",
+        _partial_mode,
+        "grow: the whole utterance so far; chunk: only the new audio, texts joined",
+    ),
+    ("--partial-min-s", "partial_min_s", float, "no partial until the utterance is this long"),
+]
+
 
 def add_tuning_arguments(parser: argparse.ArgumentParser) -> None:
     """Add the speech-tuning flags; each defaults to None (= config default)."""
-    for flag, field_name, kind, help_text in TUNING_ARGUMENTS:
+    _add_arguments(parser, TUNING_ARGUMENTS)
+
+
+def add_partial_arguments(parser: argparse.ArgumentParser) -> None:
+    """Add the partial-transcript flags; each defaults to None (= config default)."""
+    _add_arguments(parser, PARTIAL_ARGUMENTS)
+
+
+def _add_arguments(
+    parser: argparse.ArgumentParser, arguments: list[tuple[str, str, Callable[[str], Any], str]]
+) -> None:
+    """Add each flag of ``arguments`` to ``parser``, defaulting to None."""
+    for flag, field_name, kind, help_text in arguments:
         default = getattr(_TUNING_DEFAULTS, field_name)
         parser.add_argument(
             flag, dest=field_name, type=kind, default=None, help=f"{help_text} (default: {default})"
@@ -90,9 +129,13 @@ def add_tuning_arguments(parser: argparse.ArgumentParser) -> None:
 
 
 def apply_tuning_arguments(config: AudioPipelineConfig, args: argparse.Namespace) -> None:
-    """Copy any tuning flags that were given onto ``config``."""
-    for _name, field_name, _kind, _help in TUNING_ARGUMENTS:
-        value = getattr(args, field_name)
+    """Copy any tuning flags that were given onto ``config``.
+
+    A parser that did not add the partial-transcript flags (see add_partial_arguments)
+    has no such attributes, and they are skipped.
+    """
+    for _name, field_name, _kind, _help in TUNING_ARGUMENTS + PARTIAL_ARGUMENTS:
+        value = getattr(args, field_name, None)
         if value is not None:
             setattr(config, field_name, value)
 
@@ -163,6 +206,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="WebRTC VAD aggressiveness (0=least, 3=most aggressive)",
     )
     add_tuning_arguments(parser)
+    add_partial_arguments(parser)
     parser.add_argument(
         "--input-device",
         default=None,

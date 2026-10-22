@@ -17,6 +17,7 @@ from audio import capture as capture_module
 from audio.capture import AudioCapture
 from audio.config import AudioPipelineConfig
 from audio.metrics import PipelineMetrics
+from audio.partials import PartialMailbox
 from audio.pipeline import BibleLiveAudioProcessor
 from audio.segmenter import Segmenter
 
@@ -192,6 +193,9 @@ def _processor(capture, **config) -> BibleLiveAudioProcessor:
     proc._capture_restart_attempt = 0
     proc._capture_restarted_at_s = None
     proc._capture_down = False
+    proc._partial_mailbox = PartialMailbox()
+    proc._partial_schedule = None  # partial transcripts are not under test here
+    proc._utterance_seq = 0
     proc._last_loud_at = None
     proc._mic_silent_logged = False
     return proc

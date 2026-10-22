@@ -40,6 +40,19 @@ class TranscriptSender:
         # Set once an older server answers 404 (it has no such endpoint). Posting
         # more would only fail, so transcripts stop being sent.
         self._unsupported = False
+        # Set while the server's latest answer says follow-along is armed. The VAD
+        # thread reads it; the worker and stop() write it (see :attr:`armed`).
+        self._armed = threading.Event()
+
+    @property
+    def armed(self) -> bool:
+        """Whether the server wants partial transcripts of the utterance in progress.
+
+        True only after a successful post whose reply has ``follow_along_active``
+        true. A failed post, a non-2xx answer, an older server (404), a reply
+        without the field, and :meth:`stop` all make it False.
+        """
+        return self._armed.is_set()
 
     def start(self) -> None:
         """Start the posting worker."""
@@ -50,6 +63,7 @@ class TranscriptSender:
     def stop(self, timeout: float = 2.0) -> None:
         """Stop the worker. Transcripts still queued are discarded, not sent."""
         self._stop.set()
+        self._armed.clear()
         if self._thread is not None and self._thread.is_alive():
             self._thread.join(timeout=timeout)
         self._thread = None
@@ -101,10 +115,12 @@ class TranscriptSender:
                 **auth_kwargs,
             )
         except Exception as e:
+            self._set_armed(False)
             self._failed(f"the request failed: {e}")
             return
 
         if response.status_code == 404:
+            self._set_armed(False)
             if self._unsupported:
                 return
             self._unsupported = True
@@ -113,8 +129,26 @@ class TranscriptSender:
                 "transcripts will not be sent to it"
             )
         elif response.status_code >= 300:
+            self._set_armed(False)
             self._failed(f"the server answered {response.status_code}")
+        else:
+            self._set_armed(_says_armed(response))
+
+    def _set_armed(self, armed: bool) -> None:
+        if armed:
+            self._armed.set()
+        else:
+            self._armed.clear()
 
     def _failed(self, reason: str) -> None:
         self.metrics.transcripts_failed += 1
         logger.debug(f"Follow-along transcript not delivered: {reason}")
+
+
+def _says_armed(response: requests.Response) -> bool:
+    """Whether a 2xx reply says follow-along is armed; a reply that is not that is not armed."""
+    try:
+        body = response.json()
+    except ValueError:
+        return False
+    return isinstance(body, dict) and body.get("follow_along_active") is True
