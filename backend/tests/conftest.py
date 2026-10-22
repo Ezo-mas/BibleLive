@@ -12,8 +12,9 @@ import pytest
 from core.book_names import BookNames
 from core.config import config
 from core.import_bible import BibleImporter
+from core.server.follow_along import FollowAlong
 from core.server.models import DisplaySettings
-from core.server.settings_store import DEFAULT_AUTO_MODE, SettingsStore
+from core.server.settings_store import DEFAULT_AUTO_MODE, DEFAULT_FOLLOW_AUTO, SettingsStore
 
 BACKEND_ROOT = Path(__file__).resolve().parent.parent
 REPO_ROOT = BACKEND_ROOT.parent
@@ -158,9 +159,10 @@ def reset_app_state(app_state, tmp_path: Path):
     # cannot leak into another (or onto disk) while tests share one app.
     app_state.settings_store = SettingsStore(tmp_path / "server_settings.json")
     app_state.auto_mode = DEFAULT_AUTO_MODE
+    app_state.follow_auto = DEFAULT_FOLLOW_AUTO
     app_state.pipeline_report = None
     app_state.pipeline_reported_at = None
-    app_state.last_follow_along = None
+    app_state.follow_along = FollowAlong()
     app_state.book_names = BookNames()
     yield
     app_state.connection_manager = app_state.connection_manager.__class__()

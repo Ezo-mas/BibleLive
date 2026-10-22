@@ -4,7 +4,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, Field, StrictFloat, StrictInt, StrictStr
+from pydantic import BaseModel, Field, StrictBool, StrictFloat, StrictInt, StrictStr
 
 
 class VerseText(BaseModel):
@@ -18,10 +18,11 @@ class BibleReference(BaseModel):
     """A Bible reference with a stable ID for tracking.
 
     Detected references come from the audio pipeline; manually selected passages
-    are created by the server from an operator's ``display_reference`` request.
-    The two are kept distinguishable: ``source`` says which it is, and a manual
-    passage carries no ``confidence`` at all rather than a made-up one, so no
-    later consumer can mistake it for a detection or auto-approve it.
+    are created by the server from an operator's ``display_reference`` request,
+    and followed ones (``source="follow"``) by follow-along auto-show while the
+    operator has it on. They are kept distinguishable: ``source`` says which it is,
+    and a manual or followed passage carries no ``confidence`` at all rather than a
+    made-up one, so no later consumer can mistake it for a detection or auto-approve it.
     """
 
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
@@ -46,9 +47,13 @@ class BibleReference(BaseModel):
         default_factory=list,
         description="Individual verses with numbers, for bounded display",
     )
-    source: Literal["detected", "manual"] = Field(
+    source: Literal["detected", "manual", "follow"] = Field(
         default="detected",
-        description="'detected' for STT detections, 'manual' for operator-selected passages",
+        description=(
+            "'detected' for STT detections, 'manual' for operator-selected passages, "
+            "'follow' for a passage the server showed by itself because follow-along "
+            "auto-show is on"
+        ),
     )
     created_at: str = Field(default_factory=lambda: datetime.now(UTC).isoformat())
 
@@ -146,6 +151,10 @@ class StateResponse(BaseModel):
     display_settings: DisplaySettings = Field(default_factory=DisplaySettings)
     auto_mode: AutoMode = Field(
         default="off", description="Which new detections are displayed without operator action"
+    )
+    follow_auto: bool = Field(
+        default=False,
+        description="Whether the server shows the verses a speaker reads on to by itself",
     )
 
 
@@ -320,6 +329,15 @@ class TranscriptSubmitResponse(BaseModel):
     """Response after a transcript is received. The text is not stored or echoed back."""
 
     status: Literal["success"]
+    follow_along_active: bool = Field(
+        default=False,
+        description=(
+            "True while the server wants partial transcripts: a passage with a verse is on "
+            "screen and the speaker may be reading it. False when follow-along is off or has "
+            "no verse text for the language, when nothing with a verse is on screen, or when "
+            "matching failed."
+        ),
+    )
 
 
 class FollowAlongHint(BaseModel):
@@ -379,6 +397,17 @@ class OperatorSetAutoModeAction(BaseModel):
     auto_mode: AutoMode
 
 
+class OperatorSetFollowAutoAction(BaseModel):
+    """Action to choose whether follow-along shows the next verses without operator action.
+
+    The server applies it to every operator's console at once, so several consoles never
+    show the same verse twice. ``StrictBool``: a string or a number is not a choice.
+    """
+
+    action: Literal["set_follow_auto"]
+    follow_auto: StrictBool
+
+
 class OperatorDisplayReferenceAction(BaseModel):
     """Action to display a passage the operator selected by hand.
 
@@ -418,6 +447,7 @@ OperatorAction = Annotated[
     | OperatorSetVerseLimitAction
     | OperatorSetDisplayThemeAction
     | OperatorSetAutoModeAction
+    | OperatorSetFollowAutoAction
     | OperatorDisplayReferenceAction,
     Field(discriminator="action"),
 ]

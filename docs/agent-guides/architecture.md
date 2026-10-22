@@ -28,27 +28,46 @@ easy to break by accident.
    reference to display sockets) is called from exactly two
    operator-authorized places: `AppState.approve_pending()`, and
    `AppState.display_manual_passage()` — the `display_reference` action,
-   which shows a passage the operator picked by hand. The display still
-   never sees an unapproved detection, and a manual passage never enters
-   the pending queue or carries a confidence (it is `source="manual"`, so
-   nothing can auto-approve it). The supported operator actions are
+   which shows a passage the operator picked by hand, and a third caller:
+   follow-along auto-show (`offer_follow_along`), which shows the next verses
+   by itself only while the operator's `follow_auto` switch is on (see
+   `follow_along` below). The display still never sees an unapproved
+   detection, and a manual passage never enters the pending queue or carries
+   a confidence (it is `source="manual"`, or `source="follow"` for an
+   auto-show, so nothing can auto-approve it). The supported operator actions are
    `authenticate` (the token, as the socket's first message; it carries no
    operation and is ignored once the socket is let in), `approve`, `clear`, `clear_pending`, `set_verse_limit`,
-   `set_display_theme`, `set_auto_mode`, `display_reference` — there is no
+   `set_display_theme`, `set_auto_mode`, `set_follow_auto`, `display_reference` — there is no
    `reject` action; discarding a wrong detection is done implicitly by
    approving the next one or via `clear_pending`.
    `bible_version_confirmed` (server → operators only) announces a
    translation change; it never reaches display sockets, and
    `follow_along` (server → operators only, never display sockets) is a
    suggestion built from `/api/transcript`: coordinates plus the
-   `display_id` it follows on from, no text. Its Show button sends the
+   `display_id` it follows on from, no text. That endpoint's HTTP reply
+   carries `follow_along_active`, which tells the audio pipeline to keep
+   sending partial transcripts. Its Show button sends the
    ordinary `display_reference` action, so it is not a third door.
+   With the operator's `follow_auto` switch on (`set_follow_auto`: server-held,
+   persisted with the auto-approve mode, off by default, confirmed to every
+   console as `follow_auto_confirmed`; refused, and reported off, while
+   `BIBLELIVE_FOLLOW_ALONG` is false), a hint that starts at most
+   `FOLLOW_AUTO_MAX_JUMP` (3) verses past the passage on screen is not sent as
+   a hint: the server shows it through `display_manual_passage` with
+   `source="follow"`, re-resolved from coordinates, and operators get its
+   `display_confirmed`. It is taken only if it still follows on from the
+   passage on screen, checked after the last await and before the call, and
+   never while the display is cleared. Any other hint is sent as above. It is
+   the operator's setting, like auto-approve, not a third door to
+   `_send_display_reference`. The server cannot tell a partial transcript from
+   a final one, so the auto-show can act on an utterance still being spoken.
    `AppState.bible_lookup` is the one live lookup — read it through
    `app_state`, never a reference captured at startup, or a switch will not
    reach you.
    Covered by `backend/tests/test_websocket_approval.py`,
    `backend/tests/test_manual_reference.py` and (follow-along)
-   `backend/tests/test_follow_along.py`.
+   `backend/tests/test_follow_along.py` (including the auto-show class) and
+   `backend/tests/test_follow_auto.py` (the switch).
    Both doors resolve a passage the same way: `display_reference` carries
    coordinates only (no ID, no confidence, no text) and the server
    re-resolves them through `core/passage.py`, so a client cannot inject

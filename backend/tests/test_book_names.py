@@ -18,6 +18,7 @@ from fastapi.testclient import TestClient
 from core.book_names import BookNames, lithuanian_search_variants, read_local_names
 from core.config import config
 from core.server.app import create_app
+from core.server.follow_along import FollowAlong
 from core.server.models import BibleReference, FollowAlongHint
 
 # Real names from the ltb database, for the books these tests use.
@@ -340,14 +341,24 @@ class TestFollowAlongLabel:
     def offer(self, client, monkeypatch) -> FollowAlongHint | None:
         state = client.app.state.app_state
         state.current_display = BibleReference(book="John", chapter=3, verse_start=16, verse_end=16)
-        state.last_follow_along = None
+        state.follow_along = FollowAlong()
+
+        class NoReading:
+            def scores(self, *_args):
+                return {}
+
+            def ordered(self, *_args):
+                return {}
+
+            def idf(self, *_args):
+                return 0.0
 
         async def an_index(_language):
-            return object()
+            return NoReading()
 
         monkeypatch.setattr(state.verse_indexes, "for_language", an_index)
         monkeypatch.setattr(
-            "core.server.state.next_verse_hint",
+            "core.server.follow_along.next_verse_hint",
             lambda *_args: FollowAlongHint(
                 book="John",
                 chapter=3,
@@ -356,7 +367,8 @@ class TestFollowAlongLabel:
                 display_id=state.current_display.id,
             ),
         )
-        return asyncio.run(state.offer_follow_along("anything", "lt"))
+        asyncio.run(state.offer_follow_along("anything", "lt"))
+        return state.follow_along.last_hint
 
     def test_the_hint_is_labelled_by_the_loaded_translation(self, client, monkeypatch):
         use_version(client, "ltb")
