@@ -171,7 +171,9 @@ export const lt: Record<MessageKey, MessageEntry> = {
   'version.changed': 'Biblijos vertimas: {version}',
 
   // Laukimo ekranas: paveikslėlis, rodomas tada, kai ekrane nieko nėra
+  'settings.sectionConsole': 'Ši konsolė',
   'idle.label': 'Laukimo ekranas',
+  'idle.fitLabel': 'Paveikslėlio rodymas',
   'idle.stateBlank': 'Paveikslėlio nėra: ekranas tuščias, kai ekrane nieko nerodoma.',
   'idle.stateImage': 'Paveikslėlis rodomas, kai ekrane nieko nėra ({fit}).',
   'idle.blank': 'Tuščias',
@@ -182,7 +184,7 @@ export const lt: Record<MessageKey, MessageEntry> = {
   'idle.fitFill': 'Užpildyti ekraną',
   'idle.fitHint':
     'Logotipas: centre, savo dydžiu ant fono. Užpildyti ekraną: paveikslėlis dengia visą ekraną; kraštai gali būti apkirpti.',
-  'idle.hint': 'Rodomas tik tada, kai ekrane nieko nėra; OBS transliacijos perdangoje niekada.',
+  'idle.hint': 'Rodomas tik tada, kai ekrane nieko nėra. Pagal numatymą ekranas tuščias.',
   'idle.upload': 'Įkelti paveikslėlį',
   'idle.replace': 'Pakeisti paveikslėlį',
   'idle.remove': 'Pašalinti paveikslėlį',

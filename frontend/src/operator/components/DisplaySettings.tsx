@@ -38,7 +38,7 @@ export function DisplaySettings({
 }: DisplaySettingsProps) {
   const { t } = useI18n()
   return (
-    <div className="operator-display-settings">
+    <>
       <div className="operator-setting">
         <span className="operator-setting-label">{t('settings.verses')}</span>
         <div className="segmented" role="group" aria-label={t('settings.versesGroup')}>
@@ -89,6 +89,6 @@ export function DisplaySettings({
       </div>
 
       {children}
-    </div>
+    </>
   )
 }

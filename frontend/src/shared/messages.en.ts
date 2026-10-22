@@ -166,7 +166,9 @@ export const en = {
   'version.changed': 'Bible version: {version}',
 
   // Idle screen: the picture the display shows while nothing is on screen
+  'settings.sectionConsole': 'This console',
   'idle.label': 'Idle screen',
+  'idle.fitLabel': 'Picture fit',
   'idle.stateBlank': 'No picture: the display is blank while nothing is on screen.',
   'idle.stateImage': 'Picture shown while nothing is on screen ({fit}).',
   'idle.blank': 'Blank',
@@ -177,7 +179,7 @@ export const en = {
   'idle.fitFill': 'Fill screen',
   'idle.fitHint':
     'Logo: centred at its own size on the background. Fill screen: covers the whole screen; edges may be cropped.',
-  'idle.hint': 'Shown only while nothing is on screen, never on the OBS stream overlay.',
+  'idle.hint': 'Shown only when nothing is on screen. Blank by default.',
   'idle.upload': 'Upload picture',
   'idle.replace': 'Replace picture',
   'idle.remove': 'Remove picture',

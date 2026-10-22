@@ -12,12 +12,16 @@
    The track has no inset and no gap: the options sit edge to edge inside a 1px
    border, a 1px divider between neighbours, and the track clips them to its
    corners, so a selected option fills its cell with nothing around it. A control
-   one control tall (36px) has 34px options. */
+   one control tall (36px) has 34px options. The track keeps its own width, so a
+   caption or a row never stretches it past its options. */
 .segmented {
-  display: flex;
+  /* Every option is the same width: the widest label sets it, never less than
+     `--segment-w`, so the track is exactly the sum of its options plus its border. */
+  display: inline-grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(var(--segment-w), 1fr);
   align-items: stretch;
   box-sizing: border-box;
-  width: 100%;
   min-height: var(--control-h-md);
   overflow: hidden;
   background: var(--color-canvas);
@@ -27,7 +31,6 @@
 
 .segmented-option {
   display: inline-flex;
-  flex: 1 1 0;
   align-items: center;
   justify-content: center;
   gap: var(--space-2);
@@ -49,19 +52,6 @@
 
 .segmented-option:first-child {
   border-left-color: transparent;
-}
-
-/* A compact segmented control (the control row under the preview): it keeps its own
-   width, and every option is the same fixed width. Controls whose labels are
-   longer than that fill their row and share it equally instead. */
-.segmented-compact {
-  width: auto;
-}
-
-.segmented-compact .segmented-option {
-  flex: 0 0 var(--segment-w);
-  width: var(--segment-w);
-  padding: 0;
 }
 
 .segmented-option:hover:not(:disabled) {

@@ -989,27 +989,55 @@
 /* Settings, rendered inside the settings dialog. The audience display is
    presentation-only, so the controls live there — and they are configuration, not
    per-action controls, so the dialog can be closed and the console left with
-   everything the operator touches during a service. */
-.operator-display-settings {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-4);
-  padding: var(--space-4);
+   everything the operator touches during a service.
+
+   One row anatomy for every setting: the label (semibold) with a muted hint under
+   it on the left, the control on the right, a 1px divider between rows, 12px
+   (`--card-pad`) padding. The control keeps its own width and is centred against the
+   label and hint. Anything else in a row (an error, a picture) takes the full width
+   under them. In a narrow dialog the control drops under the hint. */
+.operator-setting {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-1) var(--card-pad);
+  padding: var(--card-pad) 0;
+  border-bottom: var(--border-width) solid var(--color-border);
 }
 
-/* One setting per row, always in this order: label (with the current value on the
-   right when it has one), the control, then a short explanation. The control is a
-   segmented control (styles/controls.css) or a button. */
-.operator-setting {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
+.operator-dialog-section > .operator-setting:last-child {
+  border-bottom: 0;
+}
+
+.operator-setting > .operator-setting-header,
+.operator-setting > .operator-setting-label {
+  grid-column: 1;
+  grid-row: 1;
+}
+
+.operator-setting > .operator-setting-hint {
+  grid-column: 1;
+  grid-row: 2;
+}
+
+.operator-setting > .segmented,
+.operator-setting > .operator-setting-control {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  justify-self: end;
+}
+
+/* Rows with a long error, or a picture, put it across the whole row. */
+.operator-setting > .operator-scripture-error,
+.operator-setting > .operator-scripture-unavailable,
+.operator-setting > .idle-screen-preview {
+  grid-column: 1 / -1;
+  grid-row: auto;
 }
 
 .operator-setting-header {
   display: flex;
   align-items: baseline;
-  justify-content: space-between;
   gap: var(--space-2);
 }
 
@@ -1037,6 +1065,52 @@
   margin: 0;
   font-size: var(--font-size-xs);
   line-height: var(--leading-snug);
+  color: var(--color-text-muted);
+}
+
+/* Buttons that sit where a row's control does (the idle picture's upload and remove). */
+.operator-setting-control {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--card-gap);
+}
+
+/* The idle picture's preview, in its own row: a 16:9 box with the monitor's border
+   and corners, and the current state under it. */
+.operator-setting-preview {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.idle-screen-preview {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 20rem;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  background: var(--color-surface-canvas);
+  border: var(--border-width) solid var(--color-border-strong);
+  border-radius: var(--radius-control);
+}
+
+/* Logo mode: the picture is contained, like the display's, with its own ceiling. */
+.idle-screen-preview img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+/* Fill mode: the picture covers the preview, as it covers the display. */
+.idle-screen-preview--fill img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.idle-screen-preview-blank {
+  font-size: var(--font-size-xs);
   color: var(--color-text-muted);
 }
 
@@ -1263,8 +1337,9 @@
   display: flex;
   flex-direction: column;
   width: 100%;
-  max-width: 460px;
+  max-width: 520px;
   max-height: calc(100dvh - 2 * var(--space-4));
+  container-type: inline-size;
   background: var(--panel-bg);
   border: var(--border-width) solid var(--color-border);
   border-radius: var(--radius-dialog);
@@ -1272,12 +1347,15 @@
   overflow: hidden;
 }
 
+/* The header row: the title at the left, Close at the right, one control tall under
+   the card padding, like a card's header. */
 .operator-dialog-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: var(--space-3);
-  padding: var(--space-2) var(--space-4);
+  min-height: calc(var(--control-h-md) + 2 * var(--card-pad));
+  padding: var(--card-pad);
   border-bottom: var(--border-width) solid var(--color-border);
 }
 
@@ -1291,33 +1369,39 @@
 .operator-dialog-body {
   display: flex;
   flex-direction: column;
-  gap: var(--space-5);
-  padding: var(--space-4);
+  gap: var(--card-pad);
+  padding: 0 var(--card-pad) var(--card-pad);
   overflow-y: auto;
 }
 
 .operator-dialog-section {
   display: flex;
   flex-direction: column;
-  gap: var(--space-4);
 }
 
-/* A section heading is a heading, in sentence case with a rule under it. The
-   settings below it are labelled in the smaller semibold style, so the two levels
-   never read at equal weight. */
+/* A section heading is the overline style of the card labels, with room above it. */
 .operator-dialog-section-title {
-  margin: 0;
-  padding-bottom: var(--space-2);
-  border-bottom: var(--border-width) solid var(--color-border);
-  font-size: var(--font-size-base);
+  margin: var(--card-pad) 0 0;
+  font-size: var(--font-size-xs);
   font-weight: var(--weight-semibold);
-  color: var(--color-text);
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--color-text-muted);
 }
 
-/* The display settings block carries its own sidebar padding; in the dialog the
-   section already provides it. */
-.operator-dialog .operator-display-settings {
-  padding: 0;
+/* A narrow dialog: the control drops under the label and hint, to the start. */
+@container (max-width: 460px) {
+  .operator-setting {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .operator-setting > .segmented,
+  .operator-setting > .operator-setting-control {
+    grid-column: 1;
+    grid-row: 3;
+    justify-self: start;
+    margin-top: var(--space-1);
+  }
 }
 
 /* Action feedback. One slot only: a new message replaces the previous one, so a
@@ -1382,7 +1466,7 @@
   flex-direction: column;
   gap: var(--space-2);
   margin: 0;
-  padding: 0;
+  padding: var(--card-gap) 0 0;
   list-style: none;
 }
 

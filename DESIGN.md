@@ -142,25 +142,39 @@ outline; Low is a muted fill, muted text and a dashed border.
 - Elevation is only `--shadow-*`, on floating surfaces (popover, toast, dialog,
   sign-in card). No coloured side stripes or inset-shadow accents anywhere.
 
-## Settings rows and segmented controls
+## Settings dialog
 
-Every setting in the dialog is one `.operator-setting`: header line (label in the
-small semibold style, current value on the right), the control, a hint
-(`--font-size-xs`, muted). Every choice is a `.segmented` control, including Off/On
-(Follow-along, and Auto-approve under the preview): there is no separate switch. The
-track has no inset or gap: options sit edge to edge inside a 1px border with a 1px
-divider between them, the track clips them to its corners, and the selected option
-fills its cell completely. A 36px track has 34px options. State comes from
-`aria-pressed` or `aria-checked`, so look and accessibility cannot disagree.
+One design for the whole dialog (`SettingsDialog.tsx`, styles in `operator.css`).
 
-Controls with short labels in the row under the preview are `.segmented-compact`:
-every option is the same fixed width (`--segment-w`, 44px) and the track keeps its own
-width. A caption over a control aligns the control to its start (the Auto-approve
-group at the right edge aligns to the end), so a column's default never stretches the
-track past its options. Controls in the dialog fill the row and share it equally.
-Auto-approve under the preview is Off / On: On restores the last mode that was on
-(High until one has been chosen, in memory only), Off sends `off`. Rows are
-`--space-4` apart.
+- **Header row:** the title at the left, Close (a ghost icon button, 36px) at the right,
+  one control tall under `--card-pad`, with a hairline under it.
+- **Sections** are headed by the overline style of the card labels (xs, semibold,
+  uppercase, `--tracking-caps`, muted): Display (verses, background, idle screen),
+  This console (app theme, interface language), Audio, Auto-approve, Keyboard
+  shortcuts.
+- **Every setting is one `.operator-setting` row:** the label (semibold) with a muted
+  hint under it on the left, the control on the right and centred against them, a 1px
+  divider between rows (none after a section's last row), `--card-pad` (12px) padding
+  top and bottom. The same label, hint and control alignment in every row. The row is a
+  two-column grid; anything else in it (an error, a picture) spans the full width
+  under them. When the dialog is narrower than 460px (a container query on the
+  dialog), the control drops under the hint, to the start.
+- **Controls are only the shared ones:** `.segmented` for every choice (Off/On,
+  background, language, verses, theme, picture fit) and `.btn` variants.
+- **Segmented anatomy:** no inset or gap; options sit edge to edge inside a 1px border
+  with a 1px divider between them, the track clips them, and the selected option fills
+  its cell. The track keeps its own width (an inline grid), every option in one control
+  is the same width (the widest label sets it, never less than `--segment-w`, 44px), so
+  the track is exactly the sum of its options plus the border. A 36px track has 34px
+  options. State comes from `aria-pressed` or `aria-checked`. Auto-approve under the
+  preview is an Off / On segmented control: On restores the last mode that was on (High
+  until one has been chosen, in memory only), Off sends `off`. A caption over a
+  control aligns the control to its start, and the Auto-approve group at the right edge
+  aligns to the end, so a column's default never stretches the track.
+- **Idle screen** is three rows in the same anatomy: the picture (Upload / Replace as
+  secondary, Remove as danger, 36px), the fit (a segmented Logo / Fill screen), and a
+  16:9 preview in its own row with the monitor's border and corners, the current state
+  under it. Errors use the same notice style as the rest of the console.
 
 ## Type and spacing
 

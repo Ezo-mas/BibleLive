@@ -101,6 +101,7 @@ export function SettingsDialog({
 }: SettingsDialogProps) {
   const titleId = useId()
   const displaySectionId = useId()
+  const consoleSectionId = useId()
   const languageSectionId = useId()
   const autoSectionId = useId()
   const shortcutsSectionId = useId()
@@ -201,12 +202,18 @@ export function SettingsDialog({
               onVerseLimitChange={onVerseLimitChange}
               onThemeChange={onThemeChange}
             />
+            <IdleScreenSettings state={idleScreen} disabled={disabled} />
+          </section>
+
+          <section className="operator-dialog-section" aria-labelledby={consoleSectionId}>
+            <h3 className="operator-dialog-section-title" id={consoleSectionId}>
+              {t('settings.sectionConsole')}
+            </h3>
             <div className="operator-setting">
               <span className="operator-setting-label">{t('settings.appTheme')}</span>
               <ThemeToggle theme={appTheme} onThemeChange={onAppThemeChange} />
               <p className="operator-setting-hint">{t('settings.appThemeHint')}</p>
             </div>
-            <IdleScreenSettings state={idleScreen} disabled={disabled} />
             <InterfaceLanguageSettings />
           </section>
 

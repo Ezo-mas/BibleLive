@@ -63,11 +63,7 @@ export function DisplayQuickControls({
 
       <div className="operator-quick-group">
         <span className="operator-quick-label">{t('quick.versesLabel')}</span>
-        <div
-          className="segmented segmented-compact"
-          role="group"
-          aria-label={t('quick.versesAria')}
-        >
+        <div className="segmented" role="group" aria-label={t('quick.versesAria')}>
           {options.map(option => (
             <button
               key={option}
@@ -85,7 +81,7 @@ export function DisplayQuickControls({
 
       <div className="operator-quick-group operator-quick-auto">
         <span className="operator-quick-label">{t('quick.autoLabel')}</span>
-        <div className="segmented segmented-compact" role="group" aria-label={t('quick.autoLabel')}>
+        <div className="segmented" role="group" aria-label={t('quick.autoLabel')}>
           <button
             type="button"
             className="segmented-option"
