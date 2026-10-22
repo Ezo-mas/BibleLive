@@ -40,7 +40,7 @@ export function AutoApproveControls({
         </span>
       </div>
       <div
-        className="operator-verse-options"
+        className="segmented"
         role="group"
         aria-label={t('auto.mode')}
         aria-describedby={descriptionId}
@@ -49,7 +49,7 @@ export function AutoApproveControls({
           <button
             key={option.value}
             type="button"
-            className={`operator-verse-option ${autoMode === option.value ? 'is-active' : ''}`}
+            className="segmented-option"
             aria-pressed={autoMode === option.value}
             disabled={disabled}
             onClick={() => onAutoModeChange(option.value)}

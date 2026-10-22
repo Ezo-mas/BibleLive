@@ -41,12 +41,12 @@ export function DisplaySettings({
     <div className="operator-display-settings">
       <div className="operator-setting">
         <span className="operator-setting-label">{t('settings.verses')}</span>
-        <div className="operator-verse-options" role="group" aria-label={t('settings.versesGroup')}>
+        <div className="segmented" role="group" aria-label={t('settings.versesGroup')}>
           {VERSE_LIMIT_OPTIONS.map(option => (
             <button
               key={option}
               type="button"
-              className={`operator-verse-option ${verseLimit === option ? 'is-active' : ''}`}
+              className="segmented-option"
               aria-pressed={verseLimit === option}
               disabled={disabled}
               onClick={() => onVerseLimitChange(option)}
@@ -56,7 +56,7 @@ export function DisplaySettings({
           ))}
           <button
             type="button"
-            className={`operator-verse-option ${verseLimit === 'all' ? 'is-active' : ''}`}
+            className="segmented-option"
             aria-pressed={verseLimit === 'all'}
             disabled={disabled}
             onClick={() => onVerseLimitChange('all')}
@@ -71,16 +71,12 @@ export function DisplaySettings({
 
       <div className="operator-setting">
         <span className="operator-setting-label">{t('settings.background')}</span>
-        <div
-          className="operator-verse-options"
-          role="group"
-          aria-label={t('settings.backgroundGroup')}
-        >
+        <div className="segmented" role="group" aria-label={t('settings.backgroundGroup')}>
           {DISPLAY_THEME_OPTIONS.map(option => (
             <button
               key={option}
               type="button"
-              className={`operator-verse-option ${displayTheme === option ? 'is-active' : ''}`}
+              className="segmented-option"
               aria-pressed={displayTheme === option}
               disabled={disabled}
               onClick={() => onThemeChange(option)}

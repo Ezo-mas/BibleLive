@@ -1,4 +1,5 @@
 import type { FormEvent } from 'react'
+import { Button } from '../../components'
 import { useI18n } from '../../shared/i18nContext'
 
 export interface TokenPromptProps {
@@ -41,12 +42,12 @@ export function TokenPrompt({
               value={tokenInput}
               onChange={e => onTokenInputChange(e.target.value)}
               placeholder={t('token.placeholder')}
-              className="operator-auth-input"
+              className="input"
               autoFocus
             />
-            <button type="submit" className="operator-auth-button">
+            <Button type="submit" variant="primary" size="lg" fullWidth>
               {t('token.connect')}
-            </button>
+            </Button>
           </form>
         </div>
       </div>

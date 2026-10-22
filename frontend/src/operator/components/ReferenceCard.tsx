@@ -1,3 +1,5 @@
+import { useId } from 'react'
+import type { ReactNode } from 'react'
 import { formatReference } from '../../shared/reference'
 import { StatusBadge } from '../../components'
 import { useI18n } from '../../shared/i18nContext'
@@ -19,6 +21,12 @@ export interface ReferenceCardProps {
    * long and does not say what pressing it does.
    */
   ariaLabel?: string
+  /**
+   * Buttons under the card (Show, Stage). They sit beside the clickable card, not
+   * inside it, so the row never nests one interactive element in another. The
+   * title's id is passed in so each button can be described by the row it is on.
+   */
+  actions?: (titleId: string) => ReactNode
 }
 
 /** Confidence in plain words, as message keys. */
@@ -32,12 +40,6 @@ const CONFIDENCE_LABELS: Record<'high' | 'medium' | 'low', MessageKey> = {
  * The same confidence as a three-pip meter. Shape carries the level, so it reads
  * without colour; the word beside it is what a screen reader gets.
  */
-const CONFIDENCE_PIPS: Record<'high' | 'medium' | 'low', string> = {
-  high: '●●●',
-  medium: '●●○',
-  low: '●○○',
-}
-
 /**
  * Arrival time as a local clock reading, or null when the timestamp is unusable.
  *
@@ -72,79 +74,87 @@ export function ReferenceCard({
   onSelect,
   onActivate,
   ariaLabel,
+  actions,
 }: ReferenceCardProps) {
   const { t } = useI18n()
+  const titleId = useId()
   const selectable = onSelect !== undefined
   const time = arrivalTime(reference.created_at)
 
+  // The start of the passage, so a row can be recognised without staging it. A
+  // detection from an older pipeline may carry only the per-verse list.
+  const preview = reference.text || reference.verses?.[0]?.text || ''
+
   return (
-    <div
-      className={`ref-card ${selected ? 'ref-card-selected' : ''}`}
-      data-confidence={reference.confidence ?? 'manual'}
-      role={selectable ? 'button' : undefined}
-      tabIndex={selectable ? 0 : undefined}
-      aria-pressed={selectable ? selected : undefined}
-      aria-label={selectable ? ariaLabel : undefined}
-      onClick={onSelect}
-      onDoubleClick={selectable ? onActivate : undefined}
-      onKeyDown={
-        selectable
-          ? e => {
-              if (e.key === 'Enter' || e.key === ' ') {
-                e.preventDefault()
-                onSelect?.()
+    <div className={`ref-item ${selected ? 'is-selected' : ''}`}>
+      <div
+        className={`ref-card ${selected ? 'ref-card-selected' : ''}`}
+        data-confidence={reference.confidence ?? 'manual'}
+        role={selectable ? 'button' : undefined}
+        tabIndex={selectable ? 0 : undefined}
+        aria-pressed={selectable ? selected : undefined}
+        aria-label={selectable ? ariaLabel : undefined}
+        onClick={onSelect}
+        onDoubleClick={selectable ? onActivate : undefined}
+        onKeyDown={
+          selectable
+            ? e => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault()
+                  onSelect?.()
+                }
               }
-            }
-          : undefined
-      }
-    >
-      <div className="ref-card-content">
-        <div className="ref-card-header">
-          <h3 className="ref-card-title">{formatReference(reference)}</h3>
-          <div className="ref-card-badges">
-            {reference.source === 'follow' ? (
-              <StatusBadge variant="info">
-                <span className="sr-only">{t('ref.sourceSr')}</span>
-                {t('ref.followed')}
-              </StatusBadge>
-            ) : reference.confidence !== null && reference.source !== 'manual' ? (
-              <span className="ref-card-confidence" data-confidence={reference.confidence}>
-                <span className="ref-card-pips" aria-hidden="true">
-                  {CONFIDENCE_PIPS[reference.confidence]}
+            : undefined
+        }
+      >
+        <div className="ref-card-content">
+          <div className="ref-card-header">
+            <h3 className="ref-card-title" id={titleId}>
+              {formatReference(reference)}
+            </h3>
+            <div className="ref-card-badges">
+              {reference.source === 'follow' ? (
+                <StatusBadge variant="info">
+                  <span className="sr-only">{t('ref.sourceSr')}</span>
+                  {t('ref.followed')}
+                </StatusBadge>
+              ) : reference.confidence !== null && reference.source !== 'manual' ? (
+                <span className="ref-card-confidence" data-confidence={reference.confidence}>
+                  <span className="sr-only">{t('ref.confidenceSr')}</span>
+                  {t(CONFIDENCE_LABELS[reference.confidence])}
                 </span>
-                <span className="sr-only">{t('ref.confidenceSr')}</span>
-                {t(CONFIDENCE_LABELS[reference.confidence])}
-              </span>
-            ) : (
-              <StatusBadge variant="neutral">
-                <span className="sr-only">{t('ref.sourceSr')}</span>
-                {t('source.manual')}
-              </StatusBadge>
-            )}
-            {reference.inferred && <StatusBadge variant="info">{t('ref.context')}</StatusBadge>}
+              ) : (
+                <StatusBadge variant="neutral">
+                  <span className="sr-only">{t('ref.sourceSr')}</span>
+                  {t('source.manual')}
+                </StatusBadge>
+              )}
+              {reference.inferred && <StatusBadge variant="info">{t('ref.context')}</StatusBadge>}
+            </div>
           </div>
-        </div>
 
-        {reference.text && <p className="ref-card-text">{reference.text}</p>}
+          {preview && <q className="ref-card-text">{preview}</q>}
 
-        {/* Arrival order is the queue's order, and the clock reading on each card
+          {/* Arrival order is the queue's order, and the clock reading on each card
             is what makes that order readable. Verse count is here too, so the
             operator knows what the display will be bounded to. `verses` is absent
             when talking to an older server. */}
-        <div className="ref-card-meta">
-          {time && (
-            <time dateTime={time.iso} className="ref-card-time">
-              {time.label}
-            </time>
-          )}
-          {(reference.verses?.length ?? 0) > 1 && (
-            <span className="ref-card-verse-count">
-              {t('ref.verses', { count: reference.verses.length })}
-            </span>
-          )}
-          {selected && <span className="ref-card-staged">{t('ref.staged')}</span>}
+          <div className="ref-card-meta">
+            {time && (
+              <time dateTime={time.iso} className="ref-card-time">
+                {time.label}
+              </time>
+            )}
+            {(reference.verses?.length ?? 0) > 1 && (
+              <span className="ref-card-verse-count">
+                {t('ref.verses', { count: reference.verses.length })}
+              </span>
+            )}
+            {selected && <span className="ref-card-staged">{t('ref.staged')}</span>}
+          </div>
         </div>
       </div>
+      {actions && <div className="ref-item-actions">{actions(titleId)}</div>}
     </div>
   )
 }

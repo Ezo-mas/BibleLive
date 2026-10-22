@@ -11,12 +11,12 @@ import type { SideTab } from './components/SidePanel'
 import { FollowAlongHint } from './components/FollowAlongHint'
 import { HistoryPanel } from './components/HistoryPanel'
 import { ScriptureSearch } from './components/ScriptureSearch'
-import { AutoApproveCompact } from './components/AutoApproveCompact'
+import { DisplayQuickControls } from './components/DisplayQuickControls'
 import { SettingsDialog } from './components/SettingsDialog'
 import type { SettingsSection } from './components/SettingsDialog'
 import { OperatorHeader } from './components/OperatorHeader'
 import { LanguageChip } from './components/LanguageChip'
-import { ClearDisplayButton, QueueFooter } from './components/OperatorActions'
+import { QueueFooter } from './components/OperatorActions'
 import { ConnectionBanner } from './components/ConnectionBanner'
 import { PipelineBanner } from './components/PipelineBanner'
 import { FeedbackNotice } from './components/FeedbackNotice'
@@ -24,6 +24,7 @@ import { TokenPrompt } from './components/TokenPrompt'
 import { useI18n } from '../shared/i18nContext'
 import '../styles/tokens.css'
 import '../styles/global.css'
+import '../styles/controls.css'
 import './operator.css'
 
 /**
@@ -146,39 +147,36 @@ export default function App() {
       <PipelineBanner status={operator.pipeline} />
       <main className="operator-main">
         <div className="operator-workspace">
-          <div className="operator-stage-row">
-            <LivePanel
-              reference={operator.currentDisplay}
+          <LivePanel
+            reference={operator.currentDisplay}
+            verseLimit={operator.verseLimit}
+            displayTheme={operator.displayTheme}
+          >
+            <DisplayQuickControls
+              canClearDisplay={operator.canClearDisplay}
+              flash={operator.flash}
+              onClearDisplay={operator.clearDisplay}
               verseLimit={operator.verseLimit}
-              displayTheme={operator.displayTheme}
-            >
-              <div className="operator-stage-footer">
-                <ClearDisplayButton
-                  canClearDisplay={operator.canClearDisplay}
-                  flash={operator.flash}
-                  onClearDisplay={operator.clearDisplay}
-                />
-                <AutoApproveCompact
-                  autoMode={operator.autoMode}
-                  onOpenSettings={() => openSettings('auto')}
-                />
-              </div>
-            </LivePanel>
-
-            <NextPanel
-              reference={operator.nextReference}
-              source={operator.nextSource}
-              verseLimit={operator.verseLimit}
-              displayTheme={operator.displayTheme}
-              canShow={operator.canShowNext}
-              flashing={operator.flash === 'approve'}
-              onShow={operator.showNext}
-              onDiscard={operator.clearNext}
+              autoMode={operator.autoMode}
+              disabled={!operator.isConnected}
+              onVerseLimitChange={operator.setDisplayVerseLimit}
+              onAutoModeChange={operator.setAutoApproveMode}
             />
-          </div>
+          </LivePanel>
+
+          <NextPanel
+            reference={operator.nextReference}
+            source={operator.nextSource}
+            verseLimit={operator.verseLimit}
+            canShow={operator.canShowNext}
+            flashing={operator.flash === 'approve'}
+            onShow={operator.showNext}
+            onDiscard={operator.clearNext}
+          />
 
           <FollowAlongHint
             hint={operator.followAlong}
+            text={operator.followAlongText}
             canShow={operator.canShowFollowAlong}
             onShow={operator.showFollowAlong}
           />
@@ -195,6 +193,7 @@ export default function App() {
               selectedId={operator.selectedId}
               onSelect={operator.selectPending}
               onShow={operator.approvePending}
+              canShow={operator.isConnected}
             >
               <QueueFooter
                 canClearPending={operator.canClearPending}
@@ -206,6 +205,7 @@ export default function App() {
           {sideTab === 'plan' && (
             <PlanPanel
               items={operator.plan.items}
+              snippets={operator.planSnippets}
               onStage={operator.stagePlanItem}
               onShow={operator.showPlanItem}
               onRemove={operator.plan.remove}

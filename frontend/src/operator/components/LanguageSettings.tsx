@@ -39,7 +39,7 @@ export function LanguageSettings({ state, disabled }: LanguageSettingsProps) {
         </span>
       </div>
       <div
-        className="operator-verse-options"
+        className="segmented"
         role="group"
         aria-label={t('settings.spokenLanguage')}
         aria-describedby={hintId}
@@ -48,7 +48,7 @@ export function LanguageSettings({ state, disabled }: LanguageSettingsProps) {
           <button
             key={option.code}
             type="button"
-            className={`operator-verse-option ${language === option.code ? 'is-active' : ''}`}
+            className="segmented-option"
             aria-pressed={language === option.code}
             disabled={locked}
             onClick={() => change(option.code)}

@@ -237,6 +237,66 @@ describe('pending selection and approval', () => {
   })
 })
 
+describe('pending row buttons', () => {
+  it('Show approves that detection by ID without staging it first', () => {
+    openWith()
+    const row = screen.getByRole('button', { name: /Romans 8:28/ }).closest('.ref-item')
+    if (!(row instanceof HTMLElement)) throw new Error('row not found')
+
+    act(() => {
+      within(row).getByRole('button', { name: 'Show' }).click()
+    })
+
+    expect(lastSent()).toEqual({ action: 'approve', reference_id: 'p-2' })
+  })
+
+  it('Stage puts that detection in Up Next and sends nothing', () => {
+    openWith()
+    const card = screen.getByRole('button', { name: /Romans 8:28/ })
+    const row = card.closest('.ref-item')
+    if (!(row instanceof HTMLElement)) throw new Error('row not found')
+
+    act(() => {
+      within(row).getByRole('button', { name: 'Stage' }).click()
+    })
+
+    expect(card).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByTestId('next-preview')).toHaveTextContent('Romans 8:28')
+    expect(sentActions()).toEqual([])
+  })
+
+  it('shows the confidence as a coloured word, with no glyph', () => {
+    openWith()
+    const card = screen.getByRole('button', { name: /John 1:1/ })
+    const chip = card.querySelector('.ref-card-confidence')
+
+    expect(chip).toHaveAttribute('data-confidence', 'high')
+    expect(chip).toHaveTextContent('High')
+    expect(chip).not.toHaveTextContent('●')
+  })
+})
+
+describe('controls under the display preview', () => {
+  it('sends the verse limit the server already accepts, from the row under the preview', () => {
+    openWith()
+    const group = within(screen.getByRole('group', { name: 'Verses shown on the display' }))
+
+    act(() => {
+      group.getByRole('button', { name: '10' }).click()
+    })
+
+    expect(lastSent()).toEqual({ action: 'set_verse_limit', verse_limit: 10 })
+    expect(group.getByRole('button', { name: '10' })).toHaveAttribute('aria-pressed', 'true')
+  })
+
+  it('has Clear display in the same row, and no live-status chip next to ON DISPLAY', () => {
+    openWith()
+
+    expect(screen.getByRole('button', { name: 'Clear Display' })).toBeInTheDocument()
+    expect(screen.queryByText('Live')).not.toBeInTheDocument()
+  })
+})
+
 describe('keyboard shortcuts while Settings is open', () => {
   it('does not approve the staged reference on Enter until Settings is closed', () => {
     openWith()
@@ -302,14 +362,16 @@ describe('display settings', () => {
   it('switches the verse limit and background optimistically', async () => {
     openWith()
     openSettings()
-    const five = screen.getByRole('button', { name: '5' })
+    // The display's quick controls repeat the verse limit, so scope to the dialog.
+    const dialog = within(screen.getByRole('dialog'))
+    const five = dialog.getByRole('button', { name: '5' })
     act(() => {
       five.click()
     })
     expect(lastSent()).toEqual({ action: 'set_verse_limit', verse_limit: 5 })
     await waitFor(() => expect(five).toHaveAttribute('aria-pressed', 'true'))
 
-    const light = screen.getByRole('button', { name: 'Light' })
+    const light = dialog.getByRole('button', { name: 'Light' })
     act(() => {
       light.click()
     })

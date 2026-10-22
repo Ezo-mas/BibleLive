@@ -27,7 +27,7 @@ export function InterfaceLanguageSettings() {
     <div className="operator-setting">
       <span className="operator-setting-label">{t('settings.interfaceLanguage')}</span>
       <div
-        className="operator-verse-options"
+        className="segmented"
         role="group"
         aria-label={t('settings.interfaceLanguage')}
         aria-describedby={hintId}
@@ -36,7 +36,7 @@ export function InterfaceLanguageSettings() {
           <button
             key={choice.labelKey}
             type="button"
-            className={`operator-verse-option ${override === choice.value ? 'is-active' : ''}`}
+            className="segmented-option"
             aria-pressed={override === choice.value}
             onClick={() => setLanguage(choice.value)}
           >

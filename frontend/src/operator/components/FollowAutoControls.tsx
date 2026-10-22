@@ -34,14 +34,14 @@ export function FollowAutoControls({
         </span>
       </div>
       <div
-        className="operator-verse-options"
+        className="segmented"
         role="group"
         aria-label={t('settings.followAuto')}
         aria-describedby={descriptionId}
       >
         <button
           type="button"
-          className={`operator-verse-option ${followAuto ? '' : 'is-active'}`}
+          className="segmented-option"
           aria-pressed={!followAuto}
           disabled={disabled}
           onClick={() => onFollowAutoChange(false)}
@@ -50,7 +50,7 @@ export function FollowAutoControls({
         </button>
         <button
           type="button"
-          className={`operator-verse-option ${followAuto ? 'is-active' : ''}`}
+          className="segmented-option"
           aria-pressed={followAuto}
           disabled={disabled}
           onClick={() => onFollowAutoChange(true)}

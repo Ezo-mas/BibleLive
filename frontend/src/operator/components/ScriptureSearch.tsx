@@ -158,7 +158,7 @@ export function ScriptureSearch({ search, disabled, directEnabled = true }: Scri
           </span>
           <input
             ref={inputRef}
-            className="operator-search-input"
+            className="input operator-search-input"
             type="text"
             value={input}
             onChange={event => setInput(event.target.value)}
@@ -191,7 +191,9 @@ export function ScriptureSearch({ search, disabled, directEnabled = true }: Scri
                     <li key={result.id} className="operator-search-item">
                       <button
                         type="button"
-                        className={`operator-search-result is-${result.kind}`}
+                        className={`btn btn-secondary operator-search-result is-${result.kind}${
+                          result.kind === 'reference' ? ' is-on' : ''
+                        }`}
                         onClick={() => pick(result)}
                         disabled={disabled}
                         // Both rows name what picking them does. The book row needs
@@ -218,15 +220,16 @@ export function ScriptureSearch({ search, disabled, directEnabled = true }: Scri
                         )}
                       </button>
                       {result.kind === 'reference' && (
-                        <button
-                          type="button"
+                        <Button
+                          variant="secondary"
+                          size="sm"
                           className="operator-search-plan"
                           onClick={() => planResult(result)}
                           disabled={disabled}
                           aria-label={t('search.addToPlanAria', { label: result.label })}
                         >
                           {t('search.addToPlan')}
-                        </button>
+                        </Button>
                       )}
                     </li>
                   ))}
@@ -234,7 +237,7 @@ export function ScriptureSearch({ search, disabled, directEnabled = true }: Scri
               )}
 
               {hiddenCount > 0 && (
-                <Button variant="ghost" size="sm" fullWidth onClick={showMore}>
+                <Button variant="secondary" size="sm" fullWidth onClick={showMore}>
                   {t('search.showMore', { count: hiddenCount })}
                 </Button>
               )}

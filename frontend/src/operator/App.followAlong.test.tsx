@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { act, render, screen } from '@testing-library/react'
+import { act, render, screen, waitFor, within } from '@testing-library/react'
 import App from './App'
 import type { BibleReference, FollowAlongHint, OperatorMessage } from '../shared/types'
 
@@ -271,5 +271,61 @@ describe('follow-along hint', () => {
     })
 
     expect(screen.getByRole('button', { name: 'Show Luke 16:13-15 on display' })).toBeEnabled()
+  })
+})
+
+describe('follow-along preview text', () => {
+  /** Answer lookups with `lookup`; every other read is refused, as when it is not wanted. */
+  function stubFetch(lookup: () => Promise<Response>) {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) =>
+      String(input).startsWith('/api/lookup')
+        ? lookup()
+        : ({ ok: false, status: 404, json: async () => ({}) } as unknown as Response)
+    )
+    vi.stubGlobal('fetch', fetchMock)
+    return fetchMock
+  }
+
+  const passage = {
+    book: 'Luke',
+    chapter: 16,
+    verse_start: 13,
+    verse_end: 15,
+    verses: [{ verse: 13, text: 'No servant can serve two masters.' }],
+    text: 'No servant can serve two masters.',
+  }
+
+  it('shows the reference alone until the verse text is looked up, then the text', async () => {
+    let answer: (response: Response) => void = () => {}
+    stubFetch(() => new Promise<Response>(resolve => (answer = resolve)))
+    openWith(onScreen)
+    push(hintFor('d-1'))
+
+    const card = within(hintRegion() as HTMLElement)
+    expect(card.getByText('Luke 16:13-15')).toBeInTheDocument()
+    expect(card.queryByText('No servant can serve two masters.')).not.toBeInTheDocument()
+
+    await act(async () => {
+      answer({ ok: true, status: 200, json: async () => passage } as unknown as Response)
+    })
+    await waitFor(() =>
+      expect(card.getByText('No servant can serve two masters.')).toBeInTheDocument()
+    )
+    // Reading the text sends nothing to the display.
+    expect(sentActions()).toEqual([])
+  })
+
+  it('keeps the card working when the lookup fails', async () => {
+    const fetchMock = stubFetch(async () => {
+      throw new Error('offline')
+    })
+    openWith(onScreen)
+    push(hintFor('d-1'))
+
+    await waitFor(() =>
+      expect(fetchMock.mock.calls.some(([url]) => String(url).startsWith('/api/lookup'))).toBe(true)
+    )
+    expect(screen.getByRole('button', { name: 'Show Luke 16:13-15 on display' })).toBeEnabled()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
 })

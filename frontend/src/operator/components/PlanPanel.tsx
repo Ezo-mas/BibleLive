@@ -1,4 +1,4 @@
-import { BookIcon, Button, XIcon } from '../../components'
+import { BookIcon, Button } from '../../components'
 import { useI18n } from '../../shared/i18nContext'
 import { formatReference } from '../../shared/reference'
 import { PanelHint } from './PanelHint'
@@ -7,6 +7,8 @@ import type { PlanItem } from '../hooks/usePlan'
 
 export interface PlanPanelProps {
   items: PlanItem[]
+  /** Text looked up for items that were saved without any, by item id. */
+  snippets?: Record<string, string>
   /** Click: look the passage up and stage it in Up Next. */
   onStage: (item: PlanItem) => void
   /** Double-click: show it at once, without staging. */
@@ -36,7 +38,15 @@ function itemLabel(item: PlanItem): string {
  *
  * Renders the body of the sidebar's Plan tab.
  */
-export function PlanPanel({ items, onStage, onShow, onRemove, onMove, onClear }: PlanPanelProps) {
+export function PlanPanel({
+  items,
+  snippets = {},
+  onStage,
+  onShow,
+  onRemove,
+  onMove,
+  onClear,
+}: PlanPanelProps) {
   const { t } = useI18n()
   return (
     <>
@@ -47,50 +57,77 @@ export function PlanPanel({ items, onStage, onShow, onRemove, onMove, onClear }:
           <ol className="plan-list">
             {items.map((item, index) => {
               const label = itemLabel(item)
+              const titleId = `${item.id}-title`
+              // The remembered start of the passage, or one looked up since.
+              const preview = item.snippet || snippets[item.id] || ''
               return (
-                <li key={item.id} className="plan-row">
-                  <button
-                    type="button"
-                    className="plan-row-main"
-                    aria-label={t('plan.stageAria', { ref: label })}
-                    onClick={() => onStage(item)}
-                    onDoubleClick={() => onShow(item)}
-                  >
-                    <span className="plan-row-number" aria-hidden="true">
-                      {index + 1}
-                    </span>
-                    <span className="plan-row-body">
-                      <span className="plan-row-title">{label}</span>
-                      {item.snippet && <span className="plan-row-snippet">{item.snippet}</span>}
-                    </span>
-                  </button>
-                  <div className="plan-row-actions">
+                <li key={item.id} className="ref-item plan-item">
+                  <div className="plan-item-head">
                     <button
                       type="button"
-                      className="plan-row-action"
-                      aria-label={t('plan.moveUp', { ref: label })}
-                      disabled={index === 0}
-                      onClick={() => onMove(item.id, -1)}
+                      className="plan-row-main"
+                      aria-label={t('plan.stageAria', { ref: label })}
+                      onClick={() => onStage(item)}
+                      onDoubleClick={() => onShow(item)}
                     >
-                      ↑
+                      <span className="plan-row-number" aria-hidden="true">
+                        {index + 1}
+                      </span>
+                      <span className="plan-row-body">
+                        <span className="plan-row-title" id={titleId}>
+                          {label}
+                        </span>
+                        {preview && <q className="ref-card-text">{preview}</q>}
+                      </span>
                     </button>
-                    <button
-                      type="button"
-                      className="plan-row-action"
-                      aria-label={t('plan.moveDown', { ref: label })}
-                      disabled={index === items.length - 1}
-                      onClick={() => onMove(item.id, 1)}
+                    <div className="plan-row-reorder">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        iconOnly
+                        aria-label={t('plan.moveUp', { ref: label })}
+                        disabled={index === 0}
+                        onClick={() => onMove(item.id, -1)}
+                      >
+                        ↑
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        iconOnly
+                        aria-label={t('plan.moveDown', { ref: label })}
+                        disabled={index === items.length - 1}
+                        onClick={() => onMove(item.id, 1)}
+                      >
+                        ↓
+                      </Button>
+                    </div>
+                  </div>
+                  <div className="ref-item-actions">
+                    <Button
+                      variant="primary"
+                      size="sm"
+                      aria-describedby={titleId}
+                      onClick={() => onShow(item)}
                     >
-                      ↓
-                    </button>
-                    <button
-                      type="button"
-                      className="plan-row-action"
+                      {t('row.show')}
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      aria-describedby={titleId}
+                      onClick={() => onStage(item)}
+                    >
+                      {t('row.stage')}
+                    </Button>
+                    <Button
+                      variant="danger"
+                      size="sm"
                       aria-label={t('plan.remove', { ref: label })}
                       onClick={() => onRemove(item.id)}
                     >
-                      <XIcon aria-hidden="true" />
-                    </button>
+                      {t('row.remove')}
+                    </Button>
                   </div>
                 </li>
               )
@@ -100,7 +137,7 @@ export function PlanPanel({ items, onStage, onShow, onRemove, onMove, onClear }:
       </div>
 
       <div className="operator-queue-footer">
-        <Button variant="ghost" size="sm" onClick={onClear} disabled={items.length === 0}>
+        <Button variant="secondary" size="sm" onClick={onClear} disabled={items.length === 0}>
           {t('plan.clear')}
         </Button>
         <span className="operator-queue-hint">{t('plan.hint')}</span>

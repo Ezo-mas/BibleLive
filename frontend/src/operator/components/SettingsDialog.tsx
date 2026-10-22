@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef } from 'react'
 import type { KeyboardEvent } from 'react'
-import { ThemeToggle, XIcon } from '../../components'
+import { Button, ThemeToggle, XIcon } from '../../components'
 import { useI18n } from '../../shared/i18nContext'
 import { DisplaySettings } from './DisplaySettings'
 import { AutoApproveControls } from './AutoApproveControls'
@@ -174,15 +174,14 @@ export function SettingsDialog({
           <h2 className="operator-dialog-title" id={titleId}>
             {t('settings.title')}
           </h2>
-          <button
-            type="button"
-            className="operator-dialog-close"
+          <Button
+            variant="ghost"
+            iconOnly
+            icon={<XIcon />}
             data-dialog-close
             onClick={onClose}
             aria-label={t('settings.close')}
-          >
-            <XIcon />
-          </button>
+          />
         </div>
 
         <div className="operator-dialog-body">

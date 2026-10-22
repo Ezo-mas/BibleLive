@@ -33,7 +33,7 @@ export function BibleVersionSettings({ state, disabled }: BibleVersionSettingsPr
         </span>
       </div>
       <div
-        className="operator-verse-options"
+        className="segmented"
         role="group"
         aria-label={t('settings.bibleVersion')}
         aria-describedby={hintId}
@@ -42,7 +42,7 @@ export function BibleVersionSettings({ state, disabled }: BibleVersionSettingsPr
           <button
             key={id}
             type="button"
-            className={`operator-verse-option ${version === id ? 'is-active' : ''}`}
+            className="segmented-option"
             aria-pressed={version === id}
             disabled={locked}
             onClick={() => change(id)}
