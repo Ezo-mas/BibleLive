@@ -147,6 +147,25 @@ below the fold.
   `AppState.bible_lookup` and is not visible to it. Logged, not fixed.
 - **Logged:** 2026-10-14
 
+### A damaged settings file is overwritten on the next save, dropping every other setting
+- **Where:** `backend/core/server/settings_store.py` (`SettingsStore._read` and every
+  `save_*` method, which all read, change one key and write the whole object back).
+- **Problem:** `_read()` returns an empty dict for a file it cannot parse (bad JSON, a
+  non-object, unreadable), and logs only a warning. The next `save_*` call starts from
+  that empty dict and writes just its own key, so the damaged file is replaced by a
+  valid one that has lost everything else it held: auto-approve mode, follow-along
+  auto-show, the Bible translation, and the idle-screen record and fit.
+- **Impact:** After a hand edit or a corrupted write, the first operator change
+  (for example flipping Auto-approve) silently resets the other persisted settings to
+  their defaults. The idle-screen picture then goes blank even though its file is
+  still on disk, and a chosen translation reverts to the configured default. Atomic
+  writes make a truncated file unlikely, so this needs a damaged file to start with.
+- **Evidence:** Reproduced 2026-10-22: saved `auto_mode: "high"` and `follow_auto: true`,
+  appended a stray `}` to the file, then saved `auto_mode: "all"`. The file read back as
+  `{"auto_mode": "all"}`; `follow_auto` was gone. The warning "Ignoring settings file ...
+  Extra data" was the only trace.
+- **Logged:** 2026-10-22
+
 ### WebSocket tests with two sockets open can hang forever (resolved)
 - **Where:** `backend/tests/conftest.py` (`client` fixture returns `TestClient(app)`
   without `with`); every test that holds a display and an operator socket at once

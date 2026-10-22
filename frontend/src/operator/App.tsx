@@ -80,13 +80,15 @@ export default function App() {
   // language is opened — the reading the operator acts on is then current.
   const { refresh: refreshSpokenLanguage } = operator.spokenLanguage
   const { refresh: refreshBibleVersion } = operator.bibleVersion
+  const { refresh: refreshIdleScreen } = operator.idleScreen
   const isConnected = operator.isConnected
   useEffect(() => {
     if (settingsOpen && isConnected) {
       refreshSpokenLanguage()
       refreshBibleVersion()
+      refreshIdleScreen()
     }
-  }, [settingsOpen, isConnected, refreshSpokenLanguage, refreshBibleVersion])
+  }, [settingsOpen, isConnected, refreshSpokenLanguage, refreshBibleVersion, refreshIdleScreen])
 
   // The launcher's interface language is asked for again on connect: the operator's
   // token is often entered only after the first request, which the server refuses.
@@ -237,6 +239,7 @@ export default function App() {
         onThemeChange={operator.setDisplayBackground}
         spokenLanguage={operator.spokenLanguage}
         bibleVersion={operator.bibleVersion}
+        idleScreen={operator.idleScreen}
         autoMode={operator.autoMode}
         onAutoModeChange={operator.setAutoApproveMode}
         followAuto={operator.followAuto}

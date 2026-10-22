@@ -10,6 +10,8 @@ import { LanguageSettings } from './LanguageSettings'
 import type { SpokenLanguageState } from '../hooks/useSpokenLanguage'
 import { BibleVersionSettings } from './BibleVersionSettings'
 import type { BibleVersionState } from '../hooks/useBibleVersion'
+import { IdleScreenSettings } from './IdleScreenSettings'
+import type { IdleScreenState } from '../hooks/useIdleScreen'
 import type { Theme } from '../../hooks/useTheme'
 import type { DisplayTheme, VerseLimit } from '../../shared/verseText'
 import type { AutoMode } from '../../shared/types'
@@ -35,6 +37,8 @@ export interface SettingsDialogProps {
   spokenLanguage: SpokenLanguageState
   /** The Bible translation verse text comes from: read and switched through the server. */
   bibleVersion: BibleVersionState
+  /** The picture the display shows while nothing is on screen: read and changed through the server. */
+  idleScreen: IdleScreenState
   autoMode: AutoMode
   onAutoModeChange: (next: AutoMode) => void
   /** Follow-along auto-show: the server shows the verses a speaker reads on to by itself. */
@@ -87,6 +91,7 @@ export function SettingsDialog({
   onThemeChange,
   spokenLanguage,
   bibleVersion,
+  idleScreen,
   autoMode,
   onAutoModeChange,
   followAuto,
@@ -201,6 +206,7 @@ export function SettingsDialog({
               <ThemeToggle theme={appTheme} onThemeChange={onAppThemeChange} />
               <p className="operator-setting-hint">{t('settings.appThemeHint')}</p>
             </div>
+            <IdleScreenSettings state={idleScreen} disabled={disabled} />
             <InterfaceLanguageSettings />
           </section>
 
