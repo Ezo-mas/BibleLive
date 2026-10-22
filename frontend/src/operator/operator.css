@@ -277,8 +277,11 @@
 .operator-main {
   --operator-chrome: 428px;
   --operator-side-min: 300px;
+  --operator-side-max: 560px;
   --operator-column-min: 560px;
   display: flex;
+  /* On a window wider than the column and the panel together, they sit centred. */
+  justify-content: center;
   gap: var(--space-4);
   flex: 1;
   min-height: 0;
@@ -431,7 +434,15 @@
 /* Nothing on the display yet: the same box, saying so in the console's voice. */
 .operator-monitor.is-idle {
   align-items: center;
+  justify-content: center;
   font-family: var(--font-sans);
+}
+
+/* The empty state stacks (icon over text) and centres as one block. */
+.operator-monitor.is-idle .operator-hint {
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
 }
 
 /* Compact placeholder shared by the preview and Up Next. */
@@ -549,7 +560,7 @@
   display: flex;
   flex-wrap: wrap;
   align-items: flex-end;
-  gap: var(--space-2) var(--space-5);
+  gap: var(--space-2) var(--space-4);
   padding: var(--card-pad);
 }
 
@@ -708,6 +719,7 @@
 .operator-pending {
   flex: 1 1 var(--operator-side-min);
   min-width: var(--operator-side-min);
+  max-width: var(--operator-side-max);
   min-height: 0;
 }
 
@@ -1016,10 +1028,10 @@
    label and hint. Anything else in a row (an error, a picture) takes the full width
    under them. In a narrow dialog the control drops under the hint. */
 .operator-setting {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: var(--space-1) var(--card-pad);
+  gap: var(--card-gap) var(--card-pad);
   padding: var(--card-pad) 0;
   border-bottom: var(--border-width) solid var(--color-border);
 }
@@ -1028,30 +1040,29 @@
   border-bottom: 0;
 }
 
-.operator-setting > .operator-setting-header,
-.operator-setting > .operator-setting-label {
-  grid-column: 1;
-  grid-row: 1;
-}
-
-.operator-setting > .operator-setting-hint {
-  grid-column: 1;
-  grid-row: 2;
+/* The label and its hint are one block that never gets narrower than 14rem (224px):
+   it takes the room the control leaves, and a control too wide for what is left
+   (a long label, another language) wraps under the text instead of squeezing it
+   into one word per line. */
+.operator-setting-text {
+  display: flex;
+  flex: 1 1 14rem;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
 }
 
 .operator-setting > .segmented,
 .operator-setting > .operator-setting-control {
-  grid-column: 2;
-  grid-row: 1 / span 2;
-  justify-self: end;
+  flex: 0 0 auto;
+  max-width: 100%;
 }
 
 /* Rows with a long error, or a picture, put it across the whole row. */
 .operator-setting > .operator-scripture-error,
 .operator-setting > .operator-scripture-unavailable,
 .operator-setting > .idle-screen-preview {
-  grid-column: 1 / -1;
-  grid-row: auto;
+  flex: 1 1 100%;
 }
 
 .operator-setting-header {
@@ -1097,7 +1108,13 @@
 /* The idle picture's preview, in its own row: a 16:9 box with the monitor's border
    and corners, and the current state under it. */
 .operator-setting-preview {
-  grid-template-columns: minmax(0, 1fr);
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+.operator-setting-preview > .idle-screen-preview {
+  flex: 0 1 auto;
 }
 
 .idle-screen-preview {
@@ -1358,7 +1375,6 @@
   width: 100%;
   max-width: 520px;
   max-height: calc(100dvh - 2 * var(--space-4));
-  container-type: inline-size;
   background: var(--panel-bg);
   border: var(--border-width) solid var(--color-border);
   border-radius: var(--radius-dialog);
@@ -1406,21 +1422,6 @@
   letter-spacing: var(--tracking-caps);
   text-transform: uppercase;
   color: var(--color-text-muted);
-}
-
-/* A narrow dialog: the control drops under the label and hint, to the start. */
-@container (max-width: 460px) {
-  .operator-setting {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .operator-setting > .segmented,
-  .operator-setting > .operator-setting-control {
-    grid-column: 1;
-    grid-row: 3;
-    justify-self: start;
-    margin-top: var(--space-1);
-  }
 }
 
 /* Action feedback. One slot only: a new message replaces the previous one, so a

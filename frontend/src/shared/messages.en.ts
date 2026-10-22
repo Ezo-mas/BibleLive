@@ -280,7 +280,9 @@ export const en = {
   'stage.previewAria': 'Audience display preview',
   'quick.versesLabel': 'Verses',
   'quick.versesAria': 'Verses shown on the display',
+  'quick.screenLabel': 'Screen',
   'quick.autoLabel': 'Auto-approve',
+  'quick.autoCaption': 'Auto-approve',
   'quick.autoOn': 'On',
   'quick.autoOff': 'Off',
 

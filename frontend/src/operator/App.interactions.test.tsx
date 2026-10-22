@@ -289,6 +289,22 @@ describe('controls under the display preview', () => {
     expect(group.getByRole('button', { name: '10' })).toHaveAttribute('aria-pressed', 'true')
   })
 
+  it('gives every control in the row a caption, Clear display included', () => {
+    const { container } = render(<App />)
+    act(() => {
+      socket?.onopen?.()
+    })
+
+    const groups = [...container.querySelectorAll('.operator-quick > .operator-quick-group')]
+    expect(groups.map(group => group.querySelector('.operator-quick-label')?.textContent)).toEqual([
+      'Screen',
+      'Verses',
+      'Auto-approve',
+    ])
+    // Each group is a caption over one control, so they share one anatomy.
+    expect(groups[0].querySelector('button')).toHaveTextContent('Clear Display')
+  })
+
   it('has Clear display in the same row, and no live-status chip next to ON DISPLAY', () => {
     openWith()
 

@@ -51,15 +51,18 @@ export function DisplayQuickControls({
 
   return (
     <div className="operator-quick">
-      <Button
-        variant="secondary"
-        icon={<XIcon />}
-        onClick={onClearDisplay}
-        disabled={!canClearDisplay}
-        className={flash === 'clear' ? 'btn-flash' : ''}
-      >
-        {t('stage.clearDisplay')}
-      </Button>
+      <div className="operator-quick-group">
+        <span className="operator-quick-label">{t('quick.screenLabel')}</span>
+        <Button
+          variant="secondary"
+          icon={<XIcon />}
+          onClick={onClearDisplay}
+          disabled={!canClearDisplay}
+          className={flash === 'clear' ? 'btn-flash' : ''}
+        >
+          {t('stage.clearDisplay')}
+        </Button>
+      </div>
 
       <div className="operator-quick-group">
         <span className="operator-quick-label">{t('quick.versesLabel')}</span>
@@ -78,7 +81,8 @@ export function DisplayQuickControls({
       </div>
 
       <div className="operator-quick-group operator-quick-auto">
-        <span className="operator-quick-label">{t('quick.autoLabel')}</span>
+        {/* A short caption: the full name is the group's accessible name. */}
+        <span className="operator-quick-label">{t('quick.autoCaption')}</span>
         <div className="segmented" role="group" aria-label={t('quick.autoLabel')}>
           <SegmentedOption
             aria-pressed={!on}

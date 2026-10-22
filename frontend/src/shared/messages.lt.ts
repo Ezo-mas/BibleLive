@@ -287,9 +287,11 @@ export const lt: Record<MessageKey, MessageEntry> = {
   'stage.previewAria': 'Auditorijos ekrano peržiūra',
   'quick.versesLabel': 'Eilutės',
   'quick.versesAria': 'Ekrane rodomos eilutės',
+  'quick.screenLabel': 'Ekranas',
   'quick.autoLabel': 'Automatinis patvirtinimas',
-  'quick.autoOn': 'Įjungta',
-  'quick.autoOff': 'Išjungta',
+  'quick.autoCaption': 'Automatinis',
+  'quick.autoOn': 'Įj.',
+  'quick.autoOff': 'Išj.',
 
   // Reference cards
   'ref.confidenceSr': 'Aptikimo tikrumas: ',

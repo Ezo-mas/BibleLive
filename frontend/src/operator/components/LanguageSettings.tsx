@@ -32,11 +32,22 @@ export function LanguageSettings({ state, disabled }: LanguageSettingsProps) {
 
   return (
     <div className="operator-setting">
-      <div className="operator-setting-header">
-        <span className="operator-setting-label">{t('settings.spokenLanguage')}</span>
-        <span className="operator-setting-value">
-          {isSwitching ? t('settings.switching') : language ? spokenLanguageLabel(language, t) : ''}
-        </span>
+      <div className="operator-setting-text">
+        <div className="operator-setting-header">
+          <span className="operator-setting-label">{t('settings.spokenLanguage')}</span>
+          <span className="operator-setting-value">
+            {isSwitching
+              ? t('settings.switching')
+              : language
+                ? spokenLanguageLabel(language, t)
+                : ''}
+          </span>
+        </div>
+        {!unavailable && (
+          <p className="operator-setting-hint" id={hintId}>
+            {status === 'loading' ? t('settings.checkingPipeline') : t('settings.takesEffect')}
+          </p>
+        )}
       </div>
       <div
         className="segmented"
@@ -71,17 +82,12 @@ export function LanguageSettings({ state, disabled }: LanguageSettingsProps) {
           </Button>
         </div>
       ) : (
-        <>
-          <p className="operator-setting-hint" id={hintId}>
-            {status === 'loading' ? t('settings.checkingPipeline') : t('settings.takesEffect')}
+        error && (
+          <p className="operator-scripture-error">
+            <AlertCircleIcon aria-hidden="true" />
+            {error}
           </p>
-          {error && (
-            <p className="operator-scripture-error">
-              <AlertCircleIcon aria-hidden="true" />
-              {error}
-            </p>
-          )}
-        </>
+        )
       )}
     </div>
   )

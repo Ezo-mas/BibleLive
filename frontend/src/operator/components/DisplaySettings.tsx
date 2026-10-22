@@ -41,7 +41,12 @@ export function DisplaySettings({
   return (
     <>
       <div className="operator-setting">
-        <span className="operator-setting-label">{t('settings.verses')}</span>
+        <div className="operator-setting-text">
+          <span className="operator-setting-label">{t('settings.verses')}</span>
+          <p className="operator-setting-hint">
+            {t('settings.versesDefault', { count: DEFAULT_VERSE_LIMIT })}
+          </p>
+        </div>
         <div className="segmented" role="group" aria-label={t('settings.versesGroup')}>
           {VERSE_LIMIT_OPTIONS.map(option => (
             <SegmentedOption
@@ -61,13 +66,13 @@ export function DisplaySettings({
             {t('settings.versesAll')}
           </SegmentedOption>
         </div>
-        <p className="operator-setting-hint">
-          {t('settings.versesDefault', { count: DEFAULT_VERSE_LIMIT })}
-        </p>
       </div>
 
       <div className="operator-setting">
-        <span className="operator-setting-label">{t('settings.background')}</span>
+        <div className="operator-setting-text">
+          <span className="operator-setting-label">{t('settings.background')}</span>
+          <p className="operator-setting-hint">{t('settings.bgHint')}</p>
+        </div>
         <div className="segmented" role="group" aria-label={t('settings.backgroundGroup')}>
           {DISPLAY_THEME_OPTIONS.map(option => (
             <SegmentedOption
@@ -80,7 +85,6 @@ export function DisplaySettings({
             </SegmentedOption>
           ))}
         </div>
-        <p className="operator-setting-hint">{t('settings.bgHint')}</p>
       </div>
 
       {children}

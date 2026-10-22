@@ -201,9 +201,11 @@ export function SettingsDialog({
               {t('settings.sectionConsole')}
             </h3>
             <div className="operator-setting">
-              <span className="operator-setting-label">{t('settings.appTheme')}</span>
+              <div className="operator-setting-text">
+                <span className="operator-setting-label">{t('settings.appTheme')}</span>
+                <p className="operator-setting-hint">{t('settings.appThemeHint')}</p>
+              </div>
               <ThemeToggle theme={appTheme} onThemeChange={onAppThemeChange} />
-              <p className="operator-setting-hint">{t('settings.appThemeHint')}</p>
             </div>
             <InterfaceLanguageSettings />
           </section>

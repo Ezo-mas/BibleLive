@@ -34,11 +34,16 @@ export function AutoApproveControls({
     <div className="operator-setting">
       {/* Not a display setting, but it reuses the same row and button styling so
           the console keeps one control vocabulary. */}
-      <div className="operator-setting-header">
-        <span className="operator-setting-label">{t('settings.sectionAuto')}</span>
-        <span className={`operator-setting-value ${autoMode === 'off' ? '' : 'is-on'}`}>
-          {t(active.labelKey)}
-        </span>
+      <div className="operator-setting-text">
+        <div className="operator-setting-header">
+          <span className="operator-setting-label">{t('settings.sectionAuto')}</span>
+          <span className={`operator-setting-value ${autoMode === 'off' ? '' : 'is-on'}`}>
+            {t(active.labelKey)}
+          </span>
+        </div>
+        <p className="operator-setting-hint" id={descriptionId}>
+          {t(active.descriptionKey)}
+        </p>
       </div>
       <div
         className="segmented"
@@ -57,9 +62,6 @@ export function AutoApproveControls({
           </SegmentedOption>
         ))}
       </div>
-      <p className="operator-setting-hint" id={descriptionId}>
-        {t(active.descriptionKey)}
-      </p>
     </div>
   )
 }

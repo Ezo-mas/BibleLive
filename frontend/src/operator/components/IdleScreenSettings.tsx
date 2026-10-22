@@ -35,8 +35,11 @@ export function IdleScreenSettings({ state, disabled }: IdleScreenSettingsProps)
     <>
       {/* The picture itself: upload, replace, remove. */}
       <div className="operator-setting">
-        <div className="operator-setting-header">
-          <span className="operator-setting-label">{t('idle.label')}</span>
+        <div className="operator-setting-text">
+          <div className="operator-setting-header">
+            <span className="operator-setting-label">{t('idle.label')}</span>
+          </div>
+          <p className="operator-setting-hint">{t('idle.hint')}</p>
         </div>
         <div className="operator-setting-control">
           <input
@@ -63,7 +66,7 @@ export function IdleScreenSettings({ state, disabled }: IdleScreenSettingsProps)
             {t('idle.remove')}
           </Button>
         </div>
-        <p className="operator-setting-hint">{t('idle.hint')}</p>
+
         {error && (
           <p className="operator-scripture-error">
             <AlertCircleIcon aria-hidden="true" />
@@ -74,8 +77,13 @@ export function IdleScreenSettings({ state, disabled }: IdleScreenSettingsProps)
 
       {/* How the picture fits the screen. */}
       <div className="operator-setting">
-        <div className="operator-setting-header">
-          <span className="operator-setting-label">{t('idle.fitLabel')}</span>
+        <div className="operator-setting-text">
+          <div className="operator-setting-header">
+            <span className="operator-setting-label">{t('idle.fitLabel')}</span>
+          </div>
+          <p className="operator-setting-hint" id={hintId}>
+            {t('idle.fitHint')}
+          </p>
         </div>
         <div
           className="segmented"
@@ -94,9 +102,6 @@ export function IdleScreenSettings({ state, disabled }: IdleScreenSettingsProps)
             </SegmentedOption>
           ))}
         </div>
-        <p className="operator-setting-hint" id={hintId}>
-          {t('idle.fitHint')}
-        </p>
       </div>
 
       {/* What the display will show, in its own row, with the current state under it. */}

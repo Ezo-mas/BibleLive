@@ -26,7 +26,12 @@ export function InterfaceLanguageSettings() {
 
   return (
     <div className="operator-setting">
-      <span className="operator-setting-label">{t('settings.interfaceLanguage')}</span>
+      <div className="operator-setting-text">
+        <span className="operator-setting-label">{t('settings.interfaceLanguage')}</span>
+        <p className="operator-setting-hint" id={hintId}>
+          {t('settings.interfaceHint')}
+        </p>
+      </div>
       <div
         className="segmented"
         role="group"
@@ -43,9 +48,6 @@ export function InterfaceLanguageSettings() {
           </SegmentedOption>
         ))}
       </div>
-      <p className="operator-setting-hint" id={hintId}>
-        {t('settings.interfaceHint')}
-      </p>
     </div>
   )
 }

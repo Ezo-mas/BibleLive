@@ -36,10 +36,10 @@ shared class instead of writing a one-off. Display page styling is separate
 
 ## Layout
 
-Two columns inside 16px of padding. Left, top to bottom: the ON DISPLAY preview
+Two columns inside 16px of padding, centred on a window wider than the two together. Left, top to bottom: the ON DISPLAY preview
 with its control row in the same card, UP NEXT, follow-along. Right: one tabbed
-panel (Pending, Plan, History) that takes whatever width is left and fills the
-height. Below 1100px it is one column and the page scrolls. The gear in the header
+panel (Pending, Plan, History) that takes the width that is left, between 300px and
+560px (`--operator-side-max`; it never balloons on a wide window), and fills the height. Below 1100px it is one column and the page scrolls. The gear in the header
 opens Settings, which holds everything not needed mid-service (language, Bible
 version, interface language, follow-along switch, the auto-approve modes, display
 background).
@@ -68,8 +68,12 @@ recessed fill and a dashed `--color-border-strong` edge with extra space above i
 ("queued, not live") and Unstage then Show on display in its header; follow-along is a
 neutral raised surface with a trace of the accent (about 6% fill, 28% edge), normal
 body colours, and only its label in `--accent-text`. The control row under the
-monitor is Clear display, Verses (3, 5, 10, All: the values the server accepts) and an
-Auto-approve switch.
+monitor is three groups, each a caption over one 36px control on one baseline: Screen
+(Clear display), Verses (3, 5, 10, All: the values the server accepts) and Auto-approve
+(Off / On). The captions are short on purpose (Lithuanian uses "Automatinis" over the
+control; the group's accessible name is the full phrase), and the row stays on one line
+down to the 560px column floor in both languages. An empty preview centres its message
+on both axes.
 
 ## One spacing system
 
@@ -154,16 +158,20 @@ One design for the whole dialog (`SettingsDialog.tsx`, styles in `operator.css`)
 - **Every setting is one `.operator-setting` row:** the label (semibold) with a muted
   hint under it on the left, the control on the right and centred against them, a 1px
   divider between rows (none after a section's last row), `--card-pad` (12px) padding
-  top and bottom. The same label, hint and control alignment in every row. The row is a
-  two-column grid; anything else in it (an error, a picture) spans the full width
-  under them. When the dialog is narrower than 460px (a container query on the
-  dialog), the control drops under the hint, to the start.
+  top and bottom. The same label, hint and control alignment in every row. The row wraps:
+  the label and hint are one block (`.operator-setting-text`) that is never narrower
+  than 14rem (224px), the control keeps its own width, and a control that does not fit
+  beside the text (a long label, another language, a narrow dialog) drops under it, to
+  the start, instead of squeezing the text into one word per line. Anything else in the
+  row (an error, a picture) spans the full width. The idle picture's preview is centred
+  in its row with its caption centred under it.
 - **Controls are only the shared ones:** `.segmented` for every choice (Off/On,
   background, language, verses, theme, picture fit) and `.btn` variants.
 - **Segmented anatomy:** no inset or gap; options sit edge to edge inside a 1px border
   with a 1px divider between them, the track clips them, and the selected option fills
   its cell. The track keeps its own width (an inline grid), every option in one control
-  is the same width (the widest label sets it, never less than `--segment-w`, 44px), so
+  is the same width (the widest label plus 8px each side sets it, never less than
+  `--segment-w`, 44px), so
   the track is exactly the sum of its options plus the border. A 36px track has 34px
   options. The selected option is also bold (not colour alone); each label carries a
   hidden bold copy of itself (`SegmentedOption`), so selecting never changes a track's
@@ -188,6 +196,19 @@ One design for the whole dialog (`SettingsDialog.tsx`, styles in `operator.css`)
 - Spacing only from `--space-*` (4px grid, plus `--space-0-5` for 2px gaps).
 - Icons are `--icon-sm` (16px) beside text and `--icon-md` (18px) in controls,
   banners and toasts.
+
+## Verify in English and Lithuanian
+
+Every layout is verified in English and in Lithuanian, in light and dark, before it is
+called done: Lithuanian labels are routinely 30 to 60% longer. Switch the language
+through the real setting (Settings, Interface language) and measure in a browser, not
+by eye: no wrapped row or stray line (the control row is one line down to the 560px
+column floor), no horizontal overflow, a label column that never drops under 200px, and
+the same alignment as English. A new string is checked for width where it sits: the
+control row's captions and Off / On labels are pinned by a unit test
+(`shared/quickRow.test.ts`), and a longer translation there needs a conscious choice and
+a browser check. Layouts that depend on the length of text wrap or shrink (`flex-wrap`,
+`minmax`), they never assume English.
 
 ## Adding something new
 

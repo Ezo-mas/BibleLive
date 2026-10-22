@@ -28,11 +28,16 @@ export function FollowAutoControls({
 
   return (
     <div className="operator-setting">
-      <div className="operator-setting-header">
-        <span className="operator-setting-label">{t('settings.followAuto')}</span>
-        <span className={`operator-setting-value ${followAuto ? 'is-on' : ''}`}>
-          {followAuto ? t('follow.on') : t('follow.off')}
-        </span>
+      <div className="operator-setting-text">
+        <div className="operator-setting-header">
+          <span className="operator-setting-label">{t('settings.followAuto')}</span>
+          <span className={`operator-setting-value ${followAuto ? 'is-on' : ''}`}>
+            {followAuto ? t('follow.on') : t('follow.off')}
+          </span>
+        </div>
+        <p className="operator-setting-hint" id={descriptionId}>
+          {t('settings.followAutoHint')}
+        </p>
       </div>
       <div
         className="segmented"
@@ -55,9 +60,6 @@ export function FollowAutoControls({
           {t('follow.on')}
         </SegmentedOption>
       </div>
-      <p className="operator-setting-hint" id={descriptionId}>
-        {t('settings.followAutoHint')}
-      </p>
     </div>
   )
 }
