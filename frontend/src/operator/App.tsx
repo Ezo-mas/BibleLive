@@ -5,6 +5,9 @@ import { useOperatorShortcuts } from './hooks/useOperatorShortcuts'
 import { LivePanel } from './components/LivePanel'
 import { NextPanel } from './components/NextPanel'
 import { PendingQueue } from './components/PendingQueue'
+import { PlanPanel } from './components/PlanPanel'
+import { SidePanel } from './components/SidePanel'
+import type { SideTab } from './components/SidePanel'
 import { FollowAlongHint } from './components/FollowAlongHint'
 import { HistoryPanel } from './components/HistoryPanel'
 import { ScriptureSearch } from './components/ScriptureSearch'
@@ -31,10 +34,11 @@ import './operator.css'
  * keyboard handling in `useOperatorShortcuts`.
  *
  * The workspace reads like a switcher: ON DISPLAY is what the audience is looking
- * at, UP NEXT is the scripture being prepared for it (and the one filled button,
- * Show on display, that sends it), and recent history sits below. The pending
- * queue of detections has the column on the right. Find Scripture is a command
- * bar in the header, so it is one keystroke away from anywhere.
+ * at and UP NEXT is the scripture being prepared for it (and the one filled button,
+ * Show on display, that sends it). The column on the right is one panel with three
+ * tabs: the pending queue of detections (the default), the plan of passages lined
+ * up in advance, and history. Find Scripture is a command bar in the header, so it
+ * is one keystroke away from anywhere.
  *
  * Preferences — verses shown, display background, app theme, auto-approve — all
  * live in one settings dialog behind the header's gear. Keeping them out of the
@@ -44,10 +48,11 @@ import './operator.css'
  *
  * Scripture reaches the display by one of two doors, and they stay separate all
  * the way down. A pending reference is approved by ID through the server's
- * approval path; a passage the operator finds by hand — or picks from history to
- * show again — is staged in UP NEXT and sent as coordinates for the server to
- * resolve itself. Search only ever stages: Show on display is the operator's own
- * action.
+ * approval path; a passage the operator finds by hand — or picks from the plan or
+ * history — is staged in UP NEXT and sent as coordinates for the server to resolve
+ * itself. Typing in search never reaches the display by itself: the operator's own
+ * Enter shows the resolved passage, Ctrl+Enter stages it, and a double-click on a
+ * list row is Show on display without the staging step.
  */
 export default function App() {
   const operator = useOperatorState()
@@ -57,6 +62,7 @@ export default function App() {
   const { theme, setTheme } = useTheme()
   const [settingsSection, setSettingsSection] = useState<SettingsSection>('display')
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [sideTab, setSideTab] = useState<SideTab>('pending')
 
   useOperatorShortcuts({
     hasSelection: operator.selectedId !== null,
@@ -83,7 +89,7 @@ export default function App() {
 
   // The launcher's interface language is asked for again on connect: the operator's
   // token is often entered only after the first request, which the server refuses.
-  const { refreshServerLanguage } = useI18n()
+  const { refreshServerLanguage, t } = useI18n()
   useEffect(() => {
     if (isConnected) refreshServerLanguage()
   }, [isConnected, refreshServerLanguage])
@@ -123,7 +129,7 @@ export default function App() {
           <ScriptureSearch
             search={operator.search}
             disabled={!operator.isConnected}
-            // Shift+Enter in the box shows a passage directly; not from behind
+            // Enter in the box shows a passage directly; not from behind
             // the settings modal.
             directEnabled={!settingsOpen}
           />
@@ -176,27 +182,48 @@ export default function App() {
             canShow={operator.canShowFollowAlong}
             onShow={operator.showFollowAlong}
           />
-
-          <HistoryPanel
-            history={operator.history}
-            count={operator.historyCount}
-            selectedId={operator.selectedHistoryId}
-            onSelect={operator.selectHistory}
-          />
         </div>
 
-        <PendingQueue
-          pending={operator.pending}
-          count={operator.pendingCount}
-          selectedId={operator.selectedId}
-          onSelect={operator.selectPending}
+        <SidePanel
+          tab={sideTab}
+          onTabChange={setSideTab}
+          counts={{ pending: operator.pendingCount, plan: operator.plan.items.length }}
         >
-          <QueueFooter
-            canClearPending={operator.canClearPending}
-            flash={operator.flash}
-            onClearPending={operator.clearPendingQueue}
-          />
-        </PendingQueue>
+          {sideTab === 'pending' && (
+            <PendingQueue
+              pending={operator.pending}
+              selectedId={operator.selectedId}
+              onSelect={operator.selectPending}
+              onShow={operator.approvePending}
+            >
+              <QueueFooter
+                canClearPending={operator.canClearPending}
+                flash={operator.flash}
+                onClearPending={operator.clearPendingQueue}
+              />
+            </PendingQueue>
+          )}
+          {sideTab === 'plan' && (
+            <PlanPanel
+              items={operator.plan.items}
+              onStage={operator.stagePlanItem}
+              onShow={operator.showPlanItem}
+              onRemove={operator.plan.remove}
+              onMove={operator.plan.move}
+              onClear={() => {
+                if (window.confirm(t('plan.confirmClear'))) operator.plan.clear()
+              }}
+            />
+          )}
+          {sideTab === 'history' && (
+            <HistoryPanel
+              history={operator.history}
+              selectedId={operator.selectedHistoryId}
+              onSelect={operator.selectHistory}
+              onShow={operator.showHistory}
+            />
+          )}
+        </SidePanel>
       </main>
 
       <SettingsDialog

@@ -57,11 +57,10 @@ function reference() {
   }
 }
 
-/** The history panel, scoped so LIVE showing the same reference cannot collide. */
+/** The history tab, opened: its list is the only body in the tab panel. */
 function historyPanel() {
-  const section = screen.getByRole('heading', { name: 'Recent History' }).closest('section')
-  if (!section) throw new Error('history section not found')
-  return within(section)
+  fireEvent.click(screen.getByRole('tab', { name: 'History' }))
+  return within(screen.getByRole('tabpanel'))
 }
 
 /**
@@ -73,11 +72,6 @@ function openSettings() {
   act(() => {
     screen.getByRole('button', { name: 'Settings' }).click()
   })
-}
-
-/** The count badge in the history panel's header. */
-function historyCount() {
-  return historyPanel().getByText(/^\d+$/, { selector: '.operator-section-count' })
 }
 
 /** A state snapshot carrying the given auto-approve mode. */
@@ -147,16 +141,15 @@ describe('operator approval history', () => {
       socket?.onopen?.()
     })
 
-    expect(historyCount()).toHaveTextContent('0')
-    expect(screen.getByText('No history yet')).toBeInTheDocument()
+    const panel = historyPanel()
+    expect(panel.getByText('No history yet')).toBeInTheDocument()
 
     push({ type: 'approval_confirmed', data: { reference: reference() } })
 
-    await waitFor(() => expect(historyPanel().getByText('John 1:1-3')).toBeInTheDocument())
-    // The panel's header count is the server's total, so it still reports an
-    // entry whose card would have aged out of the window.
-    expect(historyCount()).toHaveTextContent('1')
-    expect(screen.queryByText('No history yet')).not.toBeInTheDocument()
+    await waitFor(() => expect(panel.getByText('John 1:1-3')).toBeInTheDocument())
+    // The history tab carries no count, so the list itself is the only evidence.
+    expect(screen.getByRole('tab', { name: 'History' })).not.toHaveTextContent(/\d/)
+    expect(panel.queryByText('No history yet')).not.toBeInTheDocument()
   })
 
   it('prepends the newest approval ahead of older ones', async () => {
@@ -180,14 +173,15 @@ describe('operator approval history', () => {
       },
     })
 
-    await waitFor(() => expect(historyPanel().getByText('Romans 8:28')).toBeInTheDocument())
+    const panel = historyPanel()
+    await waitFor(() => expect(panel.getByText('Romans 8:28')).toBeInTheDocument())
 
     const titles = screen
       .getAllByRole('heading', { level: 3 })
       .map(el => el.textContent)
       .filter(text => text === 'John 1:1-3' || text === 'Romans 8:28')
     expect(titles[0]).toBe('Romans 8:28')
-    expect(historyCount()).toHaveTextContent('2')
+    expect(titles).toHaveLength(2)
   })
 })
 

@@ -243,7 +243,7 @@ describe('book names from the loaded Bible translation', () => {
     type('pradzios 1:3')
     await waitFor(() => expect(results().getByText('Pradžios 1:3')).toBeInTheDocument())
     act(() => {
-      fireEvent.keyDown(searchBox(), { key: 'Enter' })
+      fireEvent.keyDown(searchBox(), { key: 'Enter', ctrlKey: true })
     })
 
     // The lookup named the canonical book...

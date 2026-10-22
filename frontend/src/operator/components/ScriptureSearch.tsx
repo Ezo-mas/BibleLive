@@ -47,12 +47,18 @@ function highlighted(result: ScriptureResult): ReactNode {
  * picking a book fills the box with its canonical name so the chapter can be
  * typed next.
  *
- * Enter picks the top row, which is what makes the keyboard flow "type, Enter,
- * Show". The global shortcuts stand down while a text field has focus, so Enter
- * here can never approve a queue item by accident. Shift+Enter on a resolved
- * passage skips Up Next and sends it straight to the display through the same
- * `display_reference` request Show uses; on anything less than a complete
- * reference it does nothing.
+ * Enter on a resolved passage shows it on the display: no staging, one
+ * `display_reference` request, the same one Show sends. The preview of how the
+ * verse begins is what makes that safe — the operator sees it is the right
+ * passage before pressing the key. On a book row Enter completes the name instead,
+ * so the chapter can be typed next. Shift+Enter (or the Plan button) adds the
+ * passage to the plan, for the operator lining verses up ahead of time; Ctrl+Enter
+ * stages it in Up Next to preview it before Show. The global shortcuts stand down
+ * while a text field has focus, so none of these can approve a queue item by
+ * accident.
+ *
+ * A resolved passage shows how its first verse begins, looked up as the reference
+ * becomes complete, so a wrong book or verse is seen before anything is staged.
  */
 export function ScriptureSearch({ search, disabled, directEnabled = true }: ScriptureSearchProps) {
   const { t } = useI18n()
@@ -69,6 +75,9 @@ export function ScriptureSearch({ search, disabled, directEnabled = true }: Scri
     showMore,
     choose,
     displayDirect,
+    planResult,
+    resolveNow,
+    preview,
     isLookingUp,
     lookupError,
   } = search
@@ -97,19 +106,32 @@ export function ScriptureSearch({ search, disabled, directEnabled = true }: Scri
     // Enter is the fast path through the whole interaction, so it never submits
     // or bubbles anywhere else.
     event.preventDefault()
+    // The row for what is in the box now, not for what it said a debounce ago.
+    const best = resolveNow()[0]
     if (event.shiftKey) {
-      // Shift+Enter shows the resolved passage directly: no lookup, no staging,
-      // one request. Stopped as well as prevented, so no global handler can turn
-      // one keypress into two actions. Incomplete or invalid input — a book row,
-      // an error, the box disconnected, Settings open — sends nothing.
+      // Shift+Enter plans the resolved passage; a book row or no result does nothing.
       event.stopPropagation()
-      if (disabled || !directEnabled) return
-      const best = results[0]
-      if (best) displayDirect(best)
+      if (disabled || !best) return
+      planResult(best)
       return
     }
-    const best = results[0]
-    if (best) pick(best)
+    if (event.ctrlKey || event.metaKey) {
+      // Ctrl+Enter stages in Up Next (or completes a book name), as Enter once did.
+      event.stopPropagation()
+      if (best) pick(best)
+      return
+    }
+    if (!best) return
+    if (best.kind === 'book') {
+      pick(best)
+      return
+    }
+    // Enter shows the resolved passage directly: no staging, one request. Stopped
+    // as well as prevented, so no global handler can turn one keypress into two
+    // actions. The box disconnected or Settings open — sends nothing.
+    event.stopPropagation()
+    if (disabled || !directEnabled) return
+    displayDirect(best)
   }
 
   const error = query.error ?? lookupError
@@ -166,7 +188,7 @@ export function ScriptureSearch({ search, disabled, directEnabled = true }: Scri
               {results.length > 0 && (
                 <ul className="operator-search-results" aria-label={t('search.resultsLabel')}>
                   {results.map(result => (
-                    <li key={result.id}>
+                    <li key={result.id} className="operator-search-item">
                       <button
                         type="button"
                         className={`operator-search-result is-${result.kind}`}
@@ -186,15 +208,26 @@ export function ScriptureSearch({ search, disabled, directEnabled = true }: Scri
                         }
                       >
                         <span className="operator-search-result-label">{highlighted(result)}</span>
-                        {result.kind === 'reference' && (
-                          <span className="operator-search-result-chip">
-                            {t('search.complete')}
-                          </span>
-                        )}
                         {result.detail && (
                           <span className="operator-search-result-detail">{result.detail}</span>
                         )}
+                        {result.kind === 'reference' && preview && (
+                          <span className="operator-search-result-preview">
+                            {preview.text ?? t('search.previewLoading')}
+                          </span>
+                        )}
                       </button>
+                      {result.kind === 'reference' && (
+                        <button
+                          type="button"
+                          className="operator-search-plan"
+                          onClick={() => planResult(result)}
+                          disabled={disabled}
+                          aria-label={t('search.addToPlanAria', { label: result.label })}
+                        >
+                          {t('search.addToPlan')}
+                        </button>
+                      )}
                     </li>
                   ))}
                 </ul>

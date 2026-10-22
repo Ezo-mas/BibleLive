@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { act, render, screen, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import App from './App'
 import type { BibleReference, OperatorMessage } from '../shared/types'
 
@@ -147,18 +147,28 @@ function openWithSnapshot({
   })
 }
 
-/** The history panel, scoped so LIVE showing the same reference cannot collide. */
-function historyPanel() {
-  const section = screen.getByRole('heading', { name: 'Recent History' }).closest('section')
-  if (!section) throw new Error('history section not found')
-  return within(section)
+/** Open a tab of the sidebar, the way the operator does. */
+function openTab(name: string | RegExp) {
+  fireEvent.click(screen.getByRole('tab', { name }))
 }
 
-/** The pending queue, for the tests that switch between the two lists. */
+/** The history tab, opened: its list is the only body in the tab panel. */
+function historyPanel() {
+  openTab('History')
+  return within(screen.getByRole('tabpanel'))
+}
+
+/** The pending tab, opened, for the tests that switch between the two lists. */
 function pendingPanel() {
-  const section = screen.getByRole('heading', { name: 'Pending References' }).closest('section')
-  if (!section) throw new Error('pending section not found')
-  return within(section)
+  openTab(/^Pending/)
+  return within(screen.getByRole('tabpanel'))
+}
+
+/** The history entries' headings, top to bottom. */
+function historyTitles() {
+  return historyPanel()
+    .getAllByRole('heading', { level: 3 })
+    .map(heading => heading.textContent)
 }
 
 /** The selectable history card whose reference matches. */
@@ -167,8 +177,11 @@ function historyCard(name: RegExp) {
 }
 
 function selectHistory(name: RegExp) {
+  // The card is found (which opens the tab) before the click, so the tab switch is
+  // not left queued inside the act that delivers the click.
+  const card = historyCard(name)
   act(() => {
-    historyCard(name).click()
+    card.click()
   })
 }
 
@@ -201,14 +214,15 @@ afterEach(() => {
 })
 
 describe('history list', () => {
-  it('lists the entries newest first, with the server value as the count', () => {
+  it('lists the entries newest first, and the tab shows no count', () => {
     openWith({ history, historyCount: 42 })
 
-    const titles = historyPanel()
-      .getAllByRole('heading', { level: 3 })
-      .map(heading => heading.textContent)
-    expect(titles).toEqual(['Romans 8:28', 'John 3:16', 'Psalms 23:1'])
-    expect(historyPanel().getByText('42')).toBeInTheDocument()
+    expect(historyTitles()).toEqual(['Romans 8:28', 'John 3:16', 'Psalms 23:1'])
+    // The list is a place to look back, not a counter: the server's total is not shown.
+    expect(
+      screen.getByRole('tab', { name: 'History' }).querySelector('.operator-section-count')
+    ).toBeNull()
+    expect(historyPanel().queryByText('42')).not.toBeInTheDocument()
   })
 
   it('identifies an entry by reference, time, and source where the data says so', () => {
@@ -227,7 +241,7 @@ describe('history list', () => {
   it('shows an empty state and no selectable cards when nothing has been shown', () => {
     openWith()
 
-    expect(screen.getByText('No history yet')).toBeInTheDocument()
+    expect(historyPanel().getByText('No history yet')).toBeInTheDocument()
     expect(historyPanel().queryAllByRole('button')).toHaveLength(0)
   })
 
@@ -244,10 +258,73 @@ describe('history list', () => {
     const cards = historyPanel().getAllByRole('heading', { level: 3 })
     expect(cards).toHaveLength(20)
     expect(historyPanel().queryByText('John 3:1')).not.toBeInTheDocument()
-    // The panel's header count still reports everything the server recorded.
+    // The tab carries no count, so the twenty-entry window is all that is listed.
     expect(
-      historyPanel().getByText('21', { selector: '.operator-section-count' })
-    ).toBeInTheDocument()
+      screen.getByRole('tab', { name: 'History' }).querySelector('.operator-section-count')
+    ).toBeNull()
+  })
+})
+
+describe('one row per passage', () => {
+  it('collapses duplicates into one row, the newest', () => {
+    const newest = { ...entry('h-a', 'John', 3, 16), created_at: '2026-01-01T11:00:00Z' }
+    const older = { ...entry('h-b', 'John', 3, 16), created_at: '2026-01-01T10:00:00Z' }
+    openWith({ currentDisplay: live, history: [newest, older] })
+
+    const rows = historyPanel().getAllByRole('button', { name: /John 3:16/ })
+    expect(rows).toHaveLength(1)
+    // The row is the newest entry: its time is the newer of the two.
+    expect(within(rows[0]).getByText(/\d{1,2}:\d{2}:\d{2}/)).toHaveAttribute(
+      'datetime',
+      '2026-01-01T11:00:00Z'
+    )
+
+    selectHistory(/John 3:16/)
+    show()
+    expect(lastSent()).toEqual({
+      action: 'display_reference',
+      book: 'John',
+      chapter: 3,
+      verse_start: 16,
+      verse_end: 16,
+    })
+  })
+
+  it('moves a passage shown again to the top without adding a row', () => {
+    openWith({ currentDisplay: live, history })
+
+    selectHistory(/Psalms 23:1/)
+    show()
+    push({
+      type: 'display_confirmed',
+      data: { reference: entry('m-4', 'Psalms', 23, 1, 'manual') },
+    })
+
+    expect(historyTitles()).toEqual(['Psalms 23:1', 'Romans 8:28', 'John 3:16'])
+  })
+
+  it('keeps a staged entry marked after a newer entry for its passage replaces its row', () => {
+    openWith({ currentDisplay: live, history })
+    selectHistory(/John 3:16/)
+
+    // Another detection of the same verse is approved: its row replaces the staged one.
+    push({ type: 'approval_confirmed', data: { reference: entry('h-new', 'John', 3, 16) } })
+
+    const card = historyCard(/John 3:16/)
+    expect(card).toHaveAttribute('aria-pressed', 'true')
+    expect(within(card).getByText('Staged in Up Next')).toBeInTheDocument()
+    expect(historyPanel().getAllByRole('button', { name: /John 3:16/ })).toHaveLength(1)
+    expect(screen.getByTestId('next-preview')).toHaveTextContent('John 3:16')
+    expect(screen.getByText('History', { selector: '.operator-next-badge' })).toBeInTheDocument()
+
+    show()
+    expect(lastSent()).toEqual({
+      action: 'display_reference',
+      book: 'John',
+      chapter: 3,
+      verse_start: 16,
+      verse_end: 16,
+    })
   })
 })
 
@@ -289,32 +366,6 @@ describe('staging a history entry', () => {
     ).toBeInTheDocument()
     expect(historyCard(/John 3:16/)).toHaveAttribute('aria-pressed', 'false')
     expect(sentActions()).toEqual([])
-  })
-
-  it('keeps duplicate entries individually selectable', () => {
-    const duplicates = [entry('h-a', 'John', 3, 16), entry('h-b', 'John', 3, 16)]
-    openWith({ currentDisplay: live, history: duplicates })
-
-    const duplicatesOnScreen = historyPanel().getAllByRole('button', { name: /John 3:16/ })
-    expect(duplicatesOnScreen).toHaveLength(2)
-
-    act(() => {
-      duplicatesOnScreen[0].click()
-    })
-
-    const cards = historyPanel().getAllByRole('button', { name: /John 3:16/ })
-    // The newest of the two is the one the operator clicked (first in the list).
-    expect(cards[0]).toHaveAttribute('aria-pressed', 'true')
-    expect(cards[1]).toHaveAttribute('aria-pressed', 'false')
-
-    show()
-    expect(lastSent()).toEqual({
-      action: 'display_reference',
-      book: 'John',
-      chapter: 3,
-      verse_start: 16,
-      verse_end: 16,
-    })
   })
 })
 
@@ -493,10 +544,9 @@ describe('switching between the lists', () => {
     push({ type: 'display_confirmed', data: { reference: roman } })
     expect(screen.getByText('Nothing staged')).toBeInTheDocument()
 
+    const queuedCard = pendingPanel().getByRole('button', { name: /John 1:1/ })
     act(() => {
-      pendingPanel()
-        .getByRole('button', { name: /John 1:1/ })
-        .click()
+      queuedCard.click()
     })
     expect(screen.getByText('Detected')).toBeInTheDocument()
     show()
@@ -515,7 +565,8 @@ describe('switching between the lists', () => {
       .map(heading => heading.textContent)
     expect(queued).toEqual(['John 1:1'])
     // It appears in Up Next and as a history entry, and nowhere else.
-    expect(screen.getAllByText('Romans 8:28')).toHaveLength(2)
+    expect(screen.getByTestId('next-preview')).toHaveTextContent('Romans 8:28')
+    expect(historyCard(/Romans 8:28/)).toBeInTheDocument()
     expect(sentActions()).toEqual([])
   })
 })

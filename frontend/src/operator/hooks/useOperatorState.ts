@@ -24,6 +24,9 @@ import type {
 } from '../../shared/types'
 import { passageToReference } from '../passageApi'
 import type { PassageQuery } from '../passageApi'
+import { dedupeHistory, samePassage } from '../passageKey'
+import { usePlan } from './usePlan'
+import type { PlanItem, PlanState } from './usePlan'
 import { autoModeOption, coerceAutoMode } from '../autoMode'
 import { useScriptureSearch } from './useScriptureSearch'
 import { usePipelineStatus } from './usePipelineStatus'
@@ -40,6 +43,9 @@ import {
   readStoredOperatorToken,
   takeOperatorTokenFragment,
 } from '../../shared/operatorToken'
+
+/** How long a click counts as the start of a double-click, for restoring Up Next. */
+const DOUBLE_CLICK_MS = 500
 
 /** How long the button "pressed" feedback lasts after a confirmation. */
 const FLASH_MS = 150
@@ -133,31 +139,9 @@ export type NextSource = 'detected' | 'manual' | 'history' | null
  * A queued selection is matched by the queue update that follows an approval,
  * never by coordinates.
  */
-/**
- * The verse a reference covers at its right end.
- *
- * A single-verse reference reaches the console in two shapes: a detection that
- * named one verse is stored as-is (``verse_end: null``), while the server states
- * the same passage as ``verse_start === verse_end`` when it resolves one. They
- * are the same passage, and only comparing them shape-blind would make a replay
- * of a detected verse look like someone else's confirmation.
- */
-function referenceEnd(reference: {
-  verse_start: number | null
-  verse_end: number | null
-}): number | null {
-  return reference.verse_end ?? reference.verse_start
-}
-
 function isStagedPassage(staged: StagedReference, shown: BibleReference): boolean {
   if (staged.kind === 'pending') return false
-  const coordinates = staged.kind === 'manual' ? staged.passage : staged.reference
-  return (
-    coordinates.book === shown.book &&
-    coordinates.chapter === shown.chapter &&
-    coordinates.verse_start === shown.verse_start &&
-    referenceEnd(coordinates) === referenceEnd(shown)
-  )
+  return samePassage(staged.kind === 'manual' ? staged.passage : staged.reference, shown)
 }
 
 export interface OperatorState {
@@ -204,7 +188,7 @@ export interface OperatorState {
   /**
    * Send a resolved manual passage straight to the display without staging it.
    * The same `display_reference` request `showNext` sends for a staged passage —
-   * coordinates only, for the server to resolve — used by Shift+Enter in Find
+   * coordinates only, for the server to resolve — used by Enter in Find
    * Scripture. Nothing is staged and Up Next is untouched.
    */
   showManualDirect: (request: PassageQuery) => void
@@ -244,6 +228,17 @@ export interface OperatorState {
   selectPending: (id: string) => void
   /** Stage a history entry for a repeat display; nothing is sent. */
   selectHistory: (reference: BibleReference) => void
+  /** Show a history entry again at once (double-click), skipping Up Next. */
+  showHistory: (reference: BibleReference) => void
+  /** Approve a queued detection at once (double-click), skipping Up Next. */
+  approvePending: (id: string) => void
+
+  /** Passages lined up in advance, kept in this browser. */
+  plan: PlanState
+  /** Stage a planned passage in Up Next (looked up fresh); nothing is sent to the display. */
+  stagePlanItem: (item: PlanItem) => void
+  /** Show a planned passage at once (double-click), skipping Up Next. */
+  showPlanItem: (item: PlanItem) => void
   /**
    * The history entry staged in Up Next, but only while it is still in the list;
    * a staged entry that has aged out stays staged and just stops being marked.
@@ -317,6 +312,28 @@ export function useOperatorState(): OperatorState {
   // What Up Next holds. One piece of state, so a queued selection and a manual
   // passage can never both look staged.
   const [staged, setStaged] = useState<StagedReference | null>(null)
+  const stagedRef = useRef<StagedReference | null>(null)
+  stagedRef.current = staged
+  // A double-click is click, click, double-click, and each click stages its row. The
+  // double-click is meant to skip staging, so it puts back what Up Next held before
+  // the gesture began instead of leaving it emptied by the row it just showed.
+  const gestureRef = useRef<{ key: string; before: StagedReference | null; at: number } | null>(
+    null
+  )
+  const beginGesture = useCallback((key: string) => {
+    const now = Date.now()
+    const current = gestureRef.current
+    if (current && current.key === key && now - current.at < DOUBLE_CLICK_MS) return
+    gestureRef.current = { key, before: stagedRef.current, at: now }
+  }, [])
+  const restoreBeforeGesture = useCallback((key: string) => {
+    const current = gestureRef.current
+    gestureRef.current = null
+    if (current && current.key === key && Date.now() - current.at < DOUBLE_CLICK_MS * 2) {
+      setStaged(current.before)
+    }
+  }, [])
+
   // True between pressing Show and the server's answer. Repeated clicks must not
   // queue the same passage twice, and a confirmation that never comes (the
   // socket dropped) must not leave Show disabled — see the status effect below.
@@ -408,7 +425,7 @@ export function useOperatorState(): OperatorState {
     switch (message.type) {
       case 'state_snapshot': {
         setPending(message.data.pending)
-        setHistory(message.data.history)
+        setHistory(dedupeHistory(message.data.history))
         setPendingCount(message.data.pending_count)
         setHistoryCount(message.data.history_count)
         setCurrentDisplay(message.data.current_display)
@@ -448,7 +465,7 @@ export function useOperatorState(): OperatorState {
         const shown = message.data.reference
         // The server pushes the approved reference; fold it into history and the
         // counters so the sidebar is not stale until the next snapshot.
-        setHistory(prev => [shown, ...prev].slice(0, HISTORY_WINDOW))
+        setHistory(prev => dedupeHistory([shown, ...prev]).slice(0, HISTORY_WINDOW))
         setHistoryCount(count => count + 1)
         setCurrentDisplay(shown)
         setShowInFlight(false)
@@ -461,7 +478,7 @@ export function useOperatorState(): OperatorState {
         // so this is the first moment the console can say it is on screen. The
         // reference comes back server-built: manual, with no confidence.
         const shown = message.data.reference
-        setHistory(prev => [shown, ...prev].slice(0, HISTORY_WINDOW))
+        setHistory(prev => dedupeHistory([shown, ...prev]).slice(0, HISTORY_WINDOW))
         setHistoryCount(count => count + 1)
         setCurrentDisplay(shown)
         // A passage follow-along showed by itself answers no Show of this console:
@@ -705,17 +722,24 @@ export function useOperatorState(): OperatorState {
     [sendAction]
   )
 
-  const selectPending = useCallback((id: string) => setStaged({ kind: 'pending', id }), [])
+  const selectPending = useCallback(
+    (id: string) => {
+      beginGesture(`pending:${id}`)
+      setStaged({ kind: 'pending', id })
+    },
+    [beginGesture]
+  )
 
   // Staging a history entry: NEXT previews it and nothing else changes. The
   // notice says "staged", never "shown" — nothing is on the display until the
   // server confirms the Show request.
   const selectHistory = useCallback(
     (reference: BibleReference) => {
+      beginGesture(`history:${reference.id}`)
       setStaged({ kind: 'history', reference })
       showNotice('info', t('notice.stagedAgain', { ref: formatReference(reference) }))
     },
-    [showNotice, t]
+    [beginGesture, showNotice, t]
   )
 
   const selectNext = useCallback(() => {
@@ -746,9 +770,11 @@ export function useOperatorState(): OperatorState {
   // through the queue by ID, so it cannot drift from the list on screen; a manual
   // passage is a self-contained snapshot from the server's lookup.
   const selectedId = staged?.kind === 'pending' ? staged.id : null
+  // History holds one entry per passage, so the staged one is found by its passage:
+  // showing it again replaces the entry it was staged from with a new ID.
   const selectedHistoryId =
-    staged?.kind === 'history' && history.some(entry => entry.id === staged.reference.id)
-      ? staged.reference.id
+    staged?.kind === 'history'
+      ? (history.find(entry => samePassage(entry, staged.reference))?.id ?? null)
       : null
   const nextReference =
     staged === null
@@ -801,7 +827,7 @@ export function useOperatorState(): OperatorState {
     [showNotice, t]
   )
 
-  // Shift+Enter in Find Scripture: the resolved coordinates go to the display
+  // Enter in Find Scripture: the resolved coordinates go to the display
   // without staging anything first. This is the same `display_reference` action
   // `showNext` sends for a staged manual passage — coordinates only, resolved
   // by the server — so no new display path is introduced. The in-flight guard
@@ -821,6 +847,34 @@ export function useOperatorState(): OperatorState {
     [showInFlight, sendAction]
   )
 
+  // Double-click on a history entry: the same coordinates-only request Show sends
+  // for a staged one, without staging first.
+  const showHistory = useCallback(
+    (reference: BibleReference) => {
+      if (status !== 'open') return
+      restoreBeforeGesture(`history:${reference.id}`)
+      showManualDirect({
+        book: reference.book,
+        chapter: reference.chapter,
+        verseStart: reference.verse_start,
+        verseEnd: reference.verse_end,
+      })
+    },
+    [status, restoreBeforeGesture, showManualDirect]
+  )
+
+  // Double-click on a queued detection: approved by ID exactly as Show approves
+  // a staged one. Shares Show's in-flight guard, so a double-click is one request.
+  const approvePending = useCallback(
+    (id: string) => {
+      if (status !== 'open' || showInFlight) return
+      restoreBeforeGesture(`pending:${id}`)
+      setShowInFlight(true)
+      sendAction({ action: 'approve', reference_id: id })
+    },
+    [status, showInFlight, restoreBeforeGesture, sendAction]
+  )
+
   // A hint is only meaningful next to the passage it follows on from. Comparing
   // ids here, not when the hint arrives, means a display that changed or was
   // cleared simply stops matching — whichever message got here first.
@@ -832,7 +886,7 @@ export function useOperatorState(): OperatorState {
       : null
 
   // Show on a hint is the manual door, nothing newer: the same request Find
-  // Scripture sends with Shift+Enter, coordinates only, re-resolved by the server.
+  // Scripture sends with Enter, coordinates only, re-resolved by the server.
   const showFollowAlong = useCallback(() => {
     if (!followAlong) return
     showManualDirect({
@@ -853,12 +907,59 @@ export function useOperatorState(): OperatorState {
   const bibleVersion = useBibleVersion(token, isConnected, showNotice)
   applyBibleVersionRef.current = bibleVersion.applyConfirmed
 
+  const plan = usePlan()
+  const addToPlan = plan.add
+  const planPassage = useCallback(
+    (passage: Passage) => {
+      const ref = formatReference(passageToReference(passage))
+      if (addToPlan(passage)) showNotice('success', t('notice.planned', { ref }))
+      else showNotice('info', t('notice.alreadyPlanned', { ref }))
+    },
+    [addToPlan, showNotice, t]
+  )
+
   // Search names books as the loaded Bible translation does, so it follows a switch.
   const search = useScriptureSearch(
     token,
     stageManualPassage,
     showManualDirect,
-    bibleVersion.version
+    bibleVersion.version,
+    planPassage,
+    // A plan row is clicked outside the search box, so its failure is a notice.
+    message => showNotice('error', message)
+  )
+
+  const { stagePassage, cancelLookup } = search
+  const stagePlanItem = useCallback(
+    (item: PlanItem) => {
+      beginGesture(`plan:${item.id}`)
+      stagePassage(
+        {
+          book: item.book,
+          chapter: item.chapter,
+          verseStart: item.verse_start,
+          verseEnd: item.verse_end,
+        },
+        true
+      )
+    },
+    [beginGesture, stagePassage]
+  )
+  // The click that began a double-click has a lookup in flight; letting it land
+  // after the display would stage a passage that is already on screen.
+  const showPlanItem = useCallback(
+    (item: PlanItem) => {
+      if (status !== 'open') return
+      cancelLookup()
+      restoreBeforeGesture(`plan:${item.id}`)
+      showManualDirect({
+        book: item.book,
+        chapter: item.chapter,
+        verseStart: item.verse_start,
+        verseEnd: item.verse_end,
+      })
+    },
+    [status, cancelLookup, restoreBeforeGesture, showManualDirect]
   )
 
   // Speech detection health, asked of the server only while it is reachable.
@@ -917,6 +1018,11 @@ export function useOperatorState(): OperatorState {
     selectedId,
     selectPending,
     selectHistory,
+    showHistory,
+    approvePending,
+    plan,
+    stagePlanItem,
+    showPlanItem,
     selectedHistoryId,
     selectNext,
     selectPrevious,
