@@ -59,5 +59,6 @@ frontend/
 
 ## Related docs
 
+- `../../DESIGN.md` — operator console visual rules (shared controls, radius/border rules, token-only colours).
 - `testing.md` — canonical verification commands and caveats.
 - `architecture.md` — StrictMode, backend-served routes, generated bundle.

@@ -5,6 +5,7 @@
 :root {
   /* Spacing Scale */
   --space-0: 0;
+  --space-0-5: 0.125rem; /* 2px */
   --space-1: 0.25rem; /* 4px */
   --space-2: 0.5rem; /* 8px */
   --space-3: 0.75rem; /* 12px */
@@ -15,12 +16,41 @@
   --space-8: 4rem; /* 64px */
   --space-9: 6rem; /* 96px */
 
+  /* Card spacing: one system for every card and row. Padding is the same on all
+     four sides; the header row is one control tall; the body sits one gap below it;
+     stacked cards are one padding apart. Cards differ in text, never in padding. */
+  --card-pad: var(--space-3); /* 12px */
+  --card-gap: var(--space-2); /* 8px: header to body, and between a row's parts */
+
   /* Border Radius */
   --radius-sm: 0.25rem; /* 4px */
   --radius-md: 0.375rem; /* 6px */
   --radius-lg: 0.5rem; /* 8px */
   --radius-xl: 0.75rem; /* 12px */
   --radius-full: 9999px;
+
+  /* Radius by element kind. Components use these, never the raw scale above, so a
+     change of feel is one edit here. */
+  --radius-control: var(--radius-lg); /* buttons, inputs, segmented controls, list buttons */
+  --radius-card: var(--radius-xl); /* panels, stages, list rows, popovers, toasts */
+  --radius-dialog: var(--radius-xl); /* modal dialogs and the sign-in card */
+  --radius-tag: var(--radius-sm); /* inline tags, keycaps, highlights */
+  /* Pills (--radius-full) are for counts and dots only. */
+
+  /* Control scale: the three heights every button, input and segmented control
+     takes. md is the default; sm is for dense rows (list items, banners, popovers);
+     lg is for bars and the sign-in button. */
+  --control-h-sm: 1.875rem; /* 30px */
+  --control-h-md: 2.25rem; /* 36px */
+  --control-h-lg: 2.75rem; /* 44px */
+  --segment-w: 2.75rem; /* 44px: every option of a compact segmented control */
+
+  /* Icon sizes */
+  --icon-sm: 1rem; /* 16px, inline with text */
+  --icon-md: 1.125rem; /* 18px, inside controls, banners and toasts */
+
+  /* Borders: the width is fixed; which colour applies is the rule in DESIGN.md. */
+  --border-width: 1px;
 
   /* Shadows */
   --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
@@ -57,6 +87,15 @@
   --font-serif: Georgia, Cambria, 'Times New Roman', Times, serif;
   --font-mono:
     ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
+
+  /* Font weights (the only four in use) */
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+  --weight-bold: 700;
+
+  /* Letter spacing for the small uppercase overline style (stage labels, state words) */
+  --tracking-caps: 0.1em;
 
   /* Line Heights */
   --leading-none: 1;
@@ -110,6 +149,7 @@
   --color-primary: #2f6ea8;
   --color-primary-hover: #28619c;
   --color-primary-active: #22558a;
+  --color-primary-edge: #22558a;
   --color-primary-subtle: #e3f2fd;
 
   --color-success: #28a745;
@@ -133,6 +173,9 @@
   /* Operator-specific */
   --color-accent: #6366f1;
   --color-accent-hover: #4f46e5;
+
+  /* Backdrop behind a modal dialog */
+  --color-scrim: rgba(0, 0, 0, 0.5);
 }
 
 /* Dark Theme */
@@ -161,6 +204,7 @@
   --color-primary: #60a5fa;
   --color-primary-hover: #3b82f6;
   --color-primary-active: #2563eb;
+  --color-primary-edge: #2563eb;
   --color-primary-subtle: #1e3a5f;
 
   --color-success: #34d399;
@@ -185,9 +229,116 @@
   --color-accent: #818cf8;
   --color-accent-hover: #6366f1;
 
+  --color-scrim: rgba(0, 0, 0, 0.6);
+
   /* Adjust shadows for dark mode */
   --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.3);
   --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.4), 0 2px 4px -1px rgba(0, 0, 0, 0.3);
   --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.4), 0 4px 6px -2px rgba(0, 0, 0, 0.3);
   --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.4), 0 10px 10px -5px rgba(0, 0, 0, 0.3);
+}
+
+/* Operator console palette
+
+   The console has its own palette: amber on warm grey, set by overriding the
+   semantic tokens on the console root. Everything built on those tokens (buttons,
+   the settings dialog, badges) follows without knowing, and the audience display
+   keeps its own tokens untouched. The display preview and the stages carry a
+   `data-theme` attribute of their own, which re-applies the display's tokens to
+   them, so a preview is drawn in exactly the colours the projector uses. Amber is
+   the primary action and "this is on air or staged"; the detection-confidence
+   chips are the only other hues (success, warning, danger).
+
+   Retheming the console means editing these two blocks and nothing else: no raw
+   colour appears in operator.css, controls.css or the component CSS. The five
+   console-only surface tokens are:
+     --app-bg       page background
+     --panel-bg     panels, header, dialog, the recessed Up Next block
+     --card-bg      raised surface on a panel (list items, hovered rows)
+     --selected-bg  muted fill (selected row, counts, hover on secondary buttons)
+     --accent-text  the accent as text (AA contrast on --panel-bg and the subtle fill)
+   `--color-text-inverse` is the text colour on a primary (amber) fill in both
+   themes. The tinted backgrounds are mixed from the hue and the surface, so a new
+   hue only needs its one colour changed. */
+.operator-app,
+.operator-auth-container {
+  --app-bg: #f4f2ee;
+  --panel-bg: #f9f8f5;
+  --card-bg: #fcfbf9;
+  --selected-bg: #e8e5de;
+  --accent-text: #6e4a00;
+
+  --font-sans:
+    'Segoe UI Variable Text', 'Segoe UI', system-ui, -apple-system, Roboto, 'Helvetica Neue', Arial,
+    sans-serif;
+
+  --color-canvas: #f4f2ee;
+  --color-surface: #f9f8f5;
+  --color-surface-raised: #fcfbf9;
+  --color-surface-overlay: #fcfbf9;
+  --color-surface-muted: #e8e5de;
+  --color-text: #1d1c1a;
+  --color-text-secondary: #46433d;
+  --color-text-muted: #5f5b53;
+  --color-text-inverse: #1a1303;
+  --color-border: #dedad1;
+  --color-border-strong: #8d887d;
+  --color-border-focus: #6e4a00;
+  --color-primary: #e9a919;
+  --color-primary-subtle: #f8ecc9;
+  --color-accent: #b57a06;
+  --color-accent-hover: #6e4a00;
+  --color-success: #166d3f;
+  --color-success-text: #166d3f;
+  --color-warning-text: #7a5200;
+  --color-danger: #b3261e;
+  --color-danger-text: #b3261e;
+  --color-info-bg: #e8e5de;
+  --color-info-text: #46433d;
+}
+
+[data-theme='dark'] .operator-app,
+[data-theme='dark'] .operator-auth-container {
+  --app-bg: #222220;
+  --panel-bg: #292927;
+  --card-bg: #30302d;
+  --selected-bg: #3a3a36;
+  --accent-text: #f7cf6a;
+
+  --color-canvas: #222220;
+  --color-surface: #292927;
+  --color-surface-raised: #30302d;
+  --color-surface-overlay: #30302d;
+  --color-surface-muted: #3a3a36;
+  --color-text: #f1efe9;
+  --color-text-secondary: #cbc8bd;
+  --color-text-muted: #a9a699;
+  --color-text-inverse: #1a1303;
+  --color-border: #403f3b;
+  --color-border-strong: #78756c;
+  --color-border-focus: #f0b429;
+  --color-primary: #f0b429;
+  --color-primary-subtle: #463a14;
+  --color-accent: #f0b429;
+  --color-accent-hover: #f7cf6a;
+  --color-success: #5fd38d;
+  --color-success-text: #5fd38d;
+  --color-warning-text: #f2c04d;
+  --color-danger: #f2837a;
+  --color-danger-text: #f2837a;
+  --color-info-bg: #3a3a36;
+  --color-info-text: #cbc8bd;
+}
+
+/* Derived tokens: the same recipe in both themes, from the colours above. */
+.operator-app,
+.operator-auth-container {
+  --color-primary-hover: color-mix(in srgb, var(--color-primary) 88%, var(--color-text));
+  --color-primary-active: color-mix(in srgb, var(--color-primary) 76%, var(--color-text));
+  --color-primary-edge: color-mix(in srgb, var(--color-primary) 70%, var(--color-text));
+  --color-danger-hover: color-mix(in srgb, var(--color-danger) 85%, var(--color-text));
+  --color-danger-active: color-mix(in srgb, var(--color-danger) 70%, var(--color-text));
+  --color-danger-bg: color-mix(in srgb, var(--color-danger) 12%, var(--color-surface));
+  --color-success-bg: color-mix(in srgb, var(--color-success) 14%, var(--color-surface));
+  --color-warning-bg: color-mix(in srgb, var(--color-warning-text) 14%, var(--color-surface));
 }

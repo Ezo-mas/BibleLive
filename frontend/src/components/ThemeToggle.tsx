@@ -2,7 +2,7 @@ import { useI18n } from '../shared/i18nContext'
 import { useTheme } from '../hooks/useTheme'
 import type { Theme } from '../hooks/useTheme'
 import { SunIcon, MoonIcon, MonitorIcon } from './Icons'
-import './ThemeToggle.css'
+import '../styles/controls.css'
 
 export interface ThemeToggleProps {
   /**
@@ -34,7 +34,7 @@ export function ThemeToggle({ theme: controlled, onThemeChange }: ThemeTogglePro
   ]
 
   return (
-    <div className="theme-toggle" role="radiogroup" aria-label={t('theme.group')}>
+    <div className="segmented" role="radiogroup" aria-label={t('theme.group')}>
       {options.map(({ value, label, name, icon: Icon }) => (
         <button
           key={value}
@@ -42,12 +42,12 @@ export function ThemeToggle({ theme: controlled, onThemeChange }: ThemeTogglePro
           role="radio"
           aria-checked={theme === value}
           aria-label={name}
-          className={`theme-toggle-button ${theme === value ? 'active' : ''}`}
+          className="segmented-option"
           onClick={() => selectTheme(value)}
           title={name}
         >
-          <Icon className="theme-toggle-icon" aria-hidden="true" />
-          <span className="theme-toggle-label">{label}</span>
+          <Icon aria-hidden="true" />
+          <span>{label}</span>
         </button>
       ))}
     </div>
