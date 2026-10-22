@@ -10,12 +10,40 @@ cd "$REPO_ROOT"
 # Python packages live under backend/; make them importable as core.* / audio.*
 export PYTHONPATH="${REPO_ROOT}/backend${PYTHONPATH:+:${PYTHONPATH}}"
 
+# Use the venv's Python if present (it has the audio and GGUF extras), otherwise
+# whatever python3 is on PATH
+PYTHON="${REPO_ROOT}/.venv/bin/python"
+[ -x "$PYTHON" ] || PYTHON="python3"
+
 # Configuration
 SERVER_HOST="${BIBLELIVE_HOST:-0.0.0.0}"
 SERVER_PORT="${BIBLELIVE_PORT:-8000}"
 HEALTH_CHECK_URL="http://localhost:${SERVER_PORT}/readyz"
 HEALTH_CHECK_TIMEOUT=30
 HEALTH_CHECK_INTERVAL=1
+
+# Speech model: Kmynas on the processor (Lithuanian). The model file is required;
+# download it with the launcher's --download-model, or point this at an existing
+# kmynas-v4-Q8_0.gguf. Extra audio flags (e.g. "--language en") go in
+# BIBLELIVE_AUDIO_ARGS and win over the defaults below.
+KMYNAS_MODEL="${BIBLELIVE_KMYNAS_MODEL:-}"
+if [ -z "$KMYNAS_MODEL" ]; then
+    KMYNAS_MODEL="$("$PYTHON" - <<'PY' 2>/dev/null || true
+from huggingface_hub import try_to_load_from_cache
+path = try_to_load_from_cache("Ezomas/kmynas-parakeet-lt-v4-gguf", "kmynas-v4-Q8_0.gguf")
+print(path if isinstance(path, str) else "")
+PY
+)"
+fi
+# Same rule as the launcher: one less than the physical cores (logical / 2), 1..6
+SPEECH_THREADS="${BIBLELIVE_CPU_THREADS:-$(( $(nproc) / 2 - 1 ))}"
+[ "$SPEECH_THREADS" -lt 1 ] && SPEECH_THREADS=1
+[ "$SPEECH_THREADS" -gt 6 ] && SPEECH_THREADS=6
+AUDIO_ARGS=(--language lt --stt kmynas --device cpu --cpu-threads "$SPEECH_THREADS")
+if [ -n "${BIBLELIVE_AUDIO_ARGS:-}" ]; then
+    read -r -a EXTRA_AUDIO_ARGS <<< "$BIBLELIVE_AUDIO_ARGS"
+    AUDIO_ARGS+=("${EXTRA_AUDIO_ARGS[@]}")
+fi
 
 # PID tracking
 SERVER_PID=""
@@ -70,13 +98,21 @@ if [ -d "frontend/src" ] && [ -n "$(find frontend/src -newer static/frontend/dis
     echo "The served bundle may be stale. Rebuild: cd frontend && npm run build"
 fi
 
+if [ -z "$KMYNAS_MODEL" ] || [ ! -f "$KMYNAS_MODEL" ]; then
+    echo "Error: Kmynas model file not found."
+    echo "Set BIBLELIVE_KMYNAS_MODEL=/path/to/kmynas-v4-Q8_0.gguf"
+    echo "(or download it with the launcher's --download-model)"
+    exit 1
+fi
+AUDIO_ARGS+=(--kmynas-model "$KMYNAS_MODEL")
+
 echo "Starting BibleLive System..."
 echo "============================"
 echo ""
 
 # Start the server in background
 echo "Starting BibleLive Server on ${SERVER_HOST}:${SERVER_PORT}..."
-python3 -m core.server &
+BIBLELIVE_START_LANGUAGE="${BIBLELIVE_START_LANGUAGE:-lt}" "$PYTHON" -m core.server &
 SERVER_PID=$!
 
 # Wait for server to be ready
@@ -106,7 +142,7 @@ echo ""
 
 # Start audio pipeline
 echo "Starting Audio Pipeline..."
-python3 -m audio.cli &
+"$PYTHON" -m audio.cli "${AUDIO_ARGS[@]}" &
 AUDIO_PID=$!
 
 echo ""
