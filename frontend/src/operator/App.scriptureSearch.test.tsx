@@ -247,11 +247,15 @@ function results() {
   return within(screen.getByRole('list', { name: 'Scripture search results' }))
 }
 
-/** The pending queue, scoped so the search rows cannot be counted with it. */
+/** The pending queue, opened from its tab, so the search rows cannot be counted with it. */
 function queueSection() {
-  const section = screen.getByRole('heading', { name: 'Pending References' }).closest('section')
-  if (!section) throw new Error('pending section not found')
-  return within(section)
+  fireEvent.click(screen.getByRole('tab', { name: /^Pending/ }))
+  return within(screen.getByRole('tabpanel'))
+}
+
+/** The /api/lookup requests made so far (the preview's and any staging lookup's). */
+function lookupCalls() {
+  return fetchMock.mock.calls.filter(([url]) => String(url).startsWith('/api/lookup'))
 }
 
 /** Press Enter in the search box: the console's fast path through the flow. */
@@ -261,10 +265,10 @@ function pressEnter() {
   })
 }
 
-/** Press Shift+Enter in the search box: the direct-to-display shortcut. */
-function pressShiftEnter() {
+/** Press Ctrl+Enter in the search box: stage the best match in Up Next. */
+function pressCtrlEnter() {
   act(() => {
-    fireEvent.keyDown(searchBox(), { key: 'Enter', shiftKey: true })
+    fireEvent.keyDown(searchBox(), { key: 'Enter', ctrlKey: true })
   })
 }
 
@@ -410,8 +414,10 @@ describe('Find Scripture', () => {
         screen.getByRole('button', { name: 'Genesis 1:1 — stage in Up Next' })
       ).toBeInTheDocument()
     )
-    // A complete reference is the whole answer: no book list under it.
-    expect(results().getAllByRole('button')).toHaveLength(1)
+    // A complete reference is the whole answer: no book list under it. Its only
+    // buttons are the passage row and its Plan button.
+    expect(results().queryByRole('button', { name: /select this book/ })).not.toBeInTheDocument()
+    expect(results().getAllByRole('button')).toHaveLength(2)
   })
 
   it('resolves "gen 1 1-3" to Genesis 1:1-3', async () => {
@@ -554,7 +560,7 @@ describe('Find Scripture', () => {
     expect(sentActions()).toEqual([])
   })
 
-  it('stages the best result on Enter', async () => {
+  it('stages the best result on Ctrl+Enter', async () => {
     openWith({ currentDisplay: romans })
 
     type('ge 1 1')
@@ -564,7 +570,7 @@ describe('Find Scripture', () => {
       ).toBeInTheDocument()
     )
 
-    pressEnter()
+    pressCtrlEnter()
 
     await waitFor(() => expect(screen.getByTestId('next-preview')).toHaveTextContent('Genesis 1:1'))
     expect(
@@ -780,7 +786,7 @@ describe('Find Scripture', () => {
   })
 })
 
-describe('Shift+Enter direct display', () => {
+describe('Enter direct display', () => {
   it('sends the resolved passage straight to the display without staging it', async () => {
     openWith({ currentDisplay: romans })
 
@@ -791,7 +797,14 @@ describe('Shift+Enter direct display', () => {
       ).toBeInTheDocument()
     )
 
-    pressShiftEnter()
+    // Wait for the preview's read-only lookup to land; Shift+Enter must add none.
+    await waitFor(() =>
+      expect(
+        screen.getByRole('button', { name: 'John 3:16-17 — stage in Up Next' })
+      ).toHaveTextContent('John 3:16 text')
+    )
+    const lookupsBefore = lookupCalls().length
+    pressEnter()
 
     // One request with the parsed coordinates — the same action Show sends —
     // and no lookup, no staging, nothing else.
@@ -803,9 +816,7 @@ describe('Shift+Enter direct display', () => {
       verse_start: 16,
       verse_end: 17,
     })
-    expect(fetchMock.mock.calls.filter(([url]) => String(url).startsWith('/api/lookup'))).toEqual(
-      []
-    )
+    expect(lookupCalls()).toHaveLength(lookupsBefore)
     expect(screen.getByText('Nothing staged')).toBeInTheDocument()
     expect(
       within(screen.getByTestId('live-verses')).getByText('Romans 8:28 text')
@@ -822,7 +833,7 @@ describe('Shift+Enter direct display', () => {
       ).toBeInTheDocument()
     )
 
-    pressShiftEnter()
+    pressEnter()
     push({ type: 'display_confirmed', data: { reference: manualReference('John', 3, 16, 17) } })
 
     expect(
@@ -841,7 +852,7 @@ describe('Shift+Enter direct display', () => {
     await waitFor(() =>
       expect(screen.getByRole('button', { name: /^Genesis/ })).toBeInTheDocument()
     )
-    pressShiftEnter()
+    pressEnter()
     expect(sentActions()).toEqual([])
 
     // An errored query is answered, not displayed.
@@ -849,8 +860,52 @@ describe('Shift+Enter direct display', () => {
     await waitFor(() =>
       expect(screen.getByRole('alert')).toHaveTextContent('Genesis has 50 chapters.')
     )
-    pressShiftEnter()
+    pressEnter()
     expect(sentActions()).toEqual([])
+  })
+
+  it('shows what the box holds at Enter, not what it held a debounce ago', async () => {
+    openWith()
+
+    // The first keystroke loads the book list; match once so the timed part is clean.
+    type('ge')
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /^Genesis/ })).toBeInTheDocument()
+    )
+
+    // Both edits land inside the debounce window, so the results have not caught up.
+    type('john 3:16')
+    type('rom 8:28')
+    pressEnter()
+
+    expect(sentActions()).toHaveLength(1)
+    expect(lastSent()).toMatchObject({
+      action: 'display_reference',
+      book: 'Romans',
+      chapter: 8,
+      verse_start: 28,
+    })
+  })
+
+  it('reads a reference typed in pieces inside the debounce as the whole it becomes', async () => {
+    openWith()
+
+    type('ge')
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /^Genesis/ })).toBeInTheDocument()
+    )
+
+    type('jn 3:1')
+    type('jn 3:16')
+    pressEnter()
+
+    expect(sentActions()).toHaveLength(1)
+    expect(lastSent()).toMatchObject({
+      action: 'display_reference',
+      book: 'John',
+      chapter: 3,
+      verse_start: 16,
+    })
   })
 
   it('sends nothing while Settings is open', async () => {
@@ -868,7 +923,7 @@ describe('Shift+Enter direct display', () => {
     })
     expect(screen.getByRole('dialog')).toBeInTheDocument()
 
-    pressShiftEnter()
+    pressEnter()
     expect(sentActions()).toEqual([])
   })
 })

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { act, render, screen, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import App from './App'
 import type { BibleReference, FollowAlongHint, OperatorMessage } from '../shared/types'
 
@@ -129,8 +129,14 @@ function followOptions() {
 
 const hintRegion = () => screen.queryByRole('region', { name: 'Follow-along suggestion' })
 
+/** Open the sidebar's History tab, where the history cards are listed. */
+function openHistory() {
+  fireEvent.click(screen.getByRole('tab', { name: 'History' }))
+}
+
 /** Click a history card, which stages it in Up Next and sends nothing. */
 function stageFromHistory(name: RegExp) {
+  openHistory()
   act(() => {
     screen.getByRole('button', { name }).click()
   })
@@ -292,6 +298,7 @@ describe('auto-followed passages', () => {
     const shown = followed('f-1', [13, 14, 15])
     openWith({ currentDisplay: shown, history: [shown] })
 
+    openHistory()
     const card = screen.getByRole('button', { name: /Stage Luke 16:13-15 from history/ })
     expect(within(card).getByText('Auto-followed')).toBeInTheDocument()
     expect(within(card).queryByText('Manual')).not.toBeInTheDocument()
@@ -317,6 +324,7 @@ describe('auto-followed passages', () => {
     const shown = followed('f-1', [13, 14, 15])
     openWith({ currentDisplay: shown, history: [shown] })
 
+    openHistory()
     const card = screen.getByRole('button', { name: /Stage Luke 16:13-15 from history/ })
     // No detection confidence on the card, so nothing reads it as a detection.
     expect(card).toHaveAttribute('data-confidence', 'manual')

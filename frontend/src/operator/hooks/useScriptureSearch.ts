@@ -44,6 +44,31 @@ export interface ScriptureSearchState {
    * closed); the request itself is the same `display_reference` Show sends.
    */
   displayDirect: (result: ScriptureResult) => void
+  /**
+   * Look a resolved passage row up and hand it to the plan. Like `choose`, nothing
+   * is displayed; a book row does nothing.
+   */
+  planResult: (result: ScriptureResult) => void
+  /**
+   * Look a passage up and stage it in Up Next, for callers that already have
+   * coordinates. With `notify`, a failure goes to `onLookupError` (a notice)
+   * instead of the search box, for callers that are not looking at it.
+   */
+  stagePassage: (request: PassageQuery, notify?: boolean) => void
+  /**
+   * The rows for what is in the box right now. Results follow the debounced text,
+   * so a key that acts on a row (Enter shows it) must read this instead, or it
+   * could act on what was typed a moment ago.
+   */
+  resolveNow: () => ScriptureResult[]
+  /** Drop any lookup still in flight, so a late answer cannot stage over a newer action. */
+  cancelLookup: () => void
+  /**
+   * The start of the top row's verse, so the operator can tell it is the right
+   * passage before choosing it. Null while the top row is a book or has no
+   * reference; `text` is null while it loads.
+   */
+  preview: { id: string; text: string | null } | null
   isLookingUp: boolean
   /** Why the last lookup failed, for the panel to show inline. */
   lookupError: string | null
@@ -69,7 +94,9 @@ export function useScriptureSearch(
   token: string | null,
   onPassage: (passage: Passage) => void,
   onDirectDisplay: (request: PassageQuery) => void,
-  bibleVersion: string | null = null
+  bibleVersion: string | null = null,
+  onPlan: (passage: Passage) => void = () => {},
+  onLookupError: (message: string) => void = () => {}
 ): ScriptureSearchState {
   const { t } = useI18n()
   const [input, setInputState] = useState('')
@@ -80,6 +107,11 @@ export function useScriptureSearch(
   const [showAllBooks, setShowAllBooks] = useState(false)
   const [isLookingUp, setIsLookingUp] = useState(false)
   const [lookupError, setLookupError] = useState<string | null>(null)
+  const [previewState, setPreviewState] = useState<{
+    id: string
+    text: string | null
+    error: string | null
+  } | null>(null)
 
   // Latest callback without re-running the book load every render.
   const onPassageRef = useRef(onPassage)
@@ -88,6 +120,10 @@ export function useScriptureSearch(
   // a key handler, which must not re-subscribe anything to do so.
   const onDirectDisplayRef = useRef(onDirectDisplay)
   onDirectDisplayRef.current = onDirectDisplay
+  const onPlanRef = useRef(onPlan)
+  onPlanRef.current = onPlan
+  const onLookupErrorRef = useRef(onLookupError)
+  onLookupErrorRef.current = onLookupError
   // Identifies the newest request of each kind; anything older is ignored when
   // it lands.
   const lookupIdRef = useRef(0)
@@ -179,8 +215,65 @@ export function useScriptureSearch(
 
   const showMore = useCallback(() => setShowAllBooks(true), [])
 
+  const resolveNow = useCallback(
+    () =>
+      input === debouncedInput
+        ? results
+        : buildResults(parseScriptureQuery(input, books, t), BOOK_RESULT_LIMIT, t).results,
+    [input, debouncedInput, results, books, t]
+  )
+
+  // The top row's passage, looked up as soon as it is a complete reference, so the
+  // operator sees how the verse begins before staging or showing it. Read-only,
+  // and superseded the same way a lookup is.
+  const top = results[0]
+  const previewId =
+    top?.kind === 'reference' && top.coordinates
+      ? `${top.book.name}|${top.coordinates.chapter}|${top.coordinates.verseStart}|${top.coordinates.verseEnd}`
+      : null
+  const topRef = useRef(top)
+  topRef.current = top
+  const previewRequestRef = useRef(0)
+  useEffect(() => {
+    const requestId = ++previewRequestRef.current
+    const row = topRef.current
+    if (previewId === null || !row || row.kind !== 'reference' || !row.coordinates) {
+      setPreviewState(null)
+      return
+    }
+    const coordinates = row.coordinates
+    setPreviewState({ id: previewId, text: null, error: null })
+    void (async () => {
+      try {
+        const passage = await lookupPassage(
+          {
+            book: row.book.name,
+            chapter: coordinates.chapter,
+            verseStart: coordinates.verseStart,
+            verseEnd: coordinates.verseEnd,
+          },
+          token,
+          t
+        )
+        if (requestId !== previewRequestRef.current) return
+        setPreviewState({
+          id: previewId,
+          text: passage.verses[0]?.text ?? passage.text,
+          error: null,
+        })
+      } catch (error) {
+        if (requestId !== previewRequestRef.current) return
+        setPreviewState({
+          id: previewId,
+          text: null,
+          error: error instanceof Error ? error.message : t('search.lookupFailed'),
+        })
+      }
+    })()
+  }, [previewId, token, t, bibleVersion])
+
   const findPassage = useCallback(
-    (request: PassageQuery) => {
+    (request: PassageQuery, deliver: (passage: Passage) => void, notify = false) => {
       const requestId = ++lookupIdRef.current
       setLookupError(null)
       setIsLookingUp(true)
@@ -191,10 +284,12 @@ export function useScriptureSearch(
           // The preview reads in the loaded translation's names like everything else; the
           // lookup itself was made, and is shown again later, by canonical name.
           const label = booksRef.current.find(book => book.name === passage.book)?.label
-          onPassageRef.current(label ? { ...passage, book_label: label } : passage)
+          deliver(label ? { ...passage, book_label: label } : passage)
         } catch (error) {
           if (requestId !== lookupIdRef.current) return
-          setLookupError(error instanceof Error ? error.message : t('search.lookupFailed'))
+          const message = error instanceof Error ? error.message : t('search.lookupFailed')
+          if (notify) onLookupErrorRef.current(message)
+          else setLookupError(message)
         } finally {
           if (requestId === lookupIdRef.current) setIsLookingUp(false)
         }
@@ -203,10 +298,21 @@ export function useScriptureSearch(
     [token, t]
   )
 
+  const stagePassage = useCallback(
+    (request: PassageQuery, notify = false) =>
+      findPassage(request, passage => onPassageRef.current(passage), notify),
+    [findPassage]
+  )
+
+  const cancelLookup = useCallback(() => {
+    lookupIdRef.current += 1
+    setIsLookingUp(false)
+  }, [])
+
   const choose = useCallback(
     (result: ScriptureResult) => {
       if (result.kind === 'reference' && result.coordinates) {
-        findPassage({
+        stagePassage({
           book: result.book.name,
           chapter: result.coordinates.chapter,
           verseStart: result.coordinates.verseStart,
@@ -220,10 +326,32 @@ export function useScriptureSearch(
       setShowAllBooks(false)
       setLookupError(null)
     },
+    [stagePassage]
+  )
+
+  // Adding to the plan resolves the passage first, so only a real one is planned,
+  // then empties the box for the next one.
+  const planResult = useCallback(
+    (result: ScriptureResult) => {
+      if (result.kind !== 'reference' || !result.coordinates) return
+      findPassage(
+        {
+          book: result.book.name,
+          chapter: result.coordinates.chapter,
+          verseStart: result.coordinates.verseStart,
+          verseEnd: result.coordinates.verseEnd,
+        },
+        passage => {
+          onPlanRef.current(passage)
+          setInputState('')
+          setDebouncedInput('')
+        }
+      )
+    },
     [findPassage]
   )
 
-  // Shift+Enter in the search box: skip the lookup and the staging entirely and
+  // Enter in the search box: skip the lookup and the staging entirely and
   // hand the resolved coordinates to the display path. A book row has no
   // coordinates, so there is nothing to send and this does nothing.
   const displayDirect = useCallback((result: ScriptureResult) => {
@@ -250,7 +378,16 @@ export function useScriptureSearch(
     showMore,
     choose,
     displayDirect,
+    planResult,
+    resolveNow,
+    stagePassage,
+    cancelLookup,
+    preview:
+      previewState && previewState.id === previewId && !previewState.error
+        ? { id: previewState.id, text: previewState.text }
+        : null,
     isLookingUp,
-    lookupError,
+    lookupError:
+      lookupError ?? (previewState?.id === previewId ? previewState?.error : null) ?? null,
   }
 }

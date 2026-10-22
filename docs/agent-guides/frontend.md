@@ -45,8 +45,10 @@ frontend/
 | Change display UI / text fitting | `frontend/src/display/` (+ `display.css`, `fitText.ts`) |
 | Stream overlay for OBS (`/display?mode=obs`) | `frontend/src/display/StreamOverlay.tsx`, `streamOverlayOptions.ts` (URL options, fit-or-drop-verses), `streamOverlay.css`; picked in `display/main.tsx` |
 | Change shared WS hook / message types | `frontend/src/shared/useWebSocket.ts`, `types.ts` (mirror of `backend/core/server/models.py`) |
-| History / Show Again staging UI | `frontend/src/operator/components/HistoryPanel.tsx`, `frontend/src/operator/hooks/useOperatorState.ts` |
-| Manual scripture search (Find Scripture) | `frontend/src/operator/components/ScriptureSearch.tsx` |
+| Right-hand column tabs (Pending / Plan / History) | `frontend/src/operator/components/SidePanel.tsx`, `PendingQueue.tsx`, `PlanPanel.tsx`, `HistoryPanel.tsx` |
+| History (one row per passage) / Show Again staging / double-click show | `frontend/src/operator/components/HistoryPanel.tsx`, `passageKey.ts`, `hooks/useOperatorState.ts` |
+| Plan (passages lined up in advance; browser-local, `localStorage`) | `frontend/src/operator/hooks/usePlan.ts`, `components/PlanPanel.tsx`; added from Find Scripture (Shift+Enter / Plan button; Enter shows directly, Ctrl+Enter stages) |
+| Manual scripture search (Find Scripture, incl. verse-start preview) | `frontend/src/operator/components/ScriptureSearch.tsx`, `hooks/useScriptureSearch.ts` |
 | Spoken-language switch (Settings → Audio, header chip) | `frontend/src/operator/languageApi.ts`, `hooks/useSpokenLanguage.ts`, `components/LanguageSettings.tsx`, `components/LanguageChip.tsx` — plain HTTP to `/api/language`, not the WebSocket |
 | Bible-version switch (Settings → Audio) | `frontend/src/operator/bibleVersionApi.ts`, `hooks/useBibleVersion.ts`, `components/BibleVersionSettings.tsx` — HTTP to `/api/bible-version`; changes made elsewhere arrive as `bible_version_confirmed` on the operator socket |
 | Book names from the loaded translation (Lithuanian) | display via `formatReference`/`bookDisplayName` in `frontend/src/shared/reference.ts` (uses the server's `book_label`); search via `localizeBooks`/`bookLabel` in `operator/scriptureQuery.ts` (accent-folded matching, canonical `name` for every request) and `hooks/useScriptureSearch.ts` |

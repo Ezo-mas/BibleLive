@@ -9,6 +9,11 @@ export interface ReferenceCardProps {
   selected?: boolean
   onSelect?: () => void
   /**
+   * Double-click: do the card's thing at once instead of staging it first. The
+   * click that begins a double-click still selects the card.
+   */
+  onActivate?: () => void
+  /**
    * What selecting this card does, for screen readers. Without it the accessible
    * name is the card's whole text (reference, verse text, and meta), which is
    * long and does not say what pressing it does.
@@ -65,6 +70,7 @@ export function ReferenceCard({
   reference,
   selected = false,
   onSelect,
+  onActivate,
   ariaLabel,
 }: ReferenceCardProps) {
   const { t } = useI18n()
@@ -80,6 +86,7 @@ export function ReferenceCard({
       aria-pressed={selectable ? selected : undefined}
       aria-label={selectable ? ariaLabel : undefined}
       onClick={onSelect}
+      onDoubleClick={selectable ? onActivate : undefined}
       onKeyDown={
         selectable
           ? e => {
