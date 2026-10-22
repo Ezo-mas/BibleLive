@@ -44,21 +44,15 @@ networks isolate devices from each other. On the church network, open the
 display and the operator page from a phone (scan the QR codes) and note
 whether it works.
 
-## Features
-
-### Follow-along without the one-utterance lag
-Size: large, about 1–2 weeks with tuning. Plan it properly first.
-
-The follow-along hint appears only after the verse has been read, because a
-transcript exists only when an utterance ends (1.5 s of silence, or the 8–12 s
-cut). Options:
-
-- **Partial transcripts** every 2–3 s while the speaker reads: a second
-  transcription stream (roughly twice the CPU work; a 6th-gen i7 laptop ran at
-  0.21× real time on one stream), segmenter changes, follow-along matching tuned
-  for partial text, and live testing.
-- **Offer the next verse** as soon as the current one is matched: cheap, helps
-  straight reading only.
+### Follow-along speed-up on a real service
+Partial transcripts, the verse-start rule and the auto-show switch are built and
+benchmarked (`benchmarks/BASELINE_NOTES.md`, "Follow-along: partial transcripts"):
+on the 14 recordings a hint comes about 3 s after the verse begins instead of
+9.5 s. Not yet seen live. At the next service, keep auto-show off at first and
+check the session log: the "Partial transcripts" line of the metrics summary
+(count, audio, time) and whether the "Reading now" line shows the verse while it
+is still being read. Then try the switch for a passage that is read straight
+through. English (Whisper) takes no partial transcripts and is unmeasured.
 
 ## Maintenance
 

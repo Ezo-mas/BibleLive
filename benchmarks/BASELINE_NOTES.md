@@ -367,3 +367,116 @@ difference (0, 2 or 4). The bundled `transcribe-cpp` library is the default:
 it needs no CUDA toolkit and also runs on AMD and Intel GPUs (untested here).
 The benchmark cache key includes the native library, since CUDA and Vulkan
 decode slightly differently.
+
+## Follow-along: partial transcripts (2026-10-21)
+
+Before, a follow-along hint came from the transcript of a whole utterance, so it
+arrived after the utterance that read the verse had ended (one verse behind in 37
+of 43 checked cases). Now, while the server says follow-along is armed, the
+pipeline also transcribes the utterance still being spoken and posts that text.
+Measured with `benchmarks/follow_along_bench.py` on the 14 services (164 gold).
+Each gold reference goes on screen 3 s after it was said; the simulated operator
+clicks Show on every hint 1.5 s after it arrives. Finals replay from the detection
+cache; partials are transcribed by Kmynas (alone, also on the GPU tier), and
+every transcription costs `rtf x audio` on one simulated transcription thread.
+CPU tier at the service laptop's 0.21 (Kmynas); GPU tier at the GTX 1070's
+measured 0.09 for Kmynas+Canary finals and 0.035 for Kmynas partials. A hint is
+wrong unless the final transcript of its utterance (or the next one, within 3 s)
+reads that verse. Lag = arrival minus the start of that utterance; in time = it
+arrived before that utterance ended.
+
+| CPU tier, rtf 0.21 | hints (wrong) | median lag | in time | partial audio | busy | final waits p50 / p95 |
+| --- | --- | --- | --- | --- | --- | --- |
+| off (before) | 92 (0) | 11.1 s | 0 | - | 18% | - |
+| grow, 2 s | 99 (0) | 9.5 s | 52 | 0.51x | 28% | 0.80 / 1.66 s |
+| grow, 3 s | 98 (1) | 9.8 s | 48 | 0.32x | 25% | 0.94 / 1.66 s |
+| grow, 4 s | 99 (0) | 9.6 s | 32 | 0.32x | 24% | 1.13 / 2.41 s |
+| chunk, 3 s | 98 (1) | 9.6 s | 49 | 0.18x | 22% | 0.26 / 0.55 s |
+| chunk, 2 s | 99 (0) | 8.5 s | 63 | 0.20x | 22% | 0.21 / 0.39 s |
+| **chunk, 1.5 s (adopted)** | 99 (1) | 7.8 s | 65 | 0.21x | 22% | 0.14 / 0.29 s |
+
+| GPU tier, rtf 0.09 / 0.035 | hints (wrong) | median lag | in time | partial audio | busy | final waits p50 / p95 |
+| --- | --- | --- | --- | --- | --- | --- |
+| off (before) | 92 (0) | 10.0 s | 0 | - | 8% | - |
+| chunk, 2 s | 99 (0) | 8.1 s | 65 | 0.20x | 8% | 0.03 / 0.04 s |
+| **chunk, 1.5 s (adopted)** | 99 (1) | 7.6 s | 69 | 0.21x | 8% | 0.02 / 0.04 s |
+
+- The adopted rows are from the final code (`cpu-` / `gpu-sweep3-chunk-i1.5`),
+  where a chunk under 0.5 s (the speech models skip such audio) waits for the
+  next snapshot instead of being lost; the other rows ran before that rule,
+  which changed the adopted variant's numbers only in the final-wait p95
+  (0.28 -> 0.29 s on CPU).
+- Grow mode re-transcribes the whole utterance so far, so its partials cost
+  more and arrive later; chunk mode transcribes only the audio since the last
+  partial and posts the joined texts. Partial audio is the share of the
+  services' audio transcribed again as partials (only while armed).
+- The one "wrong" hint (06-28, 1 Kings 17:15 over 17:12) was read nearby, out
+  of order; it fails only the same-or-next-utterance rule. Eight partial hints
+  checked by hand against the verse text were all the verse being read.
+- Finals and segmentation are unchanged: the detection benchmark replays
+  identically (Kmynas 153 / 9, Kmynas+Canary 158 / 4).
+- Tried and not adopted: a lower bar for the next verse (0.35: 10 wrong
+  hints; 0.40: 6 wrong, both with grow 2 s / chunk 2 s). Picking the furthest
+  verse instead of the best-scoring one changed nothing on its own; it is the
+  default now, with the verse-start rule below.
+- Kmynas has no streaming mode: transcribe.cpp reports `supports_streaming`
+  false for it (an offline Parakeet-TDT-0.6B-v3 fine-tune with full
+  attention); only the chunked-attention `parakeet-unified-en-0.6b` streams.
+- Partials run only on the Kmynas engines: Whisper (English, `--stt whisper`)
+  takes none. There is no English gold corpus, and Whisper turbo on a CPU runs
+  close to real time (0.9 above), so extra work there could make references late.
+
+### Verse-start rule and timestamp truth (2026-10-22)
+
+The hint matcher scores a verse by the share of its distinctive words heard, so a
+hint cannot come before about mid-verse. The verse-start rule
+(`HintPolicy.start_*`, `core/server/follow_along.py`) also takes the first 3 of
+a verse's first 6 stems heard in order (summed IDF >= 8) as its start. Lag is now
+measured from when the verse began (`--truth timestamps`): the finals of the
+display periods transcribed once more by Kmynas on the CPU with word timestamps
+(`<cache-dir>/follow-along-words`), aligned to the verse text in order. 206
+verses were read aloud while a passage was on screen. The alignment is noisy at
+its edges (a verse counts as read from half of its words, which can be spread
+out), so read these columns as a comparison, not exact times.
+
+| CPU tier, rtf 0.21 | hints (unconfirmed) | lag from verse start p50 / p90 | before the verse ended | verses hinted |
+| --- | --- | --- | --- | --- |
+| partials off | 92 (0) | 9.5 / 14.3 s | 42% | 72 |
+| chunk 1.5 s, no start rule | 99 (1) | 5.5 / 10.5 s | 84% | 77 |
+| + start rule, any verse in the window | 112 (16) | 2.8 / 4.8 s | 96% | 81 |
+| **+ start rule, next verse only (adopted)** | 109 (7) | 3.2 / 8.0 s | 89% | 82 |
+
+| GPU tier, rtf 0.09 / 0.035 | hints (unconfirmed) | lag from verse start p50 / p90 | before the verse ended | verses hinted |
+| --- | --- | --- | --- | --- |
+| partials off | 92 (0) | 8.5 / 13.0 s | 51% | 72 |
+| chunk 1.5 s, no start rule | 99 (1) | 5.2 / 10.1 s | 87% | 77 |
+| **+ start rule, next verse only (adopted)** | 109 (7) | 3.0 / 7.5 s | 93% | 82 |
+
+- "Unconfirmed" is the same-or-next-utterance rule above, which is biased
+  against start hints (it wants half of the verse heard in that utterance).
+  Every hint was also checked against the timestamp truth and the loose window,
+  and the ones failing all three were read by hand next to the verse text.
+- The first rule (a start counted for any verse in the window) gave 8 real
+  wrong hints in 112: a later verse that opens with words of the one being read
+  or quoted (Genesis 22:11 "Viešpaties angelas ... iš dangaus" fired 22:15,
+  Romans 8:4 fired 8:9, John 6:9 fired 6:13). The adopted rule takes a start
+  only for the sequentially next verse, and only while the verse before it is
+  heard in the same transcript (>= 0.25 of its words) or is the verse
+  follow-along last offered. Its 7 unconfirmed hints: 3 confirmed by the
+  timestamp truth, 2 the out-of-order 1 Kings 17:15 (also there without the
+  rule), and 2 checked by hand and correct (Exodus 20:5 "nesilenk prieš juos ir
+  netarnauk jiems", 2 Kings 3:3 "tačiau jis laikėsi nuodėmių Nebato sūnaus
+  Jeroboamo"), so no wrong hint was added.
+- Variants of the adopted rule barely moved: summed IDF 12, previous-verse bar
+  0.15 or 0.35 are all within 0.2 s and 1 hint; 4 stems needed instead of 3
+  was 0.8 s slower.
+- With word timestamps on, transcribe.cpp's Vulkan backend ran Kmynas's decoder
+  about 15x slower than the CPU on the GTX 1070 (GPU idle, CPU busy), so the
+  benchmark always takes word timestamps on the CPU.
+- The adopted rows are the shipped defaults (`cpu-` / `gpu-ts-shipped`): best-score
+  selection, and "already read" (the last hint, or a hinted verse the display put
+  up) counting for 30 s only. A first run with furthest-verse selection
+  (`ts-seq8`) gave nearly the same numbers here, but a review found it offers a
+  later verse worded like the one being read (Matthew 7:24 -> 7:26, 5:29 -> 5:30;
+  533 such verse pairs within 3 verses in the whole Bible), which auto-show would
+  put on screen; this corpus has no such passage, so the benchmark could not see it.

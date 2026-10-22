@@ -11,9 +11,9 @@ from ..bible_lookup import BibleLookup
 from ..bible_versions import BibleVersion, discover_versions
 from ..book_names import BookNames
 from ..config import config
-from ..passage import ResolvedPassage
+from ..passage import PassageError, ResolvedPassage, resolve_passage
 from .connections import ConnectionManager
-from .follow_along import VerseIndexes, next_verse_hint
+from .follow_along import FollowAlong, VerseIndexes
 from .models import (
     AutoMode,
     BibleReference,
@@ -49,6 +49,10 @@ AUTO_APPROVE_CONFIDENCES: dict[AutoMode, frozenset[str]] = {
 # told it is offline. One late report (a slow request, a GC pause) is not news.
 PIPELINE_MISSED_REPORTS_OFFLINE = 3
 
+# Follow-along auto-show (``set_follow_auto``) shows a hint by itself only when it starts
+# at most this many verses after the passage on screen ends. A bigger jump stays a hint.
+FOLLOW_AUTO_MAX_JUMP = 3
+
 
 class AppState:
     """Manage the application state including pending references, current display, and connections."""
@@ -79,14 +83,17 @@ class AppState:
         self.auto_mode: AutoMode = self.settings_store.load_auto_mode(
             default=coerce_auto_mode(config.AUTO_MODE)
         )
+        # Follow-along auto-show: the server shows a qualifying hint itself. Persisted
+        # with the auto-approve mode, and off until an operator turns it on.
+        self.follow_auto: bool = self.settings_store.load_follow_auto()
         # The audio pipeline's latest health report and when it arrived
         # (time.monotonic()), or None until the first one.
         self.pipeline_report: PipelineHeartbeat | None = None
         self.pipeline_reported_at: float | None = None
-        # Follow-along: verse text per spoken language, and the hint last sent, so
-        # an unchanged hint is not sent again and a reconnecting operator gets it.
+        # Follow-along: verse text per spoken language, and the hint policy with its
+        # armed state (which hints were offered, and whether partials are wanted).
         self.verse_indexes = VerseIndexes(self.available_bible_versions)
-        self.last_follow_along: FollowAlongHint | None = None
+        self.follow_along = FollowAlong()
         # Book labels (``local_name``) of whichever translation is loaded.
         self.book_names = BookNames()
 
@@ -148,9 +155,11 @@ class AppState:
 
         The only path that puts a reference on a projector. Its callers are the
         two operator-authorized ways to change the display: approving a queued
-        detection (``approve_pending``) and an operator displaying a passage they
-        picked by hand (``display_manual_passage``). Nothing else — and in
-        particular no unapproved detection — can reach this method.
+        detection (``approve_pending``) and displaying a passage by coordinates
+        (``display_manual_passage``) — one the operator picked by hand, or, while the
+        operator has follow-along auto-show on, the verse the speaker reads on to
+        (``source="follow"``). Nothing else — and in particular no unapproved
+        detection — can reach this method.
         """
         await self.connection_manager.send_to_display(
             {"type": "reference", "data": ref.model_dump()}
@@ -211,6 +220,30 @@ class AppState:
         logger.info(f"Auto-approve mode set to '{auto_mode}'")
         return True
 
+    async def set_follow_auto(self, enabled: object) -> bool:
+        """Choose whether follow-along shows the verses a speaker reads on to by itself.
+
+        Returns False unless ``enabled`` is a boolean. Only transcripts received from now
+        on are affected: a hint already offered is never shown later. Persistence is best
+        effort, like ``set_auto_mode``.
+        """
+        if not isinstance(enabled, bool):
+            return False
+        self.follow_auto = enabled
+        self.settings_store.save_follow_auto(enabled)
+        logger.info(f"Follow-along auto-show set to {'on' if enabled else 'off'}")
+        return True
+
+    @property
+    def follow_auto_in_effect(self) -> bool:
+        """The operator's switch as the server applies it, and as it reports it.
+
+        Auto-show needs follow-along itself (``BIBLELIVE_FOLLOW_ALONG``). While that is off
+        the switch reads as off, but ``follow_auto`` keeps the operator's saved choice, so
+        it applies again once follow-along is back on.
+        """
+        return config.FOLLOW_ALONG and self.follow_auto
+
     def should_auto_approve(self, ref: BibleReference, auto_mode: AutoMode | None = None) -> bool:
         """Whether the given mode auto-approves this reference's confidence.
 
@@ -236,11 +269,12 @@ class AppState:
                 "operator_connections": len(self.connection_manager.operator_connections),
                 "display_settings": self.display_settings.model_dump(),
                 "auto_mode": self.auto_mode,
+                "follow_auto": self.follow_auto_in_effect,
             },
         }
         # The snapshot replaces the console's state, hint included: resend the
         # hint that still follows on from the passage on screen.
-        hint = self.last_follow_along
+        hint = self.follow_along.last_hint
         if not (hint and self.current_display and hint.display_id == self.current_display.id):
             hint = None
         messages = [snapshot]
@@ -548,15 +582,20 @@ class AppState:
         if ref.verse_end is not None and ref.verses[-1].verse < ref.verse_end:
             ref.verse_end = ref.verses[-1].verse
 
-    async def display_manual_passage(self, passage: ResolvedPassage) -> BibleReference:
-        """Display a passage the operator selected by hand.
+    async def display_manual_passage(
+        self, passage: ResolvedPassage, source: Literal["manual", "follow"] = "manual"
+    ) -> BibleReference:
+        """Display a passage the operator selected by hand, or one follow-along showed.
 
         Manual selection is separate from the detection workflow in every way
         that matters: the reference is never added to the pending queue, it
-        carries ``source='manual'`` and no confidence (so nothing can auto-approve
+        carries its ``source`` and no confidence (so nothing can auto-approve
         or confuse it with a detection), and it goes out through the same
         authoritative display path an approval uses. The server, not the client,
         supplies the verse text.
+
+        ``source='follow'`` is for the follow-along auto-show. Its only caller is
+        ``offer_follow_along``, and only while the operator's ``follow_auto`` switch is on.
 
         History semantics match an approval — a manually shown passage is part of
         what the audience saw — while ``current_display`` stays the single source
@@ -569,7 +608,7 @@ class AppState:
             verse_start=passage.verse_start,
             verse_end=passage.verse_end,
             confidence=None,
-            source="manual",
+            source=source,
             text=passage.text,
             verses=[VerseText(verse=verse, text=text) for verse, text in passage.verses],
         )
@@ -589,34 +628,69 @@ class AppState:
         )
         return ref
 
-    async def offer_follow_along(self, transcript: str, language: str) -> FollowAlongHint | None:
+    async def offer_follow_along(self, transcript: str, language: str) -> bool:
         """Tell operators which verse the speaker has reached after the passage on screen.
 
         Goes to operators only, never to displays, and only when there is a passage
-        on screen. The same verse for the same display is not offered twice. Returns
-        the hint sent, or None.
+        on screen. A verse is not offered twice for the same display. With the operator's
+        ``follow_auto`` switch on, a hint that qualifies (see :meth:`_follow_auto_passage`)
+        is shown by itself through ``display_manual_passage`` instead, and operators get
+        its ``display_confirmed``. Returns whether follow-along is armed (see
+        :class:`~core.server.follow_along.FollowAlong`).
         """
         display = self.current_display
         if display is None or display.verse_start is None:
-            return None
+            return False
         index = await self.verse_indexes.for_language(language)
         # Loading an index takes a moment; the display may have changed meanwhile.
-        display = self.current_display
-        if index is None or display is None:
-            return None
-        hint = next_verse_hint(index, self.bible_lookup, display, transcript)
-        last = self.last_follow_along
-        if hint is None or (
-            last is not None
-            and (hint.display_id, hint.verse_start) == (last.display_id, last.verse_start)
-        ):
-            return None
-        hint.book_label = self.book_label(hint.book)
-        self.last_follow_along = hint
-        await self.connection_manager.send_to_operator(
-            {"type": "follow_along", "data": hint.model_dump()}
+        hint, armed = self.follow_along.on_transcript(
+            index, self.bible_lookup, self.current_display, transcript, time.monotonic()
         )
-        return hint
+        if hint is not None:
+            passage = self._follow_auto_passage(hint)
+            if passage is not None:
+                # No await between the checks in _follow_auto_passage and this call, so
+                # the display cannot change between the decision and the passage going up.
+                logger.info(
+                    f"Follow-along showed {passage.book} {passage.chapter}:"
+                    f"{passage.verse_start}-{passage.verse_end} by itself"
+                )
+                await self.display_manual_passage(passage, source="follow")
+                return armed
+            hint.book_label = self.book_label(hint.book)
+            await self.connection_manager.send_to_operator(
+                {"type": "follow_along", "data": hint.model_dump()}
+            )
+        return armed
+
+    def _follow_auto_passage(self, hint: FollowAlongHint) -> ResolvedPassage | None:
+        """The passage to show by itself for ``hint``, or None to leave it to the operator.
+
+        Only when the operator's ``follow_auto`` switch is on, the hint follows on from the
+        passage on screen right now, and it starts at most ``FOLLOW_AUTO_MAX_JUMP`` verses
+        after that passage ends. A bigger jump, and a passage that no longer resolves
+        against the canon and the Bible text, stay hints. Synchronous on purpose: the
+        caller acts on the answer with no await in between.
+        """
+        display = self.current_display
+        if not self.follow_auto_in_effect or display is None or display.verse_start is None:
+            return None
+        if display.id != hint.display_id:
+            return None
+        end = display.verse_end or display.verse_start
+        if not end < hint.verse_start <= end + FOLLOW_AUTO_MAX_JUMP:
+            return None
+        try:
+            return resolve_passage(
+                self.bible_lookup,
+                book=hint.book,
+                chapter=hint.chapter,
+                verse_start=hint.verse_start,
+                verse_end=hint.verse_end,
+            )
+        except PassageError as e:
+            logger.warning(f"Follow-along left a hint to the operator: {e.message}")
+            return None
 
     async def clear_display(self) -> None:
         """Clear the current display"""

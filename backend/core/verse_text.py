@@ -49,6 +49,15 @@ def stems(text: str) -> set[str]:
     return {w[:_STEM_LEN] for w in _WORD.findall(fold(text).lower()) if len(w) >= _MIN_WORD_LEN}
 
 
+def ordered_stems(text: str) -> list[str]:
+    """The 5-letter stems of the 4+-letter words in ``text``, in reading order, duplicates kept."""
+    return [w[:_STEM_LEN] for w in _WORD.findall(fold(text).lower()) if len(w) >= _MIN_WORD_LEN]
+
+
+# One verse inside a chapter: (verse, its distinct stems, its summed IDF, its stems in order).
+_Verse = tuple[int, set[str], float, tuple[str, ...]]
+
+
 @dataclass(frozen=True)
 class VerseMatch:
     verse: int
@@ -63,18 +72,21 @@ class VerseTextIndex:
     def __init__(self, rows: list[tuple[str, int, int, str]]):
         """``rows`` are (canonical book name, chapter, verse, text)."""
         df: dict[str, int] = defaultdict(int)
-        parsed: list[tuple[str, int, int, set[str]]] = []
+        # One string object per distinct stem, shared by every verse that uses it.
+        vocab: dict[str, str] = {}
+        parsed: list[tuple[str, int, int, tuple[str, ...], set[str]]] = []
         for book, chapter, verse, text in rows:
-            s = stems(text)
-            parsed.append((book, chapter, verse, s))
+            tokens = tuple(vocab.setdefault(w, w) for w in ordered_stems(text))
+            s = set(tokens)
+            parsed.append((book, chapter, verse, tokens, s))
             for w in s:
                 df[w] += 1
         n = max(len(parsed), 1)
         self._idf = {w: math.log(n / c) for w, c in df.items()}
-        self._chapters: dict[tuple[str, int], list[tuple[int, set[str], float]]] = defaultdict(list)
-        for book, chapter, verse, s in parsed:
+        self._chapters: dict[tuple[str, int], list[_Verse]] = defaultdict(list)
+        for book, chapter, verse, tokens, s in parsed:
             norm = sum(self._idf[w] for w in s) or 1.0
-            self._chapters[(book, chapter)].append((verse, s, norm))
+            self._chapters[(book, chapter)].append((verse, s, norm, tokens))
 
     @classmethod
     def from_sqlite(cls, db_path: str | Path) -> VerseTextIndex:
@@ -109,7 +121,19 @@ class VerseTextIndex:
         heard = {w for w in stems(text) if self._idf.get(w, 0.0) > _MIN_IDF}
         if not heard:
             return {}
-        return {verse: sum(self._idf[w] for w in heard & s) / norm for verse, s, norm in verses}
+        return {verse: sum(self._idf[w] for w in heard & s) / norm for verse, s, norm, _ in verses}
+
+    def ordered(self, book: str, chapter: int) -> dict[int, tuple[str, ...]]:
+        """Each verse's stems in reading order (as :func:`ordered_stems`), keyed by verse.
+
+        Empty when the chapter is unknown. The dict is built on each call.
+        """
+        verses = self._chapters.get((book, chapter), ())
+        return {verse: tokens for verse, _s, _norm, tokens in verses}
+
+    def idf(self, stem: str) -> float:
+        """The inverse document frequency of ``stem`` over the verses; 0.0 when none has it."""
+        return self._idf.get(stem, 0.0)
 
     def best_verse(
         self, book: str, chapter: int, text: str, extend_min: float = 0.5

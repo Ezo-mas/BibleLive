@@ -4,6 +4,7 @@ import { ThemeToggle, XIcon } from '../../components'
 import { useI18n } from '../../shared/i18nContext'
 import { DisplaySettings } from './DisplaySettings'
 import { AutoApproveControls } from './AutoApproveControls'
+import { FollowAutoControls } from './FollowAutoControls'
 import { InterfaceLanguageSettings } from './InterfaceLanguageSettings'
 import { LanguageSettings } from './LanguageSettings'
 import type { SpokenLanguageState } from '../hooks/useSpokenLanguage'
@@ -36,6 +37,9 @@ export interface SettingsDialogProps {
   bibleVersion: BibleVersionState
   autoMode: AutoMode
   onAutoModeChange: (next: AutoMode) => void
+  /** Follow-along auto-show: the server shows the verses a speaker reads on to by itself. */
+  followAuto: boolean
+  onFollowAutoChange: (next: boolean) => void
   /**
    * The console's own theme. Held by `App` and passed in, because the theme has
    * to be applied on load — the control that changes it now lives behind this
@@ -85,6 +89,8 @@ export function SettingsDialog({
   bibleVersion,
   autoMode,
   onAutoModeChange,
+  followAuto,
+  onFollowAutoChange,
   appTheme,
   onAppThemeChange,
 }: SettingsDialogProps) {
@@ -223,6 +229,11 @@ export function SettingsDialog({
               autoMode={autoMode}
               disabled={disabled}
               onAutoModeChange={onAutoModeChange}
+            />
+            <FollowAutoControls
+              followAuto={followAuto}
+              disabled={disabled}
+              onFollowAutoChange={onFollowAutoChange}
             />
           </section>
 

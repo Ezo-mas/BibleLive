@@ -722,6 +722,12 @@
   opacity: 0.7;
 }
 
+/* A passage the server showed by itself for follow-along, named beside its citation. */
+.operator-live-tag {
+  margin-left: var(--space-2);
+  vertical-align: middle;
+}
+
 /* Follow-along: one slim line under the stages saying the speaker has read on. It
    is a suggestion, so it is drawn as the least assertive thing in the workspace:
    a dashed outline (tentative, not a placed panel), neutral colours (the accent

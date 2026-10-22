@@ -707,31 +707,11 @@ def release_held(
     register_feeds(parser, sender, [release], detections, spans, alternate_parser)
 
 
-def run_single_recording(
-    rec: Recording,
-    audio_path: Path,
-    mode: str,
-    config: AudioPipelineConfig,
-    tmp_dir: Path,
-    context_ttl_s: float | None = 60.0,
-    use_cache: bool = True,
-    cache_dir: Path | None = None,
-    t_range: tuple[float, float] | None = None,
-) -> RunResult:
-    """Replay one recording through the production components.
+def segmentation_settings(config: AudioPipelineConfig) -> dict[str, Any]:
+    """The live segmenter's settings, as the VAD-mode feed cache key records them.
 
-    RT mode feeds 30ms VAD frames on the real wallclock; offline mode feeds
-    them as fast as STT can keep up. Both use the real VAD+STT+parser+sender
-    semantics. The control server is disabled either way.
-
-    With a cache hit the VAD/STT stages are skipped and recorded feed
-    events replay through a fresh parser+sender (bit-identical detections).
-    t_range=(start_s, end_s) restricts processing to that span, in file
-    coordinates; iteration-only, gold outside the span simply misses.
+    Part of the cache key, since changing any of them changes which audio Whisper sees.
     """
-    audio_sha = verified_audio_sha(rec, audio_path)
-    # The live segmenter's settings; part of the cache key, since changing any
-    # of them changes which audio Whisper sees.
     segmentation = {
         "vad_aggressiveness": config.vad_aggressiveness,
         "frame_duration_ms": FRAME_DURATION_MS,
@@ -760,7 +740,23 @@ def run_single_recording(
             neg = silero_neg_threshold(config.silero_threshold, config.silero_neg_threshold)
             if neg != config.silero_threshold:
                 segmentation["silero_neg_threshold"] = neg
-    key = feed_cache_key(
+    return segmentation
+
+
+def offline_feed_key(
+    rec: Recording,
+    audio_sha: str,
+    mode: str,
+    config: AudioPipelineConfig,
+    context_ttl_s: float | None,
+    t_range: tuple[float, float] | None,
+) -> dict[str, Any]:
+    """The feed-cache key of a VAD-mode (offline or rt) run of ``rec``.
+
+    Shared with benchmarks/follow_along_bench.py, which reads the same cached
+    feeds, so its key cannot drift from the one run_single_recording writes.
+    """
+    return feed_cache_key(
         record_id=rec.id,
         audio_sha256=audio_sha,
         language=rec.language,
@@ -771,9 +767,36 @@ def run_single_recording(
         beam_size=config.beam_size,
         context_ttl_s=context_ttl_s,
         t_range=t_range,
-        segmentation=segmentation,
+        segmentation=segmentation_settings(config),
         stt=stt_cache_identity(config),
     )
+
+
+def run_single_recording(
+    rec: Recording,
+    audio_path: Path,
+    mode: str,
+    config: AudioPipelineConfig,
+    tmp_dir: Path,
+    context_ttl_s: float | None = 60.0,
+    use_cache: bool = True,
+    cache_dir: Path | None = None,
+    t_range: tuple[float, float] | None = None,
+) -> RunResult:
+    """Replay one recording through the production components.
+
+    RT mode feeds 30ms VAD frames on the real wallclock; offline mode feeds
+    them as fast as STT can keep up. Both use the real VAD+STT+parser+sender
+    semantics. The control server is disabled either way.
+
+    With a cache hit the VAD/STT stages are skipped and recorded feed
+    events replay through a fresh parser+sender (bit-identical detections).
+    t_range=(start_s, end_s) restricts processing to that span, in file
+    coordinates; iteration-only, gold outside the span simply misses.
+    """
+    audio_sha = verified_audio_sha(rec, audio_path)
+    key = offline_feed_key(rec, audio_sha, mode, config, context_ttl_s, t_range)
+    segmentation = key["segmentation"]
     cpath = feed_cache_path(cache_dir, key) if cache_dir is not None and use_cache else None
 
     parser, alt_parser = make_parsers(config, rec.language, context_ttl_s)

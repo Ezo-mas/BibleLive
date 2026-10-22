@@ -212,6 +212,8 @@ export default function App() {
         bibleVersion={operator.bibleVersion}
         autoMode={operator.autoMode}
         onAutoModeChange={operator.setAutoApproveMode}
+        followAuto={operator.followAuto}
+        onFollowAutoChange={operator.setFollowAutoEnabled}
         appTheme={theme}
         onAppThemeChange={setTheme}
       />

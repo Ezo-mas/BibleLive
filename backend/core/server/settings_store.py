@@ -32,10 +32,26 @@ ALLOWED_AUTO_MODES: tuple[AutoMode, ...] = ("off", "high", "medium_and_up", "all
 # Mode used when nothing valid is configured or persisted.
 DEFAULT_AUTO_MODE: AutoMode = "off"
 
+# Follow-along auto-show is off until an operator turns it on (``set_follow_auto``).
+DEFAULT_FOLLOW_AUTO = False
+
 
 def is_auto_mode(value: object) -> TypeGuard[AutoMode]:
     """Whether ``value`` is one of the modes the server accepts."""
     return isinstance(value, str) and value in ALLOWED_AUTO_MODES
+
+
+def coerce_follow_auto(value: object, default: bool = DEFAULT_FOLLOW_AUTO) -> bool:
+    """Return ``value`` when it is a boolean, otherwise ``default``.
+
+    Persisted JSON is outside the type system: a hand-edited ``"yes"`` keeps
+    follow-along auto-show off (with a warning) rather than being read as true.
+    """
+    if isinstance(value, bool):
+        return value
+    if value is not None:
+        logger.warning(f"Ignoring invalid follow-along auto-show value {value!r}; using {default}")
+    return default
 
 
 def coerce_auto_mode(value: object, default: AutoMode = DEFAULT_AUTO_MODE) -> AutoMode:
@@ -77,6 +93,10 @@ class SettingsStore:
     def load_auto_mode(self, default: AutoMode = DEFAULT_AUTO_MODE) -> AutoMode:
         """Return the persisted auto-approve mode, or ``default``."""
         return coerce_auto_mode(self._read().get("auto_mode"), default=default)
+
+    def load_follow_auto(self, default: bool = DEFAULT_FOLLOW_AUTO) -> bool:
+        """Return the persisted follow-along auto-show switch, or ``default``."""
+        return coerce_follow_auto(self._read().get("follow_auto"), default=default)
 
     def load_bible_version(self, db_path: str) -> str | None:
         """Return the persisted Bible translation id, or None if none applies.
@@ -120,6 +140,19 @@ class SettingsStore:
         if not self._write(settings):
             return False
         logger.info(f"Persisted auto-approve mode '{auto_mode}' to {self.path}")
+        return True
+
+    def save_follow_auto(self, enabled: bool) -> bool:
+        """Persist the follow-along auto-show switch; returns False when the write failed.
+
+        Saved like ``save_auto_mode``: other keys are kept, and a failed write leaves
+        the in-memory value in force.
+        """
+        settings = self._read()
+        settings["follow_auto"] = enabled
+        if not self._write(settings):
+            return False
+        logger.info(f"Persisted follow-along auto-show {'on' if enabled else 'off'} to {self.path}")
         return True
 
     def _write(self, settings: dict[str, Any]) -> bool:

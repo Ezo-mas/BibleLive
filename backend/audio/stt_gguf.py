@@ -259,6 +259,22 @@ class MultiModelSpeechToText:
             alternate=alternate,
         )
 
+    def transcribe_partial(self, pcm: bytes, language: str) -> Transcription | None:
+        """Transcribe the utterance so far (follow-along only) with the primary model alone.
+
+        The second model is never run, so a partial costs one model's time. Whisper takes
+        no partials (see ``SpeechToText.transcribe_partial``): English gives None and the
+        caller skips it, and no Whisper load is ever started or waited for.
+        """
+        _validate_language(language)
+        if language not in GGUF_LANGUAGES:
+            return None
+
+        audio = np.frombuffer(pcm, dtype=np.int16).astype(np.float32) / 32768.0
+        if len(audio) < self.sample_rate * 0.5:  # as transcribe_utterance: skip under 0.5 s
+            return Transcription(None, 0.0, source=self.models[0].name)
+        return self.models[0].transcribe(audio, language)
+
 
 def create_gguf_speech_to_text(
     engine: str,

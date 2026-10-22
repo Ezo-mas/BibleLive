@@ -30,6 +30,15 @@ class AudioPipelineConfig:
     # transcript is dropped, and a slow server costs only those hints.
     transcript_queue_maxsize: int = 8
     transcript_timeout: float = 2.0  # seconds
+    # Partial transcripts of the utterance still being spoken (see partials.py),
+    # sent only while the server says follow-along is armed. They feed only
+    # /api/transcript, never the reference parser or the sender. Defaults from the
+    # follow-along benchmark (benchmarks/BASELINE_NOTES.md, 2026-10-21): chunk mode
+    # was faster and cheaper than grow, and 1.5 s beat 2 and 3 s.
+    partial_transcripts: bool = True
+    partial_mode: str = "chunk"  # "grow": the whole utterance so far; "chunk": new audio only
+    partial_interval_s: float = 1.5  # utterance time between partials
+    partial_min_s: float = 1.5  # no partial until the utterance is this long
     # How often the pipeline reports its health to the server (seconds; 0
     # disables). The server treats the pipeline as offline after missing three.
     heartbeat_interval: float = 5.0

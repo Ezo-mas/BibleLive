@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { MonitorIcon } from '../../components'
+import { MonitorIcon, StatusBadge } from '../../components'
 import { useI18n } from '../../shared/i18nContext'
 import { PanelHint } from './PanelHint'
 import { previewFontSize } from '../previewFit'
@@ -59,7 +59,15 @@ export function LivePanel({ reference, verseLimit, displayTheme, children }: Liv
             ))}
           </div>
 
-          <div className="operator-live-reference">{formatReference(reference)}</div>
+          <div className="operator-live-reference">
+            {formatReference(reference)}
+            {/* Shown by the server itself for follow-along, not picked by the operator. */}
+            {reference.source === 'follow' && (
+              <StatusBadge variant="info" className="operator-live-tag">
+                {t('ref.followed')}
+              </StatusBadge>
+            )}
+          </div>
 
           {hiddenCount > 0 && (
             <div className="operator-live-note">

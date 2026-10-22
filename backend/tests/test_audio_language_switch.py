@@ -20,6 +20,7 @@ import pytest
 from audio.config import AudioPipelineConfig
 from audio.control import LanguageControlServer
 from audio.metrics import PipelineMetrics
+from audio.partials import PartialMailbox
 from audio.pipeline import BibleLiveAudioProcessor
 from audio.segmenter import Segmenter, SegmentEvent
 from audio.stt import SUPPORTED_LANGUAGES, WHISPER_INITIAL_PROMPTS, SpeechToText, Transcription
@@ -138,6 +139,9 @@ def _processor(language: str = "en") -> BibleLiveAudioProcessor:
     proc.sender = _RecordingSender()
     proc.transcript_sender = _RecordingTranscripts()
     proc._capture_down = False
+    proc._partial_mailbox = PartialMailbox()
+    proc._partial_schedule = None  # partial transcripts are not under test here
+    proc._utterance_seq = 0
     proc._consecutive_transcription_errors = 0
     proc._parser_issues = []
     return proc

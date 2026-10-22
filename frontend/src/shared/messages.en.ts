@@ -172,6 +172,11 @@ export const en = {
   'auto.mediumAndUpDesc': 'New high- and medium-confidence detections go straight to the display.',
   'auto.all': 'All',
   'auto.allDesc': 'Every new detection goes straight to the display.',
+  'settings.followAuto': 'Follow the reading automatically',
+  'settings.followAutoHint':
+    'When the speaker reads on past the passage on screen, the next verses (up to 3 ahead) are shown by themselves. Shared by every console.',
+  'follow.on': 'On',
+  'follow.off': 'Off',
 
   // API failures
   'api.unauthorized': 'Not authorized. Sign in again with your operator token.',
@@ -237,6 +242,7 @@ export const en = {
   'ref.confidence.low': 'Low',
   'ref.sourceSr': 'Source: ',
   'ref.context': 'Context',
+  'ref.followed': 'Auto-followed',
   'ref.verses': {
     one: '{count} verse',
     other: '{count} verses',
@@ -251,17 +257,20 @@ export const en = {
   'notice.errVerseLimit': 'Could not change the verses shown',
   'notice.errTheme': 'Could not change the background',
   'notice.errAutoMode': 'Could not change auto-approve',
+  'notice.errFollowAuto': 'Could not change automatic following',
   'notice.errGeneric': 'Action failed',
   'notice.reverted': '{prefix} — reverted. {reason}',
   'notice.failed': '{prefix}: {reason}',
   'notice.shown': 'Shown: {ref}',
   'notice.shownManual': 'Shown: {ref} (manual)',
+  'notice.shownFollow': 'Shown: {ref} (followed automatically)',
   'notice.displayCleared': 'Display cleared',
   'notice.queueCleared': 'Pending queue cleared',
   'notice.saved': 'Saved — {changes}',
   'notice.changeVerses': 'verses shown {value}',
   'notice.changeBackground': 'background {value}',
   'notice.autoApprove': 'Auto-approve: {mode}',
+  'notice.followAuto': 'Follow the reading automatically: {state}',
   'notice.staged': 'Staged: {ref} — press Show to display',
   'notice.stagedAgain': 'Staged: {ref} — press Show to display it again',
 } as const

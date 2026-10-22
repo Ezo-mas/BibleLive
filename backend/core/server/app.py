@@ -258,6 +258,31 @@ async def _handle_set_auto_mode(
     )
 
 
+async def _handle_set_follow_auto(
+    websocket: WebSocket, app_state: AppState, message: dict[str, Any]
+) -> None:
+    """Choose whether follow-along shows the verses a speaker reads on (``set_follow_auto``).
+
+    Applies to the transcripts that arrive after the change. The switch is server-held,
+    so every operator console sees the same setting and none of them shows a verse twice.
+    With BIBLELIVE_FOLLOW_ALONG off there is nothing to follow, so turning the switch on is
+    refused and nothing is saved; turning it off is always accepted.
+    """
+    follow_auto = message.get("follow_auto")
+    if follow_auto is True and not config.FOLLOW_ALONG:
+        await _ws_error(websocket, "set_follow_auto", "Follow-along is turned off on this server")
+        return
+    if follow_auto is None or not await app_state.set_follow_auto(follow_auto):
+        await _ws_error(websocket, "set_follow_auto", "Invalid follow_auto; expected true or false")
+        return
+
+    # Confirm to operators (including this one) so the toggle reflects the setting the
+    # server will apply to the next transcript.
+    await app_state.connection_manager.send_to_operator(
+        {"type": "follow_auto_confirmed", "data": {"follow_auto": app_state.follow_auto_in_effect}}
+    )
+
+
 async def _handle_authenticate(
     _websocket: WebSocket, _app_state: AppState, _message: dict[str, Any]
 ) -> None:
@@ -331,6 +356,7 @@ _OPERATOR_ACTIONS: dict[str, Any] = {
     "set_verse_limit": _handle_set_verse_limit,
     "set_display_theme": _handle_set_display_theme,
     "set_auto_mode": _handle_set_auto_mode,
+    "set_follow_auto": _handle_set_follow_auto,
     "display_reference": _handle_display_reference,
 }
 
@@ -624,17 +650,23 @@ def create_app(bible_lookup: BibleLookup | None = None) -> FastAPI:
         """Match a confident transcript against the verses after the passage on screen.
 
         Posted by the audio pipeline for each transcript it trusts. The text is used
-        for matching only: it is not stored, logged, or forwarded, and the reply says
-        nothing about the match. With BIBLELIVE_FOLLOW_ALONG off the request succeeds
-        and does nothing. Requires authentication if BIBLELIVE_REQUIRE_AUTH is enabled.
+        for matching only: it is not stored, logged, or forwarded. The reply does not
+        say what the match was, only whether follow-along is armed (``follow_along_active``):
+        true while a passage with a verse is on screen and the speaker may still be reading
+        it, so the pipeline should send partial transcripts of the utterance in progress.
+        With BIBLELIVE_FOLLOW_ALONG off the request succeeds, does nothing, and the flag is
+        false. Requires authentication if BIBLELIVE_REQUIRE_AUTH is enabled.
         """
+        follow_along_active = False
         if config.FOLLOW_ALONG:
             try:
-                await app_state.offer_follow_along(request.text, request.language.strip().lower())
+                follow_along_active = await app_state.offer_follow_along(
+                    request.text, request.language.strip().lower()
+                )
             except Exception as e:
                 # Best effort: a matching failure must not reach the pipeline as an error.
                 logger.error(f"Follow-along matching failed: {e}", exc_info=True)
-        return TranscriptSubmitResponse(status="success")
+        return TranscriptSubmitResponse(status="success", follow_along_active=follow_along_active)
 
     @app.post(
         "/api/approve",
@@ -958,6 +990,7 @@ def create_app(bible_lookup: BibleLookup | None = None) -> FastAPI:
             operator_connections=len(app_state.connection_manager.operator_connections),
             display_settings=app_state.display_settings,
             auto_mode=app_state.auto_mode,
+            follow_auto=app_state.follow_auto_in_effect,
         )
 
     @app.post(

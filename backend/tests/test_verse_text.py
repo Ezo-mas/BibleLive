@@ -5,13 +5,14 @@ the Genesis filler repeats its words in every verse, so they are common
 (IDF below 2) and the Luke words stay rare (IDF above 2).
 """
 
+import math
 import sqlite3
 from contextlib import closing
 
 import pytest
 
 from core.import_bible import BibleImporter
-from core.verse_text import VerseTextIndex, stems
+from core.verse_text import VerseMatch, VerseTextIndex, ordered_stems, stems
 
 LUKE_16 = [
     "išmanusis valdytojas apkaltintas mokiniams",
@@ -92,6 +93,69 @@ class TestScores:
         assert INDEX.scores("Luke", 99, LUKE_16[0]) == {}  # unknown chapter
         assert INDEX.scores("Luke", 16, "ir kaip tai") == {}  # no distinctive word
         assert INDEX.scores("Luke", 16, "dievas kūrė dangų ir žemę") == {}  # common words only
+
+
+class TestOrderedStems:
+    def test_keeps_reading_order_and_duplicates(self):
+        assert ordered_stems("Dievas kūrė dangų ir žemę, dangų") == [
+            "dieva",
+            "kure",
+            "dangu",
+            "zeme",
+            "dangu",
+        ]
+
+    def test_holds_the_same_words_as_stems(self):
+        for text in [*LUKE_16, FILLER[0], "Jono 3:16 ir Jėzus tarė: „Tiesa“"]:
+            assert set(ordered_stems(text)) == stems(text)
+
+    def test_short_words_are_dropped(self):
+        assert ordered_stems("ir tai yra") == []
+
+
+class TestOrdered:
+    def test_each_verse_in_reading_order(self):
+        ordered = INDEX.ordered("Luke", 16)
+        assert set(ordered) == {1, 2, 3}
+        assert ordered[1] == ("isman", "valdy", "apkal", "mokin")
+        assert ordered[3] == ("skoli", "sumaz", "skola", "aliej", "stati")
+
+    def test_unknown_chapter_or_book_is_empty(self):
+        assert INDEX.ordered("Luke", 99) == {}
+        assert INDEX.ordered("Mark", 16) == {}
+
+
+class TestIdf:
+    def test_a_stem_in_one_verse_weighs_the_log_of_the_verse_count(self):
+        # ROWS holds 23 verses: three Luke verses and twenty filler verses.
+        assert INDEX.idf("isman") == pytest.approx(math.log(23))
+
+    def test_a_stem_in_every_filler_verse_weighs_little(self):
+        assert INDEX.idf("dangu") == pytest.approx(math.log(23 / 20))
+
+    def test_a_stem_no_verse_has_weighs_nothing(self):
+        assert INDEX.idf("zzzzz") == 0.0
+
+
+class TestScoresUnchanged:
+    """Ordered tokens are an addition: scores and best_verse give the numbers they always gave.
+
+    The expected values were recorded from the index before the ordered tokens existed.
+    """
+
+    def test_partial_reading_scores(self):
+        text = "šeimininkas reikalauja skolas mokiniams"
+        assert INDEX.scores("Luke", 16, text) == pytest.approx({1: 0.25, 2: 0.5, 3: 0.2})
+        assert INDEX.best_verse("Luke", 16, text) == VerseMatch(
+            verse=2, verse_end=None, score=pytest.approx(0.5), runner_up=pytest.approx(0.25)
+        )
+
+    def test_reading_on_into_the_next_verse(self):
+        text = f"{LUKE_16[0]} {LUKE_16[1]}"
+        assert INDEX.scores("Luke", 16, text) == pytest.approx({1: 1.0, 2: 1.0, 3: 0.0})
+        assert INDEX.best_verse("Luke", 16, text) == VerseMatch(
+            verse=1, verse_end=2, score=pytest.approx(1.0), runner_up=0.0
+        )
 
 
 class TestFromSqlite:

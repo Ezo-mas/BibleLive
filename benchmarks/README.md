@@ -132,6 +132,41 @@ python benchmarks/run_benchmark.py --manifest benchmarks/corpus/manifest.example
     --audio-dir bench_audio --out results/stub.json --mode rt
 ```
 
+### Follow-along benchmark
+
+`benchmarks/follow_along_bench.py` measures how early follow-along hints arrive,
+not reference detection. It replays every service in `corpus/lt-sermons.txt`
+through the live segmenter, takes the final transcripts from the detection cache
+(run `run_benchmark.py --mode offline` for the same engine first; it never
+transcribes finals), transcribes partial transcripts for real (cached under
+`<cache-dir>/follow-along-partials`), and feeds both to the server's own
+`FollowAlong` on a simulated clock with one transcription thread (`--final-rtf`,
+`--partial-rtf`). The module docstring defines the metrics; results so far are in
+`BASELINE_NOTES.md` ("Follow-along: partial transcripts"). Run it after changing
+`audio/partials.py`, the partial-transcript defaults, or the hint policy in
+`core/server/follow_along.py`:
+
+```bash
+python benchmarks/follow_along_bench.py --stt kmynas --device cpu --cpu-threads 4 \
+    --model large-v3-turbo --context-ttl-s 600 \
+    --kmynas-model ~/models/kmynas-v4/kmynas-v4/kmynas-v4-Q8_0.gguf \
+    --audio-dir bench_audio --cache-dir results/.bench-cache \
+    --bible-db bible_data/biblelive.sqlite --verse-text-db bible_data/bible_ltb.sqlite \
+    --final-rtf 0.21 --partial-rtf 0.21 --out results/follow-along/<tag>.json
+```
+
+The GPU tier is the same with `--stt kmynas+canary --device cuda --canary-model ...`
+and its own rates. Pass `--partials off` for the before-state.
+
+`--truth timestamps` adds per-verse truth: each confident final in a display period is
+transcribed again by Kmynas for word timestamps (cached under
+`<cache-dir>/follow-along-words`, first run only), and `verse_timing.py` aligns the words to
+the displayed chapter to time each verse read aloud. A hint is confirmed when its verse was
+read with a start within 30 s before or 10 s after its arrival, and lag is measured from that
+verse's start (`lagStartMed`/`lagStartP90`). `versesRead` and `hinted` give recall. The default
+`--truth final` keeps the columns above; `--verse-read-bar` (default 0.5) sets how much of a
+verse must be heard, and `--dump-verses N` prints N random readings to check by eye.
+
 ## Metrics (definitions)
 
 - **TP**: predicted reference whose normalized (book, chapter, verse_start,
