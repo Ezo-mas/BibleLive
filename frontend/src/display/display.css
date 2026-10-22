@@ -167,18 +167,31 @@ body {
   opacity: 0.7;
 }
 
-/* Waiting State */
-.display-waiting {
+/* Idle state: the themed background, and the operator's picture when one is set.
+   Covers the whole screen, so the picture is not bound by the stage padding. */
+.display-idle {
+  position: absolute;
+  inset: 0;
   display: flex;
-  flex-direction: column;
   align-items: center;
-  gap: var(--space-5);
-  opacity: 0.5;
+  justify-content: center;
 }
 
-.display-waiting-icon {
-  color: var(--color-text-muted);
-  opacity: 0.5;
+/* Logo: centred at its own size, never cropped, with a ceiling so a large file
+   still leaves the background visible around it. */
+.display-idle-image--logo {
+  width: auto;
+  height: auto;
+  max-width: min(60vw, 960px);
+  max-height: min(60vh, 540px);
+  object-fit: contain;
+}
+
+/* Fill screen: covers the whole display; edges that do not fit the aspect ratio are cropped. */
+.display-idle-image--fill {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 /* Animations */

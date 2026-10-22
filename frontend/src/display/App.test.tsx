@@ -156,18 +156,33 @@ describe('display verses', () => {
   })
 })
 
+/**
+ * A display_settings message carrying the idle picture. `idle_image` is not in the
+ * DisplayMessage type yet (pending protocol approval, see shared/idleScreen.ts), so the
+ * cast is deliberate.
+ */
+function pushIdlePicture(picture: unknown) {
+  push({
+    type: 'display_settings',
+    data: { verse_limit: 3, theme: 'dark', idle_image: picture },
+  } as unknown as DisplayMessage)
+}
+
+const PICTURE = { version: '0123456789abcdef', fit: 'logo' }
+
 describe('idle display', () => {
-  it('shows only the logo when nothing is on screen, with no status text', () => {
+  it('is a blank themed screen by default: no book icon, no text, no picture', () => {
     const { container } = render(<App />)
     act(() => {
       socket?.onopen?.()
     })
 
-    expect(container.querySelector('.display-waiting-icon')).toBeInTheDocument()
     expect(container.textContent).toBe('')
+    expect(container.querySelector('svg')).toBeNull()
+    expect(container.querySelector('img')).toBeNull()
   })
 
-  it('goes back to the logo alone after a clear', async () => {
+  it('is blank again after a clear, with no picture set', async () => {
     const { container } = render(<App />)
     act(() => {
       socket?.onopen?.()
@@ -177,9 +192,95 @@ describe('idle display', () => {
 
     push({ type: 'clear', data: {} })
 
-    await waitFor(() =>
-      expect(container.querySelector('.display-waiting-icon')).toBeInTheDocument()
-    )
+    await waitFor(() => expect(screen.queryByText('John 1:1-3')).not.toBeInTheDocument())
     expect(container.textContent).toBe('')
+    expect(container.querySelector('img')).toBeNull()
+  })
+
+  it('shows the operator picture, contained, while nothing is on screen', () => {
+    render(<App />)
+    act(() => {
+      socket?.onopen?.()
+    })
+
+    pushIdlePicture(PICTURE)
+
+    const picture = screen.getByTestId('display-idle-image')
+    expect(picture).toHaveAttribute('src', '/api/idle-screen/image?v=0123456789abcdef')
+    expect(picture).toHaveClass('display-idle-image--logo')
+    expect(picture).toHaveAttribute('alt', 'Idle screen picture')
+  })
+
+  it('fills the screen in fill mode', () => {
+    render(<App />)
+
+    pushIdlePicture({ ...PICTURE, fit: 'fill' })
+
+    expect(screen.getByTestId('display-idle-image')).toHaveClass('display-idle-image--fill')
+  })
+
+  it('is removed the moment a reference is shown, and comes back after a clear', async () => {
+    render(<App />)
+    act(() => {
+      socket?.onopen?.()
+    })
+    pushIdlePicture(PICTURE)
+    expect(screen.getByTestId('display-idle-image')).toBeInTheDocument()
+
+    push({ type: 'reference', data: reference() })
+    await waitFor(() => expect(screen.getByText('John 1:1-3')).toBeInTheDocument())
+    expect(screen.queryByTestId('display-idle-image')).not.toBeInTheDocument()
+
+    push({ type: 'clear', data: {} })
+    await waitFor(() => expect(screen.getByTestId('display-idle-image')).toBeInTheDocument())
+  })
+
+  it('waits for the clear when a picture arrives over a passage on screen', async () => {
+    render(<App />)
+    act(() => {
+      socket?.onopen?.()
+    })
+    push({ type: 'reference', data: reference() })
+    await waitFor(() => expect(screen.getByText('John 1:1-3')).toBeInTheDocument())
+
+    pushIdlePicture(PICTURE)
+    expect(screen.queryByTestId('display-idle-image')).not.toBeInTheDocument()
+
+    push({ type: 'clear', data: {} })
+    await waitFor(() => expect(screen.getByTestId('display-idle-image')).toBeInTheDocument())
+  })
+
+  it('is removed when the server reports no picture', () => {
+    render(<App />)
+    pushIdlePicture(PICTURE)
+
+    pushIdlePicture(null)
+
+    expect(screen.queryByTestId('display-idle-image')).not.toBeInTheDocument()
+  })
+
+  it('stays blank for a server that does not send the field (older versions)', () => {
+    const { container } = render(<App />)
+    act(() => {
+      socket?.onopen?.()
+    })
+
+    push({ type: 'display_settings', data: { verse_limit: 3, theme: 'light' } })
+
+    expect(container.querySelector('img')).toBeNull()
+    expect(container.textContent).toBe('')
+  })
+
+  it.each([
+    ['an unknown fit', { ...PICTURE, fit: 'stretch' }],
+    ['a version that is not a tag', { ...PICTURE, version: '../../etc/passwd' }],
+    ['a missing version', { fit: 'logo' }],
+    ['a string', 'idle_screen.png'],
+  ])('stays blank for a malformed picture (%s)', (_label, picture) => {
+    render(<App />)
+
+    pushIdlePicture(picture)
+
+    expect(screen.queryByTestId('display-idle-image')).not.toBeInTheDocument()
   })
 })
