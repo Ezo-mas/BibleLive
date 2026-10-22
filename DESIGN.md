@@ -36,23 +36,45 @@ shared class instead of writing a one-off. Display page styling is separate
 
 ## Layout
 
-Two columns inside 16px of padding, centred on a window wider than the two together. Left, top to bottom: the ON DISPLAY preview
-with its control row in the same card, UP NEXT, follow-along. Right: one tabbed
-panel (Pending, Plan, History) that takes the width that is left, between 300px and
-560px (`--operator-side-max`; it never balloons on a wide window), and fills the height. Below 1100px it is one column and the page scrolls. The gear in the header
-opens Settings, which holds everything not needed mid-service (language, Bible
+Two columns inside the 16px page gutter, which is the only space at the window's
+sides: nothing is centred and nothing has a maximum width. Right: one tabbed panel
+(Pending, Plan, History) pinned to the right edge at `clamp(300px, 34vw, 560px)`
+(`--operator-side-w`), filling the height. Left, top to bottom: the ON DISPLAY preview
+with its control row in the same card, UP NEXT, follow-along; the column takes every
+pixel of width the panel does not (`flex: 1`, `min-width: 0`). Below 1100px it is one
+column, the page scrolls, and the preview takes its height from 16:9. The gear in the
+header opens Settings, which holds everything not needed mid-service (language, Bible
 version, interface language, follow-along switch, the auto-approve modes, display
 background).
 
-The preview is a 16:9 miniature of the audience screen drawn in the display's own
-theme (`data-theme`). It spans the card's inner width exactly, with the same 12px
-inset as the control row under it, so it is never letterboxed; its text is fitted the way the display fits its own (`usePreviewFit`, reusing `fitText.ts`: shrink until the verses fit, bounds scaled from the display's), so ten verses or all of them shrink to fit; if they ever overflow they start at the top, never a clipped middle. It is presentational only. Spanning the width
-makes the left column's width a function of the height: `.operator-main` is a size
-container, and the column is `min(width left after the side panel's minimum,
-max(--operator-column-min, (height - --operator-chrome) x 16/9 + card padding))`.
-`--operator-chrome` (in `operator.css`) is the measured height of everything in the
-column except the monitor, so if a card's anatomy changes, measure it again. A
-window too short for the floor scrolls the column.
+**Heights.** The left column is a flex column of the full height. ON DISPLAY takes
+all the height the others leave (`flex: 1`, with a floor of `--operator-frame-min`,
+160px, for the monitor frame: a window shorter than that scrolls the column). UP NEXT,
+the control row and follow-along are `flex: none`, their natural height, never
+squeezed. So the left column's last card ends exactly where the right panel ends,
+with or without follow-along and however long Up Next's text is. There is no
+measured constant to keep in step with the cards.
+
+**The preview.** Inside ON DISPLAY, the monitor frame (`.operator-monitor-wrap`) is a
+neutral bezel (`--bezel-bg`, recessed in both themes; not the display's colour) that
+spans the card's inner width, the control row's own left and right edges (12px inset),
+and fills the leftover height. It is a size container: the 16:9 miniature of the
+audience screen, drawn in the display's own theme (`data-theme`) with its own 1px
+border, is `min(100cqw, 100cqh x 16/9)` wide and centred in the frame, so it is the
+largest 16:9 that fits and the bezel shows as bars at the sides (a tall frame) or above
+and below (a wide one), whichever binds. Its text is fitted the way the display fits
+its own (`usePreviewFit`, reusing `fitText.ts`: shrink until the verses fit, bounds
+scaled from the display's, from the miniature's real width), so ten verses or all of
+them shrink to fit; if they ever overflow they start at the top, never a clipped
+middle. It is presentational only.
+
+**Known trade-off.** Because the preview card takes what is left, it gives up the
+follow-along card's height (plus the 12px gap) when that card appears and takes it
+back when it goes, so a height-bound miniature resizes a little at that moment, and
+the control row and Up Next, which sit above the follow-along card, move up by the
+same amount. The tabs panel never moves. On a short window with a four-line Up Next and
+follow-along showing, the miniature can be small (about 370px wide at 1280x720);
+the frame never goes under its 160px floor, below which the column scrolls instead.
 
 ## Cards share one anatomy
 
@@ -72,8 +94,8 @@ monitor is three groups, each a caption over one 36px control on one baseline: S
 (Clear display), Verses (3, 5, 10, All: the values the server accepts) and Auto-approve
 (Off / On). The captions are short on purpose (Lithuanian uses "Automatinis" over the
 control; the group's accessible name is the full phrase), and the row stays on one line
-down to the 560px column floor in both languages. An empty preview centres its message
-on both axes.
+down to a 560px-wide column in both languages. An empty preview centres its message
+on both axes inside the miniature, not the frame.
 
 ## One spacing system
 
@@ -83,8 +105,8 @@ padding, with or without actions), `--card-gap` (8px) from the header to the bod
 between a row's parts, 12px under the last element, and 12px between stacked cards.
 Cards differ only in text size and line count. The three left-column cards and the
 side panel's rows use it; the control row under the preview is padded the same 12px,
-with 36px controls. Cards are `flex: none`, never squeezed; the column scrolls
-instead. The tab bar is also 48px, so the two columns' headers line up, and its tabs
+with 36px controls. Up Next and follow-along are `flex: none`, never squeezed (ON DISPLAY
+is the one card that gives and takes height, see Layout); the column scrolls instead. The tab bar is also 48px, so the two columns' headers line up, and its tabs
 share the whole bar equally with no outer padding or gaps.
 
 ## Buttons
@@ -202,8 +224,8 @@ One design for the whole dialog (`SettingsDialog.tsx`, styles in `operator.css`)
 Every layout is verified in English and in Lithuanian, in light and dark, before it is
 called done: Lithuanian labels are routinely 30 to 60% longer. Switch the language
 through the real setting (Settings, Interface language) and measure in a browser, not
-by eye: no wrapped row or stray line (the control row is one line down to the 560px
-column floor), no horizontal overflow, a label column that never drops under 200px, and
+by eye: no wrapped row or stray line (the control row is one line down to a 560px-wide
+column), no horizontal overflow, a label column that never drops under 200px, and
 the same alignment as English. A new string is checked for width where it sits: the
 control row's captions and Off / On labels are pinned by a unit test
 (`shared/quickRow.test.ts`), and a longer translation there needs a conscious choice and

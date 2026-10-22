@@ -258,67 +258,51 @@
   padding-left: var(--space-5);
 }
 
-/* Main content: two columns, about 2.7 to 1. The workspace on the left is the
-   display preview (filling the height), the control row under it, Up Next and the
-   follow-along strip; the one tabbed panel (Pending, Plan, History) is on the
-   right and takes whatever width is left.
+/* Main content: two columns inside the page gutter (16px, the only side space on
+   any window). The tabbed panel (Pending, Plan, History) is pinned to the right edge
+   at a width in proportion to the window (`--operator-side-w`); the workspace takes
+   every pixel it does not, so there is never empty space beside either column.
 
-   The preview is a 16:9 box that spans the card's inner width exactly (the same
-   12px inset as the control row under it), so it is never letterboxed. That makes
-   the left column's width a function of the height: the monitor's height is the
-   height left after everything else in the column, and its width is that times
-   16:9. `.operator-main` is a size container so the height is known in CSS.
-   `--operator-chrome` is the height of everything in the column except the monitor
-   (both gaps, the preview's label row and control row, UP NEXT with four lines of
-   text, and follow-along with one). Measured in the browser; if a card's anatomy
-   changes, measure it again. The column never goes narrower than
-   `--operator-column-min`, so a short window scrolls the column rather than
-   squeezing the cards into wrapped headers. */
+   The workspace is a flex column of the full height. ON DISPLAY takes all the height
+   the other cards leave (`flex: 1`); UP NEXT and follow-along are their natural
+   height and never squeezed. So the column's last card always ends where the panel
+   ends, with or without follow-along and however long Up Next's text is. The one
+   trade-off: when follow-along appears or goes, the preview card gives or takes that
+   card's height, and a height-bound miniature resizes a little. */
 .operator-main {
-  --operator-chrome: 428px;
-  --operator-side-min: 300px;
-  --operator-side-max: 560px;
-  --operator-column-min: 560px;
+  --operator-side-w: clamp(300px, 34vw, 560px);
+  /* The least height the monitor frame keeps; a window shorter than that scrolls the
+     column instead of squeezing the preview to nothing. */
+  --operator-frame-min: 160px;
   display: flex;
-  /* On a window wider than the column and the panel together, they sit centred. */
-  justify-content: center;
   gap: var(--space-4);
   flex: 1;
   min-height: 0;
   padding: var(--space-4);
   overflow: hidden;
-  container-type: size;
 }
 
 .operator-workspace {
   display: flex;
-  flex: 0 0 auto;
+  flex: 1 1 0;
   flex-direction: column;
   gap: var(--space-3);
-  width: min(
-    calc(100cqw - var(--space-4) - var(--operator-side-min)),
-    max(
-      var(--operator-column-min),
-      calc(
-        (100cqh - var(--operator-chrome)) * 16 / 9 + 2 * var(--space-3) + 2 * var(--border-width)
-      )
-    )
-  );
   min-width: 0;
   min-height: 0;
   overflow-y: auto;
 }
 
-/* ON DISPLAY: a card with a slim label row, the 16:9 preview, and the control
-   row. It takes every pixel of height the column has left. */
+/* ON DISPLAY: a card with a slim label row, the monitor frame, and the control
+   row. It takes every pixel of height the column has left. No `overflow`, so its
+   minimum height is its content's (the frame's floor plus the rows) and it never
+   shrinks over the control row. */
 .operator-live {
   display: flex;
   flex-direction: column;
-  flex: none;
+  flex: 1 1 0;
   background: var(--card-bg);
   border: var(--border-width) solid var(--color-border);
   border-radius: var(--radius-card);
-  overflow: hidden;
 }
 
 /* One anatomy for the three cards in the workspace (ON DISPLAY, UP NEXT and
@@ -404,10 +388,21 @@
   color: var(--color-text-muted);
 }
 
-/* The preview spans the card's inner width (12px each side, as the control row
-   does) and takes its height from the 16:9 ratio. */
+/* The monitor frame: a neutral bezel that spans the card's inner width (12px each
+   side, the control row's own edges) and takes all the height left. It is a size
+   container, so the miniature inside is sized from the frame's box in `cqw` and `cqh`:
+   the largest 16:9 that fits, centred, with the bezel showing as bars at the sides
+   (a tall frame) or above and below (a wide one). Not the display's theme colour. */
 .operator-monitor-wrap {
-  padding: var(--card-gap) var(--card-pad) 0;
+  display: grid;
+  flex: 1 1 0;
+  place-items: center;
+  min-height: var(--operator-frame-min);
+  margin: var(--card-gap) var(--card-pad) 0;
+  overflow: hidden;
+  container-type: size;
+  background: var(--bezel-bg);
+  border-radius: var(--radius-control);
 }
 
 /* The display's own tokens (through `data-theme`) draw the preview, so it shows the
@@ -419,7 +414,8 @@
      the console's own container instead of this box. */
   gap: 2%;
   box-sizing: border-box;
-  width: 100%;
+  /* The largest 16:9 that fits the frame, whichever of width and height binds. */
+  width: min(100cqw, calc(100cqh * 16 / 9));
   aspect-ratio: 16 / 9;
   padding: 5% 8%;
   overflow: hidden;
@@ -717,9 +713,8 @@
    it, and its one footer control pinned at the bottom. It is the answer to "what
    do I do next", so it gets a column of its own beside the display. */
 .operator-pending {
-  flex: 1 1 var(--operator-side-min);
-  min-width: var(--operator-side-min);
-  max-width: var(--operator-side-max);
+  flex: none;
+  width: var(--operator-side-w);
   min-height: 0;
 }
 
@@ -1519,23 +1514,31 @@
 
 /* Responsive */
 @media (max-width: 1100px) {
-  /* One column and a page that scrolls. The left column is the full width, so the
-     preview takes its 16:9 height from it. Flex rather than grid, so each part keeps
-     the height its content needs. */
+  /* One column and a page that scrolls. The frame is the full width and takes its
+     height from the 16:9 ratio, so the miniature fills it. Flex rather than grid, so
+     each part keeps the height its content needs. */
   .operator-main {
     flex-direction: column;
     overflow-y: auto;
-    container-type: normal;
   }
 
   .operator-workspace {
     flex: none;
-    width: 100%;
     overflow: visible;
   }
 
-  .operator-pending {
+  .operator-live {
     flex: none;
+  }
+
+  .operator-monitor-wrap {
+    flex: none;
+    aspect-ratio: 16 / 9;
+    min-height: 0;
+  }
+
+  .operator-pending {
+    width: auto;
     max-height: 520px;
   }
 }
