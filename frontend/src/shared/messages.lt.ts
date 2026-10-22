@@ -222,7 +222,7 @@ export const lt: Record<MessageKey, MessageEntry> = {
   },
   'next.nothingStaged': 'Nieko neparuošta',
   'next.stagedHint': 'Pasirinkite nuorodą eilėje arba raskite ištrauką, kad ją čia peržiūrėtumėte.',
-  'next.discard': 'Atmesti',
+  'next.discard': 'Pašalinti',
   'next.show': 'Rodyti ekrane',
   'source.manual': 'Rankinė',
   'source.history': 'Istorija',
@@ -255,6 +255,17 @@ export const lt: Record<MessageKey, MessageEntry> = {
   'follow.label': 'Dabar skaitoma',
   'follow.show': 'Rodyti',
   'follow.showAria': 'Rodyti {label} ekrane',
+
+  // Rows in Pending and Plan, and the controls under the display preview
+  'row.show': 'Rodyti',
+  'row.stage': 'Paruošti',
+  'row.remove': 'Pašalinti',
+  'stage.previewAria': 'Auditorijos ekrano peržiūra',
+  'quick.versesLabel': 'Eilutės',
+  'quick.versesAria': 'Ekrane rodomos eilutės',
+  'quick.autoLabel': 'Automatinis patvirtinimas',
+  'quick.autoOn': 'Įjungta',
+  'quick.autoOff': 'Išjungta',
 
   // Reference cards
   'ref.confidenceSr': 'Aptikimo tikrumas: ',

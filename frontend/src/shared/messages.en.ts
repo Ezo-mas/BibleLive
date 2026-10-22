@@ -215,7 +215,7 @@ export const en = {
   },
   'next.nothingStaged': 'Nothing staged',
   'next.stagedHint': 'Select a reference in the queue, or find a passage, to preview it here.',
-  'next.discard': 'Discard',
+  'next.discard': 'Remove',
   'next.show': 'Show on display',
   'source.manual': 'Manual',
   'source.history': 'History',
@@ -248,6 +248,17 @@ export const en = {
   'follow.label': 'Reading now',
   'follow.show': 'Show',
   'follow.showAria': 'Show {label} on display',
+
+  // Rows in Pending and Plan, and the controls under the display preview
+  'row.show': 'Show',
+  'row.stage': 'Stage',
+  'row.remove': 'Remove',
+  'stage.previewAria': 'Audience display preview',
+  'quick.versesLabel': 'Verses',
+  'quick.versesAria': 'Verses shown on the display',
+  'quick.autoLabel': 'Auto-approve',
+  'quick.autoOn': 'On',
+  'quick.autoOff': 'Off',
 
   // Reference cards
   'ref.confidenceSr': 'Detection confidence: ',

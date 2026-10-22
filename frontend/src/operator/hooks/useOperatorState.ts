@@ -27,6 +27,8 @@ import type { PassageQuery } from '../passageApi'
 import { dedupeHistory, samePassage } from '../passageKey'
 import { usePlan } from './usePlan'
 import type { PlanItem, PlanState } from './usePlan'
+import { usePlanSnippets } from './usePlanSnippets'
+import { usePassageText } from './usePassageText'
 import { autoModeOption, coerceAutoMode } from '../autoMode'
 import { useScriptureSearch } from './useScriptureSearch'
 import { usePipelineStatus } from './usePipelineStatus'
@@ -235,6 +237,10 @@ export interface OperatorState {
 
   /** Passages lined up in advance, kept in this browser. */
   plan: PlanState
+  /** Looked-up text for plan items saved without any, by item id. */
+  planSnippets: Record<string, string>
+  /** The text the follow-along hint points at, once looked up; null until then. */
+  followAlongText: string | null
   /** Stage a planned passage in Up Next (looked up fresh); nothing is sent to the display. */
   stagePlanItem: (item: PlanItem) => void
   /** Show a planned passage at once (double-click), skipping Up Next. */
@@ -908,6 +914,20 @@ export function useOperatorState(): OperatorState {
   applyBibleVersionRef.current = bibleVersion.applyConfirmed
 
   const plan = usePlan()
+  const planSnippets = usePlanSnippets(plan.items, token, isConnected)
+  // The words of the passage the follow-along card points at, for its preview line.
+  const followAlongText = usePassageText(
+    followAlong
+      ? {
+          book: followAlong.book,
+          chapter: followAlong.chapter,
+          verseStart: followAlong.verse_start,
+          verseEnd: followAlong.verse_end,
+        }
+      : null,
+    token,
+    isConnected
+  )
   const addToPlan = plan.add
   const planPassage = useCallback(
     (passage: Passage) => {
@@ -1021,6 +1041,8 @@ export function useOperatorState(): OperatorState {
     showHistory,
     approvePending,
     plan,
+    planSnippets,
+    followAlongText,
     stagePlanItem,
     showPlanItem,
     selectedHistoryId,
