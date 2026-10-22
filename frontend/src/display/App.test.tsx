@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { act, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import App from './App'
 import { DISPLAY_THEME_STORAGE_KEY } from '../shared/verseText'
 import type { DisplayMessage } from '../shared/types'
@@ -157,9 +157,8 @@ describe('display verses', () => {
 })
 
 /**
- * A display_settings message carrying the idle picture. `idle_image` is not in the
- * DisplayMessage type yet (pending protocol approval, see shared/idleScreen.ts), so the
- * cast is deliberate.
+ * A display_settings message carrying the idle picture. The value is `unknown` so the
+ * tests can also push malformed ones, which the typed `idle_image` field would reject.
  */
 function pushIdlePicture(picture: unknown) {
   push({
@@ -209,6 +208,29 @@ describe('idle display', () => {
     expect(picture).toHaveAttribute('src', '/api/idle-screen/image?v=0123456789abcdef')
     expect(picture).toHaveClass('display-idle-image--logo')
     expect(picture).toHaveAttribute('alt', 'Idle screen picture')
+  })
+
+  it('falls back to a blank screen when the picture cannot be loaded, until a new upload', () => {
+    const { container } = render(<App />)
+    act(() => {
+      socket?.onopen?.()
+    })
+    pushIdlePicture(PICTURE)
+
+    // The server answers 404 (the file is gone): no broken-image icon on the projector.
+    fireEvent.error(screen.getByTestId('display-idle-image'))
+    expect(container.querySelector('img')).toBeNull()
+
+    // The same version coming again (a reconnect) does not retry the broken file.
+    pushIdlePicture(PICTURE)
+    expect(container.querySelector('img')).toBeNull()
+
+    // A new upload is a new version, so it is tried.
+    pushIdlePicture({ version: 'fedcba9876543210', fit: 'logo' })
+    expect(screen.getByTestId('display-idle-image')).toHaveAttribute(
+      'src',
+      '/api/idle-screen/image?v=fedcba9876543210'
+    )
   })
 
   it('fills the screen in fill mode', () => {

@@ -43,6 +43,10 @@ export default function App() {
   const [fontSize, setFontSize] = useState(MAX_FONT_SIZE)
   // The operator's idle picture. Shown only while nothing is on screen.
   const [idleImage, setIdleImage] = useState<IdleImage | null>(null)
+  // The version of a picture the browser could not load (its file is gone, say), so the
+  // audience sees a blank screen rather than a broken-image icon. A new upload is a new
+  // version and gets a fresh try.
+  const [brokenIdleVersion, setBrokenIdleVersion] = useState<string | null>(null)
   const swapTimerRef = useRef<number | undefined>(undefined)
   const stageRef = useRef<HTMLDivElement>(null)
   const versesRef = useRef<HTMLDivElement>(null)
@@ -190,12 +194,13 @@ export default function App() {
         ) : (
           // Nothing on screen: the themed background, plus the operator's picture if one is set.
           <div className="display-idle">
-            {idleImage && (
+            {idleImage && idleImage.version !== brokenIdleVersion && (
               <img
                 className={`display-idle-image display-idle-image--${idleImage.fit}`}
                 src={idleImageUrl(idleImage)}
                 alt={t('idle.imageAlt')}
                 data-testid="display-idle-image"
+                onError={() => setBrokenIdleVersion(idleImage.version)}
               />
             )}
           </div>

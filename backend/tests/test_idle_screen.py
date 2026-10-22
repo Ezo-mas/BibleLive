@@ -495,6 +495,24 @@ def test_display_settings_carry_the_picture_to_connected_displays(client, app_st
         context.__exit__(None, None, None)
 
 
+def test_a_failed_upload_after_a_fit_change_still_tells_the_displays(
+    client, app_state, auth_enabled, monkeypatch
+):
+    async def fail(kind, data):
+        raise IdleScreenError(500, "The idle-screen picture could not be saved.")
+
+    monkeypatch.setattr(app_state, "set_idle_image", fail)
+    context, websocket, _initial = _connect_display(client)
+    try:
+        response = _upload(client, PNG, params={"fit": "fill"})
+
+        assert response.status_code == 500
+        assert app_state.idle_screen_fit == "fill"
+        assert websocket.receive_json()["type"] == "display_settings"
+    finally:
+        context.__exit__(None, None, None)
+
+
 def test_a_display_that_connects_later_gets_the_picture(client, app_state, auth_enabled):
     assert _upload(client, JPEG).status_code == 200
 

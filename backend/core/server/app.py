@@ -1043,7 +1043,13 @@ def create_app(bible_lookup: BibleLookup | None = None) -> FastAPI:
             # one message rather than the new picture with the old fit.
             if fit is not None:
                 await app_state.set_idle_fit(fit, broadcast=False)
-            await app_state.set_idle_image(kind, data)
+            try:
+                await app_state.set_idle_image(kind, data)
+            except IdleScreenError:
+                # The fit is already applied, so the displays must not be left out of date.
+                if fit is not None:
+                    await app_state.send_display_settings()
+                raise
         except IdleScreenError as e:
             raise HTTPException(status_code=e.status_code, detail=e.message)
         return app_state.idle_screen_state()
