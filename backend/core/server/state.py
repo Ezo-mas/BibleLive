@@ -22,9 +22,11 @@ from .idle_screen import (
     IdleScreenImageInfo,
     IdleScreenState,
     ImageKind,
+    commit_image_file,
+    discard_staged_file,
     new_image_version,
     remove_image_files,
-    write_image_file,
+    stage_image_file,
 )
 from .models import (
     AutoMode,
@@ -286,8 +288,9 @@ class AppState:
     async def set_idle_image(self, kind: ImageKind, data: bytes) -> None:
         """Store ``data`` as the idle-screen picture.
 
-        The file is written first, then its record is saved; a failure at either step
-        raises ``IdleScreenError`` and leaves the picture in memory as it was. Writes run
+        The bytes are staged in a temporary file, the record is saved, and only then is
+        the file moved into place, so a failure at any step raises ``IdleScreenError``
+        and leaves the picture on show (file, record and memory) as it was. Writes run
         off the event loop, since a large picture takes a moment to flush to disk. The
         lock keeps two uploads (two consoles) from interleaving: one must not delete the
         file the other has just recorded.
@@ -295,19 +298,37 @@ class AppState:
         directory = self.settings_store.directory
         async with self._idle_lock:
             try:
-                await asyncio.to_thread(write_image_file, directory, kind, data)
+                staged = await asyncio.to_thread(stage_image_file, directory, data)
             except OSError as e:
                 logger.error(f"Could not store the idle-screen picture in {directory}: {e}")
                 raise IdleScreenError(500, "The idle-screen picture could not be stored.") from e
+            previous = self.idle_image
             image = IdleImage(kind=kind, version=new_image_version())
             if not self.settings_store.save_idle_screen_image(image):
+                discard_staged_file(staged)
                 raise IdleScreenError(500, "The idle-screen picture could not be saved.")
+            try:
+                commit_image_file(staged, directory, kind)
+            except OSError as e:
+                logger.error(f"Could not put the idle-screen picture in place in {directory}: {e}")
+                self._restore_idle_record(previous)
+                raise IdleScreenError(500, "The idle-screen picture could not be stored.") from e
             self.idle_image = image
             # Files of the other formats are stale now. Best effort: the record points at this one.
             remove_image_files(directory, keep=kind)
             self._sync_display_idle_image()
         logger.info(f"Idle-screen picture set ({kind}, {len(data)} bytes)")
         await self.send_display_settings()
+
+    def _restore_idle_record(self, previous: IdleImage | None) -> None:
+        """Put back the record of the picture on show after a new one could not be placed."""
+        restored = (
+            self.settings_store.clear_idle_screen_image()
+            if previous is None
+            else self.settings_store.save_idle_screen_image(previous)
+        )
+        if not restored:
+            logger.error("Could not restore the previous idle-screen picture record")
 
     async def clear_idle_image(self) -> None:
         """Remove the idle-screen picture, so the display is blank while idle again.

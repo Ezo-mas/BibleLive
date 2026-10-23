@@ -254,6 +254,41 @@ def test_failed_save_is_a_server_error_and_leaves_no_picture(
     assert client.get("/api/idle-screen/image").status_code == 404
 
 
+def test_failed_save_leaves_the_picture_on_show_untouched(
+    client, app_state, auth_enabled, monkeypatch
+):
+    assert _upload(client, PNG).status_code == 200
+    before = app_state.idle_image
+    monkeypatch.setattr(app_state.settings_store, "save_idle_screen_image", lambda image: False)
+
+    other_png = PNG + b"\x01" * 16
+    assert _upload(client, other_png).status_code == 500
+
+    assert app_state.idle_image == before
+    assert client.get("/api/idle-screen/image").content == PNG
+    assert _stored_files(app_state) == {"idle_screen.png", "server_settings.json"}
+
+
+def test_failed_move_into_place_restores_the_previous_record(
+    client, app_state, auth_enabled, monkeypatch
+):
+    assert _upload(client, PNG).status_code == 200
+    before = app_state.idle_image
+
+    def fail(staged, directory, kind):
+        staged.unlink()
+        raise OSError("disk full")
+
+    monkeypatch.setattr("core.server.state.commit_image_file", fail)
+
+    assert _upload(client, JPEG).status_code == 500
+
+    assert app_state.idle_image == before
+    assert app_state.settings_store.load_idle_screen_image() == before
+    assert client.get("/api/idle-screen/image").content == PNG
+    assert _stored_files(app_state) == {"idle_screen.png", "server_settings.json"}
+
+
 def test_picture_is_served_without_a_token_when_auth_is_on(client, auth_enabled):
     assert _upload(client, PNG).status_code == 200
 

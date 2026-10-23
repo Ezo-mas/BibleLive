@@ -25,8 +25,8 @@ from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
 
-# How the picture is placed: 'logo' centres it at its own size, contained on the themed
-# background; 'fill' covers the whole screen and may crop the edges.
+# How the picture is placed: 'logo' centres it, contained in a box of half the screen,
+# on the themed background; 'fill' covers the whole screen and may crop the edges.
 IdleScreenFit = Literal["logo", "fill"]
 ALLOWED_IDLE_SCREEN_FITS: tuple[IdleScreenFit, ...] = ("logo", "fill")
 DEFAULT_IDLE_SCREEN_FIT: IdleScreenFit = "logo"
@@ -151,13 +151,14 @@ async def read_upload(request: Request) -> bytes:
     return bytes(received)
 
 
-def write_image_file(directory: Path, kind: ImageKind, data: bytes) -> None:
-    """Put ``data`` at the fixed file name for ``kind``, atomically.
+def stage_image_file(directory: Path, data: bytes) -> Path:
+    """Write ``data`` to a temporary file in ``directory`` and return its path.
 
+    The picture on show is not touched: ``commit_image_file`` moves the staged file into
+    place once its record is saved, and ``discard_staged_file`` drops it otherwise.
     Raises OSError when the directory cannot be written; no partial file is left behind.
     """
     directory.mkdir(parents=True, exist_ok=True)
-    final_path = directory / IMAGE_FORMATS[kind][1]
     fd, tmp_name = tempfile.mkstemp(dir=directory, prefix=".idle_screen.", suffix=".tmp")
     tmp_path = Path(tmp_name)
     try:
@@ -165,11 +166,28 @@ def write_image_file(directory: Path, kind: ImageKind, data: bytes) -> None:
             handle.write(data)
             handle.flush()
             os.fsync(handle.fileno())
-        os.replace(tmp_path, final_path)
     except OSError:
-        with contextlib.suppress(OSError):
-            tmp_path.unlink()
+        discard_staged_file(tmp_path)
         raise
+    return tmp_path
+
+
+def commit_image_file(staged: Path, directory: Path, kind: ImageKind) -> None:
+    """Move a staged picture to the fixed file name for ``kind``, atomically.
+
+    Raises OSError when it cannot be moved; the staged file is removed either way.
+    """
+    try:
+        os.replace(staged, directory / IMAGE_FORMATS[kind][1])
+    except OSError:
+        discard_staged_file(staged)
+        raise
+
+
+def discard_staged_file(staged: Path) -> None:
+    """Remove a staged picture that will not be used. Best effort."""
+    with contextlib.suppress(OSError):
+        staged.unlink()
 
 
 def remove_image_files(directory: Path, keep: ImageKind | None = None) -> None:
