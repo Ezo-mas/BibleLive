@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { BookIcon, ConnectionIndicator, SettingsIcon } from '../../components'
+import { BookIcon, Button, ConnectionIndicator, SettingsIcon } from '../../components'
 import type { ConnectionState } from '../../components'
 import { useI18n } from '../../shared/i18nContext'
 
@@ -70,20 +70,19 @@ export function OperatorHeader({
             </div>
           )}
         </div>
-        <button
-          type="button"
-          className="operator-icon-button"
+        <Button
+          variant="secondary"
+          iconOnly
+          icon={<SettingsIcon />}
           onClick={onOpenSettings}
           aria-label={t('header.settings')}
           aria-haspopup="dialog"
           title={t('header.settings')}
-        >
-          <SettingsIcon />
-        </button>
+        />
         {showLogout && (
-          <button onClick={onLogout} className="operator-logout-button" title={t('header.logout')}>
+          <Button variant="secondary" onClick={onLogout} title={t('header.logout')}>
             {t('header.logout')}
-          </button>
+          </Button>
         )}
       </div>
     </header>

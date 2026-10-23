@@ -11,6 +11,8 @@ import {
   writeStoredVerseLimit,
 } from '../../shared/verseText'
 import type { DisplayTheme, VerseLimit } from '../../shared/verseText'
+import { readIdleImage } from '../../shared/idleScreen'
+import type { IdleImage } from '../../shared/idleScreen'
 import { formatReference } from '../../shared/reference'
 import type {
   AuthenticateAction,
@@ -27,6 +29,8 @@ import type { PassageQuery } from '../passageApi'
 import { dedupeHistory, samePassage } from '../passageKey'
 import { usePlan } from './usePlan'
 import type { PlanItem, PlanState } from './usePlan'
+import { usePlanSnippets } from './usePlanSnippets'
+import { usePassageText } from './usePassageText'
 import { autoModeOption, coerceAutoMode } from '../autoMode'
 import { useScriptureSearch } from './useScriptureSearch'
 import { usePipelineStatus } from './usePipelineStatus'
@@ -34,6 +38,8 @@ import type { ScriptureSearchState } from './useScriptureSearch'
 import { useSpokenLanguage } from './useSpokenLanguage'
 import { useBibleVersion } from './useBibleVersion'
 import type { BibleVersionState } from './useBibleVersion'
+import { useIdleScreen } from './useIdleScreen'
+import type { IdleScreenState } from './useIdleScreen'
 import type { SpokenLanguageState } from './useSpokenLanguage'
 import type { ConnectionState } from '../../components'
 import { useI18n } from '../../shared/i18nContext'
@@ -223,6 +229,9 @@ export interface OperatorState {
    */
   bibleVersion: BibleVersionState
 
+  /** The picture shown while the display is idle. Read and changed over HTTP. */
+  idleScreen: IdleScreenState
+
   /** Reference ID of the selected pending item, or null when nothing is selected. */
   selectedId: string | null
   selectPending: (id: string) => void
@@ -235,6 +244,10 @@ export interface OperatorState {
 
   /** Passages lined up in advance, kept in this browser. */
   plan: PlanState
+  /** Looked-up text for plan items saved without any, by item id. */
+  planSnippets: Record<string, string>
+  /** The text the follow-along hint points at, once looked up; null until then. */
+  followAlongText: string | null
   /** Stage a planned passage in Up Next (looked up fresh); nothing is sent to the display. */
   stagePlanItem: (item: PlanItem) => void
   /** Show a planned passage at once (double-click), skipping Up Next. */
@@ -258,6 +271,8 @@ export interface OperatorState {
 
   verseLimit: VerseLimit
   displayTheme: DisplayTheme
+  /** The picture the display shows while idle, so the preview can show it too; null for blank. */
+  idleImage: IdleImage | null
   setDisplayVerseLimit: (next: VerseLimit) => void
   setDisplayBackground: (next: DisplayTheme) => void
 
@@ -353,6 +368,10 @@ export function useOperatorState(): OperatorState {
   const [displayTheme, setDisplayTheme] = useState<DisplayTheme>(() =>
     coerceDisplayTheme(readStoredDisplayTheme(window.localStorage))
   )
+  // The display's idle picture, from the snapshot, settings echoes and this console's
+  // own idle-screen requests. The server tells only displays when another console
+  // changes it, so that change shows here after the next snapshot or echo.
+  const [idleImage, setIdleImage] = useState<IdleImage | null>(null)
   // Auto-approve mode. Server-side state (persisted there too), so the console
   // only mirrors it: the snapshot on connect is the source of truth.
   const [autoMode, setAutoMode] = useState<AutoMode>('off')
@@ -437,6 +456,7 @@ export function useOperatorState(): OperatorState {
           const theme = coerceDisplayTheme(message.data.display_settings.theme)
           setVerseLimit(verseLimit)
           setDisplayTheme(theme)
+          setIdleImage(readIdleImage(message.data.display_settings))
           confirmedRef.current.verseLimit = verseLimit
           confirmedRef.current.theme = theme
         }
@@ -536,6 +556,7 @@ export function useOperatorState(): OperatorState {
         }
         setVerseLimit(verseLimit)
         setDisplayTheme(theme)
+        setIdleImage(readIdleImage(message.data))
         confirmedRef.current.verseLimit = verseLimit
         confirmedRef.current.theme = theme
         if (changes.length > 0)
@@ -905,9 +926,30 @@ export function useOperatorState(): OperatorState {
   const spokenLanguage = useSpokenLanguage(token, isConnected, showNotice)
 
   const bibleVersion = useBibleVersion(token, isConnected, showNotice)
+  const idleScreen = useIdleScreen(token)
+  // The server's answer to this console's own read or change is the newest word on it.
+  const idleInfo = idleScreen.info
+  useEffect(() => {
+    if (idleInfo === null) return
+    setIdleImage(idleInfo.image ? { version: idleInfo.image.version, fit: idleInfo.fit } : null)
+  }, [idleInfo])
   applyBibleVersionRef.current = bibleVersion.applyConfirmed
 
   const plan = usePlan()
+  const planSnippets = usePlanSnippets(plan.items, token, isConnected)
+  // The words of the passage the follow-along card points at, for its preview line.
+  const followAlongText = usePassageText(
+    followAlong
+      ? {
+          book: followAlong.book,
+          chapter: followAlong.chapter,
+          verseStart: followAlong.verse_start,
+          verseEnd: followAlong.verse_end,
+        }
+      : null,
+    token,
+    isConnected
+  )
   const addToPlan = plan.add
   const planPassage = useCallback(
     (passage: Passage) => {
@@ -1014,6 +1056,7 @@ export function useOperatorState(): OperatorState {
     search,
     spokenLanguage,
     bibleVersion,
+    idleScreen,
 
     selectedId,
     selectPending,
@@ -1021,6 +1064,8 @@ export function useOperatorState(): OperatorState {
     showHistory,
     approvePending,
     plan,
+    planSnippets,
+    followAlongText,
     stagePlanItem,
     showPlanItem,
     selectedHistoryId,
@@ -1038,6 +1083,7 @@ export function useOperatorState(): OperatorState {
 
     verseLimit,
     displayTheme,
+    idleImage,
     setDisplayVerseLimit,
     setDisplayBackground,
 

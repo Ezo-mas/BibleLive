@@ -437,6 +437,132 @@ describe('the plan panel', () => {
   })
 })
 
+describe('plan row actions', () => {
+  /** The plan row for a passage, found by its title. */
+  function planRow(label: string) {
+    const row = within(screen.getByRole('tabpanel'))
+      .getAllByRole('listitem')
+      .find(item => item.querySelector('.plan-row-title')?.textContent === label)
+    if (!row) throw new Error(`no plan row for ${label}`)
+    return within(row)
+  }
+
+  it('each row has Show, Stage and Remove, like a pending row has Show and Stage', () => {
+    seedPlan(seeded)
+    openWith()
+    planPanel()
+
+    const row = planRow('Romans 8:28')
+    expect(row.getByRole('button', { name: 'Show' })).toBeInTheDocument()
+    expect(row.getByRole('button', { name: 'Stage' })).toBeInTheDocument()
+    expect(row.getByRole('button', { name: 'Remove Romans 8:28 from the plan' })).toHaveTextContent(
+      'Remove'
+    )
+  })
+
+  it('Show sends the passage as coordinates at once, without staging or a lookup', () => {
+    seedPlan(seeded)
+    openWith()
+    planPanel()
+
+    fireEvent.click(planRow('John 3:16').getByRole('button', { name: 'Show' }))
+
+    expect(lastSent()).toEqual({
+      action: 'display_reference',
+      book: 'John',
+      chapter: 3,
+      verse_start: 16,
+      verse_end: 16,
+    })
+    expect(lookupCalls()).toEqual([])
+    expect(screen.getByText('Nothing staged')).toBeInTheDocument()
+    // A shown item stays in the plan: a verse is often read twice.
+    expect(planTitles()).toHaveLength(3)
+  })
+
+  it('Stage looks the passage up and stages it in Up Next, sending nothing', async () => {
+    seedPlan(seeded)
+    openWith()
+    planPanel()
+
+    fireEvent.click(planRow('Romans 8:28').getByRole('button', { name: 'Stage' }))
+
+    await waitFor(() => expect(screen.getByTestId('next-preview')).toHaveTextContent('Romans 8:28'))
+    expect(sentActions()).toEqual([])
+  })
+
+  it('Remove takes the row out of the plan', () => {
+    seedPlan(seeded)
+    openWith()
+    planPanel()
+
+    fireEvent.click(planRow('Romans 8:28').getByRole('button', { name: /^Remove Romans 8:28/ }))
+
+    expect(planTitles()).toEqual(['John 3:16', 'Psalms 23:1-6'])
+    expect(sentActions()).toEqual([])
+  })
+})
+
+describe('plan row Show while disconnected', () => {
+  it('is disabled while the socket is closed, as a pending row is; Stage and Remove are not', () => {
+    seedPlan(seeded)
+    render(<App />)
+    const panel = planPanel()
+    const row = within(panel.getAllByRole('listitem')[0])
+
+    expect(row.getByRole('button', { name: 'Show' })).toBeDisabled()
+    expect(row.getByRole('button', { name: 'Stage' })).toBeEnabled()
+    expect(row.getByRole('button', { name: /^Remove / })).toBeEnabled()
+  })
+})
+
+describe('the start of the text on plan rows', () => {
+  it('shows the remembered text under the reference', () => {
+    seedPlan(seeded)
+    openWith()
+    const panel = planPanel()
+
+    expect(panel.getByText('John 3:16 text')).toBeInTheDocument()
+  })
+
+  it('looks the text up for an item saved without any, and shows it when it lands', async () => {
+    seedPlan([{ ...planItem('a', 'John', 3, 16), snippet: '' }])
+    openWith()
+    const panel = planPanel()
+
+    await waitFor(() => expect(panel.getByText('John 3:16 text')).toBeInTheDocument())
+    expect(lookupCalls().map(([url]) => String(url))).toEqual([
+      '/api/lookup?book=John&chapter=3&verse_start=16&verse_end=16',
+    ])
+    expect(sentActions()).toEqual([])
+  })
+
+  it('shows the reference alone while the lookup is pending, then once it lands', async () => {
+    seedPlan([{ ...planItem('a', 'John', 3, 16), snippet: '' }])
+    deferLookups = true
+    openWith()
+    const panel = planPanel()
+
+    expect(panel.getByText('John 3:16')).toBeInTheDocument()
+    expect(panel.queryByText('John 3:16 text')).not.toBeInTheDocument()
+
+    await releaseLookups()
+    expect(panel.getByText('John 3:16 text')).toBeInTheDocument()
+  })
+
+  it('keeps the row working when the lookup fails', async () => {
+    seedPlan([{ ...planItem('a', 'John', 3, 16), snippet: '' }])
+    lookupFailure = 'No such passage'
+    openWith()
+    const panel = planPanel()
+
+    await waitFor(() => expect(lookupCalls()).toHaveLength(1))
+    expect(panel.getByText('John 3:16')).toBeInTheDocument()
+    expect(panel.getByRole('button', { name: 'Show' })).toBeEnabled()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+})
+
 describe('adding a passage to the plan from Find Scripture', () => {
   it('Shift+Enter adds the best match, clears the box, and sends nothing', async () => {
     openWith()

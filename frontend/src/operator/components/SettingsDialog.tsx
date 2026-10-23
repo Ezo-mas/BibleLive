@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef } from 'react'
 import type { KeyboardEvent } from 'react'
-import { ThemeToggle, XIcon } from '../../components'
+import { Button, ThemeToggle, XIcon } from '../../components'
 import { useI18n } from '../../shared/i18nContext'
 import { DisplaySettings } from './DisplaySettings'
 import { AutoApproveControls } from './AutoApproveControls'
@@ -10,19 +10,18 @@ import { LanguageSettings } from './LanguageSettings'
 import type { SpokenLanguageState } from '../hooks/useSpokenLanguage'
 import { BibleVersionSettings } from './BibleVersionSettings'
 import type { BibleVersionState } from '../hooks/useBibleVersion'
+import { IdleScreenSettings } from './IdleScreenSettings'
+import type { IdleScreenState } from '../hooks/useIdleScreen'
 import type { Theme } from '../../hooks/useTheme'
 import type { DisplayTheme, VerseLimit } from '../../shared/verseText'
 import type { AutoMode } from '../../shared/types'
 
-/**
- * Which part of the dialog to open on: the display, the spoken language, or the
- * auto-approve block.
- */
-export type SettingsSection = 'display' | 'language' | 'auto'
+/** Which part of the dialog to open on: the display, or the spoken language. */
+export type SettingsSection = 'display' | 'language'
 
 export interface SettingsDialogProps {
   open: boolean
-  /** The section the dialog opens onto (the compact auto-approve control lands here). */
+  /** The section the dialog opens onto. */
   section: SettingsSection
   onClose: () => void
   verseLimit: VerseLimit
@@ -35,6 +34,8 @@ export interface SettingsDialogProps {
   spokenLanguage: SpokenLanguageState
   /** The Bible translation verse text comes from: read and switched through the server. */
   bibleVersion: BibleVersionState
+  /** The picture the display shows while nothing is on screen: read and changed through the server. */
+  idleScreen: IdleScreenState
   autoMode: AutoMode
   onAutoModeChange: (next: AutoMode) => void
   /** Follow-along auto-show: the server shows the verses a speaker reads on to by itself. */
@@ -87,6 +88,7 @@ export function SettingsDialog({
   onThemeChange,
   spokenLanguage,
   bibleVersion,
+  idleScreen,
   autoMode,
   onAutoModeChange,
   followAuto,
@@ -96,12 +98,12 @@ export function SettingsDialog({
 }: SettingsDialogProps) {
   const titleId = useId()
   const displaySectionId = useId()
+  const consoleSectionId = useId()
   const languageSectionId = useId()
   const autoSectionId = useId()
   const shortcutsSectionId = useId()
   const dialogRef = useRef<HTMLDivElement>(null)
   const languageSectionRef = useRef<HTMLElement>(null)
-  const autoSectionRef = useRef<HTMLElement>(null)
   const { t } = useI18n()
 
   // Move focus into the dialog while it is open and put it back afterwards, so
@@ -111,11 +113,7 @@ export function SettingsDialog({
     const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null
     const dialog = dialogRef.current
     const sectionSelector =
-      section === 'auto'
-        ? '.operator-dialog-auto [aria-pressed="true"]'
-        : section === 'language'
-          ? '.operator-dialog-language [aria-pressed="true"]'
-          : null
+      section === 'language' ? '.operator-dialog-language [aria-pressed="true"]' : null
     // The control for the section asked for, or the close button when it has
     // nothing to focus yet (the language buttons are off until the pipeline answers).
     const target =
@@ -123,7 +121,6 @@ export function SettingsDialog({
       dialog?.querySelector<HTMLElement>('[data-dialog-close]')
     target?.focus()
     // jsdom has no scrollIntoView; the optional call is what keeps the tests honest.
-    if (section === 'auto') autoSectionRef.current?.scrollIntoView?.({ block: 'nearest' })
     if (section === 'language') languageSectionRef.current?.scrollIntoView?.({ block: 'nearest' })
     return () => previous?.focus()
   }, [open, section])
@@ -174,15 +171,14 @@ export function SettingsDialog({
           <h2 className="operator-dialog-title" id={titleId}>
             {t('settings.title')}
           </h2>
-          <button
-            type="button"
-            className="operator-dialog-close"
+          <Button
+            variant="ghost"
+            iconOnly
+            icon={<XIcon />}
             data-dialog-close
             onClick={onClose}
             aria-label={t('settings.close')}
-          >
-            <XIcon />
-          </button>
+          />
         </div>
 
         <div className="operator-dialog-body">
@@ -197,10 +193,19 @@ export function SettingsDialog({
               onVerseLimitChange={onVerseLimitChange}
               onThemeChange={onThemeChange}
             />
+            <IdleScreenSettings state={idleScreen} disabled={disabled} />
+          </section>
+
+          <section className="operator-dialog-section" aria-labelledby={consoleSectionId}>
+            <h3 className="operator-dialog-section-title" id={consoleSectionId}>
+              {t('settings.sectionConsole')}
+            </h3>
             <div className="operator-setting">
-              <span className="operator-setting-label">{t('settings.appTheme')}</span>
+              <div className="operator-setting-text">
+                <span className="operator-setting-label">{t('settings.appTheme')}</span>
+                <p className="operator-setting-hint">{t('settings.appThemeHint')}</p>
+              </div>
               <ThemeToggle theme={appTheme} onThemeChange={onAppThemeChange} />
-              <p className="operator-setting-hint">{t('settings.appThemeHint')}</p>
             </div>
             <InterfaceLanguageSettings />
           </section>
@@ -217,11 +222,7 @@ export function SettingsDialog({
             <BibleVersionSettings state={bibleVersion} disabled={disabled} />
           </section>
 
-          <section
-            className="operator-dialog-section operator-dialog-auto"
-            aria-labelledby={autoSectionId}
-            ref={autoSectionRef}
-          >
+          <section className="operator-dialog-section" aria-labelledby={autoSectionId}>
             <h3 className="operator-dialog-section-title" id={autoSectionId}>
               {t('settings.sectionAuto')}
             </h3>
@@ -260,6 +261,12 @@ export function SettingsDialog({
                   <kbd>Shift</kbd>+<kbd>Enter</kbd>
                 </span>
                 {t('settings.shortcutShift')}
+              </li>
+              <li>
+                <span className="operator-dialog-shortcut-keys">
+                  <kbd>B</kbd>
+                </span>
+                {t('settings.shortcutClear')}
               </li>
               <li>
                 <span className="operator-dialog-shortcut-keys">

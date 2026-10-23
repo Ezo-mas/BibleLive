@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { BookIcon } from '../../components'
+import { BookIcon, Button } from '../../components'
 import { useI18n } from '../../shared/i18nContext'
 import { PanelHint } from './PanelHint'
 import { ReferenceCard } from './ReferenceCard'
@@ -9,8 +9,10 @@ export interface PendingQueueProps {
   pending: BibleReference[]
   selectedId: string | null
   onSelect: (id: string) => void
-  /** Double-click: approve this detection without staging it first. */
+  /** Double-click, or the row's Show button: approve this detection without staging it first. */
   onShow: (id: string) => void
+  /** False while the socket is closed: Show then has nowhere to go. */
+  canShow?: boolean
   /** The queue's footer (Clear Queue), pinned under the list. */
   children?: ReactNode
 }
@@ -32,6 +34,7 @@ export function PendingQueue({
   selectedId,
   onSelect,
   onShow,
+  canShow = true,
   children,
 }: PendingQueueProps) {
   const { t } = useI18n()
@@ -49,6 +52,28 @@ export function PendingQueue({
                 selected={reference.id === selectedId}
                 onSelect={() => onSelect(reference.id)}
                 onActivate={() => onShow(reference.id)}
+                actions={titleId => (
+                  <>
+                    <Button
+                      variant="primary"
+                      size="sm"
+                      aria-describedby={titleId}
+                      disabled={!canShow}
+                      onClick={() => onShow(reference.id)}
+                    >
+                      {t('row.show')}
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      className={reference.id === selectedId ? 'is-on' : ''}
+                      aria-describedby={titleId}
+                      onClick={() => onSelect(reference.id)}
+                    >
+                      {t('row.stage')}
+                    </Button>
+                  </>
+                )}
               />
             ))}
           </div>

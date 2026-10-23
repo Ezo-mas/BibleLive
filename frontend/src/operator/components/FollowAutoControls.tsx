@@ -1,4 +1,5 @@
 import { useId } from 'react'
+import { SegmentedOption } from '../../components'
 import { useI18n } from '../../shared/i18nContext'
 
 export interface FollowAutoControlsProps {
@@ -27,40 +28,38 @@ export function FollowAutoControls({
 
   return (
     <div className="operator-setting">
-      <div className="operator-setting-header">
-        <span className="operator-setting-label">{t('settings.followAuto')}</span>
-        <span className={`operator-setting-value ${followAuto ? 'is-on' : ''}`}>
-          {followAuto ? t('follow.on') : t('follow.off')}
-        </span>
+      <div className="operator-setting-text">
+        <div className="operator-setting-header">
+          <span className="operator-setting-label">{t('settings.followAuto')}</span>
+          <span className={`operator-setting-value ${followAuto ? 'is-on' : ''}`}>
+            {followAuto ? t('follow.on') : t('follow.off')}
+          </span>
+        </div>
+        <p className="operator-setting-hint" id={descriptionId}>
+          {t('settings.followAutoHint')}
+        </p>
       </div>
       <div
-        className="operator-verse-options"
+        className="segmented"
         role="group"
         aria-label={t('settings.followAuto')}
         aria-describedby={descriptionId}
       >
-        <button
-          type="button"
-          className={`operator-verse-option ${followAuto ? '' : 'is-active'}`}
+        <SegmentedOption
           aria-pressed={!followAuto}
           disabled={disabled}
           onClick={() => onFollowAutoChange(false)}
         >
           {t('follow.off')}
-        </button>
-        <button
-          type="button"
-          className={`operator-verse-option ${followAuto ? 'is-active' : ''}`}
+        </SegmentedOption>
+        <SegmentedOption
           aria-pressed={followAuto}
           disabled={disabled}
           onClick={() => onFollowAutoChange(true)}
         >
           {t('follow.on')}
-        </button>
+        </SegmentedOption>
       </div>
-      <p className="operator-setting-hint" id={descriptionId}>
-        {t('settings.followAutoHint')}
-      </p>
     </div>
   )
 }

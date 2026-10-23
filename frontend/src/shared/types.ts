@@ -88,10 +88,18 @@ export type VerseLimit = number | 'all'
 /** Background theme for the audience display. Projectors default to 'dark'. */
 export type DisplayTheme = 'dark' | 'light'
 
+/** The idle-screen picture; `version` only busts the cache of GET /api/idle-screen/image. */
+export interface IdleScreenPicture {
+  version: string
+  fit: 'logo' | 'fill'
+}
+
 /** Presentation settings for the audience display, chosen by the operator. */
 export interface DisplaySettings {
   verse_limit: VerseLimit
   theme: DisplayTheme
+  /** Optional and additive: an older server omits it, which means a blank screen. */
+  idle_image?: IdleScreenPicture | null
 }
 
 /**

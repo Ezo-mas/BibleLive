@@ -152,6 +152,17 @@ describe('console language', () => {
     expect(window.localStorage.getItem(LANGUAGE_STORAGE_KEY)).toBe('lt')
   })
 
+  it('names the control row under the preview in Lithuanian, with the short caption', async () => {
+    window.localStorage.setItem(LANGUAGE_STORAGE_KEY, 'lt')
+    await renderConnected()
+
+    const captions = [...document.querySelectorAll('.operator-quick-label')].map(e => e.textContent)
+    expect(captions).toEqual(['Ekranas', 'Eilutės', 'Automatinis'])
+    // The short caption is only a caption: the group keeps its full name.
+    expect(screen.getByRole('group', { name: 'Automatinis patvirtinimas' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Išj.' })).toHaveAttribute('aria-pressed', 'true')
+  })
+
   it('uses the launcher setting when the operator has not chosen', async () => {
     launcherLanguage = 'lt'
     await renderConnected()

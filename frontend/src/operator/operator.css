@@ -1,27 +1,28 @@
-/* Authentication UI */
+/* Sign-in card. The field and the button are the shared `.input` and `.btn`
+   (styles/controls.css, components/Button.css); only the layout is here. */
 .operator-auth-container {
   display: flex;
   align-items: center;
   justify-content: center;
   min-height: 100vh;
   padding: var(--space-4);
-  background: var(--color-bg);
+  background: var(--app-bg);
 }
 
 .operator-auth-card {
   width: 100%;
   max-width: 400px;
   padding: var(--space-6);
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
+  background: var(--panel-bg);
+  border: var(--border-width) solid var(--color-border);
+  border-radius: var(--radius-dialog);
   box-shadow: var(--shadow-lg);
 }
 
 .operator-auth-title {
   margin: 0 0 var(--space-4) 0;
-  font-size: var(--text-2xl);
-  font-weight: 600;
+  font-size: var(--font-size-xl);
+  font-weight: var(--weight-semibold);
   text-align: center;
   color: var(--color-text);
 }
@@ -30,140 +31,22 @@
   margin-bottom: var(--space-4);
   padding: var(--space-3);
   background: var(--color-danger-bg);
-  color: var(--color-danger);
-  border-radius: var(--radius-md);
-  font-size: var(--text-sm);
+  color: var(--color-danger-text);
+  border-radius: var(--radius-card);
+  font-size: var(--font-size-sm);
   text-align: center;
 }
 
 .operator-auth-form {
   display: flex;
   flex-direction: column;
-  gap: var(--space-4);
+  gap: var(--space-3);
 }
 
 .operator-auth-label {
-  font-size: var(--text-sm);
-  font-weight: 500;
-  color: var(--color-text-secondary);
-}
-
-.operator-auth-input {
-  padding: var(--space-3);
-  font-size: var(--text-base);
-  background: var(--color-bg);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
+  font-size: var(--font-size-sm);
+  font-weight: var(--weight-semibold);
   color: var(--color-text);
-  transition: border-color 0.2s;
-}
-
-.operator-auth-input:focus {
-  outline: none;
-  border-color: var(--color-primary);
-}
-
-.operator-auth-button {
-  padding: var(--space-3);
-  font-size: var(--text-base);
-  font-weight: 500;
-  /* Inverse text so the dark theme's light-blue button keeps its label. */
-  color: var(--color-text-inverse);
-  background: var(--color-primary);
-  border: none;
-  border-radius: var(--radius-md);
-  cursor: pointer;
-  transition: background-color 0.2s;
-}
-
-.operator-auth-button:hover {
-  background: var(--color-primary-hover);
-}
-
-.operator-logout-button {
-  padding: var(--space-2) var(--space-3);
-  font-size: var(--text-sm);
-  font-weight: 500;
-  color: var(--color-text-secondary);
-  background: transparent;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.operator-logout-button:hover {
-  color: var(--color-text);
-  border-color: var(--color-text-secondary);
-}
-
-/* Operator Console
-
-   The console has its own palette: warm neutrals with one amber accent, set by
-   overriding the semantic tokens on the console root. Everything built on those
-   tokens (buttons, the settings dialog, badges) follows without knowing, and the
-   audience display keeps its own tokens untouched. The stages inside the console
-   carry a `data-theme` attribute of their own, which re-applies the display's
-   tokens to them, so a preview is drawn in exactly the colours the projector
-   uses. Amber is reserved for "this is on air or staged" and for the primary
-   action; statuses that do not need a colour (connected, confidence) stay
-   neutral so the accent keeps its meaning. */
-.operator-app,
-.operator-auth-container {
-  --app-bg: #f1efeb;
-  --panel-bg: #fbfaf8;
-  --card-bg: #f4f2ee;
-  --selected-bg: #e9e6df;
-  --accent-text: #8f5200;
-
-  --font-sans:
-    'Segoe UI Variable Text', 'Segoe UI', system-ui, -apple-system, Roboto, 'Helvetica Neue', Arial,
-    sans-serif;
-
-  --color-surface: #fbfaf8;
-  --color-surface-raised: #f4f2ee;
-  --color-surface-overlay: #fbfaf8;
-  --color-surface-muted: #e9e6df;
-  --color-text: #1d1c1a;
-  --color-text-secondary: #4a4843;
-  --color-text-muted: #625f59;
-  --color-text-inverse: #ffffff;
-  --color-border: #e0ddd6;
-  --color-border-strong: #c9c5bc;
-  --color-border-focus: #a35f00;
-  --color-primary: #a35f00;
-  --color-primary-hover: #8f5200;
-  --color-primary-active: #7d4700;
-  --color-primary-subtle: #f4e7d1;
-  --color-info-bg: #e9e6df;
-  --color-info-text: #4a4843;
-}
-
-[data-theme='dark'] .operator-app,
-[data-theme='dark'] .operator-auth-container {
-  --app-bg: #0e0f11;
-  --panel-bg: #15171a;
-  --card-bg: #1b1e22;
-  --selected-bg: #252a30;
-  --accent-text: #e0a63a;
-
-  --color-surface: #15171a;
-  --color-surface-raised: #1b1e22;
-  --color-surface-overlay: #1f2227;
-  --color-surface-muted: #252a30;
-  --color-text: #ecebe8;
-  --color-text-secondary: #b9b8b3;
-  --color-text-muted: #9a9993;
-  --color-text-inverse: #1a1204;
-  --color-border: #2a2e34;
-  --color-border-strong: #3a3f47;
-  --color-border-focus: #e0a63a;
-  --color-primary: #e0a63a;
-  --color-primary-hover: #eab354;
-  --color-primary-active: #f0c070;
-  --color-primary-subtle: #3a2c12;
-  --color-info-bg: #252a30;
-  --color-info-text: #b9b8b3;
 }
 
 .operator-app {
@@ -187,14 +70,15 @@
 .operator-header {
   position: relative;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(260px, 520px) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 520px) minmax(max-content, 1fr);
   align-items: center;
   gap: var(--space-5);
-  height: 56px;
+  /* A medium control plus a little air above and below it. */
+  height: calc(var(--control-h-md) + 2 * var(--space-2));
   flex-shrink: 0;
   padding: 0 var(--space-5);
   background: var(--panel-bg);
-  border-bottom: 1px solid var(--color-border);
+  border-bottom: var(--border-width) solid var(--color-border);
   z-index: auto;
 }
 
@@ -211,23 +95,22 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 30px;
-  height: 30px;
+  width: var(--space-6);
+  height: var(--space-6);
   flex-shrink: 0;
   color: var(--color-text-inverse);
   background: var(--color-primary);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-control);
 }
 
 .operator-brand-mark svg {
-  width: 17px;
-  height: 17px;
+  width: var(--icon-md);
+  height: var(--icon-md);
 }
 
 .operator-title {
   font-size: var(--font-size-lg);
-  font-weight: 650;
-  letter-spacing: -0.01em;
+  font-weight: var(--weight-bold);
   margin: 0;
   color: var(--color-text);
   white-space: nowrap;
@@ -245,6 +128,7 @@
    the bar is the one that means something is wrong. */
 .operator-status-group {
   display: flex;
+  white-space: nowrap;
   align-items: center;
   gap: var(--space-4);
   font-size: var(--font-size-sm);
@@ -255,7 +139,7 @@
   padding: 0;
   background: none;
   border: none;
-  font-weight: 400;
+  font-weight: var(--weight-regular);
 }
 
 .operator-header .connection-dot-connected {
@@ -275,7 +159,7 @@
 .operator-display-dot {
   width: 0.5rem;
   height: 0.5rem;
-  border-radius: 50%;
+  border-radius: var(--radius-full);
   background: var(--color-text-secondary);
 }
 
@@ -283,72 +167,13 @@
   color: var(--color-text-secondary);
 }
 
-/* The spoken language, as a reading beside the connection health: a word and a
-   code. It opens Settings, so it is a button, but it is drawn as quietly as the
-   other two readings — the code is what carries weight. */
-.operator-language-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-1) var(--space-2);
-  font-family: var(--font-sans);
-  font-size: var(--font-size-sm);
-  color: var(--color-text-secondary);
-  background: transparent;
-  border: 1px solid transparent;
-  border-radius: var(--radius-md);
-  cursor: pointer;
-  transition: all var(--transition-fast);
-}
-
-.operator-language-chip:hover {
-  background: var(--card-bg);
-  border-color: var(--color-border);
-}
+/* The spoken language beside the connection health is a secondary button (it opens
+   Settings) holding a word and a `.tag` with the code; nothing else is specific to it. */
 
 /* The pipeline stopped reporting: the language is only what it was last set to,
    so it reads as a remembered value rather than a live one. */
 .operator-language-chip--stale {
   opacity: 0.5;
-}
-
-.operator-language-chip-value {
-  padding: 0 var(--space-2);
-  font-size: var(--font-size-xs);
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  color: var(--color-text);
-  background: var(--card-bg);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-}
-
-/* The gear (and any future header affordance): square, one row tall. */
-.operator-icon-button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 36px;
-  height: 36px;
-  flex-shrink: 0;
-  padding: 0;
-  color: var(--color-text-secondary);
-  background: transparent;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
-  cursor: pointer;
-  transition: all var(--transition-fast);
-}
-
-.operator-icon-button:hover {
-  color: var(--color-text);
-  border-color: var(--color-border-strong);
-  background: var(--card-bg);
-}
-
-.operator-icon-button svg {
-  width: 18px;
-  height: 18px;
 }
 
 /* Action feedback hangs from the bottom of the header, under the gear, instead of
@@ -376,7 +201,7 @@
   padding: var(--space-3) var(--space-6);
   background: var(--color-danger-bg);
   color: var(--color-danger-text);
-  border-bottom: 1px solid var(--color-border);
+  border-bottom: var(--border-width) solid var(--color-border);
   font-size: var(--font-size-sm);
 }
 
@@ -386,8 +211,8 @@
 }
 
 .operator-connection-banner-icon svg {
-  width: 18px;
-  height: 18px;
+  width: var(--icon-md);
+  height: var(--icon-md);
 }
 
 .operator-connection-banner-text {
@@ -405,7 +230,7 @@
   padding: var(--space-3) var(--space-6);
   background: var(--color-warning-bg);
   color: var(--color-warning-text);
-  border-bottom: 1px solid var(--color-border);
+  border-bottom: var(--border-width) solid var(--color-border);
   font-size: var(--font-size-sm);
 }
 
@@ -415,8 +240,8 @@
 }
 
 .operator-pipeline-banner-icon svg {
-  width: 18px;
-  height: 18px;
+  width: var(--icon-md);
+  height: var(--icon-md);
 }
 
 .operator-pipeline-banner-text {
@@ -433,142 +258,212 @@
   padding-left: var(--space-5);
 }
 
-/* Main content: the workspace on the left (what is on the projector, what is
-   next, what was shown) and the pending queue on the right. Flex rather than
-   grid: the sections keep their own heights on a short window (the workspace
-   scrolls) instead of being squeezed. */
+/* Main content: two columns inside the page gutter (16px, the only side space on
+   any window). The tabbed panel (Pending, Plan, History) is pinned to the right edge
+   at a width in proportion to the window (`--operator-side-w`); the workspace takes
+   every pixel it does not, so there is never empty space beside either column.
+
+   The workspace is a flex column of the full height. ON DISPLAY takes all the height
+   UP NEXT leaves (`flex: 1`); UP NEXT is one fixed height whatever it holds, and
+   follow-along lies over the preview. So the column's last card always ends where the
+   panel ends, and the miniature changes size only when the window does. */
 .operator-main {
+  --operator-side-w: clamp(300px, 34vw, 560px);
+  /* The least height the monitor frame keeps; a window shorter than that scrolls the
+     column instead of squeezing the preview to nothing. */
+  --operator-frame-min: 160px;
   display: flex;
-  gap: var(--space-5);
+  gap: var(--space-4);
   flex: 1;
   min-height: 0;
-  padding: var(--space-5) var(--space-6) var(--space-6);
+  padding: var(--space-4);
   overflow: hidden;
 }
 
 .operator-workspace {
   display: flex;
+  flex: 1 1 0;
   flex-direction: column;
-  gap: var(--space-5);
-  flex: 1;
+  gap: var(--space-3);
   min-width: 0;
   min-height: 0;
   overflow-y: auto;
 }
 
-/* ON DISPLAY and UP NEXT sit side by side at equal width. */
-.operator-stage-row {
-  display: flex;
-  align-items: stretch;
-  gap: var(--space-5);
-  /* The stages take the height the page has; a short window keeps this floor and
-     the workspace scrolls instead. */
-  flex: 1 0 auto;
-  min-height: 420px;
-}
-
-.operator-stage-panel {
+/* ON DISPLAY: a card with a slim label row, the monitor frame, and the control
+   row. It takes every pixel of height the column has left. No `overflow`, so its
+   minimum height is its content's (the frame's floor plus the rows) and it never
+   shrinks over the control row. */
+.operator-live {
   display: flex;
   flex-direction: column;
   flex: 1 1 0;
-  min-width: 0;
+  background: var(--card-bg);
+  border: var(--border-width) solid var(--color-border);
+  border-radius: var(--radius-card);
 }
 
-.operator-stage-header {
+/* One anatomy for the three cards in the workspace (ON DISPLAY, UP NEXT and
+   follow-along): a header row (the uppercase label, the reference as plain bold
+   text, free space, then the card's actions at the right), optional text below,
+   all on the same 12px side padding with 36px controls. */
+.operator-card-head {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: var(--space-3);
-  height: 28px;
+  min-width: 0;
+  /* The header row is one control tall (36px) under the card's top padding; a
+     header with only a label is the same height. */
+  min-height: calc(var(--control-h-md) + var(--card-pad));
+  padding: var(--card-pad) var(--card-pad) 0;
 }
 
-.operator-stage-title {
+/* Label and reference are one group on the text baseline (label 12px uppercase,
+   reference 14px bold), centred as a group against the buttons at the right. */
+.operator-card-title {
+  display: flex;
+  flex: 0 1 auto;
+  align-items: baseline;
+  gap: var(--space-3);
+  min-width: 0;
+  overflow: hidden;
+}
+
+.operator-card-ref {
+  flex-shrink: 0;
   margin: 0;
+  overflow: hidden;
+  font-size: var(--font-size-sm);
+  font-weight: var(--weight-bold);
+  line-height: var(--leading-tight);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--color-text);
+}
+
+.operator-card-grow {
+  flex: 1 1 0;
+}
+
+/* Body text (or the monitor) sits one gap under the header, with the card's padding
+   under it. */
+.operator-card-body {
+  min-width: 0;
+  padding: var(--card-gap) var(--card-pad) var(--card-pad);
+}
+
+/* The start of the passage, in the same muted serif on every card. */
+.operator-card-verse {
+  display: -webkit-box;
+  margin: 0;
+  overflow: hidden;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  font-family: var(--font-serif);
+  font-size: var(--font-size-sm);
+  line-height: var(--leading-normal);
+  color: var(--color-text-secondary);
+}
+
+.operator-card-verse-number {
+  margin-right: var(--space-0-5);
+  font-family: var(--font-sans);
   font-size: var(--font-size-xs);
-  font-weight: 700;
-  letter-spacing: 0.12em;
+  font-weight: var(--weight-semibold);
+  color: var(--color-text-muted);
+}
+
+/* The overline style: small, uppercase, tracked, muted. Stage and control-row
+   labels use it, and nothing else in the console is uppercase. */
+.operator-stage-title,
+.operator-quick-label {
+  margin: 0;
+  white-space: nowrap;
+  font-size: var(--font-size-xs);
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-caps);
   text-transform: uppercase;
   color: var(--color-text-muted);
 }
 
-/* The state words beside the stage labels. Plain text rather than pills: LIVE is
-   the one that takes the accent, and the rest stay as quiet as the label. */
-.operator-live-badge,
-.operator-next-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-  font-size: var(--font-size-xs);
-  font-weight: 700;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--color-text-muted);
+/* The monitor frame: a neutral bezel that spans the card's inner width (12px each
+   side, the control row's own edges) and takes all the height left. It is a size
+   container, so the miniature inside is sized from the frame's box in `cqw` and `cqh`:
+   the largest 16:9 that fits, centred, with the bezel showing as bars at the sides
+   (a tall frame) or above and below (a wide one). Not the display's theme colour. */
+.operator-monitor-wrap {
+  position: relative;
+  display: grid;
+  flex: 1 1 0;
+  place-items: center;
+  min-height: var(--operator-frame-min);
+  margin: var(--card-gap) var(--card-pad) 0;
+  overflow: hidden;
+  container-type: size;
+  background: var(--bezel-bg);
+  border-radius: var(--radius-control);
 }
 
-.operator-live-badge.is-live {
-  color: var(--accent-text);
-}
-
-.operator-live-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--color-text-muted);
-}
-
-.operator-live-badge.is-live .operator-live-dot {
-  background: var(--color-primary);
-}
-
-/* Which door the staged scripture came through. Sentence-weight text: Show sends
-   a different request for each source, so the word has to be there, but it does
-   not need a coloured pill to be read. */
-.operator-next-badge {
-  font-weight: 500;
-  letter-spacing: 0.04em;
-}
-
-/* The stage: a miniature of the projector. It takes the display's own tokens
-   through `data-theme` (see the note at the top), grows with the passage up to
-   about half the window, and only then scrolls inside itself. The floor is tall
-   enough for a four-verse passage, so a long reading is not squeezed into a
-   strip. */
-.operator-stage {
-  box-sizing: border-box;
+/* The display's own tokens (through `data-theme`) draw the preview, so it shows the
+   colours the projector uses. */
+.operator-monitor {
   display: flex;
   flex-direction: column;
-  justify-content: center;
-  gap: var(--space-4);
-  width: 100%;
-  flex: 1 1 auto;
-  min-height: 280px;
-  /* Capped so a long passage scrolls inside the stage and Show stays on screen. */
-  max-height: 70vh;
-  max-height: 70dvh;
-  padding: var(--space-5) var(--space-6);
+  /* A percentage, not `cqw`: on the container itself, `cqw` would resolve against
+     the console's own container instead of this box. */
+  gap: 2%;
+  box-sizing: border-box;
+  /* The largest 16:9 that fits the frame, whichever of width and height binds. */
+  width: min(100cqw, calc(100cqh * 16 / 9));
+  aspect-ratio: 16 / 9;
+  padding: 5% 8%;
+  overflow: hidden;
+  container-type: inline-size;
   background: var(--color-surface-canvas);
   color: var(--color-text);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-xl);
-  overflow-y: auto;
+  border: var(--border-width) solid var(--color-border-strong);
+  border-radius: var(--radius-control);
   font-family: var(--font-serif);
 }
 
-/* Nothing on it yet: the stage keeps its size so the row does not jump when the
-   first reference arrives, but it is drawn as a panel, not as a blank screen. */
-.operator-stage.is-empty {
-  align-items: flex-start;
-  background: var(--panel-bg);
-  /* The serif is the projector's; a placeholder is the console talking. */
+/* Nothing on the display yet: the same box, saying so in the console's voice. */
+.operator-monitor.is-idle {
+  align-items: center;
+  justify-content: center;
   font-family: var(--font-sans);
 }
 
-/* Compact placeholder shared by the LIVE and NEXT stages. */
+/* Idle with a picture: the miniature shows it as the display does, edge to edge,
+   so the monitor's padding is dropped. Logo is contained in the display's box (half
+   the width, 40% of the height); Fill covers the miniature. */
+.operator-monitor.has-picture {
+  padding: 0;
+}
+
+.operator-idle-image--logo {
+  width: 50%;
+  height: 40%;
+  object-fit: contain;
+}
+
+.operator-idle-image--fill {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* The empty state stacks (icon over text) and centres as one block. */
+.operator-monitor.is-idle .operator-hint {
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+/* Compact placeholder shared by the preview and Up Next. */
 .operator-hint {
   display: flex;
   align-items: flex-start;
   gap: var(--space-3);
-  width: 100%;
   color: var(--color-text-muted);
 }
 
@@ -576,17 +471,17 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
+  width: var(--space-6);
+  height: var(--space-6);
   flex-shrink: 0;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-control);
   background: var(--color-surface-muted);
   color: var(--color-text-muted);
 }
 
 .operator-hint-icon svg {
-  width: 16px;
-  height: 16px;
+  width: var(--icon-sm);
+  height: var(--icon-sm);
 }
 
 .operator-hint-body {
@@ -596,7 +491,7 @@
 .operator-hint-title {
   margin: 0;
   font-size: var(--font-size-sm);
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
   color: var(--color-text-secondary);
 }
 
@@ -605,16 +500,25 @@
   font-size: var(--font-size-xs);
 }
 
-/* Verse text on either stage: the same order and grouping as the projector — a
-   number column and the text — at a console-friendly size set inline by the fit
-   logic. The numbers share one right edge so verse 9 and verse 10 sit against
-   the text they label.
+/* The block the verses are fitted to (see usePreviewFit): it takes the box's height
+   above the citation. If the verses ever run past it they start at its top
+   (`safe center`), so the cut-off is at the bottom and the beginning always shows.
+   The stylesheet's size is only the first paint; the fit sets the real one. */
+.operator-live-fit {
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  justify-content: safe center;
+  min-height: 0;
+  overflow: hidden;
+  font-size: 2cqw;
+}
 
-   The block is as wide as its longest line and centered on the stage, like the
-   citation under it, so a short passage does not hug the left edge. A long verse
-   grows the block until it fills the stage and then wraps. */
-.operator-live-verses,
-.operator-next-verses {
+/* Verse text in the preview: the same order and grouping as the projector — a
+   number column and the text. The size is set by the fit logic (usePreviewFit),
+   as the display sets its own, so a long passage shrinks to fit. The numbers share
+   one right edge so verse 9 and verse 10 sit against the text they label. */
+.operator-live-verses {
   display: flex;
   flex-direction: column;
   gap: 0.6em;
@@ -623,170 +527,176 @@
   max-width: 100%;
   margin: 0;
   padding: 0;
-  list-style: none;
 }
 
-.operator-live-verse,
-.operator-next-verse {
+.operator-live-verse {
   display: flex;
   gap: 0.6em;
   margin: 0;
   line-height: 1.5;
 }
 
-.operator-live-verse-number,
-.operator-next-verse-number {
+.operator-live-verse-number {
   flex-shrink: 0;
   width: 1.8em;
   padding-top: 0.35em;
   font-family: var(--font-sans);
   font-size: 0.7em;
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
   text-align: right;
   color: var(--color-text-muted);
 }
 
-.operator-next-verse-text {
-  overflow-wrap: anywhere;
-}
-
-/* The citation under the passage, in the same voice on both stages. */
-.operator-live-reference,
-.operator-next-reference {
+/* The citation under the passage, as on the projector. */
+.operator-live-reference {
   margin: 0;
   font-family: var(--font-sans);
-  font-size: var(--font-size-xs);
-  font-weight: 600;
-  letter-spacing: 0.14em;
+  font-size: clamp(0.5625rem, 2cqw, 1.125rem);
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-caps);
   text-align: center;
   text-transform: uppercase;
   color: var(--color-text-secondary);
 }
 
-/* In the markup the reference comes first, which is how a screen reader should
-   meet it; on screen it sits under the verses like the projector's. */
-.operator-next-reference {
-  order: 2;
-}
-
-.operator-live-note,
-.operator-next-note {
+.operator-live-note {
   font-family: var(--font-sans);
-  font-size: var(--font-size-xs);
+  font-size: clamp(0.5rem, 1.6cqw, 0.875rem);
   text-align: center;
   text-transform: uppercase;
-  letter-spacing: 0.1em;
+  letter-spacing: var(--tracking-caps);
   color: var(--color-text-muted);
 }
 
-.operator-next-note {
-  order: 3;
-}
-
-/* The row of controls under each stage. Same height on both sides, so the two
-   stages and the history panel below them line up whether or not a button is
-   showing. */
-.operator-stage-footer {
+/* The control row under the preview: Clear display, how many verses, auto-approve.
+   Everything sits in the row, nothing at the card's corners. */
+.operator-quick {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-3);
-  min-height: 48px;
-  margin-top: var(--space-3);
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-2) var(--space-4);
+  padding: var(--card-pad);
 }
 
-.operator-stage-footer .btn-danger {
-  color: var(--color-danger-text);
-  background: transparent;
-  border: 1px solid var(--color-border-strong);
+/* A caption over a control. The control keeps its own width (a column's default
+   would stretch it to the caption's); the Auto-approve group sits at the right
+   edge, so its control's right edge meets the monitor's. */
+.operator-quick-group {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-1);
 }
 
-.operator-stage-footer .btn-danger:hover:not(:disabled) {
-  background: var(--color-danger-bg);
-  box-shadow: none;
+.operator-quick-auto {
+  align-items: flex-end;
+  margin-left: auto;
 }
 
-/* Show on display is the one primary action in the console: taller and rounder
-   than any other control, and the only filled one. */
-.operator-stage-footer .operator-show-button {
-  min-height: 48px;
-  padding: 0 var(--space-5) 0 var(--space-4);
-  border-radius: var(--radius-xl);
-  font-size: var(--font-size-base);
-}
-
+/* The Enter keycap inside Show. It takes currentColor, so it follows the button. */
 .operator-show-hint {
-  margin-left: var(--space-2);
-  padding: 1px 7px;
-  border: 1px solid currentColor;
-  border-radius: 5px;
+  padding: 0 var(--space-2);
+  border: var(--border-width) solid currentColor;
+  border-radius: var(--radius-tag);
   font-family: var(--font-mono);
-  font-size: 11px;
-  font-weight: 500;
+  font-size: var(--font-size-xs);
+  font-weight: var(--weight-medium);
   opacity: 0.7;
 }
 
-/* A passage the server showed by itself for follow-along, named beside its citation. */
+/* A passage the server showed by itself for follow-along, named beside the label. */
 .operator-live-tag {
   margin-left: var(--space-2);
-  vertical-align: middle;
 }
 
-/* Follow-along: one slim line under the stages saying the speaker has read on. It
-   is a suggestion, so it is drawn as the least assertive thing in the workspace:
-   a dashed outline (tentative, not a placed panel), neutral colours (the accent
-   stays reserved for what is on air or staged), and a secondary button. */
+/* UP NEXT reads as a different job from the live preview: recessed fill, a dashed
+   edge ("queued, not live") and more air above it. Its anatomy is the cards' own. */
+/* Up Next differs from the other cards in its text only: larger, up to four lines.
+   Padding is the cards' own. */
+.operator-next .operator-card-verse {
+  -webkit-line-clamp: 4;
+  font-size: var(--font-size-base);
+}
+
+/* The body is always four of those lines tall, staged or empty, so Up Next is one
+   fixed height: its buttons never move and the preview above never resizes as
+   passages are staged and shown. */
+.operator-next .operator-card-body {
+  box-sizing: border-box;
+  height: calc(
+    4 * var(--font-size-base) * var(--leading-normal) + var(--card-gap) + var(--card-pad)
+  );
+  overflow: hidden;
+}
+
+.operator-next {
+  display: flex;
+  flex-direction: column;
+  flex: none;
+  min-width: 0;
+  background: var(--panel-bg);
+  border: calc(var(--border-width) * 1.5) dashed var(--color-border-strong);
+  border-radius: var(--radius-card);
+}
+
+.operator-next-note {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+}
+
+/* Follow-along: a suggestion that the speaker has read on. One slim strip laid over
+   the top of the preview frame, so it takes no space of its own and nothing in the
+   page moves when it appears or goes. A neutral raised surface with only a trace of
+   the accent (about 10% fill, 35% edge); the verse keeps the normal colours and only
+   the label takes the accent text colour. It takes no keyboard shortcut. The Show
+   button is a control tall (36px), so the strip is 36px plus 6px of padding each side. */
 .operator-follow {
+  position: absolute;
+  z-index: 2;
+  top: var(--card-gap);
+  right: var(--card-gap);
+  left: var(--card-gap);
   display: flex;
   align-items: center;
-  gap: var(--space-3);
-  flex: 0 0 auto;
-  min-height: 48px;
-  padding: var(--space-2) var(--space-3) var(--space-2) var(--space-4);
-  background: var(--card-bg);
-  border: 1px dashed var(--color-border-strong);
-  border-radius: var(--radius-lg);
+  gap: var(--card-pad);
+  min-width: 0;
+  padding: calc(var(--card-gap) * 0.75) calc(var(--card-gap) * 0.75) calc(var(--card-gap) * 0.75)
+    var(--card-pad);
+  background: color-mix(in srgb, var(--color-primary) 10%, var(--color-surface-raised));
+  border: var(--border-width) solid
+    color-mix(in srgb, var(--color-primary) 35%, var(--color-border));
+  border-radius: var(--radius-control);
+  box-shadow: var(--shadow-md);
 }
 
-.operator-follow-icon {
-  display: flex;
-  flex-shrink: 0;
-  color: var(--color-text-muted);
+.operator-follow .operator-card-title {
+  flex: none;
 }
 
-.operator-follow-icon svg {
-  width: 16px;
-  height: 16px;
+.operator-follow .operator-stage-title {
+  color: var(--accent-text);
 }
 
-.operator-follow-text {
-  display: flex;
-  flex: 1;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 0 var(--space-3);
+/* Follow-along always points at a single verse, so its text is one line, ellipsized;
+   it gives way before the label, the reference or the button do. */
+.operator-follow-verse {
+  flex: 1 1 0;
   min-width: 0;
   margin: 0;
+  overflow: hidden;
+  font-family: var(--font-serif);
   font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.operator-follow-label {
-  font-size: var(--font-size-xs);
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--color-text-muted);
-}
-
-.operator-follow-reference {
-  font-weight: 650;
-  color: var(--color-text);
-  overflow-wrap: anywhere;
-}
-
-.operator-follow-show {
-  flex-shrink: 0;
-  min-height: 36px;
+.operator-follow .btn {
+  flex: none;
 }
 
 .btn-flash {
@@ -810,8 +720,8 @@
   display: flex;
   flex-direction: column;
   background: var(--panel-bg);
-  border-radius: var(--radius-xl);
-  border: 1px solid var(--color-border);
+  border-radius: var(--radius-card);
+  border: var(--border-width) solid var(--color-border);
   overflow: hidden;
 }
 
@@ -820,16 +730,16 @@
   align-items: center;
   justify-content: space-between;
   gap: var(--space-3);
-  height: 48px;
+  height: var(--control-h-lg);
   flex-shrink: 0;
   padding: 0 var(--space-4);
-  border-bottom: 1px solid var(--color-border);
+  border-bottom: var(--border-width) solid var(--color-border);
 }
 
 .operator-section-title {
   margin: 0;
   font-size: var(--font-size-base);
-  font-weight: 650;
+  font-weight: var(--weight-semibold);
   color: var(--color-text);
 }
 
@@ -837,13 +747,13 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  min-width: 22px;
-  height: 22px;
+  min-width: var(--space-5);
+  height: var(--space-5);
   padding: 0 var(--space-2);
   background: var(--card-bg);
   border-radius: var(--radius-full);
   font-size: var(--font-size-xs);
-  font-weight: 700;
+  font-weight: var(--weight-bold);
   font-variant-numeric: tabular-nums;
   color: var(--color-text-secondary);
 }
@@ -851,15 +761,15 @@
 .operator-section-content {
   flex: 1;
   overflow-y: auto;
-  padding: var(--space-2) var(--space-3);
+  padding: var(--card-pad);
 }
 
-/* The pending queue is the working column: full height, the list scrolling
-   inside it, and its one footer control pinned at the bottom. It is the answer
-   to "what do I do next", so it gets a column of its own beside the stages. */
+/* The tabbed panel is the working column: full height, the list scrolling inside
+   it, and its one footer control pinned at the bottom. It is the answer to "what
+   do I do next", so it gets a column of its own beside the display. */
 .operator-pending {
-  flex: 0 0 336px;
-  width: 336px;
+  flex: none;
+  width: var(--operator-side-w);
   min-height: 0;
 }
 
@@ -868,10 +778,10 @@
   align-items: center;
   justify-content: space-between;
   gap: var(--space-3);
-  height: 52px;
+  height: var(--control-h-lg);
   flex-shrink: 0;
   padding: 0 var(--space-3);
-  border-top: 1px solid var(--color-border);
+  border-top: var(--border-width) solid var(--color-border);
 }
 
 .operator-queue-hint {
@@ -880,30 +790,35 @@
 }
 
 /* The sidebar's tabs: Pending, Plan and History share one panel. */
+/* The tabs share the whole bar equally, with no outer padding or gaps, and the bar is
+   as tall as a card's header row (control height plus the card padding) so the two
+   columns' headers line up. */
 .operator-tabs {
+  --tab-underline: 3px;
   display: flex;
   align-items: stretch;
-  height: 48px;
+  height: calc(var(--control-h-md) + var(--card-pad));
   flex-shrink: 0;
-  padding: 0 var(--space-2);
-  gap: var(--space-1);
-  border-bottom: 1px solid var(--color-border);
+  border-bottom: var(--border-width) solid var(--color-border);
 }
 
 .operator-tab {
   white-space: nowrap;
   display: inline-flex;
+  flex: 1 1 0;
   align-items: center;
+  justify-content: center;
+  min-width: 0;
   gap: var(--space-2);
-  padding: 0 var(--space-3);
+  padding: 0;
   font-family: var(--font-sans);
   font-size: var(--font-size-sm);
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
   color: var(--color-text-muted);
   background: none;
   border: none;
-  border-bottom: 2px solid transparent;
-  margin-bottom: -1px;
+  border-bottom: var(--tab-underline) solid transparent;
+  margin-bottom: calc(-1 * var(--border-width));
   cursor: pointer;
   transition: color var(--transition-fast);
 }
@@ -912,15 +827,18 @@
   color: var(--color-text);
 }
 
+/* The active tab is bold and underlined in the accent text colour, which holds 3:1
+   against the panel in both themes (the fill colour does not on a light panel). */
 .operator-tab.is-active {
   color: var(--color-text);
-  border-bottom-color: var(--color-primary);
+  font-weight: var(--weight-bold);
+  border-bottom-color: var(--accent-text);
 }
 
 .operator-tab:focus-visible {
-  outline: 2px solid var(--color-border-focus);
-  outline-offset: -2px;
-  border-radius: var(--radius-sm);
+  outline: var(--focus-ring-width) solid var(--color-border-focus);
+  outline-offset: calc(-1 * var(--focus-ring-width));
+  border-radius: var(--radius-tag);
 }
 
 /* Detections are waiting while another tab is open. */
@@ -936,190 +854,78 @@
   min-height: 0;
 }
 
-/* History is a place to look back: tight rows, no verse text. */
-.operator-history .ref-card {
-  padding: var(--space-2) var(--space-3);
-}
-
-.operator-history .ref-card-text {
-  display: none;
-}
-
-/* Confidence is a property of a detection, not of something that was shown, so a
-   history row drops it. */
-.operator-history .ref-card-confidence {
-  display: none;
-}
-
-/* The plan: numbered rows, each a button to stage with its own small actions. */
+/* Rows in Pending, Plan and History share one look: a boxed item holding the
+   reference, the start of its text, and (Pending, Plan) the row's buttons. Nothing
+   marks an edge with a coloured stripe: the staged row takes the accent border
+   and fill all round. */
+.ref-card-list,
 .plan-list {
   display: flex;
   flex-direction: column;
-  gap: var(--space-1);
+  gap: var(--card-pad);
   margin: 0;
   padding: 0;
   list-style: none;
 }
 
-.plan-row {
+.ref-item {
   display: flex;
-  align-items: stretch;
-  border-radius: var(--radius-lg);
-  transition: background-color var(--transition-fast);
-}
-
-.plan-row:hover,
-.plan-row:focus-within {
+  flex: none;
+  flex-direction: column;
+  gap: var(--card-gap);
+  min-width: 0;
+  padding: var(--card-pad);
   background: var(--card-bg);
+  border: var(--border-width) solid var(--color-border);
+  border-radius: var(--radius-control);
+  transition: border-color var(--transition-fast);
 }
 
-.plan-row-main {
+.ref-item:hover {
+  border-color: var(--color-border-strong);
+}
+
+.ref-item.is-selected {
+  background: var(--color-primary-subtle);
+  border-color: var(--color-primary);
+}
+
+.ref-item-actions {
   display: flex;
-  align-items: flex-start;
-  flex: 1;
-  gap: var(--space-3);
-  min-width: 0;
-  padding: var(--space-3);
-  font-family: var(--font-sans);
-  text-align: left;
-  color: var(--color-text);
-  background: none;
-  border: none;
-  border-radius: var(--radius-lg);
-  cursor: pointer;
+  flex-wrap: wrap;
+  gap: var(--card-gap);
 }
 
-.plan-row-main:focus-visible {
-  outline: 2px solid var(--color-border-focus);
-  outline-offset: -2px;
-}
-
-.plan-row-number {
-  flex-shrink: 0;
-  min-width: 1.5em;
-  font-size: var(--font-size-xs);
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
-  line-height: 1.6;
-  color: var(--color-text-muted);
-}
-
-.plan-row-body {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  gap: 2px;
-}
-
-.plan-row-title {
-  font-size: var(--font-size-base);
-  font-weight: 600;
-}
-
-.plan-row-snippet {
-  overflow: hidden;
-  font-size: var(--font-size-sm);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--color-text-secondary);
-}
-
-.plan-row-actions {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  padding-right: var(--space-2);
-  opacity: 0;
-  transition: opacity var(--transition-fast);
-}
-
-.plan-row:hover .plan-row-actions,
-.plan-row:focus-within .plan-row-actions {
-  opacity: 1;
-}
-
-.plan-row-action {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 26px;
-  height: 26px;
-  padding: 0;
-  font-size: var(--font-size-sm);
-  color: var(--color-text-muted);
-  background: none;
-  border: none;
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-}
-
-.plan-row-action svg {
-  width: 14px;
-  height: 14px;
-}
-
-.plan-row-action:hover:not(:disabled) {
-  color: var(--color-text);
-  background: var(--selected-bg);
-}
-
-.plan-row-action:disabled {
-  opacity: 0.3;
-  cursor: default;
-}
-
-/* Touch has no hover: keep the actions in reach. */
-@media (hover: none) {
-  .plan-row-actions {
-    opacity: 1;
-  }
-}
-
-/* Reference rows: queue and history. No box per row, no colour band — a row is
-   text on the panel, a surface when you point at it, a stronger surface when it
-   is the one staged in Up Next. */
-.ref-card-list {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
+/* History is a place to look back, so its rows drop the confidence chip: it is a
+   property of a detection, not of something that was shown. */
+.operator-history .ref-card-confidence {
+  display: none;
 }
 
 .ref-card {
   position: relative;
   display: flex;
   box-sizing: border-box;
-  padding: var(--space-3) var(--space-3);
-  background: transparent;
-  border-radius: var(--radius-lg);
+  min-width: 0;
   cursor: pointer;
-  transition: background-color var(--transition-fast);
-}
-
-.ref-card:hover {
-  background: var(--card-bg);
+  border-radius: var(--radius-tag);
 }
 
 .ref-card:focus-visible {
-  outline: 2px solid var(--color-border-focus);
-  outline-offset: -2px;
-}
-
-.ref-card-selected,
-.ref-card-selected:hover {
-  background: var(--selected-bg);
+  border-radius: var(--radius-tag);
 }
 
 .ref-card-content {
   display: flex;
   flex-direction: column;
   flex: 1;
-  gap: 2px;
+  gap: var(--card-gap);
   min-width: 0;
 }
 
 .ref-card-header {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
   gap: var(--space-3);
 }
@@ -1127,7 +933,7 @@
 .ref-card-title {
   margin: 0;
   font-size: var(--font-size-base);
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
   overflow-wrap: anywhere;
   color: var(--color-text);
 }
@@ -1139,33 +945,51 @@
   flex-shrink: 0;
 }
 
-/* Confidence, as a three-pip meter and a word. It reads by shape and by the
-   word, not by hue, so it holds up in both themes and for anyone who cannot
-   tell a green from an amber. */
+/* Detection confidence: one amber-and-grey ramp told apart by fill weight, with
+   the word and nothing else. High is the accent fill and edge, Medium an outline,
+   Low a muted fill with a dashed edge. */
 .ref-card-confidence {
   display: inline-flex;
   align-items: center;
-  gap: var(--space-2);
+  height: var(--space-5);
+  padding: 0 var(--space-3);
   font-size: var(--font-size-xs);
+  font-weight: var(--weight-bold);
   white-space: nowrap;
-  color: var(--color-text-muted);
+  border: var(--border-width) solid transparent;
+  border-radius: var(--radius-full);
 }
 
-.ref-card-pips {
-  font-size: 10px;
-  letter-spacing: 2px;
+.ref-card-confidence[data-confidence='high'] {
+  color: var(--accent-text);
+  background: var(--color-primary-subtle);
+  border-color: color-mix(in srgb, var(--color-primary) 55%, transparent);
+}
+
+.ref-card-confidence[data-confidence='medium'] {
   color: var(--color-text-secondary);
+  background: transparent;
+  border-color: var(--color-border-strong);
 }
 
-/* One line of the passage: enough to recognise it. The full text is in Up Next
-   once the row is staged. */
+.ref-card-confidence[data-confidence='low'] {
+  font-weight: var(--weight-semibold);
+  color: var(--color-text-muted);
+  background: var(--color-surface-muted);
+  border-style: dashed;
+  border-color: var(--color-border-strong);
+}
+
+/* The start of the passage, in a muted quote: enough to recognise it, two lines at
+   most. The full text is in Up Next once the row is staged. */
 .ref-card-text {
+  display: -webkit-box;
   margin: 0;
   overflow: hidden;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
   font-size: var(--font-size-sm);
-  line-height: var(--leading-normal);
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  line-height: var(--leading-snug);
   color: var(--color-text-secondary);
 }
 
@@ -1183,116 +1007,137 @@
    panel must never be mistaken for each other. */
 .ref-card-staged {
   margin-left: auto;
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
   color: var(--accent-text);
 }
 
-/* The whole of auto-approve on the main screen: a line that names the mode and
-   opens Settings where it is changed. It sits in the footer under ON DISPLAY,
-   because it decides what reaches that screen without the operator. */
-.operator-auto-compact {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-  flex-shrink: 0;
-  min-height: 36px;
-  padding: 0 var(--space-3);
-  font-family: var(--font-sans);
-  font-size: var(--font-size-sm);
-  color: var(--color-text-secondary);
-  background: transparent;
-  border: 1px solid transparent;
-  border-radius: var(--radius-lg);
-  cursor: pointer;
-  transition: all var(--transition-fast);
-  text-align: left;
-}
-
-.operator-auto-compact:hover {
-  background: var(--card-bg);
-  color: var(--color-text);
-}
-
-.operator-auto-compact-icon {
+/* The plan: a numbered title (a button that stages it; double-click shows it), the
+   reorder arrows, then the row's own buttons. */
+.plan-item-head {
   display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+
+.plan-row-main {
+  display: flex;
+  align-items: flex-start;
+  flex: 1;
+  gap: var(--space-3);
+  min-width: 0;
+  padding: 0;
+  font-family: var(--font-sans);
+  text-align: left;
+  color: var(--color-text);
+  background: none;
+  border: none;
+  border-radius: var(--radius-tag);
+  cursor: pointer;
+}
+
+.plan-row-main:focus-visible {
+  border-radius: var(--radius-tag);
+}
+
+.plan-row-number {
   flex-shrink: 0;
+  min-width: 1.5em;
+  font-size: var(--font-size-xs);
+  font-weight: var(--weight-bold);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.6;
   color: var(--color-text-muted);
 }
 
-.operator-auto-compact-icon svg {
-  width: 16px;
-  height: 16px;
+.plan-row-body {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: var(--card-gap);
 }
 
-.operator-auto-compact-text {
+.plan-row-title {
+  font-size: var(--font-size-base);
+  font-weight: var(--weight-semibold);
+}
+
+.plan-row-reorder {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+}
+
+/* Settings, rendered inside the settings dialog. The audience display is
+   presentation-only, so the controls live there — and they are configuration, not
+   per-action controls, so the dialog can be closed and the console left with
+   everything the operator touches during a service.
+
+   One row anatomy for every setting: the label (semibold) with a muted hint under
+   it on the left, the control on the right, a 1px divider between rows, 12px
+   (`--card-pad`) padding. The control keeps its own width and is centred against the
+   label and hint. Anything else in a row (an error, a picture) takes the full width
+   under them. In a narrow dialog the control drops under the hint. */
+.operator-setting {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--card-gap) var(--card-pad);
+  padding: var(--card-pad) 0;
+  border-bottom: var(--border-width) solid var(--color-border);
+}
+
+.operator-dialog-section > .operator-setting:last-child {
+  border-bottom: 0;
+}
+
+/* The label and its hint are one block that never gets narrower than 14rem (224px):
+   it takes the room the control leaves, and a control too wide for what is left
+   (a long label, another language) wraps under the text instead of squeezing it
+   into one word per line. */
+.operator-setting-text {
+  display: flex;
+  flex: 1 1 14rem;
+  flex-direction: column;
+  gap: var(--space-1);
   min-width: 0;
 }
 
-.operator-auto-compact-value {
-  font-weight: 700;
-  color: var(--color-text);
+.operator-setting > .segmented,
+.operator-setting > .operator-setting-control {
+  flex: 0 0 auto;
+  max-width: 100%;
 }
 
-/* A mode that shows detections on its own is a fact worth noticing — but it is
-   still a fact, not an alarm, so it takes the accent tint, not a banner. */
-.operator-auto-compact.is-on {
-  border-color: var(--color-primary);
-  background: var(--color-primary-subtle);
-  color: var(--accent-text);
-}
-
-.operator-auto-compact.is-on .operator-auto-compact-value,
-.operator-auto-compact.is-on .operator-auto-compact-icon {
-  color: var(--accent-text);
-}
-
-/* Display and auto-approve settings, rendered inside the settings dialog. The
-   audience display is presentation-only, so the controls live there — and they
-   are configuration, not per-action controls, so the dialog can be closed and
-   the console left with everything the operator touches during a service. */
-.operator-display-settings {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-  padding: var(--space-4);
-}
-
-/* One setting per row: label (with the current value when it has one), the
-   control, then a short explanation. */
-.operator-setting {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
+/* Rows with a long error, or a picture, put it across the whole row. */
+.operator-setting > .operator-scripture-error,
+.operator-setting > .operator-scripture-unavailable,
+.operator-setting > .idle-screen-preview {
+  flex: 1 1 100%;
 }
 
 .operator-setting-header {
   display: flex;
   align-items: baseline;
-  justify-content: space-between;
   gap: var(--space-2);
 }
 
 .operator-setting-label {
-  font-size: var(--font-size-xs);
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+  font-weight: var(--weight-semibold);
+  color: var(--color-text);
 }
 
 /* The active value spelled out, so the mode is legible without reading which
-   button is highlighted. */
+   option is highlighted. */
 .operator-setting-value {
-  font-size: var(--font-size-xs);
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
+  font-size: var(--font-size-sm);
   color: var(--color-text-muted);
 }
 
 /* Auto-approve changes what reaches the projectors without the operator, so
    its active value is called out rather than blending into the label. */
 .operator-setting-value.is-on {
+  font-weight: var(--weight-semibold);
   color: var(--color-warning-text);
 }
 
@@ -1303,42 +1148,56 @@
   color: var(--color-text-muted);
 }
 
-/* Segmented control shared by the verse-count and background-theme rows in
-   the display settings block. */
-.operator-verse-options {
+/* Buttons that sit where a row's control does (the idle picture's upload and remove). */
+.operator-setting-control {
   display: flex;
-  gap: var(--space-2);
+  flex-wrap: wrap;
+  gap: var(--card-gap);
 }
 
-.operator-verse-option {
-  flex: 1 1 0;
-  /* Comfortably tappable on a touch screen, and an easy click target when the
-     operator is watching the service rather than the mouse. */
-  min-height: 40px;
-  padding: var(--space-2) var(--space-3);
-  font-family: var(--font-sans);
-  font-size: var(--font-size-sm);
-  font-weight: 600;
-  color: var(--color-text-secondary);
-  background: var(--color-surface-muted);
-  border: 1px solid transparent;
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-  transition: all var(--transition-fast);
+/* The idle picture's preview, in its own row: a 16:9 box with the monitor's border
+   and corners, and the current state under it. */
+.operator-setting-preview {
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
 }
 
-.operator-verse-option:hover:not(:disabled):not(.is-active) {
-  color: var(--color-text);
+.operator-setting-preview > .idle-screen-preview {
+  flex: 0 1 auto;
 }
 
-.operator-verse-option.is-active {
-  color: var(--color-text-inverse);
-  background: var(--color-primary);
+.idle-screen-preview {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 20rem;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  background: var(--color-surface-canvas);
+  border: var(--border-width) solid var(--color-border-strong);
+  border-radius: var(--radius-control);
 }
 
-.operator-verse-option:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
+/* Logo mode: contained in the display's box (half the width, 40% of the height). */
+.idle-screen-preview img {
+  width: 50%;
+  height: 40%;
+  object-fit: contain;
+}
+
+/* Fill mode: the picture covers the preview, as it covers the display. */
+.idle-screen-preview--fill img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.idle-screen-preview-blank {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
 }
 
 /* Find Scripture - a command bar in the header. Typing a name filters the canon
@@ -1363,7 +1222,7 @@
   position: absolute;
   top: 0;
   right: var(--space-3);
-  height: 38px;
+  height: var(--control-h-md);
   padding: 0;
   border: none;
   pointer-events: none;
@@ -1401,35 +1260,13 @@
 }
 
 .operator-search-icon svg {
-  width: 16px;
-  height: 16px;
+  width: var(--icon-sm);
+  height: var(--icon-sm);
 }
 
+/* The field is the shared `.input`; this only makes room for the icon. */
 .operator-search-input {
-  width: 100%;
-  height: 38px;
-  padding: 0 var(--space-3) 0 var(--space-6);
-  font-family: var(--font-sans);
-  font-size: var(--font-size-sm);
-  color: var(--color-text);
-  background: var(--card-bg);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
-  transition: border-color var(--transition-fast);
-}
-
-.operator-search-input::placeholder {
-  color: var(--color-text-muted);
-}
-
-.operator-search-input:focus-visible {
-  outline: none;
-  border-color: var(--color-primary);
-}
-
-.operator-search-input:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
+  padding-left: var(--space-6);
 }
 
 .operator-search-busy {
@@ -1449,8 +1286,8 @@
   gap: var(--space-2);
   padding: var(--space-2);
   background: var(--color-surface-overlay);
-  border: 1px solid var(--color-border-strong);
-  border-radius: var(--radius-lg);
+  border: var(--border-width) solid var(--color-border);
+  border-radius: var(--radius-card);
   box-shadow: var(--shadow-xl);
 }
 
@@ -1475,39 +1312,21 @@
   overflow-y: auto;
 }
 
-.operator-search-result {
-  display: flex;
+/* A result is a secondary button (and the resolved passage is `is-on`), laid out
+   as a left-aligned block that can wrap onto a preview line. */
+.btn.operator-search-result {
   align-items: baseline;
+  justify-content: flex-start;
   flex-wrap: wrap;
   gap: var(--space-2);
   width: 100%;
-  min-height: 36px;
   padding: var(--space-2) var(--space-3);
-  font-family: var(--font-sans);
-  font-size: var(--font-size-sm);
-  color: var(--color-text);
   text-align: left;
-  background: var(--color-surface-raised);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-  transition: all var(--transition-fast);
+  white-space: normal;
 }
 
-.operator-search-result:hover:not(:disabled) {
-  border-color: var(--color-border-strong);
-}
-
-.operator-search-result:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-/* The resolved passage is the answer, not one option among many. */
 .operator-search-result.is-reference {
-  border-color: var(--color-primary);
-  background: var(--color-primary-subtle);
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
 }
 
 .operator-search-result-label {
@@ -1536,39 +1355,20 @@
   font-family: var(--font-serif);
   font-size: var(--font-size-sm);
   font-style: italic;
-  font-weight: 400;
+  font-weight: var(--weight-regular);
   line-height: var(--leading-snug);
   color: var(--color-text-secondary);
 }
 
-.operator-search-plan {
+.operator-search-item .operator-search-plan {
   flex-shrink: 0;
-  padding: 0 var(--space-3);
-  font-family: var(--font-sans);
-  font-size: var(--font-size-xs);
-  font-weight: 600;
-  color: var(--color-text-secondary);
-  background: var(--color-surface-raised);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-  transition: all var(--transition-fast);
-}
-
-.operator-search-plan:hover:not(:disabled) {
-  color: var(--color-text);
-  border-color: var(--color-border-strong);
-}
-
-.operator-search-plan:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
+  height: auto;
 }
 
 .operator-search-result-detail {
   margin-left: auto;
   font-size: var(--font-size-xs);
-  font-weight: 400;
+  font-weight: var(--weight-regular);
   color: var(--color-text-muted);
 }
 
@@ -1576,7 +1376,7 @@
 .operator-search-mark {
   background: var(--color-warning-bg);
   color: var(--color-warning-text);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-tag);
 }
 
 /* Lookup failures and the form's own validation, in one shape so the message
@@ -1593,8 +1393,8 @@
 
 .operator-scripture-error svg {
   flex-shrink: 0;
-  width: 16px;
-  height: 16px;
+  width: var(--icon-sm);
+  height: var(--icon-sm);
 }
 
 .operator-scripture-unavailable {
@@ -1614,7 +1414,7 @@
   align-items: center;
   justify-content: center;
   padding: var(--space-4);
-  background: rgba(0, 0, 0, 0.5);
+  background: var(--color-scrim);
   z-index: var(--z-modal);
   overflow-y: auto;
 }
@@ -1623,100 +1423,55 @@
   display: flex;
   flex-direction: column;
   width: 100%;
-  max-width: 460px;
+  max-width: 520px;
   max-height: calc(100dvh - 2 * var(--space-4));
   background: var(--panel-bg);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-xl);
+  border: var(--border-width) solid var(--color-border);
+  border-radius: var(--radius-dialog);
   box-shadow: var(--shadow-xl);
   overflow: hidden;
 }
 
+/* The header row: the title at the left, Close at the right, one control tall under
+   the card padding, like a card's header. */
 .operator-dialog-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: var(--space-3);
-  padding: var(--space-3) var(--space-4);
-  border-bottom: 1px solid var(--color-border);
+  min-height: calc(var(--control-h-md) + 2 * var(--card-pad));
+  padding: var(--card-pad);
+  border-bottom: var(--border-width) solid var(--color-border);
 }
 
 .operator-dialog-title {
   margin: 0;
   font-size: var(--font-size-lg);
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
   color: var(--color-text);
-}
-
-.operator-dialog-close {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 36px;
-  height: 36px;
-  flex-shrink: 0;
-  padding: 0;
-  color: var(--color-text-secondary);
-  background: transparent;
-  border: 1px solid transparent;
-  border-radius: var(--radius-md);
-  cursor: pointer;
-  transition: all var(--transition-fast);
-}
-
-.operator-dialog-close:hover {
-  color: var(--color-text);
-  background: var(--color-surface-muted);
-}
-
-.operator-dialog-close svg {
-  width: 16px;
-  height: 16px;
 }
 
 .operator-dialog-body {
   display: flex;
   flex-direction: column;
-  gap: var(--space-5);
-  padding: var(--space-4);
+  gap: var(--card-pad);
+  padding: 0 var(--card-pad) var(--card-pad);
   overflow-y: auto;
 }
 
 .operator-dialog-section {
   display: flex;
   flex-direction: column;
-  gap: var(--space-3);
 }
 
-/* A section heading is a heading, in sentence case with a rule under it; the
-   small uppercase labels belong to the individual settings below it. Two levels
-   in the same bold capitals made "Auto-approve" appear twice at equal weight. */
+/* A section heading is the overline style of the card labels, with room above it. */
 .operator-dialog-section-title {
-  margin: 0;
-  padding-bottom: var(--space-2);
-  border-bottom: 1px solid var(--color-border);
-  font-size: var(--font-size-base);
-  font-weight: 650;
-  color: var(--color-text);
-}
-
-/* The display settings block carries its own sidebar padding; in the dialog the
-   section already provides it. */
-.operator-dialog .operator-display-settings {
-  padding: 0;
-}
-
-/* The app-theme control fills its row so its three options line up with the
-   segmented controls above it. */
-.operator-dialog .theme-toggle {
-  display: flex;
-  width: 100%;
-}
-
-.operator-dialog .theme-toggle-button {
-  flex: 1 1 0;
-  justify-content: center;
-  min-height: 40px;
+  margin: var(--card-pad) 0 0;
+  font-size: var(--font-size-xs);
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--color-text-muted);
 }
 
 /* Action feedback. One slot only: a new message replaces the previous one, so a
@@ -1728,8 +1483,8 @@
   gap: var(--space-3);
   padding: var(--space-2) var(--space-3);
   background: var(--color-surface-overlay);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
+  border: var(--border-width) solid var(--color-border);
+  border-radius: var(--radius-card);
   box-shadow: var(--shadow-lg);
   font-size: var(--font-size-sm);
   color: var(--color-text);
@@ -1751,8 +1506,8 @@
 }
 
 .operator-feedback-icon svg {
-  width: 18px;
-  height: 18px;
+  width: var(--icon-md);
+  height: var(--icon-md);
 }
 
 .operator-feedback-success .operator-feedback-icon {
@@ -1774,32 +1529,6 @@
   overflow-wrap: anywhere;
 }
 
-.operator-feedback-dismiss {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  /* 24px was under the comfortable touch size for a control the operator may
-     reach for on a tablet. */
-  width: 32px;
-  height: 32px;
-  flex-shrink: 0;
-  padding: 0;
-  background: transparent;
-  border: none;
-  border-radius: var(--radius-sm);
-  color: var(--color-text-muted);
-}
-
-.operator-feedback-dismiss:hover {
-  color: var(--color-text);
-  background: var(--color-surface-muted);
-}
-
-.operator-feedback-dismiss svg {
-  width: 14px;
-  height: 14px;
-}
-
 /* Keyboard shortcuts, listed in the settings dialog. Compact by design: one
    line per shortcut, wrapping gracefully in the dialog's narrow column. */
 .operator-dialog-shortcuts {
@@ -1807,7 +1536,7 @@
   flex-direction: column;
   gap: var(--space-2);
   margin: 0;
-  padding: 0;
+  padding: var(--card-gap) 0 0;
   list-style: none;
 }
 
@@ -1829,31 +1558,41 @@
 .operator-dialog-shortcuts kbd {
   padding: var(--space-1) var(--space-2);
   background: var(--color-surface-raised);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
+  border: var(--border-width) solid var(--color-border-strong);
+  border-radius: var(--radius-tag);
   font-family: var(--font-mono);
   font-size: var(--font-size-xs);
-  font-weight: 500;
+  font-weight: var(--weight-medium);
   color: var(--color-text);
   white-space: nowrap;
 }
 
 /* Responsive */
 @media (max-width: 1100px) {
-  /* The queue drops below the workspace and takes the full width; the page
-     scrolls instead of each column. */
+  /* One column and a page that scrolls. The frame is the full width and takes its
+     height from the 16:9 ratio, so the miniature fills it. Flex rather than grid, so
+     each part keeps the height its content needs. */
   .operator-main {
-    flex-wrap: wrap;
+    flex-direction: column;
     overflow-y: auto;
   }
 
   .operator-workspace {
-    flex: 1 1 100%;
+    flex: none;
     overflow: visible;
   }
 
+  .operator-live {
+    flex: none;
+  }
+
+  .operator-monitor-wrap {
+    flex: none;
+    aspect-ratio: 16 / 9;
+    min-height: 0;
+  }
+
   .operator-pending {
-    flex: 1 1 100%;
     width: auto;
     max-height: 520px;
   }
@@ -1883,26 +1622,13 @@
     grid-row: 2;
   }
 
-  /* One stage per row, each at its natural height. */
-  .operator-stage-row {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .operator-stage-panel {
-    flex: 0 0 auto;
+  /* Card headers wrap rather than push the actions out of the card. */
+  .operator-card-head {
+    flex-wrap: wrap;
   }
 }
 
 @media (max-width: 640px) {
-  /* The gear and the dismiss control get a full touch target where the bar is at
-     its narrowest. */
-  .operator-icon-button,
-  .operator-feedback-dismiss {
-    width: 40px;
-    height: 40px;
-  }
-
   .operator-display-label,
   .operator-language-chip-label {
     display: none;
@@ -1914,21 +1640,11 @@
   }
 
   .operator-main {
-    padding: var(--space-4);
-    gap: var(--space-4);
+    padding: var(--space-3);
+    gap: var(--space-3);
   }
 
-  .operator-stage {
-    min-height: 200px;
-    padding: var(--space-4);
-  }
-
-  .operator-stage-footer {
-    flex-wrap: wrap;
-  }
-
-  /* A full touch target for Show where the line is at its narrowest. */
-  .operator-follow-show {
-    min-height: 44px;
+  .operator-quick-auto {
+    margin-left: 0;
   }
 }

@@ -20,6 +20,14 @@ import tempfile
 from pathlib import Path
 from typing import Any, TypeGuard
 
+from .idle_screen import (
+    DEFAULT_IDLE_SCREEN_FIT,
+    IdleImage,
+    IdleScreenFit,
+    is_idle_screen_fit,
+    is_image_kind,
+    is_image_version,
+)
 from .models import AutoMode
 
 logger = logging.getLogger(__name__)
@@ -65,6 +73,17 @@ def coerce_auto_mode(value: object, default: AutoMode = DEFAULT_AUTO_MODE) -> Au
         return value
     if isinstance(value, str) and value.strip():
         logger.warning(f"Ignoring invalid auto-approve mode {value!r}; using '{default}'")
+    return default
+
+
+def coerce_idle_screen_fit(
+    value: object, default: IdleScreenFit = DEFAULT_IDLE_SCREEN_FIT
+) -> IdleScreenFit:
+    """Return ``value`` when it is a known fit mode, otherwise ``default`` (with a warning)."""
+    if is_idle_screen_fit(value):
+        return value
+    if value is not None:
+        logger.warning(f"Ignoring invalid idle-screen fit {value!r}; using '{default}'")
     return default
 
 
@@ -153,6 +172,66 @@ class SettingsStore:
         if not self._write(settings):
             return False
         logger.info(f"Persisted follow-along auto-show {'on' if enabled else 'off'} to {self.path}")
+        return True
+
+    @property
+    def directory(self) -> Path:
+        """The folder the settings file lives in; the idle-screen picture is stored beside it."""
+        return self.path.parent
+
+    def load_idle_screen_fit(
+        self, default: IdleScreenFit = DEFAULT_IDLE_SCREEN_FIT
+    ) -> IdleScreenFit:
+        """Return the persisted idle-screen fit mode, or ``default``."""
+        return coerce_idle_screen_fit(self._read().get("idle_screen_fit"), default=default)
+
+    def load_idle_screen_image(self) -> IdleImage | None:
+        """Return the persisted idle-screen picture's format and version, or None.
+
+        Only the record is checked here; whether the file is still there is the caller's
+        business, because the file lives beside this file, not inside it.
+        """
+        value = self._read().get("idle_screen_image")
+        if value is None:
+            return None
+        if (
+            isinstance(value, dict)
+            and is_image_kind(value.get("kind"))
+            and is_image_version(value.get("version"))
+        ):
+            return IdleImage(kind=value["kind"], version=value["version"])
+        logger.warning(f"Ignoring invalid idle-screen picture record in {self.path}")
+        return None
+
+    def save_idle_screen_fit(self, fit: IdleScreenFit) -> bool:
+        """Persist the idle-screen fit mode; returns False when the write failed."""
+        settings = self._read()
+        settings["idle_screen_fit"] = fit
+        if not self._write(settings):
+            return False
+        logger.info(f"Persisted idle-screen fit '{fit}' to {self.path}")
+        return True
+
+    def save_idle_screen_image(self, image: IdleImage) -> bool:
+        """Persist the idle-screen picture's record; returns False when the write failed.
+
+        The picture file itself is written by the caller before this, so a failed save
+        leaves the previous record in force.
+        """
+        settings = self._read()
+        settings["idle_screen_image"] = {"kind": image.kind, "version": image.version}
+        if not self._write(settings):
+            return False
+        logger.info(f"Persisted idle-screen picture ({image.kind}) to {self.path}")
+        return True
+
+    def clear_idle_screen_image(self) -> bool:
+        """Remove the idle-screen picture's record; returns False when the write failed."""
+        settings = self._read()
+        settings.pop("idle_screen_image", None)
+        if not self._write(settings):
+            return False
+        logger.info(f"Removed the idle-screen picture record from {self.path}")
         return True
 
     def _write(self, settings: dict[str, Any]) -> bool:

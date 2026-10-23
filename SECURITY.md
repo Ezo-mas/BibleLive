@@ -58,6 +58,9 @@ BIBLELIVE_OPERATOR_TOKEN=your-generated-token-here
 - `GET /readyz` — readiness check
 - `GET /api/ui-language` — the interface language the launcher chose (`lt`, `en`, or null);
   the display page reads it too, and it returns nothing else
+- `GET /api/idle-screen/image` — the picture the display shows while nothing is on screen
+  (PNG, JPEG or WebP only, served with its detected type and `nosniff`); the display
+  page has no token, and this picture is shown to the audience anyway
 - `GET /ws/display` — display WebSocket
 
 ### Protected endpoints (authentication required when enabled)
@@ -77,6 +80,11 @@ BIBLELIVE_OPERATOR_TOKEN=your-generated-token-here
 - `GET /api/lookup` — verse text lookup by coordinates for the operator's passage search
 - `GET /api/language` — current spoken language
 - `POST /api/language` — switch spoken language
+- `GET /api/idle-screen` — idle-screen fit mode and whether a picture is set
+- `POST /api/idle-screen` — upload the idle-screen picture (raw image body, at most 8 MB;
+  format from its magic bytes, never SVG)
+- `PUT /api/idle-screen/fit` — choose how the idle picture fills the screen
+- `DELETE /api/idle-screen` — remove the idle picture (the display goes blank)
 - `GET /ws/operator` — operator WebSocket (token in the first message)
 
 ## Other Devices on the Network (Windows Launcher)
@@ -113,9 +121,9 @@ own connections still use `127.0.0.1`.
   clear that history on a PC that other people use. The launcher opens the PC's own
   operator page this way. Other devices type the token into the prompt. Do not share a
   link that contains `#token=`.
-- **Display pages are view-only and need no token.** `/display`, `/ws/display` and
-  `GET /api/ui-language` stay public, so any device that can reach the PC sees what the
-  audience screen shows. The Bible lookup endpoints `/api/books` and `/api/lookup` need the
+- **Display pages are view-only and need no token.** `/display`, `/ws/display`,
+  `GET /api/ui-language` and `GET /api/idle-screen/image` stay public, so any device that
+  can reach the PC sees what the audience screen shows. The Bible lookup endpoints `/api/books` and `/api/lookup` need the
   token like the rest of the operator API (the display never calls them). Operator actions
   and the operator WebSocket still need the token.
 - **Windows Firewall.** The installer does not add a rule. With the option on and the

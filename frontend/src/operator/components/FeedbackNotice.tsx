@@ -1,4 +1,4 @@
-import { AlertCircleIcon, CheckIcon, InfoIcon, XIcon } from '../../components'
+import { AlertCircleIcon, Button, CheckIcon, InfoIcon, XIcon } from '../../components'
 import { useI18n } from '../../shared/i18nContext'
 import type { OperatorNotice } from '../hooks/useOperatorState'
 
@@ -42,14 +42,14 @@ export function FeedbackNotice({ notice, onDismiss }: FeedbackNoticeProps) {
         {TONE_ICONS[notice.tone]}
       </span>
       <span className="operator-feedback-text">{notice.text}</span>
-      <button
-        type="button"
-        className="operator-feedback-dismiss"
+      <Button
+        variant="ghost"
+        size="sm"
+        iconOnly
+        icon={<XIcon />}
         onClick={onDismiss}
         aria-label={t('app.dismissNotice')}
-      >
-        <XIcon />
-      </button>
+      />
     </div>
   )
 }

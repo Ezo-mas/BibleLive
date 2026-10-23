@@ -77,9 +77,13 @@ function gear() {
   return screen.getByRole('button', { name: 'Settings' })
 }
 
-/** The compact auto-approve chip on the console. */
-function autoChip(name: RegExp) {
-  return screen.getByRole('button', { name })
+/** The Off / On control for auto-approve under the display preview. */
+function autoQuick() {
+  const group = within(screen.getByRole('group', { name: 'Auto-approve' }))
+  return {
+    off: group.getByRole('button', { name: 'Off' }),
+    on: group.getByRole('button', { name: 'On' }),
+  }
 }
 
 function dialog() {
@@ -260,24 +264,55 @@ describe('display preferences in settings', () => {
 })
 
 describe('auto-approve in settings', () => {
-  it('opens the dialog on the auto-approve section from the compact chip', () => {
+  it('turns auto-approve on and off from the Off / On control under the preview', () => {
     openWith()
-    expect(autoChip(/Auto-approve: Off/)).toBeInTheDocument()
+    expect(autoQuick().off).toHaveAttribute('aria-pressed', 'true')
+    expect(autoQuick().on).toHaveAttribute('aria-pressed', 'false')
 
     act(() => {
-      autoChip(/Auto-approve: Off/).click()
+      autoQuick().on.click()
     })
 
-    // The chip is a shortcut into the section that changes it, not a second
-    // copy of the controls — the active mode is already focused there.
-    expect(autoOptions().getByRole('button', { name: 'Off' })).toHaveAttribute(
-      'aria-pressed',
-      'true'
-    )
-    expect(autoOptions().getByRole('button', { name: 'Off' })).toHaveFocus()
+    // On is the most conservative mode until the operator has chosen another.
+    expect(sentMessages()).toContainEqual({ action: 'set_auto_mode', auto_mode: 'high' })
+    expect(autoQuick().on).toHaveAttribute('aria-pressed', 'true')
+
+    act(() => {
+      autoQuick().off.click()
+    })
+
+    expect(sentMessages().at(-1)).toEqual({ action: 'set_auto_mode', auto_mode: 'off' })
+    expect(autoQuick().off).toHaveAttribute('aria-pressed', 'true')
   })
 
-  it('keeps the chip and the dialog on the same mode, with the same semantics', () => {
+  it('turns On back on to the last mode that was on', () => {
+    openWith()
+    push({ type: 'auto_mode_confirmed', data: { auto_mode: 'medium_and_up' } })
+    expect(autoQuick().on).toHaveAttribute('aria-pressed', 'true')
+
+    act(() => {
+      autoQuick().off.click()
+    })
+    expect(sentMessages().at(-1)).toEqual({ action: 'set_auto_mode', auto_mode: 'off' })
+
+    act(() => {
+      autoQuick().on.click()
+    })
+    expect(sentMessages().at(-1)).toEqual({ action: 'set_auto_mode', auto_mode: 'medium_and_up' })
+  })
+
+  it('does not resend a mode that is already set', () => {
+    openWith()
+    const before = sentMessages().length
+
+    act(() => {
+      autoQuick().off.click()
+    })
+
+    expect(sentMessages()).toHaveLength(before)
+  })
+
+  it('keeps the Off / On control and the dialog on the same mode, with the same semantics', () => {
     openWith()
     openSettings()
 
@@ -299,8 +334,8 @@ describe('auto-approve in settings', () => {
     })
 
     // With the settings closed the console still says what the server is doing.
-    expect(autoChip(/Auto-approve: Med\+/)).toBeInTheDocument()
-    expect(autoChip(/Auto-approve: Med\+/)).toHaveClass('is-on')
+    expect(autoQuick().on).toHaveAttribute('aria-pressed', 'true')
+    expect(autoQuick().on).toHaveAttribute('title', 'Med+')
   })
 
   it('follows the mode the server confirms, in both places', () => {
@@ -318,13 +353,15 @@ describe('auto-approve in settings', () => {
       within(dialog()).getByRole('button', { name: 'Close settings' }).click()
     })
 
-    expect(autoChip(/Auto-approve: All/)).toBeInTheDocument()
+    expect(autoQuick().on).toHaveAttribute('aria-pressed', 'true')
+    expect(autoQuick().on).toHaveAttribute('title', 'All')
   })
 
   it('shows the mode the snapshot reported, before anything is touched', () => {
     openWith('high')
 
-    expect(autoChip(/Auto-approve: High/)).toBeInTheDocument()
+    expect(autoQuick().on).toHaveAttribute('aria-pressed', 'true')
+    expect(autoQuick().on).toHaveAttribute('title', 'High')
 
     openSettings()
     expect(autoOptions().getByRole('button', { name: 'High' })).toHaveAttribute(

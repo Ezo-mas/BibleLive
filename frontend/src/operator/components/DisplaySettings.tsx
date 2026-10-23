@@ -5,6 +5,7 @@ import {
   VERSE_LIMIT_OPTIONS,
 } from '../../shared/verseText'
 import type { DisplayTheme, VerseLimit } from '../../shared/verseText'
+import { SegmentedOption } from '../../components'
 import { useI18n } from '../../shared/i18nContext'
 
 export interface DisplaySettingsProps {
@@ -38,61 +39,55 @@ export function DisplaySettings({
 }: DisplaySettingsProps) {
   const { t } = useI18n()
   return (
-    <div className="operator-display-settings">
+    <>
       <div className="operator-setting">
-        <span className="operator-setting-label">{t('settings.verses')}</span>
-        <div className="operator-verse-options" role="group" aria-label={t('settings.versesGroup')}>
+        <div className="operator-setting-text">
+          <span className="operator-setting-label">{t('settings.verses')}</span>
+          <p className="operator-setting-hint">
+            {t('settings.versesDefault', { count: DEFAULT_VERSE_LIMIT })}
+          </p>
+        </div>
+        <div className="segmented" role="group" aria-label={t('settings.versesGroup')}>
           {VERSE_LIMIT_OPTIONS.map(option => (
-            <button
+            <SegmentedOption
               key={option}
-              type="button"
-              className={`operator-verse-option ${verseLimit === option ? 'is-active' : ''}`}
               aria-pressed={verseLimit === option}
               disabled={disabled}
               onClick={() => onVerseLimitChange(option)}
             >
               {option}
-            </button>
+            </SegmentedOption>
           ))}
-          <button
-            type="button"
-            className={`operator-verse-option ${verseLimit === 'all' ? 'is-active' : ''}`}
+          <SegmentedOption
             aria-pressed={verseLimit === 'all'}
             disabled={disabled}
             onClick={() => onVerseLimitChange('all')}
           >
             {t('settings.versesAll')}
-          </button>
+          </SegmentedOption>
         </div>
-        <p className="operator-setting-hint">
-          {t('settings.versesDefault', { count: DEFAULT_VERSE_LIMIT })}
-        </p>
       </div>
 
       <div className="operator-setting">
-        <span className="operator-setting-label">{t('settings.background')}</span>
-        <div
-          className="operator-verse-options"
-          role="group"
-          aria-label={t('settings.backgroundGroup')}
-        >
+        <div className="operator-setting-text">
+          <span className="operator-setting-label">{t('settings.background')}</span>
+          <p className="operator-setting-hint">{t('settings.bgHint')}</p>
+        </div>
+        <div className="segmented" role="group" aria-label={t('settings.backgroundGroup')}>
           {DISPLAY_THEME_OPTIONS.map(option => (
-            <button
+            <SegmentedOption
               key={option}
-              type="button"
-              className={`operator-verse-option ${displayTheme === option ? 'is-active' : ''}`}
               aria-pressed={displayTheme === option}
               disabled={disabled}
               onClick={() => onThemeChange(option)}
             >
               {option === 'dark' ? t('settings.bgDark') : t('settings.bgLight')}
-            </button>
+            </SegmentedOption>
           ))}
         </div>
-        <p className="operator-setting-hint">{t('settings.bgHint')}</p>
       </div>
 
       {children}
-    </div>
+    </>
   )
 }

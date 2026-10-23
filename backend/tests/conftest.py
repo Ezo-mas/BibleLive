@@ -13,6 +13,7 @@ from core.book_names import BookNames
 from core.config import config
 from core.import_bible import BibleImporter
 from core.server.follow_along import FollowAlong
+from core.server.idle_screen import DEFAULT_IDLE_SCREEN_FIT
 from core.server.models import DisplaySettings
 from core.server.settings_store import DEFAULT_AUTO_MODE, DEFAULT_FOLLOW_AUTO, SettingsStore
 
@@ -160,6 +161,8 @@ def reset_app_state(app_state, tmp_path: Path):
     app_state.settings_store = SettingsStore(tmp_path / "server_settings.json")
     app_state.auto_mode = DEFAULT_AUTO_MODE
     app_state.follow_auto = DEFAULT_FOLLOW_AUTO
+    app_state.idle_screen_fit = DEFAULT_IDLE_SCREEN_FIT
+    app_state.idle_image = None
     app_state.pipeline_report = None
     app_state.pipeline_reported_at = None
     app_state.follow_along = FollowAlong()

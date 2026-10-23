@@ -145,15 +145,25 @@ describe('LIVE panel', () => {
 
     const verses = within(screen.getByTestId('live-verses'))
     expect(verses.getByText('Psalms 23:1 text')).toBeInTheDocument()
+    // The citation is on the monitor, under the verses, as on the projector; the
+    // card's header carries only its label.
     expect(screen.getByText('Psalms 23:1-5')).toBeInTheDocument()
-    expect(screen.getByText('Live')).toBeInTheDocument()
+    // The ON DISPLAY label is the only status; no chip repeats it.
+    expect(screen.queryByText('Live')).not.toBeInTheDocument()
+  })
+
+  it('labels the preview as a group that still exposes the verse text', () => {
+    openWith({ currentDisplay: psalms })
+
+    const preview = screen.getByRole('group', { name: 'Audience display preview' })
+    expect(within(preview).getByText('Psalms 23:1 text')).toBeInTheDocument()
   })
 
   it('shows an empty state when nothing is on the display', () => {
     openWith()
 
     expect(screen.getByText('Nothing on display')).toBeInTheDocument()
-    expect(screen.getByText('Idle')).toBeInTheDocument()
+    expect(screen.queryByText('Idle')).not.toBeInTheDocument()
     expect(screen.queryByTestId('live-verses')).not.toBeInTheDocument()
   })
 
@@ -253,7 +263,7 @@ describe('NEXT panel', () => {
     selectCard(/Romans 8:28/)
 
     act(() => {
-      screen.getByRole('button', { name: 'Discard' }).click()
+      screen.getByRole('button', { name: 'Unstage' }).click()
     })
 
     expect(screen.getByText('Nothing staged')).toBeInTheDocument()

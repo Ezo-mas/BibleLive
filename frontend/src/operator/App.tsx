@@ -11,12 +11,12 @@ import type { SideTab } from './components/SidePanel'
 import { FollowAlongHint } from './components/FollowAlongHint'
 import { HistoryPanel } from './components/HistoryPanel'
 import { ScriptureSearch } from './components/ScriptureSearch'
-import { AutoApproveCompact } from './components/AutoApproveCompact'
+import { DisplayQuickControls } from './components/DisplayQuickControls'
 import { SettingsDialog } from './components/SettingsDialog'
 import type { SettingsSection } from './components/SettingsDialog'
 import { OperatorHeader } from './components/OperatorHeader'
 import { LanguageChip } from './components/LanguageChip'
-import { ClearDisplayButton, QueueFooter } from './components/OperatorActions'
+import { QueueFooter } from './components/OperatorActions'
 import { ConnectionBanner } from './components/ConnectionBanner'
 import { PipelineBanner } from './components/PipelineBanner'
 import { FeedbackNotice } from './components/FeedbackNotice'
@@ -24,6 +24,7 @@ import { TokenPrompt } from './components/TokenPrompt'
 import { useI18n } from '../shared/i18nContext'
 import '../styles/tokens.css'
 import '../styles/global.css'
+import '../styles/controls.css'
 import './operator.css'
 
 /**
@@ -66,12 +67,14 @@ export default function App() {
 
   useOperatorShortcuts({
     hasSelection: operator.selectedId !== null,
+    canClearDisplay: operator.canClearDisplay,
     // The dialog owns the keyboard while it is open (see useOperatorShortcuts).
     enabled: !settingsOpen,
     onNext: operator.selectNext,
     onPrevious: operator.selectPrevious,
     onApprove: operator.approveSelected,
     onDeselect: operator.deselect,
+    onClearDisplay: operator.clearDisplay,
   })
 
   // The pipeline can be started, restarted, or switched from a terminal while the
@@ -79,13 +82,15 @@ export default function App() {
   // language is opened — the reading the operator acts on is then current.
   const { refresh: refreshSpokenLanguage } = operator.spokenLanguage
   const { refresh: refreshBibleVersion } = operator.bibleVersion
+  const { refresh: refreshIdleScreen } = operator.idleScreen
   const isConnected = operator.isConnected
   useEffect(() => {
     if (settingsOpen && isConnected) {
       refreshSpokenLanguage()
       refreshBibleVersion()
+      refreshIdleScreen()
     }
-  }, [settingsOpen, isConnected, refreshSpokenLanguage, refreshBibleVersion])
+  }, [settingsOpen, isConnected, refreshSpokenLanguage, refreshBibleVersion, refreshIdleScreen])
 
   // The launcher's interface language is asked for again on connect: the operator's
   // token is often entered only after the first request, which the server refuses.
@@ -146,41 +151,40 @@ export default function App() {
       <PipelineBanner status={operator.pipeline} />
       <main className="operator-main">
         <div className="operator-workspace">
-          <div className="operator-stage-row">
-            <LivePanel
-              reference={operator.currentDisplay}
+          <LivePanel
+            reference={operator.currentDisplay}
+            verseLimit={operator.verseLimit}
+            displayTheme={operator.displayTheme}
+            idleImage={operator.idleImage}
+            overlay={
+              <FollowAlongHint
+                hint={operator.followAlong}
+                text={operator.followAlongText}
+                canShow={operator.canShowFollowAlong}
+                onShow={operator.showFollowAlong}
+              />
+            }
+          >
+            <DisplayQuickControls
+              canClearDisplay={operator.canClearDisplay}
+              flash={operator.flash}
+              onClearDisplay={operator.clearDisplay}
               verseLimit={operator.verseLimit}
-              displayTheme={operator.displayTheme}
-            >
-              <div className="operator-stage-footer">
-                <ClearDisplayButton
-                  canClearDisplay={operator.canClearDisplay}
-                  flash={operator.flash}
-                  onClearDisplay={operator.clearDisplay}
-                />
-                <AutoApproveCompact
-                  autoMode={operator.autoMode}
-                  onOpenSettings={() => openSettings('auto')}
-                />
-              </div>
-            </LivePanel>
-
-            <NextPanel
-              reference={operator.nextReference}
-              source={operator.nextSource}
-              verseLimit={operator.verseLimit}
-              displayTheme={operator.displayTheme}
-              canShow={operator.canShowNext}
-              flashing={operator.flash === 'approve'}
-              onShow={operator.showNext}
-              onDiscard={operator.clearNext}
+              autoMode={operator.autoMode}
+              disabled={!operator.isConnected}
+              onVerseLimitChange={operator.setDisplayVerseLimit}
+              onAutoModeChange={operator.setAutoApproveMode}
             />
-          </div>
+          </LivePanel>
 
-          <FollowAlongHint
-            hint={operator.followAlong}
-            canShow={operator.canShowFollowAlong}
-            onShow={operator.showFollowAlong}
+          <NextPanel
+            reference={operator.nextReference}
+            source={operator.nextSource}
+            verseLimit={operator.verseLimit}
+            canShow={operator.canShowNext}
+            flashing={operator.flash === 'approve'}
+            onShow={operator.showNext}
+            onDiscard={operator.clearNext}
           />
         </div>
 
@@ -195,6 +199,7 @@ export default function App() {
               selectedId={operator.selectedId}
               onSelect={operator.selectPending}
               onShow={operator.approvePending}
+              canShow={operator.isConnected}
             >
               <QueueFooter
                 canClearPending={operator.canClearPending}
@@ -206,6 +211,8 @@ export default function App() {
           {sideTab === 'plan' && (
             <PlanPanel
               items={operator.plan.items}
+              snippets={operator.planSnippets}
+              canShow={operator.isConnected}
               onStage={operator.stagePlanItem}
               onShow={operator.showPlanItem}
               onRemove={operator.plan.remove}
@@ -237,6 +244,7 @@ export default function App() {
         onThemeChange={operator.setDisplayBackground}
         spokenLanguage={operator.spokenLanguage}
         bibleVersion={operator.bibleVersion}
+        idleScreen={operator.idleScreen}
         autoMode={operator.autoMode}
         onAutoModeChange={operator.setAutoApproveMode}
         followAuto={operator.followAuto}

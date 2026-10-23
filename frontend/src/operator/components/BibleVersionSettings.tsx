@@ -1,5 +1,5 @@
 import { useId } from 'react'
-import { AlertCircleIcon } from '../../components'
+import { AlertCircleIcon, SegmentedOption } from '../../components'
 import { useI18n } from '../../shared/i18nContext'
 import { bibleVersionLabel } from '../bibleVersionApi'
 import type { BibleVersionState } from '../hooks/useBibleVersion'
@@ -26,34 +26,35 @@ export function BibleVersionSettings({ state, disabled }: BibleVersionSettingsPr
 
   return (
     <div className="operator-setting">
-      <div className="operator-setting-header">
-        <span className="operator-setting-label">{t('settings.bibleVersion')}</span>
-        <span className="operator-setting-value">
-          {isSwitching ? t('settings.switching') : version ? bibleVersionLabel(version, t) : ''}
-        </span>
+      <div className="operator-setting-text">
+        <div className="operator-setting-header">
+          <span className="operator-setting-label">{t('settings.bibleVersion')}</span>
+          <span className="operator-setting-value">
+            {isSwitching ? t('settings.switching') : version ? bibleVersionLabel(version, t) : ''}
+          </span>
+        </div>
+        <p className="operator-setting-hint" id={hintId}>
+          {t('settings.versionHint')}
+        </p>
       </div>
       <div
-        className="operator-verse-options"
+        className="segmented"
         role="group"
         aria-label={t('settings.bibleVersion')}
         aria-describedby={hintId}
       >
         {available.map(id => (
-          <button
+          <SegmentedOption
             key={id}
-            type="button"
-            className={`operator-verse-option ${version === id ? 'is-active' : ''}`}
             aria-pressed={version === id}
             disabled={locked}
             onClick={() => change(id)}
           >
             {id.toUpperCase()}
-          </button>
+          </SegmentedOption>
         ))}
       </div>
-      <p className="operator-setting-hint" id={hintId}>
-        {t('settings.versionHint')}
-      </p>
+
       {error && (
         <p className="operator-scripture-error">
           <AlertCircleIcon aria-hidden="true" />

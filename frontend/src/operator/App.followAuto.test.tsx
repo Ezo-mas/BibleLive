@@ -290,8 +290,9 @@ describe('auto-followed passages', () => {
     const shown = followed('f-1', [13, 14, 15])
     openWith({ currentDisplay: shown, history: [shown] })
 
-    const stage = screen.getByTestId('live-stage')
-    expect(within(stage).getByText('Auto-followed')).toBeInTheDocument()
+    // The tag sits in the preview card's label row, beside ON DISPLAY.
+    const card = screen.getByRole('region', { name: 'On display now' })
+    expect(within(card).getByText('Auto-followed')).toBeInTheDocument()
   })
 
   it('tags its history entry instead of calling it manual', () => {

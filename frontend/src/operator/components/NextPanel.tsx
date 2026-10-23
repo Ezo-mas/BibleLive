@@ -1,10 +1,9 @@
-import { Button, MonitorIcon, BookIcon } from '../../components'
+import { BookIcon, Button, MonitorIcon } from '../../components'
 import { useI18n } from '../../shared/i18nContext'
 import { PanelHint } from './PanelHint'
-import { previewFontSize } from '../previewFit'
 import { formatReference } from '../../shared/reference'
 import { hiddenVerseCount, selectVerses } from '../../shared/verseText'
-import type { DisplayTheme, VerseLimit } from '../../shared/verseText'
+import type { VerseLimit } from '../../shared/verseText'
 import type { NextSource } from '../hooks/useOperatorState'
 import type { BibleReference } from '../../shared/types'
 
@@ -14,8 +13,6 @@ export interface NextPanelProps {
   /** Where the staged scripture came from; Show means different things for each. */
   source: NextSource
   verseLimit: VerseLimit
-  /** The projector's background, so the preview is drawn the way it will appear. */
-  displayTheme: DisplayTheme
   /** False while the reference cannot be shown (stale, in flight, or socket closed). */
   canShow: boolean
   /** True briefly after the Enter shortcut shows the staged detection. */
@@ -25,29 +22,29 @@ export interface NextPanelProps {
 }
 
 /**
- * NEXT: the scripture being prepared for the projector.
+ * UP NEXT: the scripture being prepared for the projector.
  *
  * Staging is entirely client-side and changes nothing on screen — the display
  * only moves when the operator presses Show on display, which travels the normal
- * approval path (the server owns the display). The stage is drawn like the LIVE
- * one, in the projector's own colours, so what the operator is about to show is
- * what they see here; the two are told apart by their labels and by the one
- * filled button under this one.
+ * approval path (the server owns the display). The block is deliberately not a
+ * second preview: it is recessed, dashed ("queued, not live") and set apart from
+ * the display preview above it, but it shares that card's anatomy: a header row
+ * (label, reference, then Unstage and Show on display at the right) and the verse
+ * text below it, up to three lines.
  *
- * The label names which door the staged scripture came through — a queued
- * detection, the operator's own search, or an entry from history — because Show
- * sends a different request for each, and the operator should never have to
- * guess which one they are about to display.
+ * Show sends a different request for each door the staged scripture came through
+ * — a queued detection, the operator's own search, or an entry from history — so
+ * the source is kept in the markup for assistive technology and tests, even
+ * though it is not drawn.
  *
  * The buttons are always present and disabled while there is nothing to show, so
- * the row keeps its place and the primary action is always where the operator's
+ * the block keeps its size and the primary action is always where the operator's
  * eye expects it.
  */
 export function NextPanel({
   reference,
   source,
   verseLimit,
-  displayTheme,
   canShow,
   flashing = false,
   onShow,
@@ -58,11 +55,28 @@ export function NextPanel({
   const hiddenCount = hiddenVerseCount(reference, verseLimit)
 
   return (
-    <section className="operator-stage-panel operator-next" aria-label={t('next.aria')}>
-      <div className="operator-stage-header">
-        <h2 className="operator-stage-title">{t('next.title')}</h2>
+    <section
+      className="operator-next operator-card"
+      aria-label={t('next.aria')}
+      data-testid={reference ? 'next-preview' : undefined}
+    >
+      <div className="operator-card-head">
+        {/* Label and reference are one group on the text baseline, centred as a
+            group against the buttons. */}
+        <div className="operator-card-title">
+          <h2 className="operator-stage-title">{t('next.title')}</h2>
+          {reference && <h3 className="operator-card-ref">{formatReference(reference)}</h3>}
+          {hiddenCount > 0 && (
+            <span className="operator-next-note">
+              {t('next.moreHidden', { count: hiddenCount })}
+            </span>
+          )}
+        </div>
+        {/* Which door the staged scripture came through. It is kept for assistive
+            technology and as a data attribute; the dashed edge and the label already
+            say the block is queued, not live. */}
         <span
-          className={`operator-next-badge ${source ? `is-${source}` : ''}`}
+          className={`sr-only operator-next-badge ${source ? `is-${source}` : ''}`}
           data-source={source ?? 'none'}
         >
           {source === 'manual'
@@ -73,51 +87,13 @@ export function NextPanel({
                 ? t('source.detected')
                 : t('source.staged')}
         </span>
-      </div>
-
-      {reference ? (
-        <div
-          className="operator-stage operator-next-preview"
-          data-theme={displayTheme}
-          data-testid="next-preview"
-        >
-          <h3 className="operator-next-reference">{formatReference(reference)}</h3>
-          <ol
-            className="operator-next-verses"
-            data-testid="next-verses"
-            style={{ fontSize: `${previewFontSize(verses)}px` }}
-          >
-            {verses.map(verse => (
-              <li className="operator-next-verse" key={verse.verse}>
-                <span className="operator-next-verse-number" aria-hidden="true">
-                  {verse.verse}
-                </span>
-                <span className="operator-next-verse-text">{verse.text}</span>
-              </li>
-            ))}
-          </ol>
-          {hiddenCount > 0 && (
-            <div className="operator-next-note">{t('next.moreHidden', { count: hiddenCount })}</div>
-          )}
-        </div>
-      ) : (
-        <div className="operator-stage is-empty">
-          <PanelHint
-            icon={<BookIcon />}
-            title={t('next.nothingStaged')}
-            hint={t('next.stagedHint')}
-          />
-        </div>
-      )}
-
-      <div className="operator-stage-footer">
-        <Button variant="ghost" size="md" onClick={onDiscard} disabled={reference === null}>
-          {t('next.discard')}
+        <span className="operator-card-grow" />
+        <Button variant="secondary" onClick={onDiscard} disabled={reference === null}>
+          {t('next.unstage')}
         </Button>
         <Button
           variant="primary"
-          size="md"
-          className={`operator-show-button ${flashing ? 'btn-flash' : ''}`}
+          className={flashing ? 'btn-flash' : ''}
           icon={<MonitorIcon />}
           onClick={onShow}
           disabled={!canShow}
@@ -132,6 +108,29 @@ export function NextPanel({
           )}
         </Button>
       </div>
+
+      {reference ? (
+        <div className="operator-card-body">
+          <p className="operator-card-verse" data-testid="next-verses">
+            {verses.map(verse => (
+              <span className="operator-next-verse" key={verse.verse}>
+                <sup className="operator-card-verse-number" aria-hidden="true">
+                  {verse.verse}
+                </sup>
+                <span className="operator-next-verse-text">{verse.text}</span>{' '}
+              </span>
+            ))}
+          </p>
+        </div>
+      ) : (
+        <div className="operator-card-body">
+          <PanelHint
+            icon={<BookIcon />}
+            title={t('next.nothingStaged')}
+            hint={t('next.stagedHint')}
+          />
+        </div>
+      )}
     </section>
   )
 }

@@ -83,6 +83,9 @@ operator approval → display page`.
   conventions, and which files own which backend behavior.
 - [Frontend guide](docs/agent-guides/frontend.md) — the same for the React UI;
   do not rebuild `static/frontend/` unless asked.
+- [DESIGN.md](DESIGN.md) — operator console visual rules (shared button,
+  radius, border and settings-row styles; token-only colours). Read before
+  styling anything in `frontend/src/operator/`.
 - [Testing guide](docs/agent-guides/testing.md) — canonical verification
   commands and test caveats.
 - Database import/commit questions → `DATABASE_SETUP.md`. Deployment,

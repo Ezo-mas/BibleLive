@@ -248,16 +248,18 @@ describe('auto-approve mode', () => {
       socket?.onopen?.()
     })
 
-    // The main screen carries only the compact chip; the detailed options live
+    // The main screen carries only the Off / On control; the detailed options live
     // in the dialog, which is not open here.
-    expect(screen.getByRole('button', { name: /Auto-approve: Off/ })).toBeInTheDocument()
+    const auto = within(screen.getByRole('group', { name: 'Auto-approve' }))
+    expect(auto.getByRole('button', { name: 'Off' })).toHaveAttribute('aria-pressed', 'true')
     expect(screen.queryByRole('group', { name: 'Auto-approve mode' })).not.toBeInTheDocument()
 
     push(snapshot('medium_and_up'))
 
     await waitFor(() =>
-      expect(screen.getByRole('button', { name: /Auto-approve: Med\+/ })).toBeInTheDocument()
+      expect(auto.getByRole('button', { name: 'On' })).toHaveAttribute('aria-pressed', 'true')
     )
+    expect(auto.getByRole('button', { name: 'On' })).toHaveAttribute('title', 'Med+')
   })
 
   it('disables the selector while the socket is not open', () => {

@@ -11,6 +11,8 @@ import {
   writeStoredDisplayTheme,
 } from '../shared/verseText'
 import type { DisplayTheme, VerseLimit } from '../shared/verseText'
+import { idleImageUrl, readIdleImage } from '../shared/idleScreen'
+import type { IdleImage } from '../shared/idleScreen'
 import type { BibleReference, DisplayMessage } from '../shared/types'
 import { computeFitFontSize, fitFontSizeByMeasurement, MAX_FONT_SIZE } from './fitText'
 import '../styles/tokens.css'
@@ -39,6 +41,12 @@ export default function App() {
     document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark'
   )
   const [fontSize, setFontSize] = useState(MAX_FONT_SIZE)
+  // The operator's idle picture. Shown only while nothing is on screen.
+  const [idleImage, setIdleImage] = useState<IdleImage | null>(null)
+  // The version of a picture the browser could not load (its file is gone, say), so the
+  // audience sees a blank screen rather than a broken-image icon. A new upload is a new
+  // version and gets a fresh try.
+  const [brokenIdleVersion, setBrokenIdleVersion] = useState<string | null>(null)
   const swapTimerRef = useRef<number | undefined>(undefined)
   const stageRef = useRef<HTMLDivElement>(null)
   const versesRef = useRef<HTMLDivElement>(null)
@@ -47,6 +55,7 @@ export default function App() {
     if (message.type === 'display_settings') {
       setVerseLimit(coerceVerseLimit(message.data.verse_limit))
       setTheme(coerceDisplayTheme(message.data.theme))
+      setIdleImage(readIdleImage(message.data))
       return
     }
 
@@ -183,20 +192,17 @@ export default function App() {
             )}
           </div>
         ) : (
-          <div className="display-waiting">
-            <div className="display-waiting-icon" aria-hidden="true">
-              <svg
-                width="64"
-                height="64"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.5"
-              >
-                <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
-                <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
-              </svg>
-            </div>
+          // Nothing on screen: the themed background, plus the operator's picture if one is set.
+          <div className="display-idle">
+            {idleImage && idleImage.version !== brokenIdleVersion && (
+              <img
+                className={`display-idle-image display-idle-image--${idleImage.fit}`}
+                src={idleImageUrl(idleImage)}
+                alt={t('idle.imageAlt')}
+                data-testid="display-idle-image"
+                onError={() => setBrokenIdleVersion(idleImage.version)}
+              />
+            )}
           </div>
         )}
       </div>

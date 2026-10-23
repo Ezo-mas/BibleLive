@@ -1,4 +1,5 @@
 import { useId } from 'react'
+import { SegmentedOption } from '../../components'
 import { useI18n } from '../../shared/i18nContext'
 import { AUTO_MODE_OPTIONS, autoModeOption } from '../autoMode'
 import type { AutoMode } from '../../shared/types'
@@ -33,34 +34,34 @@ export function AutoApproveControls({
     <div className="operator-setting">
       {/* Not a display setting, but it reuses the same row and button styling so
           the console keeps one control vocabulary. */}
-      <div className="operator-setting-header">
-        <span className="operator-setting-label">{t('settings.sectionAuto')}</span>
-        <span className={`operator-setting-value ${autoMode === 'off' ? '' : 'is-on'}`}>
-          {t(active.labelKey)}
-        </span>
+      <div className="operator-setting-text">
+        <div className="operator-setting-header">
+          <span className="operator-setting-label">{t('settings.sectionAuto')}</span>
+          <span className={`operator-setting-value ${autoMode === 'off' ? '' : 'is-on'}`}>
+            {t(active.labelKey)}
+          </span>
+        </div>
+        <p className="operator-setting-hint" id={descriptionId}>
+          {t(active.descriptionKey)}
+        </p>
       </div>
       <div
-        className="operator-verse-options"
+        className="segmented"
         role="group"
         aria-label={t('auto.mode')}
         aria-describedby={descriptionId}
       >
         {AUTO_MODE_OPTIONS.map(option => (
-          <button
+          <SegmentedOption
             key={option.value}
-            type="button"
-            className={`operator-verse-option ${autoMode === option.value ? 'is-active' : ''}`}
             aria-pressed={autoMode === option.value}
             disabled={disabled}
             onClick={() => onAutoModeChange(option.value)}
           >
             {t(option.labelKey)}
-          </button>
+          </SegmentedOption>
         ))}
       </div>
-      <p className="operator-setting-hint" id={descriptionId}>
-        {t(active.descriptionKey)}
-      </p>
     </div>
   )
 }

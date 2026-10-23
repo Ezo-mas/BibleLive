@@ -1,5 +1,5 @@
 import { useId } from 'react'
-import { AlertCircleIcon, Button } from '../../components'
+import { AlertCircleIcon, Button, SegmentedOption } from '../../components'
 import { useI18n } from '../../shared/i18nContext'
 import { SPOKEN_LANGUAGES, spokenLanguageLabel } from '../languageApi'
 import type { SpokenLanguageState } from '../hooks/useSpokenLanguage'
@@ -32,29 +32,38 @@ export function LanguageSettings({ state, disabled }: LanguageSettingsProps) {
 
   return (
     <div className="operator-setting">
-      <div className="operator-setting-header">
-        <span className="operator-setting-label">{t('settings.spokenLanguage')}</span>
-        <span className="operator-setting-value">
-          {isSwitching ? t('settings.switching') : language ? spokenLanguageLabel(language, t) : ''}
-        </span>
+      <div className="operator-setting-text">
+        <div className="operator-setting-header">
+          <span className="operator-setting-label">{t('settings.spokenLanguage')}</span>
+          <span className="operator-setting-value">
+            {isSwitching
+              ? t('settings.switching')
+              : language
+                ? spokenLanguageLabel(language, t)
+                : ''}
+          </span>
+        </div>
+        {!unavailable && (
+          <p className="operator-setting-hint" id={hintId}>
+            {status === 'loading' ? t('settings.checkingPipeline') : t('settings.takesEffect')}
+          </p>
+        )}
       </div>
       <div
-        className="operator-verse-options"
+        className="segmented"
         role="group"
         aria-label={t('settings.spokenLanguage')}
         aria-describedby={hintId}
       >
         {SPOKEN_LANGUAGES.map(option => (
-          <button
+          <SegmentedOption
             key={option.code}
-            type="button"
-            className={`operator-verse-option ${language === option.code ? 'is-active' : ''}`}
             aria-pressed={language === option.code}
             disabled={locked}
             onClick={() => change(option.code)}
           >
             {t(option.labelKey)}
-          </button>
+          </SegmentedOption>
         ))}
       </div>
 
@@ -73,17 +82,12 @@ export function LanguageSettings({ state, disabled }: LanguageSettingsProps) {
           </Button>
         </div>
       ) : (
-        <>
-          <p className="operator-setting-hint" id={hintId}>
-            {status === 'loading' ? t('settings.checkingPipeline') : t('settings.takesEffect')}
+        error && (
+          <p className="operator-scripture-error">
+            <AlertCircleIcon aria-hidden="true" />
+            {error}
           </p>
-          {error && (
-            <p className="operator-scripture-error">
-              <AlertCircleIcon aria-hidden="true" />
-              {error}
-            </p>
-          )}
-        </>
+        )
       )}
     </div>
   )

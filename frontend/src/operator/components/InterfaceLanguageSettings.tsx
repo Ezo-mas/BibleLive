@@ -1,4 +1,5 @@
 import { useId } from 'react'
+import { SegmentedOption } from '../../components'
 import { useI18n } from '../../shared/i18nContext'
 import type { Language, MessageKey } from '../../shared/i18n'
 
@@ -25,28 +26,28 @@ export function InterfaceLanguageSettings() {
 
   return (
     <div className="operator-setting">
-      <span className="operator-setting-label">{t('settings.interfaceLanguage')}</span>
+      <div className="operator-setting-text">
+        <span className="operator-setting-label">{t('settings.interfaceLanguage')}</span>
+        <p className="operator-setting-hint" id={hintId}>
+          {t('settings.interfaceHint')}
+        </p>
+      </div>
       <div
-        className="operator-verse-options"
+        className="segmented"
         role="group"
         aria-label={t('settings.interfaceLanguage')}
         aria-describedby={hintId}
       >
         {CHOICES.map(choice => (
-          <button
+          <SegmentedOption
             key={choice.labelKey}
-            type="button"
-            className={`operator-verse-option ${override === choice.value ? 'is-active' : ''}`}
             aria-pressed={override === choice.value}
             onClick={() => setLanguage(choice.value)}
           >
             {t(choice.labelKey)}
-          </button>
+          </SegmentedOption>
         ))}
       </div>
-      <p className="operator-setting-hint" id={hintId}>
-        {t('settings.interfaceHint')}
-      </p>
     </div>
   )
 }
