@@ -253,7 +253,6 @@
      --app-bg       page background
      --panel-bg     panels, header, dialog, the recessed Up Next block
      --card-bg      raised surface on a panel (list items, hovered rows)
-     --bezel-bg     neutral frame around the display preview (recessed in both themes)
      --accent-text  the accent as text (AA contrast on --panel-bg and the subtle fill)
    `--color-text-inverse` is the text colour on a primary (amber) fill in both
    themes. The tinted backgrounds are mixed from the hue and the surface, so a new
@@ -264,7 +263,6 @@
   --panel-bg: #f9f8f5;
   --card-bg: #fcfbf9;
   --accent-text: #6e4a00;
-  --bezel-bg: #ebe8e1;
 
   --font-sans:
     'Segoe UI Variable Text', 'Segoe UI', system-ui, -apple-system, Roboto, 'Helvetica Neue', Arial,
@@ -299,7 +297,6 @@
   --panel-bg: #292927;
   --card-bg: #30302d;
   --accent-text: #f7cf6a;
-  --bezel-bg: #262624;
 
   --color-canvas: #222220;
   --color-surface: #292927;

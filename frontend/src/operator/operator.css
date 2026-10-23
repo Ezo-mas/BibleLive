@@ -386,21 +386,17 @@
   color: var(--color-text-muted);
 }
 
-/* The monitor frame: a neutral bezel that spans the card's inner width (12px each
-   side, the control row's own edges) and takes all the height left. It is a size
-   container, so the miniature inside is sized from the frame's box in `cqw` and `cqh`:
-   the largest 16:9 that fits, centred, with the bezel showing as bars at the sides
-   (a tall frame) or above and below (a wide one). Not the display's theme colour. */
+/* The monitor frame: spans the card's inner width (12px each side, the control
+   row's own edges) and takes all the height left. The miniature fills it edge to
+   edge, so there are no bars around it; the price is that it is not always the
+   projector's 16:9 (usually a little wider). */
 .operator-monitor-wrap {
   position: relative;
   display: grid;
   flex: 1 1 0;
-  place-items: center;
   min-height: var(--operator-frame-min);
   margin: var(--card-gap) var(--card-pad) 0;
   overflow: hidden;
-  container-type: size;
-  background: var(--bezel-bg);
   border-radius: var(--radius-control);
 }
 
@@ -413,12 +409,13 @@
      the console's own container instead of this box. */
   gap: 2%;
   box-sizing: border-box;
-  /* The largest 16:9 that fits the frame, whichever of width and height binds. */
-  width: min(100cqw, calc(100cqh * 16 / 9));
-  aspect-ratio: 16 / 9;
+  /* The whole frame. A size container, so the text inside scales with whichever of
+     width and height is tighter, as a 1920x1080 screen scaled down to fit would. */
+  width: 100%;
+  height: 100%;
   padding: 5% 8%;
   overflow: hidden;
-  container-type: inline-size;
+  container-type: size;
   background: var(--color-surface-canvas);
   color: var(--color-text);
   border: var(--border-width) solid var(--color-border-strong);
@@ -511,7 +508,7 @@
   justify-content: safe center;
   min-height: 0;
   overflow: hidden;
-  font-size: 2cqw;
+  font-size: min(2cqw, 3.56cqh);
 }
 
 /* Verse text in the preview: the same order and grouping as the projector — a
@@ -551,7 +548,7 @@
 .operator-live-reference {
   margin: 0;
   font-family: var(--font-sans);
-  font-size: clamp(0.5625rem, 2cqw, 1.125rem);
+  font-size: clamp(0.5625rem, min(2cqw, 3.56cqh), 1.125rem);
   font-weight: var(--weight-semibold);
   letter-spacing: var(--tracking-caps);
   text-align: center;
@@ -561,7 +558,7 @@
 
 .operator-live-note {
   font-family: var(--font-sans);
-  font-size: clamp(0.5rem, 1.6cqw, 0.875rem);
+  font-size: clamp(0.5rem, min(1.6cqw, 2.84cqh), 0.875rem);
   text-align: center;
   text-transform: uppercase;
   letter-spacing: var(--tracking-caps);
@@ -1570,7 +1567,7 @@
 /* Responsive */
 @media (max-width: 1100px) {
   /* One column and a page that scrolls. The frame is the full width and takes its
-     height from the 16:9 ratio, so the miniature fills it. Flex rather than grid, so
+     height from the 16:9 ratio, so here the miniature is exactly the projector's shape. Flex rather than grid, so
      each part keeps the height its content needs. */
   .operator-main {
     flex-direction: column;

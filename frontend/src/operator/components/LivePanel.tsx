@@ -28,10 +28,9 @@ export interface LivePanelProps {
  * ON DISPLAY: a miniature of the audience screen.
  *
  * Source of truth is the server (`current_display`, then `approval_confirmed`),
- * so this panel never guesses. The preview is the largest 16:9 box that fits a
- * neutral frame, which spans the card's width and takes all its leftover height; it is
- * centred in the frame (the frame shows as bars at the sides or above and below),
- * drawn in the display's own theme with the display's own verse selection and
+ * so this panel never guesses. The preview fills a frame that spans the card's width
+ * and takes all its leftover height, edge to edge and with no bars around it, so it
+ * is not always the projector's 16:9. It is drawn in the display's own theme with the display's own verse selection and
  * limit, so the operator can answer "what is on screen?" without walking over to
  * the projector. It is presentational only: nothing here sends anything.
  */
