@@ -67,12 +67,14 @@ export default function App() {
 
   useOperatorShortcuts({
     hasSelection: operator.selectedId !== null,
+    canClearDisplay: operator.canClearDisplay,
     // The dialog owns the keyboard while it is open (see useOperatorShortcuts).
     enabled: !settingsOpen,
     onNext: operator.selectNext,
     onPrevious: operator.selectPrevious,
     onApprove: operator.approveSelected,
     onDeselect: operator.deselect,
+    onClearDisplay: operator.clearDisplay,
   })
 
   // The pipeline can be started, restarted, or switched from a terminal while the
@@ -153,6 +155,7 @@ export default function App() {
             reference={operator.currentDisplay}
             verseLimit={operator.verseLimit}
             displayTheme={operator.displayTheme}
+            idleImage={operator.idleImage}
             overlay={
               <FollowAlongHint
                 hint={operator.followAlong}

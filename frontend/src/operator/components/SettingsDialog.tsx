@@ -264,6 +264,12 @@ export function SettingsDialog({
               </li>
               <li>
                 <span className="operator-dialog-shortcut-keys">
+                  <kbd>B</kbd>
+                </span>
+                {t('settings.shortcutClear')}
+              </li>
+              <li>
+                <span className="operator-dialog-shortcut-keys">
                   <kbd>Esc</kbd>
                 </span>
                 {t('settings.shortcutEsc')}

@@ -264,11 +264,9 @@
    every pixel it does not, so there is never empty space beside either column.
 
    The workspace is a flex column of the full height. ON DISPLAY takes all the height
-   the other cards leave (`flex: 1`); UP NEXT and follow-along are their natural
-   height and never squeezed. So the column's last card always ends where the panel
-   ends, with or without follow-along and however long Up Next's text is. The one
-   trade-off: when follow-along appears or goes, the preview card gives or takes that
-   card's height, and a height-bound miniature resizes a little. */
+   UP NEXT leaves (`flex: 1`); UP NEXT is one fixed height whatever it holds, and
+   follow-along lies over the preview. So the column's last card always ends where the
+   panel ends, and the miniature changes size only when the window does. */
 .operator-main {
   --operator-side-w: clamp(300px, 34vw, 560px);
   /* The least height the monitor frame keeps; a window shorter than that scrolls the
@@ -435,6 +433,25 @@
   font-family: var(--font-sans);
 }
 
+/* Idle with a picture: the miniature shows it as the display does, edge to edge,
+   so the monitor's padding is dropped. Logo is contained in the display's box (half
+   the width, 40% of the height); Fill covers the miniature. */
+.operator-monitor.has-picture {
+  padding: 0;
+}
+
+.operator-idle-image--logo {
+  width: 50%;
+  height: 40%;
+  object-fit: contain;
+}
+
+.operator-idle-image--fill {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
 /* The empty state stacks (icon over text) and centres as one block. */
 .operator-monitor.is-idle .operator-hint {
   flex-direction: column;
@@ -599,6 +616,17 @@
 .operator-next .operator-card-verse {
   -webkit-line-clamp: 4;
   font-size: var(--font-size-base);
+}
+
+/* The body is always four of those lines tall, staged or empty, so Up Next is one
+   fixed height: its buttons never move and the preview above never resizes as
+   passages are staged and shown. */
+.operator-next .operator-card-body {
+  box-sizing: border-box;
+  height: calc(
+    4 * var(--font-size-base) * var(--leading-normal) + var(--card-gap) + var(--card-pad)
+  );
+  overflow: hidden;
 }
 
 .operator-next {
@@ -1153,10 +1181,10 @@
   border-radius: var(--radius-control);
 }
 
-/* Logo mode: the picture is contained, like the display's, with its own ceiling. */
+/* Logo mode: contained in the display's box (half the width, 40% of the height). */
 .idle-screen-preview img {
-  max-width: 100%;
-  max-height: 100%;
+  width: 50%;
+  height: 40%;
   object-fit: contain;
 }
 

@@ -59,6 +59,8 @@ export function DisplayQuickControls({
           onClick={onClearDisplay}
           disabled={!canClearDisplay}
           className={flash === 'clear' ? 'btn-flash' : ''}
+          title={t('quick.clearTitle')}
+          aria-keyshortcuts="B"
         >
           {t('stage.clearDisplay')}
         </Button>

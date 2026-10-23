@@ -8,6 +8,8 @@ interface HarnessProps {
   onPrevious?: () => void
   onApprove?: () => void
   onDeselect?: () => void
+  canClearDisplay?: boolean
+  onClearDisplay?: () => void
   /** Focusable control to render beside nothing (`none` renders a plain div). */
   control?: 'none' | 'input' | 'button' | 'select'
   /** A queue-style card: a div with role="button" rather than a real button. */
@@ -22,11 +24,21 @@ function Harness({
   onPrevious = () => {},
   onApprove = () => {},
   onDeselect = () => {},
+  canClearDisplay = false,
+  onClearDisplay = () => {},
   control = 'none',
   withCard = false,
   onCardSelect = () => {},
 }: HarnessProps) {
-  useOperatorShortcuts({ hasSelection, onNext, onPrevious, onApprove, onDeselect })
+  useOperatorShortcuts({
+    hasSelection,
+    canClearDisplay,
+    onNext,
+    onPrevious,
+    onApprove,
+    onDeselect,
+    onClearDisplay,
+  })
   return (
     <div>
       {control === 'input' && <input aria-label="field" />}

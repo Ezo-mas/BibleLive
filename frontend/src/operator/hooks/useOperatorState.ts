@@ -11,6 +11,8 @@ import {
   writeStoredVerseLimit,
 } from '../../shared/verseText'
 import type { DisplayTheme, VerseLimit } from '../../shared/verseText'
+import { readIdleImage } from '../../shared/idleScreen'
+import type { IdleImage } from '../../shared/idleScreen'
 import { formatReference } from '../../shared/reference'
 import type {
   AuthenticateAction,
@@ -269,6 +271,8 @@ export interface OperatorState {
 
   verseLimit: VerseLimit
   displayTheme: DisplayTheme
+  /** The picture the display shows while idle, so the preview can show it too; null for blank. */
+  idleImage: IdleImage | null
   setDisplayVerseLimit: (next: VerseLimit) => void
   setDisplayBackground: (next: DisplayTheme) => void
 
@@ -364,6 +368,10 @@ export function useOperatorState(): OperatorState {
   const [displayTheme, setDisplayTheme] = useState<DisplayTheme>(() =>
     coerceDisplayTheme(readStoredDisplayTheme(window.localStorage))
   )
+  // The display's idle picture, from the snapshot, settings echoes and this console's
+  // own idle-screen requests. The server tells only displays when another console
+  // changes it, so that change shows here after the next snapshot or echo.
+  const [idleImage, setIdleImage] = useState<IdleImage | null>(null)
   // Auto-approve mode. Server-side state (persisted there too), so the console
   // only mirrors it: the snapshot on connect is the source of truth.
   const [autoMode, setAutoMode] = useState<AutoMode>('off')
@@ -448,6 +456,7 @@ export function useOperatorState(): OperatorState {
           const theme = coerceDisplayTheme(message.data.display_settings.theme)
           setVerseLimit(verseLimit)
           setDisplayTheme(theme)
+          setIdleImage(readIdleImage(message.data.display_settings))
           confirmedRef.current.verseLimit = verseLimit
           confirmedRef.current.theme = theme
         }
@@ -547,6 +556,7 @@ export function useOperatorState(): OperatorState {
         }
         setVerseLimit(verseLimit)
         setDisplayTheme(theme)
+        setIdleImage(readIdleImage(message.data))
         confirmedRef.current.verseLimit = verseLimit
         confirmedRef.current.theme = theme
         if (changes.length > 0)
@@ -917,6 +927,12 @@ export function useOperatorState(): OperatorState {
 
   const bibleVersion = useBibleVersion(token, isConnected, showNotice)
   const idleScreen = useIdleScreen(token)
+  // The server's answer to this console's own read or change is the newest word on it.
+  const idleInfo = idleScreen.info
+  useEffect(() => {
+    if (idleInfo === null) return
+    setIdleImage(idleInfo.image ? { version: idleInfo.image.version, fit: idleInfo.fit } : null)
+  }, [idleInfo])
   applyBibleVersionRef.current = bibleVersion.applyConfirmed
 
   const plan = usePlan()
@@ -1067,6 +1083,7 @@ export function useOperatorState(): OperatorState {
 
     verseLimit,
     displayTheme,
+    idleImage,
     setDisplayVerseLimit,
     setDisplayBackground,
 

@@ -122,6 +122,7 @@ export const lt: Record<MessageKey, MessageEntry> = {
   'settings.shortcutShow':
     'Rodyti paruoštą nuorodą; ieškant Šventojo Rašto, paruošti geriausią rezultatą',
   'settings.shortcutShift': 'Ieškant Šventojo Rašto, iškart rodyti rastą ištrauką',
+  'settings.shortcutClear': 'Išvalyti ekraną',
   'settings.shortcutEsc': 'Panaikinti pasirinkimą; kai atidarytas šis langas, jį uždaryti',
   'settings.verses': 'Rodomos eilutės',
   'settings.versesGroup': 'Ekrane rodomos eilutės',
@@ -183,7 +184,7 @@ export const lt: Record<MessageKey, MessageEntry> = {
   'idle.fitLogo': 'Logotipas',
   'idle.fitFill': 'Užpildyti ekraną',
   'idle.fitHint':
-    'Logotipas: centre, savo dydžiu ant fono. Užpildyti ekraną: paveikslėlis dengia visą ekraną; kraštai gali būti apkirpti.',
+    'Logotipas: centre ant fono, pritaikytas prie pusės ekrano dydžio ploto. Užpildyti ekraną: paveikslėlis dengia visą ekraną; kraštai gali būti apkirpti.',
   'idle.hint': 'Rodomas tik tada, kai ekrane nieko nėra. Pagal numatymą ekranas tuščias.',
   'idle.upload': 'Įkelti paveikslėlį',
   'idle.replace': 'Pakeisti paveikslėlį',
@@ -237,6 +238,7 @@ export const lt: Record<MessageKey, MessageEntry> = {
   'stage.nothingOnDisplay': 'Ekrane nieko nėra',
   'stage.approvedHint': 'Patvirtintos nuorodos rodomos čia ir projektoriuje.',
   'stage.clearDisplay': 'Išvalyti ekraną',
+  'quick.clearTitle': 'Išvalyti ekraną (B)',
   'next.title': 'Toliau',
   'next.aria': 'Toliau',
   'next.moreHidden': {

@@ -1,4 +1,4 @@
-import { useRef } from 'react'
+import { useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { MonitorIcon, StatusBadge } from '../../components'
 import { useI18n } from '../../shared/i18nContext'
@@ -8,12 +8,16 @@ import { formatReference } from '../../shared/reference'
 import { hiddenVerseCount, selectVerses } from '../../shared/verseText'
 import type { DisplayTheme, VerseLimit } from '../../shared/verseText'
 import type { BibleReference } from '../../shared/types'
+import { idleImageUrl } from '../../shared/idleScreen'
+import type { IdleImage } from '../../shared/idleScreen'
 
 export interface LivePanelProps {
   /** What the server reports is on the projector right now. */
   reference: BibleReference | null
   verseLimit: VerseLimit
   displayTheme: DisplayTheme
+  /** The picture the display shows while idle, shown here too while nothing is on screen. */
+  idleImage?: IdleImage | null
   /** The row of controls under the preview (Clear display, verses, auto-approve). */
   children?: ReactNode
   /** Laid over the top of the preview frame, taking no space (the follow-along strip). */
@@ -35,10 +39,15 @@ export function LivePanel({
   reference,
   verseLimit,
   displayTheme,
+  idleImage = null,
   children,
   overlay,
 }: LivePanelProps) {
   const { t } = useI18n()
+  // A picture the browser could not load falls back to the empty message, as the
+  // display falls back to a blank screen; a new upload is a new version and a new try.
+  const [brokenIdleVersion, setBrokenIdleVersion] = useState<string | null>(null)
+  const shownIdleImage = idleImage && idleImage.version !== brokenIdleVersion ? idleImage : null
   const verses = selectVerses(reference, verseLimit)
   const hiddenCount = hiddenVerseCount(reference, verseLimit)
   const monitorRef = useRef<HTMLDivElement>(null)
@@ -100,6 +109,23 @@ export function LivePanel({
                 {t('stage.moreVerses', { count: hiddenCount })}
               </div>
             )}
+          </div>
+        ) : shownIdleImage ? (
+          /* Idle with a picture: what the audience sees, the picture on the themed screen. */
+          <div
+            className="operator-monitor is-idle has-picture"
+            data-theme={displayTheme}
+            data-testid="live-idle-picture"
+            role="group"
+            aria-label={t('stage.previewAria')}
+          >
+            <img
+              className={`operator-idle-image operator-idle-image--${shownIdleImage.fit}`}
+              src={idleImageUrl(shownIdleImage)}
+              alt=""
+              onError={() => setBrokenIdleVersion(shownIdleImage.version)}
+            />
+            <span className="sr-only">{t('stage.nothingOnDisplay')}</span>
           </div>
         ) : (
           <div

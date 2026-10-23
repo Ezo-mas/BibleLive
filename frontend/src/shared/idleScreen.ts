@@ -7,7 +7,7 @@
  */
 import type { IdleScreenPicture } from './types'
 
-/** How the picture fills the screen: `logo` centres it at its own size, `fill` covers the screen. */
+/** How the picture fills the screen: `logo` centres it in half the screen, `fill` covers the screen. */
 export type IdleScreenFit = IdleScreenPicture['fit']
 
 export const IDLE_SCREEN_FITS: readonly IdleScreenFit[] = ['logo', 'fill']

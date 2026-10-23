@@ -50,10 +50,13 @@ background).
 
 **Heights.** The left column is a flex column of the full height. ON DISPLAY takes
 all the height the others leave (`flex: 1`, with a floor of `--operator-frame-min`,
-160px, for the monitor frame: a window shorter than that scrolls the column). UP NEXT
-and the control row are `flex: none`, their natural height, never squeezed. So the
-left column's last card ends exactly where the right panel ends, however long Up
-Next's text is. There is no measured constant to keep in step with the cards.
+160px, for the monitor frame: a window shorter than that scrolls the column). The
+control row is `flex: none`, its natural height. UP NEXT is `flex: none` and one fixed
+height whatever it holds: its body is always four lines of its 16px text tall, staged
+or empty, so its buttons never move and the miniature never resizes as passages are
+staged and shown; only a window resize changes the preview's size. So the left
+column's last card ends exactly where the right panel ends. There is no measured
+constant to keep in step with the cards.
 
 **The preview.** Inside ON DISPLAY, the monitor frame (`.operator-monitor-wrap`) is a
 neutral bezel (`--bezel-bg`, recessed in both themes; not the display's colour) that
@@ -66,7 +69,9 @@ and below (a wide one), whichever binds. Its text is fitted the way the display 
 its own (`usePreviewFit`, reusing `fitText.ts`: shrink until the verses fit, bounds
 scaled from the display's, from the miniature's real width), so ten verses or all of
 them shrink to fit; if they ever overflow they start at the top, never a clipped
-middle. It is presentational only.
+middle. With nothing on screen it shows the idle picture the way the display does
+(Logo contained in half the width and 40% of the height, Fill covering it), or the
+empty message when no picture is set. It is presentational only.
 
 **Follow-along overlay.** The follow-along strip (`.operator-follow`) is positioned
 absolutely inside the monitor frame, 8px from its top and sides: label, reference, the
@@ -107,8 +112,8 @@ padding, with or without actions), `--card-gap` (8px) from the header to the bod
 between a row's parts, 12px under the last element, and 12px between stacked cards.
 Cards differ only in text size and line count. The three left-column cards and the
 side panel's rows use it; the control row under the preview is padded the same 12px,
-with 36px controls. Up Next is `flex: none`, never squeezed (ON DISPLAY is the one
-card that gives and takes height, see Layout); the column scrolls instead. The tab bar is also 48px, so the two columns' headers line up, and its tabs
+with 36px controls. Up Next is `flex: none` and a fixed height, never squeezed (ON DISPLAY is
+the one card that gives and takes height, and only with the window, see Layout); the column scrolls instead. The tab bar is also 48px, so the two columns' headers line up, and its tabs
 share the whole bar equally with no outer padding or gaps.
 
 ## Buttons

@@ -374,6 +374,80 @@ describe('clear actions', () => {
   })
 })
 
+describe('B clears the display', () => {
+  function pressB(target: EventTarget = window, init: KeyboardEventInit = {}) {
+    const event = new KeyboardEvent('keydown', {
+      key: 'b',
+      code: 'KeyB',
+      bubbles: true,
+      cancelable: true,
+      ...init,
+    })
+    act(() => {
+      target.dispatchEvent(event)
+    })
+    return event
+  }
+
+  function openShowing() {
+    openWith()
+    push({ type: 'approval_confirmed', data: { reference: reference('p-1', 'John', 1, 1) } })
+  }
+
+  it('clears what is on the display, with or without Shift or Caps Lock', () => {
+    openShowing()
+
+    const event = pressB()
+    expect(lastSent()).toEqual({ action: 'clear' })
+    expect(event.defaultPrevented).toBe(true)
+
+    pressB(window, { key: 'B', shiftKey: true })
+    expect(sentActions()).toEqual([{ action: 'clear' }, { action: 'clear' }])
+  })
+
+  it('works with a button focused', () => {
+    openShowing()
+    const button = screen.getByRole('button', { name: /clear display/i })
+    button.focus()
+
+    pressB(button)
+
+    expect(lastSent()).toEqual({ action: 'clear' })
+  })
+
+  it('does nothing when nothing is on the display', () => {
+    openWith()
+
+    const event = pressB()
+
+    expect(sentActions()).toEqual([])
+    expect(event.defaultPrevented).toBe(false)
+  })
+
+  it('types the letter in a text field instead of clearing', () => {
+    openShowing()
+    const search = document.querySelector('.operator-search input') as HTMLInputElement
+    search.focus()
+
+    const event = pressB(search)
+
+    expect(sentActions()).toEqual([])
+    expect(event.defaultPrevented).toBe(false)
+  })
+
+  it('ignores Ctrl+B, Cmd+B, a held key and an open Settings dialog', () => {
+    openShowing()
+
+    pressB(window, { ctrlKey: true })
+    pressB(window, { metaKey: true })
+    pressB(window, { repeat: true })
+    openSettings()
+    pressB()
+
+    expect(sentActions()).toEqual([])
+  })
+})
+
 describe('display settings', () => {
   it('switches the verse limit and background optimistically', async () => {
     openWith()

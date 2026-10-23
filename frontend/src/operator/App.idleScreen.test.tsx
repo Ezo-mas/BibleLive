@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, render, screen, waitFor, within } from '@testing-library/react'
 import App from './App'
-import type { OperatorMessage } from '../shared/types'
+import type { DisplaySettings, OperatorMessage } from '../shared/types'
 
 /** The subset of WebSocket the operator app uses. */
 interface MockSocket {
@@ -81,7 +81,7 @@ afterEach(() => {
   socket = null
 })
 
-function openConsole() {
+function openConsole(displaySettings: DisplaySettings = { verse_limit: 3, theme: 'dark' }) {
   render(<App />)
   act(() => {
     socket?.onopen?.()
@@ -96,7 +96,7 @@ function openConsole() {
       history_count: 0,
       display_connections: 1,
       operator_connections: 1,
-      display_settings: { verse_limit: 3, theme: 'dark' },
+      display_settings: displaySettings,
       auto_mode: 'off',
     },
   })
@@ -138,5 +138,57 @@ describe('idle screen in the settings dialog', () => {
     await waitFor(() =>
       expect(fetchMock.mock.calls.map(call => String(call[0]))).toContain('/api/idle-screen')
     )
+  })
+})
+
+describe('idle picture in the ON DISPLAY preview', () => {
+  const withPicture: DisplaySettings = {
+    verse_limit: 3,
+    theme: 'dark',
+    idle_image: { version: '0123456789abcdef', fit: 'logo' },
+  }
+
+  it('shows the picture the display shows while nothing is on screen', () => {
+    openConsole(withPicture)
+
+    const preview = screen.getByTestId('live-idle-picture')
+    const image = preview.querySelector('img') as HTMLImageElement
+    expect(image.getAttribute('src')).toBe('/api/idle-screen/image?v=0123456789abcdef')
+    expect(image).toHaveClass('operator-idle-image--logo')
+    expect(within(preview).getByText('Nothing on display')).toHaveClass('sr-only')
+  })
+
+  it('shows the empty message when no picture is set', () => {
+    openConsole()
+
+    expect(screen.queryByTestId('live-idle-picture')).not.toBeInTheDocument()
+    expect(screen.getByText('Nothing on display')).not.toHaveClass('sr-only')
+  })
+
+  it('follows a settings echo that changes or removes the picture', () => {
+    openConsole(withPicture)
+
+    push({
+      type: 'display_settings_confirmed',
+      data: { ...withPicture, idle_image: { version: 'fedcba9876543210', fit: 'fill' } },
+    })
+    const image = screen.getByTestId('live-idle-picture').querySelector('img') as HTMLImageElement
+    expect(image.getAttribute('src')).toBe('/api/idle-screen/image?v=fedcba9876543210')
+    expect(image).toHaveClass('operator-idle-image--fill')
+
+    push({ type: 'display_settings_confirmed', data: { ...withPicture, idle_image: null } })
+    expect(screen.queryByTestId('live-idle-picture')).not.toBeInTheDocument()
+  })
+
+  it('falls back to the empty message when the picture cannot be loaded', () => {
+    openConsole(withPicture)
+
+    const image = screen.getByTestId('live-idle-picture').querySelector('img') as HTMLImageElement
+    act(() => {
+      image.dispatchEvent(new Event('error'))
+    })
+
+    expect(screen.queryByTestId('live-idle-picture')).not.toBeInTheDocument()
+    expect(screen.getByText('Nothing on display')).toBeInTheDocument()
   })
 })

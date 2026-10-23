@@ -177,13 +177,12 @@ body {
   justify-content: center;
 }
 
-/* Logo: centred at its own size, never cropped, with a ceiling so a large file
-   still leaves the background visible around it. */
+/* Logo: centred, never cropped, scaled to fit a box of half the screen's width and
+   40% of its height. A share of the screen rather than the file's own pixel size, so
+   it looks the same on a 1080p and a 4K projector and a small logo is not lost. */
 .display-idle-image--logo {
-  width: auto;
-  height: auto;
-  max-width: min(60vw, 960px);
-  max-height: min(60vh, 540px);
+  width: 50vw;
+  height: 40vh;
   object-fit: contain;
 }
 

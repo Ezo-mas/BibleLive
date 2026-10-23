@@ -128,7 +128,7 @@ class IdleScreenPicture(BaseModel):
         description="Tag of this upload; the display URL carries it as a cache-buster"
     )
     fit: Literal["logo", "fill"] = Field(
-        description="'logo' centres it at its own size; 'fill' covers the screen"
+        description="'logo' centres it in half the screen; 'fill' covers the screen"
     )
 
 

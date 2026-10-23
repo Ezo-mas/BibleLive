@@ -117,6 +117,7 @@ export const en = {
   'settings.shortcutMove': 'Move the pending selection',
   'settings.shortcutShow': 'Show the staged reference; in Find Scripture, stage the top result',
   'settings.shortcutShift': 'In Find Scripture, show the resolved passage directly',
+  'settings.shortcutClear': 'Clear the display (blank)',
   'settings.shortcutEsc': 'Clear the selection; close this dialog when it is open',
   'settings.verses': 'Verses shown',
   'settings.versesGroup': 'Verses shown on display',
@@ -178,7 +179,7 @@ export const en = {
   'idle.fitLogo': 'Logo',
   'idle.fitFill': 'Fill screen',
   'idle.fitHint':
-    'Logo: centred at its own size on the background. Fill screen: covers the whole screen; edges may be cropped.',
+    'Logo: centred on the background, scaled to fit a box of half the screen. Fill screen: covers the whole screen; edges may be cropped.',
   'idle.hint': 'Shown only when nothing is on screen. Blank by default.',
   'idle.upload': 'Upload picture',
   'idle.replace': 'Replace picture',
@@ -231,6 +232,7 @@ export const en = {
   'stage.nothingOnDisplay': 'Nothing on display',
   'stage.approvedHint': 'Approved references appear here and on the projector.',
   'stage.clearDisplay': 'Clear Display',
+  'quick.clearTitle': 'Clear Display (B)',
   'next.title': 'Up Next',
   'next.aria': 'Up next',
   'next.moreHidden': {
