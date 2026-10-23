@@ -9,8 +9,9 @@ import {
 
 /** Line height of the verse text, the same as the audience display's. */
 const PREVIEW_LINE_HEIGHT = 1.5
-/** The audience display is laid out for this width; the preview scales its bounds from it. */
+/** The audience display is laid out for this screen; the preview scales its bounds from it. */
 const DISPLAY_REFERENCE_WIDTH_PX = 1920
+const DISPLAY_REFERENCE_HEIGHT_PX = 1080
 
 /**
  * Size the verse text in the display preview the way the audience display sizes it.
@@ -19,7 +20,9 @@ const DISPLAY_REFERENCE_WIDTH_PX = 1920
  * does the same with the same logic (`fitText.ts`) against its own box, so a long
  * passage (ten verses, or all of them) shrinks to fit here exactly as it does on the
  * projector instead of running out of the box. The size bounds are the display's,
- * scaled by how much smaller the preview is than the display's reference screen.
+ * scaled by how much smaller the preview is than the display's reference screen. The
+ * preview fills its frame and is not always 16:9, so the scale is the tighter of width
+ * and height, as for a 1920x1080 screen shrunk until it fits.
  *
  * @param block The box the verses must fit: it fills the preview above the citation.
  * @param inner The verses' own wrapper, whose natural height is the overflow signal.
@@ -44,7 +47,10 @@ export function usePreviewFit(
       const width = blockEl.clientWidth
       // Not laid out (hidden, or jsdom): leave the stylesheet's size alone.
       if (available <= 0 || width <= 0) return
-      const scale = monitorEl.clientWidth / DISPLAY_REFERENCE_WIDTH_PX
+      const scale = Math.min(
+        monitorEl.clientWidth / DISPLAY_REFERENCE_WIDTH_PX,
+        monitorEl.clientHeight / DISPLAY_REFERENCE_HEIGHT_PX
+      )
       const bounds = { min: MIN_FONT_SIZE * scale, max: MAX_FONT_SIZE * scale }
       const estimate = computeFitFontSize({
         charCount,

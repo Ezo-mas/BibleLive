@@ -58,16 +58,17 @@ staged and shown; only a window resize changes the preview's size. So the left
 column's last card ends exactly where the right panel ends. There is no measured
 constant to keep in step with the cards.
 
-**The preview.** Inside ON DISPLAY, the monitor frame (`.operator-monitor-wrap`) is a
-neutral bezel (`--bezel-bg`, recessed in both themes; not the display's colour) that
+**The preview.** Inside ON DISPLAY, the monitor frame (`.operator-monitor-wrap`)
 spans the card's inner width, the control row's own left and right edges (12px inset),
-and fills the leftover height. It is a size container: the 16:9 miniature of the
-audience screen, drawn in the display's own theme (`data-theme`) with its own 1px
-border, is `min(100cqw, 100cqh x 16/9)` wide and centred in the frame, so it is the
-largest 16:9 that fits and the bezel shows as bars at the sides (a tall frame) or above
-and below (a wide one), whichever binds. Its text is fitted the way the display fits
-its own (`usePreviewFit`, reusing `fitText.ts`: shrink until the verses fit, bounds
-scaled from the display's, from the miniature's real width), so ten verses or all of
+and fills the leftover height. The miniature of the audience screen, drawn in the
+display's own theme (`data-theme`) with its own 1px border, fills the frame edge to
+edge: no bars around it, at the cost of not always being the projector's 16:9 (on a
+two-column window it is usually wider; in the one-column layout the frame is 16:9, so
+it is exact). It is a size container, and everything inside scales with the tighter
+of width and height (`min(cqw, cqh)`), like a 1920x1080 screen shrunk to fit. Its text
+is fitted the way the display fits its own (`usePreviewFit`, reusing `fitText.ts`:
+shrink until the verses fit, bounds scaled from the display's by that same tighter
+side), so ten verses or all of
 them shrink to fit; if they ever overflow they start at the top, never a clipped
 middle. With nothing on screen it shows the idle picture the way the display does
 (Logo contained in half the width and 40% of the height, Fill covering it), or the
