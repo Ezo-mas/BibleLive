@@ -57,7 +57,7 @@ const NOTICE_MS: Record<NoticeTone, number> = { success: 3000, info: 4000, error
 
 /**
  * How many history entries a state snapshot carries (the server sends the last
- * 20, see `send_operator_state_snapshot` in `core/server/state.py`). The console
+ * 20, see `SNAPSHOT_HISTORY` in `core/server/state.py`). The console
  * keeps the same window, so an entry folded in from a confirmation cannot grow
  * the list past what a reconnect would show. `history_count` still reports the
  * server's total.

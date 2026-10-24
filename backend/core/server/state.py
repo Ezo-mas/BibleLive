@@ -36,6 +36,7 @@ from .models import (
     IdleScreenPicture,
     PipelineHeartbeat,
     PipelineStatusResponse,
+    StateResponse,
     VerseText,
 )
 from .settings_store import SettingsStore, coerce_auto_mode, is_auto_mode
@@ -67,6 +68,10 @@ PIPELINE_MISSED_REPORTS_OFFLINE = 3
 # Follow-along auto-show (``set_follow_auto``) shows a hint by itself only when it starts
 # at most this many verses after the passage on screen ends. A bigger jump stays a hint.
 FOLLOW_AUTO_MAX_JUMP = 3
+
+# How many history entries the state snapshot carries (the operator's ``state_snapshot``
+# message and GET /api/state). The list itself is bounded by ``config.MAX_HISTORY_REFERENCES``.
+SNAPSHOT_HISTORY = 20
 
 
 class AppState:
@@ -378,25 +383,27 @@ class AppState:
         """
         return ref.confidence in AUTO_APPROVE_CONFIDENCES[auto_mode or self.auto_mode]
 
+    def state_snapshot(self) -> StateResponse:
+        """The complete state an operator console starts from.
+
+        One definition for both the WebSocket ``state_snapshot`` message and GET /api/state.
+        """
+        return StateResponse(
+            current_display=self.current_display,
+            pending=self.pending_references,
+            history=self.reference_history[:SNAPSHOT_HISTORY],
+            pending_count=len(self.pending_references),
+            history_count=len(self.reference_history),
+            display_connections=len(self.connection_manager.display_connections),
+            operator_connections=len(self.connection_manager.operator_connections),
+            display_settings=self.display_settings,
+            auto_mode=self.auto_mode,
+            follow_auto=self.follow_auto_in_effect,
+        )
+
     async def send_operator_state_snapshot(self, websocket: WebSocket | None = None) -> None:
         """Send complete state snapshot to a specific operator or all operators."""
-        snapshot = {
-            "type": "state_snapshot",
-            "data": {
-                "current_display": self.current_display.model_dump()
-                if self.current_display
-                else None,
-                "pending": [ref.model_dump() for ref in self.pending_references],
-                "history": [ref.model_dump() for ref in self.reference_history[:20]],  # Last 20
-                "pending_count": len(self.pending_references),
-                "history_count": len(self.reference_history),
-                "display_connections": len(self.connection_manager.display_connections),
-                "operator_connections": len(self.connection_manager.operator_connections),
-                "display_settings": self.display_settings.model_dump(),
-                "auto_mode": self.auto_mode,
-                "follow_auto": self.follow_auto_in_effect,
-            },
-        }
+        snapshot = {"type": "state_snapshot", "data": self.state_snapshot().model_dump()}
         # The snapshot replaces the console's state, hint included: resend the
         # hint that still follows on from the passage on screen.
         hint = self.follow_along.last_hint
@@ -596,6 +603,12 @@ class AppState:
             )
             await self.approve_and_notify(ref.id)
 
+    def _record_history(self, ref: BibleReference) -> None:
+        """Put a reference that reached the display at the top of the bounded history."""
+        self.reference_history.insert(0, ref)
+        if len(self.reference_history) > config.MAX_HISTORY_REFERENCES:
+            self.reference_history = self.reference_history[: config.MAX_HISTORY_REFERENCES]
+
     async def approve_pending(self, reference_id: str) -> BibleReference | None:
         """Approve and display a pending reference by ID"""
         # Find the reference by ID
@@ -615,9 +628,7 @@ class AppState:
         self.current_display = ref
 
         # Keep history bounded to prevent unbounded growth
-        self.reference_history.insert(0, ref)
-        if len(self.reference_history) > config.MAX_HISTORY_REFERENCES:
-            self.reference_history = self.reference_history[: config.MAX_HISTORY_REFERENCES]
+        self._record_history(ref)
 
         # Notify display to show the reference
         await self._send_display_reference(ref)
@@ -740,9 +751,7 @@ class AppState:
 
         self.current_display = ref
 
-        self.reference_history.insert(0, ref)
-        if len(self.reference_history) > config.MAX_HISTORY_REFERENCES:
-            self.reference_history = self.reference_history[: config.MAX_HISTORY_REFERENCES]
+        self._record_history(ref)
 
         await self._send_display_reference(ref)
 
