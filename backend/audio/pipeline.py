@@ -1005,7 +1005,7 @@ class BibleLiveAudioProcessor:
         return result, references
 
     def _parse_transcription(
-        self, parser: StreamingParser, result: Transcription, now: float
+        self, parser: StreamingParser, result: Transcription, now: float | None
     ) -> list[Reference] | None:
         """One model's references in its transcript, each once; None on a parser error.
 

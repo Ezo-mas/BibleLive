@@ -101,6 +101,8 @@ strict_optional = true
 warn_redundant_casts = true
 warn_unused_ignores = true
 check_untyped_defs = true
+# benchmarks/ has no __init__.py but follow_along_bench imports benchmarks.run_benchmark.
+explicit_package_bases = true
 
 [[tool.mypy.overrides]]
 module = "tests.*"

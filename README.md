@@ -479,7 +479,7 @@ options are audio-pipeline-side settings, passed as CLI flags on
 | --- | --- |
 | `make install` / `install-audio` / `install-dev` | Backend pip installs (core / +audio / +dev) |
 | `make test` / `test-integration` | pytest (`-m integration` for the subset) |
-| `make lint` / `format` / `typecheck` | ruff check / ruff format / mypy core+audio |
+| `make lint` / `format` / `typecheck` | ruff check / ruff format / mypy core+audio+launcher+benchmarks |
 | `make check` | lint + format-check + tests (backend one-route) |
 | `make dev` | uvicorn with reload on port 8000 |
 | `make frontend-install` / `frontend-dev` / `frontend-build` | npm install / dev server / production build |

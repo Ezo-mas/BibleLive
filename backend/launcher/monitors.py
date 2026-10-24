@@ -43,6 +43,10 @@ def enumerate_monitors() -> list[Monitor]:
 
 
 def _enumerate_windows() -> list[Monitor]:
+    # sys.platform (not os.name) so mypy skips this body on Linux, where
+    # typeshed has no ctypes.WINFUNCTYPE.
+    if sys.platform != "win32":
+        return []
     import ctypes
     from ctypes import wintypes
 

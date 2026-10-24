@@ -94,7 +94,7 @@ from collections import defaultdict, deque
 from collections.abc import Callable, Iterator, Sequence
 from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import numpy as np
 
@@ -934,7 +934,9 @@ class WordTimer:
         if self._session is None:
             import transcribe_cpp  # the gguf extra, as the live Kmynas engine
 
-            backend = "cpu" if self._config.whisper_device == "cpu" else "auto"
+            backend: Literal["auto", "cpu"] = (
+                "cpu" if self._config.whisper_device == "cpu" else "auto"
+            )
             model = transcribe_cpp.Model(str(self._config.kmynas_model), backend=backend)
             self._session = model.session(n_threads=self._config.cpu_threads)
             self._errors = transcribe_cpp.errors
@@ -1071,7 +1073,8 @@ def confirm_by_timestamps(
         ]
         if not candidates:
             continue
-        read = min(candidates, key=lambda r, at=hint.t_s: abs(r.start_s - at))
+        at = hint.t_s
+        read = min(candidates, key=lambda r: abs(r.start_s - at))
         hint.ts_read = read
         hint.ts_lag_s = hint.t_s - read.start_s
         hint.ts_in_time = hint.t_s <= read.end_s
