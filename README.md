@@ -29,7 +29,8 @@ references before they go on screen.
 ## Requirements
 
 - Python 3.13 (the version the Windows installer bundles and CI tests)
-- Node.js 22, what CI uses (the dev tools need at least 20). Required to
+- Node.js 22.12 or later, what CI uses (vitest needs it; the production build
+  alone also runs on Node 20). Required to
   build the frontend into `static/frontend/`; that directory is generated and
   not committed, so it must be built once after cloning.
 - ffmpeg (required by the audio pipeline)
