@@ -137,6 +137,26 @@ class TestStreaming:
         got = [str(r) for r in sp.feed("16 eilutė")]
         assert got == ["John 3:16"], got
 
+    def test_book_named_again_restores_its_chapter(self):
+        # 10-11 service: 2 Kings 6 is read, Proverbs 18:20 is quoted, then
+        # "Taigi, Antra karalių ta istorija" returns to 2 Kings and the next
+        # verse is 6:30, not Proverbs 18:30.
+        sp = StreamingParser(language="lt")
+        sp.feed("Antra karalių šeštas skyrius dvidešimt ketvirta eilutė")
+        sp.feed("Patarlių aštuoniolikta, dvidešimta eilutė")
+        assert sp.feed("Taigi, Antra karalių ta istorija") == []
+        got = [str(r) for r in sp.feed("Ir toliau trisdešimta eilutė, karalius")]
+        assert got == ["2 Kings 6:30"], got
+
+    def test_one_word_book_name_keeps_context(self):
+        # "mato" is also "sees" and "Danielius" a person: a one-word name
+        # alone never moves the context back to an earlier book.
+        sp = StreamingParser(language="lt")
+        sp.feed("Mato šeštas skyrius trečia eilutė")
+        sp.feed("Filipiečiams keturi devyni")
+        sp.feed("Dievas mato, kaip Danielius")
+        assert [str(r) for r in sp.feed("septinta eilutė")] == ["Philippians 4:7"]
+
     def test_reset(self):
         sp = StreamingParser(language="lt")
         sp.feed("Romiečiams 8 skyrius")

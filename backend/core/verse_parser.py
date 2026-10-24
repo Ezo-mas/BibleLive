@@ -290,6 +290,9 @@ class Context:
 
     book: str | None = None
     chapter: int | None = None
+    # Last chapter cited per book, so naming a book again on its own
+    # ("Taigi, antra karalių ta istorija") returns the context to it.
+    chapters: dict[str, int] = field(default_factory=dict)
 
 
 # --------------------------------------------------------------------------
@@ -1009,6 +1012,7 @@ class ReferenceParser:
             seen[key] = ref.end
             refs.append(ref)
             ctx.book, ctx.chapter = ref.book, ref.chapter
+            ctx.chapters[ref.book] = ref.chapter
 
         i = 0
         while i < len(toks):
@@ -1034,6 +1038,11 @@ class ReferenceParser:
                     accept(ref, i)
                     i = ref.end
                 else:
+                    # Only a name of two or more words ("Antra karalių"):
+                    # one-word names are also people and verbs ("Dievas
+                    # mato", "kaip Danielius").
+                    if not fuzzy and length >= 2 and canon != ctx.book and canon in ctx.chapters:
+                        ctx.book, ctx.chapter = canon, ctx.chapters[canon]
                     i += length
                 continue
             ref = self._context_ref(toks, i, ctx)
