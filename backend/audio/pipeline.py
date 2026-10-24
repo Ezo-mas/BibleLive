@@ -984,8 +984,12 @@ class BibleLiveAudioProcessor:
             if references is None and alternate_refs is None:
                 return result, []
             # Only references both models found keep their confidence; a
-            # parser error on one model still leaves the other's (as low).
-            references = merge_agreement(references or [], alternate_refs or [])
+            # parser error on one model still leaves the other's (as low). A
+            # shaky decode on either side never promotes a context verse.
+            shaky = bool(result.low_confidence_reason or alternate.low_confidence_reason)
+            references = merge_agreement(
+                references or [], alternate_refs or [], promote_inferred=not shaky
+            )
         elif references is None:
             return result, []
 

@@ -72,9 +72,12 @@ from core.verse_text import VerseTextIndex  # noqa: E402
 
 # Detection-vs-gold tolerance in seconds (allows for utterance batching lag).
 LATENCY_TOLERANCE_S = 5.0
-# A citation said again within this many seconds of a gold one is a repeat:
+# A citation said again up to this many seconds after a gold one is a repeat:
 # correct, never an FP (see credit_repeats).
 REPEAT_WINDOW_S = 120.0
+# A gold citation restated within this many seconds of a found one ("Efeziečiams
+# 4, 25 ... 4.25", 09-13) counts as found: one citation, said twice in a breath.
+GOLD_REPEAT_WINDOW_S = 30.0
 DEFAULT_GOLD_MATCH_FIELDS = ("book", "chapter", "verse_start", "verse_end")
 
 
@@ -254,18 +257,23 @@ def credit_repeats(
     gold: list[GoldItem],
     tolerance_s: float = LATENCY_TOLERANCE_S,
     window_s: float = REPEAT_WINDOW_S,
+    gold_window_s: float = GOLD_REPEAT_WINDOW_S,
 ) -> tuple[list[tuple[Detection, GoldItem]], list[Detection], list[Detection], list[GoldItem]]:
     """Score a citation said more than once the same way, whatever gold lists.
 
     Gold lists repeats inconsistently (09-13 has Ephesians 4:25 twice, 05-31
     has Deuteronomy 32:11 once though it is said twice), and the pipeline
-    collapses some repeats and reports others. So within ``window_s``:
+    collapses some repeats and reports others. So:
 
-    - a missed gold item with the same reference as a matched one is credited
-      to that match (one citation found, one TP per gold item);
-    - an unmatched detection naming a gold citation (or its chapter) is a
+    - a missed gold item with the same reference as a matched one within
+      ``gold_window_s`` is credited to that match (one citation restated in a
+      breath; one TP per gold item). A second saying further apart that the
+      pipeline missed stays a miss;
+    - an unmatched detection naming a gold citation (its reference, chapter or
+      a verse of its range) said after it, up to ``window_s`` later, is a
       repeat: correct, not an FP, and not a TP either, so TP + FN stays the
-      gold count. Not when its speech is where a different gold citation was
+      gold count. One whose speech ended before the citation is not a repeat.
+      Not when its speech is where a different gold citation was
       said (within ``tolerance_s``): that is a misreading of that one (07-05:
       Hosea 4:16 reported on "Salmė, šešioliktas skyrius, aštunta eilutė").
 
@@ -277,7 +285,7 @@ def credit_repeats(
         for d, m in matches:
             if (
                 ref_key(m.book, m.chapter, m.verse_start, m.verse_end) == key
-                and abs(_gold_mid(m) - _gold_mid(g)) <= window_s
+                and abs(_gold_mid(m) - _gold_mid(g)) <= gold_window_s
             ):
                 credited.append((d, g))
                 break
@@ -286,11 +294,15 @@ def credit_repeats(
     rest: list[Detection] = []
     for d in fps:
         said = d.spoken_from_s if d.spoken_from_s is not None else d.t_s
+        said_end = d.spoken_to_s if d.spoken_to_s is not None else d.t_s
         misread = any(
             not _names_citation(d, g) and gold_distance_s(d, g) <= tolerance_s for g in gold
         )
         if not misread and any(
-            _names_citation(d, g) and abs(said - _gold_mid(g)) <= window_s for g in gold
+            _names_citation(d, g)
+            and said_end >= _gold_mid(g) - tolerance_s
+            and said - _gold_mid(g) <= window_s
+            for g in gold
         ):
             repeats.append(d)
         else:
@@ -709,7 +721,11 @@ def register_feeds(
         if alternate_parser is not None:
             alt_text = feed[4] if len(feed) > 4 else ""
             alt_low = feed[5] if len(feed) > 5 else ""
-            refs = merge_agreement(refs, _model_refs(alternate_parser, alt_text, t_s, alt_low))
+            refs = merge_agreement(
+                refs,
+                _model_refs(alternate_parser, alt_text, t_s, alt_low),
+                promote_inferred=not (low_reason or alt_low),
+            )
         for ref in refs:
             key = ref_key(ref.book, ref.chapter, ref.verse_start, ref.verse_end)
             if key in seen:
@@ -1409,7 +1425,11 @@ def score_recording(
             for d in fps
         ],
         "missed": [
-            {"t_start_s": g.t_start_s, "reference": f"{g.book} {g.chapter}:{g.verse_start}"}
+            {
+                "t_start_s": g.t_start_s,
+                "reference": f"{g.book} {g.chapter}:{g.verse_start}"
+                + (f"-{g.verse_end}" if g.verse_end else ""),
+            }
             for g in fns
         ],
         "vad_events": [],  # trimmed in JSON output to keep files small

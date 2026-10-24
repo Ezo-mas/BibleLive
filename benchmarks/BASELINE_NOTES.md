@@ -487,9 +487,16 @@ The parser now remembers the last chapter cited for each book. A book named
 again with no number ("Taigi, Antra karalių ta istorija", after a Proverbs
 18:20 quote) switches the context back to that book and chapter, so the next
 bare "trisdešimta eilutė" is 2 Kings 6:30 and not Proverbs 18:30. Only names of
-two or more words count: one-word names are also verbs and people ("Dievas
-mato", "kaip Danielius") and moved the context to Matthew or Daniel 9 times in
-the corpus. Cached replay, 14 services, 164 gold, on all refactor PRs merged:
+two or more tokens count, where a numbered book's prefix is a token ("Antra
+karalių"): one-token names are also verbs and people ("Dievas mato", "kaip
+Danielius") and moved the context to Matthew or Daniel 9 times in the corpus.
+Ordinary two-token phrases still match once the book has been cited ("du
+karaliai", "pirmas karalius Saulius", "pagal Joną"; in English "the two
+kings", "the first John"). A remembered chapter expires 600 s after that book
+was last cited (the context TTL, on each book's own clock), and a bare verse
+takes a chapter word only from between where its book was named and the verse
+(review of #75: "Patarlių 18 skyrius" before the switch gave 2 Kings 18:30).
+Cached replay, 14 services, 164 gold, on all refactor PRs merged:
 `kmynas` 153 / 9 -> 154 / 9, `kmynas+canary` 158 / 4 -> 159 / 4 (TP / medium+
 high FP; low FPs unchanged). Fixed 10-11's 2 Kings 6:30; nothing else moved.
 
@@ -498,11 +505,12 @@ high FP; low FPs unchanged). Fixed 10-11's 2 Kings 6:30; nothing else moved.
 Gold listed repeats inconsistently (09-13 has Ephesians 4:25 twice; 05-31 and
 07-19 list Deuteronomy 32:11 and Isaiah 1:16 once though each is said twice),
 so the same pipeline behavior scored as an FN in one service and an FP in
-another. The scorer now treats a citation said again within 120 s as correct
+another. The scorer now treats a citation said again as correct
 (`credit_repeats` in `run_benchmark.py`, rule in `README.md`): a gold repeat
-counts as found when its other citation is, and a detection naming a gold
-citation (or its chapter) is a repeat, not an FP, unless its speech is where a
-different gold citation was said (07-05: Hosea 4:16 reported on the Psalm 16:8
+counts as found when its other citation is, within 30 s, and a detection naming
+a gold citation (its reference, chapter or a verse of its range) from speech
+that does not end before it and starts at most 120 s after it is a repeat, not
+an FP, unless its speech is where a different gold citation was said (07-05: Hosea 4:16 reported on the Psalm 16:8
 utterance stays an FP). TP + FN stays the gold count. The Kmynas map also reads
 "Ievutė" as "eilutė" (10-11, GPU tier: "septinta Ievutė", Philippians 4:7);
 Canary's "įvate" for the same word is left alone (too ambiguous). Cached
@@ -533,7 +541,10 @@ out on its own).
 
 **Two-model agreement:** a verse with no book name, resolved from the running
 book and chapter ("Ir toliau trisdešimta eilutė"), is "low" from each parser;
-when both models infer the same one it is now "medium" (`audio/ensemble.py`).
+when both models infer the same one it is now "medium" (`audio/ensemble.py`),
+unless either model's decode was shaky (a repetition loop): those stay "low",
+as `unique_references` intends (review of #75; no corpus promotion involved a
+shaky decode).
 Cached replay, 171 gold, `kmynas+canary`:
 
 | Run | TP high / medium / low | FN | FP low | FP medium+high |
@@ -546,6 +557,9 @@ Cached replay, 171 gold, `kmynas+canary`:
 wrong verse): the same-book check in "Book named again restores its chapter"
 removed the case seen here (Proverbs 18:30). `kmynas` alone is unchanged (one
 model, no agreement): 161 TP / 10 FN / 3 low / 4 medium+high FP, 49 TPs low.
+The review fixes (shaky decodes, chapter word before a book switch, per-book
+expiry, tighter repeat windows) replay identically on both tiers, including
+the confidence split.
 
 Tried and not adopted: dropping a reference only one model found when that
 model's own parse was already low and not inferred (number shapes near a
@@ -567,10 +581,13 @@ the corpus, run both tiers and check each item; record the outcome here.
   More than about 1 genuinely wrong per 30 promoted references is a reason to
   revert it.
 - **Book named again restores its chapter** (`core/verse_parser.py`): only
-  names of two or more words. Look for inferred FPs right after a bare book
-  mention.
+  names of two or more tokens, and ordinary phrases such as "du karaliai" or
+  "pirmas karalius" match too. Look for inferred FPs right after a bare book
+  mention; if they show up, require a citation word ("knyga", a chapter or
+  verse word) next to the name.
 - **Kmynas "Ievutė" -> "eilutė"** (`audio/spelling_maps.py`): seen once. Any
   spelling-map rule can be dropped if new recordings never use it.
-- **Repeat scoring** (`credit_repeats`, 120 s window) and the gold rule for
+- **Repeat scoring** (`credit_repeats`: 30 s for gold repeats, detections up to
+  120 s after a citation) and the gold rule for
   verses announced while reading on: new gold should follow the rule, so the
   scorer and gold keep matching.

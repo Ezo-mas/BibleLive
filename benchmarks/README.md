@@ -189,13 +189,15 @@ verse must be heard, and `--dump-verses N` prints N random readings to check by 
   `bible_data/bible_ltb.sqlite`; skipped with a warning if missing). Its
   spoken time is the utterance that named the chapter.
 - **Repeats**: a citation said more than once scores the same whatever gold
-  lists. Within 120 s (`REPEAT_WINDOW_S`), a missed gold item with the same
-  reference as a matched one counts as found (`"repeat": true` in
-  `matches`), and an unmatched prediction naming a gold citation, only
-  its chapter, or one verse of its range, is a repeat (`repeats` in the output): correct, not an FP,
-  and not an extra TP, so TP + FN is always the gold count. A prediction
-  from speech where a different gold citation was said (within tolerance)
-  is a misreading of that one and stays an FP.
+  lists. A missed gold item with the same reference as a found one within
+  30 s (`GOLD_REPEAT_WINDOW_S`, a restatement in the same breath) counts as
+  found (`"repeat": true` in `matches`); a second saying further apart that
+  the pipeline missed stays a miss. An unmatched prediction naming a gold
+  citation, only its chapter, or one verse of its range, from speech that
+  does not end before the citation and starts at most 120 s after it
+  (`REPEAT_WINDOW_S`), is a repeat (`repeats` in the output): correct, not
+  an FP, and not an extra TP, so TP + FN is always the gold count. A prediction from speech where a different gold citation was
+  said (within tolerance) is a misreading of that one and stays an FP.
 - **FP**: prediction matched to nothing in gold (within tolerance) and not a
   repeat.
 - **FN**: gold item matched by nothing and not credited as a repeat.

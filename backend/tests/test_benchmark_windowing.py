@@ -437,6 +437,27 @@ class TestSpokenSpanMatching:
             ("John", 16, "low"),
         ]
 
+    def test_two_model_context_verse_promoted_unless_a_decode_was_shaky(self):
+        config = AudioPipelineConfig(stt_engine="kmynas+canary")
+        talk = ", ir šiandien kalbėsime apie Dievo meilę ir apie tai, kaip jis mus myli kasdien"
+        for shaky, expected in (("", "medium"), ("canary: output repetition", "low")):
+            parser, alternate = make_parsers(config, "lt", None)
+            assert alternate is not None
+            dets: list[Detection] = []
+            feeds = [
+                # More than the 12 carry tokens of talk after the name, so
+                # the verse below is inferred from context.
+                (10.0, "Romiečiams aštuntas skyrius" + talk, 2.0, "", "Romiečiams 8" + talk, ""),
+                (30.0, "trisdešimta eilutė", 22.0, "", "30 eilutė", shaky),
+            ]
+            for feed in feeds:
+                register_feeds(parser, None, [feed], dets, alternate_parser=alternate)
+            assert [(str(d.book), d.verse_start, d.confidence) for d in dets][-1] == (
+                "Romans",
+                30,
+                expected,
+            )
+
     def test_two_model_release_flushes_both_parsers(self):
         config = AudioPipelineConfig(stt_engine="kmynas+canary")
         parser, alternate = make_parsers(config, "lt", None)
@@ -676,6 +697,13 @@ class TestRepeats:
         # Gold lists both sayings; the pipeline collapsed them into one.
         # Both gold items count as found (TP + FN is the gold count).
         assert self._score([_det(32.0)], [self._gold(28.0), self._gold(36.0)]) == (2, 0, 0, 0)
+
+    def test_gold_repeat_far_apart_stays_a_miss(self):
+        # Said again 60 s later and missed then: a real miss, not a restatement.
+        assert self._score([_det(32.0)], [self._gold(28.0), self._gold(88.0)]) == (1, 0, 0, 1)
+
+    def test_mention_before_the_citation_is_not_a_repeat(self):
+        assert self._score([_det(32.0, v1=None), _det(90.0)], [self._gold(86.0)]) == (1, 0, 1, 0)
 
     def test_chapter_only_repeat(self):
         # "Romans 8" said a minute after Romans 8:28.
