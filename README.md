@@ -72,10 +72,6 @@ export LD_LIBRARY_PATH="$(python3 -c 'import os, nvidia.cublas.lib, nvidia.cudnn
 ```
 
 ```bash
-# Optional: plain requirements files instead of an install
-pip install -r backend/requirements.txt -c backend/constraints.txt
-pip install -r backend/requirements-audio.txt -c backend/constraints.txt
-
 # Required: build the frontend (once after cloning; also re-run after frontend changes)
 cd frontend && npm install && npm run build
 ```
@@ -520,8 +516,6 @@ BibleLive/                        # Monorepo root: tooling + shared assets
 │   │   └── config.py, metrics.py
 │   ├── tests/                    # Pytest suite
 │   ├── scripts/                  # Database conversion scripts
-│   ├── requirements.txt          # Core dependencies
-│   ├── requirements-audio.txt    # Audio pipeline dependencies
 │   └── pyproject.toml            # Installable package metadata
 ├── frontend/                     # Vite + React + TypeScript frontend
 │   ├── src/display/              # Audience screen
@@ -542,7 +536,7 @@ This is a two-part monorepo:
 
 | Directory   | Contents                                                        |
 |-------------|-----------------------------------------------------------------|
-| `backend/`  | Python server, audio pipeline, tests, scripts, requirements      |
+| `backend/`  | Python server, audio pipeline, tests, scripts                    |
 | `frontend/` | React + TypeScript UI (Vite), built into `static/frontend/`     |
 
 The root `pyproject.toml` only holds tool configuration (ruff, pytest, mypy);
