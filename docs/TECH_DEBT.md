@@ -147,7 +147,7 @@ below the fold.
   `AppState.bible_lookup` and is not visible to it. Logged, not fixed.
 - **Logged:** 2026-10-14
 
-### A damaged settings file is overwritten on the next save, dropping every other setting
+### A damaged settings file is overwritten on the next save, dropping every other setting (resolved)
 - **Where:** `backend/core/server/settings_store.py` (`SettingsStore._read` and every
   `save_*` method, which all read, change one key and write the whole object back).
 - **Problem:** `_read()` returns an empty dict for a file it cannot parse (bad JSON, a
@@ -165,6 +165,12 @@ below the fold.
   `{"auto_mode": "all"}`; `follow_auto` was gone. The warning "Ignoring settings file ...
   Extra data" was the only trace.
 - **Logged:** 2026-10-22
+- **Resolved:** 2026-10-24 — a damaged file (unreadable, not JSON, or not an object) is copied
+  beside it as `<stem>.damaged-<YYYYMMDD-HHMMSS>.json` (local time; a counter suffix if the name
+  is taken) on the first read, and identical damaged bytes are copied only once. The live file is
+  not touched until the next save, which then writes only its new key. If the copy cannot be
+  made, the save returns False, logs an ERROR and leaves the file as it is. Covered by
+  `backend/tests/test_settings_store.py`.
 
 ### A direct benchmark run measured a 60 s parser context, live uses 600 s (resolved)
 - **Where:** `benchmarks/run_benchmark.py` (`--context-ttl-s`, and the defaults of

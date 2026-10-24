@@ -75,6 +75,8 @@ tmp/
 
 # Runtime server settings (written by the server, e.g. the auto-approve mode)
 data/server_settings.json
+# Copies of a damaged settings file, kept before a save replaces it
+data/server_settings.damaged-*.json
 # The operator's idle-screen picture, kept beside the settings file (and its temp files)
 data/idle_screen.png
 data/idle_screen.jpg

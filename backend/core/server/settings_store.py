@@ -9,7 +9,10 @@ stays untouched and read-only.
 Reads are best-effort by design: a missing, unreadable, malformed, or unexpected
 file logs a warning and falls back to the configured default. Auto-approval is a
 convenience, so it must never keep the server from starting, and it must never
-prevent an operator from approving references by hand.
+prevent an operator from approving references by hand. A damaged file (unreadable,
+not JSON, or not an object) is first copied beside it as a backup, so the next save,
+which replaces the file, cannot silently drop what it held; if the copy cannot be
+made, saves refuse to overwrite the file.
 """
 
 import contextlib
@@ -17,6 +20,7 @@ import json
 import logging
 import os
 import tempfile
+from datetime import datetime
 from pathlib import Path
 from typing import Any, TypeGuard
 
@@ -87,6 +91,30 @@ def coerce_idle_screen_fit(
     return default
 
 
+def _holds(path: Path, data: bytes) -> bool:
+    """Whether ``path`` is a readable file holding exactly ``data``."""
+    try:
+        return path.read_bytes() == data
+    except OSError:
+        return False
+
+
+def _write_backup(backup: Path, data: bytes) -> None:
+    """Create ``backup`` holding ``data`` on disk; an existing file is never replaced."""
+    try:
+        with backup.open("xb") as handle:
+            handle.write(data)
+            handle.flush()
+            os.fsync(handle.fileno())
+    except FileExistsError:
+        raise
+    except OSError:
+        # A truncated copy must not pass for a backup.
+        with contextlib.suppress(OSError):
+            backup.unlink()
+        raise
+
+
 class SettingsStore:
     """Read and write the server's persisted settings JSON file."""
 
@@ -96,18 +124,67 @@ class SettingsStore:
 
     def _read(self) -> dict[str, Any]:
         """Return the settings object, or an empty dict when it is unusable."""
+        return self._load()[0]
+
+    def _load(self) -> tuple[dict[str, Any], str | None]:
+        """Return the settings object (empty when unusable) and why a save must not overwrite it.
+
+        The second value is None unless the file exists and cannot be kept: a damaged file
+        is copied aside first (see ``_keep_copy``), and a file that cannot be read at all
+        cannot be copied either.
+        """
         try:
-            data = json.loads(self.path.read_bytes().decode("utf-8"))
-        except FileNotFoundError:
-            # No persisted settings yet: the caller's default applies.
-            return {}
-        except (OSError, ValueError) as e:
+            raw = self.path.read_bytes()
+        except (FileNotFoundError, NotADirectoryError):
+            # No persisted settings yet (or a parent that is a file): the caller's default applies.
+            return {}, None
+        except OSError as e:
             logger.warning(f"Ignoring settings file {self.path}: {e}")
-            return {}
-        if not isinstance(data, dict):
-            logger.warning(f"Ignoring settings file {self.path}: expected a JSON object")
-            return {}
-        return data
+            return {}, str(e)
+        try:
+            data = json.loads(raw.decode("utf-8"))
+        except ValueError as e:
+            problem = str(e)
+        else:
+            if isinstance(data, dict):
+                return data, None
+            problem = "expected a JSON object"
+        logger.warning(f"Ignoring settings file {self.path}: {problem}")
+        blocked = self._keep_copy(raw)
+        if blocked is not None:
+            logger.warning(
+                f"Could not keep a copy of the damaged settings file {self.path}: {blocked}"
+            )
+        return {}, blocked
+
+    def _keep_copy(self, raw: bytes) -> str | None:
+        """Keep the damaged bytes ``raw`` in a backup beside the file, unless one already has them.
+
+        Each distinct damaged content is copied once, so repeated reads and saves of the same
+        file leave one backup. Returns None once the bytes are kept, otherwise why they are not.
+        """
+        prefix = f"{self.path.stem}.damaged-"
+        try:
+            for candidate in self.path.parent.iterdir():
+                if candidate.name.startswith(prefix) and _holds(candidate, raw):
+                    return None
+        except OSError as e:
+            return str(e)
+        # Local time, like the log lines; a repeated second takes a counter suffix.
+        stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        attempt = 1
+        while True:
+            suffix = f"-{attempt}" if attempt > 1 else ""
+            backup = self.path.with_name(f"{prefix}{stamp}{suffix}.json")
+            try:
+                _write_backup(backup, raw)
+            except FileExistsError:
+                attempt += 1
+                continue
+            except OSError as e:
+                return str(e)
+            logger.warning(f"Kept a copy of the damaged settings file at {backup}")
+            return None
 
     def load_auto_mode(self, default: AutoMode = DEFAULT_AUTO_MODE) -> AutoMode:
         """Return the persisted auto-approve mode, or ``default``."""
@@ -231,9 +308,16 @@ class SettingsStore:
         """Set the keys in ``changes``, drop the keys in ``remove``, and write the file.
 
         Every other key is kept. ``log`` is logged at INFO after a successful write;
-        returns False when the write failed.
+        returns False when the write failed, or when the file is damaged and could not be
+        kept as a backup (then it is left as it is).
         """
-        settings = self._read()
+        settings, blocked = self._load()
+        if blocked is not None:
+            logger.error(
+                f"Settings not saved to {self.path}: the file could not be kept as a backup "
+                f"({blocked}), so it was left unchanged"
+            )
+            return False
         settings.update(changes or {})
         for key in remove:
             settings.pop(key, None)
