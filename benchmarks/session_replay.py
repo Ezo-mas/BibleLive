@@ -109,7 +109,8 @@ class Replayer:
             alternate_refs = self._parse(alternate_parser, alternate, self._last_t)
             if refs is None and alternate_refs is None:
                 return flushed, []
-            refs = merge_agreement(refs or [], alternate_refs or [])
+            shaky = primary.get("low_confidence_reason") or alternate.get("low_confidence_reason")
+            refs = merge_agreement(refs or [], alternate_refs or [], promote_inferred=not shaky)
         return flushed, refs or []
 
     def finish(self) -> list[Reference]:

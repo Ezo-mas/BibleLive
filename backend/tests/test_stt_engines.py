@@ -62,6 +62,15 @@ def test_mapped_parser_parses_the_corrected_text():
     assert parse(StreamingParser(ReferenceParser(language="lt"))) == []
 
 
+def test_kmynas_map_reads_ievute_as_the_verse_word():
+    rewrite = spelling_map("kmynas", "lt")
+    assert rewrite is not None
+    assert rewrite("septinta Ievutė ir Dievo ramybė") == "septinta eilutė ir Dievo ramybė"
+    assert rewrite("septintoje ievutėje") == "septintoje eilutėje"
+    # Other forms of the name stay ("Ievutei" is "to Ievutė").
+    assert rewrite("pasakė Ievutei") == "pasakė Ievutei"
+
+
 # ---------------------------------------------------------------------------
 # Agreement merge
 # ---------------------------------------------------------------------------
@@ -79,6 +88,42 @@ def test_single_model_references_become_low():
         ("John 3:16", "high"),
         ("Romans 8:28", "low"),
         ("Psalms 23:1", "low"),
+    ]
+
+
+def _inferred(book: str, chapter: int, verse: int) -> Reference:
+    return Reference(book, chapter, verse, None, "low", inferred=True)
+
+
+def test_context_verse_both_models_inferred_becomes_medium():
+    # "Ir toliau trisdešimta eilutė" with 2 Kings 6 running, in both transcripts.
+    merged = merge_agreement(
+        [_inferred("2 Kings", 6, 30)], [_inferred("2 Kings", 6, 30)], promote_inferred=True
+    )
+    assert [(str(r), r.confidence) for r in merged] == [("2 Kings 6:30", "medium")]
+
+
+def test_context_verse_is_not_promoted_by_default():
+    # Callers turn promotion on only when neither decode was shaky.
+    merged = merge_agreement([_inferred("2 Kings", 6, 30)], [_inferred("2 Kings", 6, 30)])
+    assert [(str(r), r.confidence) for r in merged] == [("2 Kings 6:30", "low")]
+
+
+def test_context_range_both_inferred_against_its_start_keeps_the_range():
+    # "nuo 8 iki 16 eilutės" from one model, only "nuo 8" from the other.
+    full = Reference("1 Kings", 17, 8, 16, "low", inferred=True)
+    merged = merge_agreement([_inferred("1 Kings", 17, 8)], [full], promote_inferred=True)
+    assert [(str(r), r.confidence) for r in merged] == [("1 Kings 17:8-16", "medium")]
+
+
+def test_context_verse_stays_low_from_one_model_or_one_inferred():
+    # One model alone, or agreement where one side was a plain low parse
+    # (not inferred), keeps the operator in the loop.
+    alone = merge_agreement([_inferred("2 Kings", 6, 30)], [])
+    mixed = merge_agreement([_inferred("2 Kings", 6, 30)], [_ref("2 Kings", 6, 30, "low")])
+    assert [(str(r), r.confidence) for r in alone + mixed] == [
+        ("2 Kings 6:30", "low"),
+        ("2 Kings 6:30", "low"),
     ]
 
 
@@ -445,6 +490,37 @@ def test_reference_one_model_finds_is_sent_as_low(tmp_path):
     )
     proc._process_utterance("lt", [ONE_SECOND])
     assert [(str(r), r.confidence) for r in proc.sender.sent] == [("John 3:16", "low")]
+
+
+# Romans 8 named, then more than the parser's 12 carry tokens of talk, so the
+# next utterance's bare verse is resolved from context, not joined to the name.
+_TALK = ", ir šiandien mes kalbėsime apie Dievo meilę ir apie tai, kaip jis mus myli kasdien"
+_ROMANS_8 = "Romiečiams aštuntas skyrius" + _TALK
+_ROMANS_8_DIGITS = "Romiečiams 8 skyrius" + _TALK
+
+
+def _context_then_verse(proc, verse: Transcription) -> None:
+    proc._process_utterance("lt", [ONE_SECOND])  # "Romiečiams 8 ..." from both models
+    proc.stt.result = verse
+    proc.sender.sent.clear()
+    proc._process_utterance("lt", [ONE_SECOND])
+
+
+def test_context_verse_both_models_inferred_is_sent_as_medium(tmp_path):
+    proc = _two_model_processor(_two_model_result(_ROMANS_8, _ROMANS_8_DIGITS), tmp_path)
+    _context_then_verse(proc, _two_model_result("trisdešimta eilutė", "30 eilutė"))
+    assert [(str(r), r.confidence) for r in proc.sender.sent] == [("Romans 8:30", "medium")]
+
+
+def test_context_verse_from_a_shaky_decode_stays_low(tmp_path):
+    # A repetition loop on either model is never promoted to auto-approve.
+    proc = _two_model_processor(_two_model_result(_ROMANS_8, _ROMANS_8_DIGITS), tmp_path)
+    shaky = Transcription(
+        "30 eilutė", 1.0, source="canary", low_confidence_reason="canary: output repetition"
+    )
+    verse = Transcription("trisdešimta eilutė", 2.0, source="kmynas", alternate=shaky)
+    _context_then_verse(proc, verse)
+    assert [(str(r), r.confidence) for r in proc.sender.sent] == [("Romans 8:30", "low")]
 
 
 def test_second_model_alone_still_reaches_the_operator_as_low(tmp_path):

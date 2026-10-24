@@ -72,6 +72,12 @@ from core.verse_text import VerseTextIndex  # noqa: E402
 
 # Detection-vs-gold tolerance in seconds (allows for utterance batching lag).
 LATENCY_TOLERANCE_S = 5.0
+# A citation said again up to this many seconds after a gold one is a repeat:
+# correct, never an FP (see credit_repeats).
+REPEAT_WINDOW_S = 120.0
+# A gold citation restated within this many seconds of a found one ("Efeziečiams
+# 4, 25 ... 4.25", 09-13) counts as found: one citation, said twice in a breath.
+GOLD_REPEAT_WINDOW_S = 30.0
 DEFAULT_GOLD_MATCH_FIELDS = ("book", "chapter", "verse_start", "verse_end")
 
 
@@ -223,6 +229,85 @@ def match_detections_to_gold(
     fps = [d for i, d in enumerate(detections) if i not in used_det]
     fns = [g for i, g in enumerate(gold) if i not in used_gold]
     return matches, fps, fns
+
+
+def _gold_mid(g: GoldItem) -> float:
+    return (g.t_start_s + g.t_end_s) / 2
+
+
+def _names_citation(d: Detection, g: GoldItem) -> bool:
+    """``d`` is ``g``'s reference, only its chapter ("Deuteronomy 15" for 15:10),
+    or one verse of its range (14:4 read out after "14, 2 ir 4" cited 14:2-4)."""
+    if (d.book.casefold(), d.chapter) != (g.book.casefold(), g.chapter):
+        return False
+    if d.verse_start is None or (d.verse_start, d.verse_end) == (g.verse_start, g.verse_end):
+        return True
+    return (
+        d.verse_end is None
+        and g.verse_start is not None
+        and g.verse_end is not None
+        and g.verse_start <= d.verse_start <= g.verse_end
+    )
+
+
+def credit_repeats(
+    matches: list[tuple[Detection, GoldItem]],
+    fps: list[Detection],
+    fns: list[GoldItem],
+    gold: list[GoldItem],
+    tolerance_s: float = LATENCY_TOLERANCE_S,
+    window_s: float = REPEAT_WINDOW_S,
+    gold_window_s: float = GOLD_REPEAT_WINDOW_S,
+) -> tuple[list[tuple[Detection, GoldItem]], list[Detection], list[Detection], list[GoldItem]]:
+    """Score a citation said more than once the same way, whatever gold lists.
+
+    Gold lists repeats inconsistently (09-13 has Ephesians 4:25 twice, 05-31
+    has Deuteronomy 32:11 once though it is said twice), and the pipeline
+    collapses some repeats and reports others. So:
+
+    - a missed gold item with the same reference as a matched one within
+      ``gold_window_s`` is credited to that match (one citation restated in a
+      breath; one TP per gold item). A second saying further apart that the
+      pipeline missed stays a miss;
+    - an unmatched detection naming a gold citation (its reference, chapter or
+      a verse of its range) said after it, up to ``window_s`` later, is a
+      repeat: correct, not an FP, and not a TP either, so TP + FN stays the
+      gold count. One whose speech ended before the citation is not a repeat.
+      Not when its speech is where a different gold citation was
+      said (within ``tolerance_s``): that is a misreading of that one (07-05:
+      Hosea 4:16 reported on "Salmė, šešioliktas skyrius, aštunta eilutė").
+
+    Returns (credited gold matches, repeats, remaining FPs, remaining FNs).
+    """
+    credited: list[tuple[Detection, GoldItem]] = []
+    for g in fns:
+        key = ref_key(g.book, g.chapter, g.verse_start, g.verse_end)
+        for d, m in matches:
+            if (
+                ref_key(m.book, m.chapter, m.verse_start, m.verse_end) == key
+                and abs(_gold_mid(m) - _gold_mid(g)) <= gold_window_s
+            ):
+                credited.append((d, g))
+                break
+    credited_ids = {id(g) for _, g in credited}
+    repeats: list[Detection] = []
+    rest: list[Detection] = []
+    for d in fps:
+        said = d.spoken_from_s if d.spoken_from_s is not None else d.t_s
+        said_end = d.spoken_to_s if d.spoken_to_s is not None else d.t_s
+        misread = any(
+            not _names_citation(d, g) and gold_distance_s(d, g) <= tolerance_s for g in gold
+        )
+        if not misread and any(
+            _names_citation(d, g)
+            and said_end >= _gold_mid(g) - tolerance_s
+            and said - _gold_mid(g) <= window_s
+            for g in gold
+        ):
+            repeats.append(d)
+        else:
+            rest.append(d)
+    return credited, repeats, rest, [g for g in fns if id(g) not in credited_ids]
 
 
 # ---------------------------------------------------------------------------
@@ -636,7 +721,11 @@ def register_feeds(
         if alternate_parser is not None:
             alt_text = feed[4] if len(feed) > 4 else ""
             alt_low = feed[5] if len(feed) > 5 else ""
-            refs = merge_agreement(refs, _model_refs(alternate_parser, alt_text, t_s, alt_low))
+            refs = merge_agreement(
+                refs,
+                _model_refs(alternate_parser, alt_text, t_s, alt_low),
+                promote_inferred=not (low_reason or alt_low),
+            )
         for ref in refs:
             key = ref_key(ref.book, ref.chapter, ref.verse_start, ref.verse_end)
             if key in seen:
@@ -1255,6 +1344,11 @@ def run_windowed_recording(
 # ---------------------------------------------------------------------------
 
 
+def _ref_text(d: Detection) -> str:
+    """The reference as text: Book 3:16, Book 3:16-18, or Book 3:None (chapter only)."""
+    return f"{d.book} {d.chapter}:{d.verse_start}" + (f"-{d.verse_end}" if d.verse_end else "")
+
+
 def _span_json(d: Detection) -> list[float] | None:
     if d.spoken_from_s is None or d.spoken_to_s is None:
         return None
@@ -1265,7 +1359,8 @@ def score_recording(
     result: RunResult, gold: list[GoldItem], tolerance_s: float = LATENCY_TOLERANCE_S
 ) -> dict[str, Any]:
     matches, fps, fns = match_detections_to_gold(result.detections, gold, tolerance_s)
-    tp = len(matches)
+    credited, repeats, fps, fns = credit_repeats(matches, fps, fns, gold, tolerance_s)
+    tp = len(matches) + len(credited)
     prec = tp / (tp + len(fps)) if (tp + len(fps)) else 0.0
     rec = tp / (tp + len(fns)) if (tp + len(fns)) else 0.0
     f1 = 2 * prec * rec / (prec + rec) if (prec + rec) else 0.0
@@ -1295,28 +1390,46 @@ def score_recording(
                 "gold_t_s": g.t_start_s,
                 "detected_t_s": round(d.t_s, 2),
                 "latency_s": round(d.t_s - (g.t_start_s + g.t_end_s) / 2, 2),
-                "reference": f"{d.book} {d.chapter}:{d.verse_start}"
-                + (f"-{d.verse_end}" if d.verse_end else ""),
+                "reference": _ref_text(d),
                 "spoken_span_s": _span_json(d),
                 "confidence": d.confidence,
+                "inferred": d.inferred,
                 "from_text": d.from_text,
+                "repeat": repeat,  # gold repeat credited to its other citation's match
                 "utterance": d.utterance_text[:160],
             }
-            for d, g in matches
+            for d, g, repeat in [(d, g, False) for d, g in matches]
+            + [(d, g, True) for d, g in credited]
+        ],
+        "repeats": [
+            {
+                "t_s": round(d.t_s, 2),
+                "reference": _ref_text(d),
+                "spoken_span_s": _span_json(d),
+                "confidence": d.confidence,
+                "inferred": d.inferred,
+                "utterance": d.utterance_text[:160],
+            }
+            for d in repeats
         ],
         "false_positives": [
             {
                 "t_s": round(d.t_s, 2),
-                "reference": f"{d.book} {d.chapter}:{d.verse_start}",
+                "reference": _ref_text(d),
                 "spoken_span_s": _span_json(d),
                 "confidence": d.confidence,
+                "inferred": d.inferred,
                 "from_text": d.from_text,
                 "utterance": d.utterance_text[:160],
             }
             for d in fps
         ],
         "missed": [
-            {"t_start_s": g.t_start_s, "reference": f"{g.book} {g.chapter}:{g.verse_start}"}
+            {
+                "t_start_s": g.t_start_s,
+                "reference": f"{g.book} {g.chapter}:{g.verse_start}"
+                + (f"-{g.verse_end}" if g.verse_end else ""),
+            }
             for g in fns
         ],
         "vad_events": [],  # trimmed in JSON output to keep files small

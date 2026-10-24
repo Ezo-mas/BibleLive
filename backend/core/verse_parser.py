@@ -290,6 +290,14 @@ class Context:
 
     book: str | None = None
     chapter: int | None = None
+    # Last chapter cited per book, so naming a book again on its own
+    # ("Taigi, antra karalių ta istorija") returns the context to it.
+    chapters: dict[str, int] = field(default_factory=dict)
+    # Token index, in the scan in progress, where ``book`` was last named
+    # (a book-led reference or a bare name). A chapter word before it
+    # belongs to another book ("Patarlių 18 skyrius" before "Antra
+    # karalių"), so a bare verse never takes it.
+    book_at: int = 0
 
 
 # --------------------------------------------------------------------------
@@ -937,9 +945,12 @@ class ReferenceParser:
             # eilutė") beats a stale running chapter; without one the
             # running chapter applies. Either way the book comes from
             # context, so a bookless "5 skyrius 3 eilutė" out of nowhere
-            # stays silent.
+            # stays silent. Only a chapter word between where the book was
+            # named and this verse counts: one before belongs to another
+            # book, and one after to a later citation (a re-scanned carry
+            # verse must not take the next book's chapter).
             chapter = ctx.chapter
-            for j in range(len(toks)):
+            for j in range(ctx.book_at, i):
                 if (
                     toks[j] in self._chapter_words
                     and self._is_num(toks, j + 1)
@@ -985,6 +996,7 @@ class ReferenceParser:
     def _scan(self, toks: list[Token], ctx: Context) -> list[Reference]:
         refs: list[Reference] = []
         seen: dict[tuple[str, int, int | None, int | None], int] = {}
+        ctx.book_at = 0  # token indices are this scan's
 
         def accept(ref: Reference, start: int) -> None:
             ref.start = start
@@ -1008,7 +1020,10 @@ class ReferenceParser:
                 return
             seen[key] = ref.end
             refs.append(ref)
+            if not ref.inferred:
+                ctx.book_at = start
             ctx.book, ctx.chapter = ref.book, ref.chapter
+            ctx.chapters[ref.book] = ref.chapter
 
         i = 0
         while i < len(toks):
@@ -1034,6 +1049,16 @@ class ReferenceParser:
                     accept(ref, i)
                     i = ref.end
                 else:
+                    # Only a name of two or more tokens, where a numbered
+                    # book's prefix counts ("Antra karalių", "Mato
+                    # evangelija"): a one-token name is also a person or a
+                    # verb ("Dievas mato", "kaip Danielius"). Ordinary
+                    # two-token phrases still match ("du karaliai", "pagal
+                    # Joną") once that book has been cited.
+                    if not fuzzy and length >= 2 and canon in ctx.chapters:
+                        if canon != ctx.book:
+                            ctx.book, ctx.chapter = canon, ctx.chapters[canon]
+                        ctx.book_at = i  # also when re-scanned from the carry
                     i += length
                 continue
             ref = self._context_ref(toks, i, ctx)
@@ -1092,6 +1117,9 @@ class StreamingParser:
         # after the last reported reference start over. None disables.
         self.context_ttl_s = context_ttl_s
         self._ctx_t: float | None = None
+        # When each book was last reported: its remembered chapter
+        # (ctx.chapters) expires context_ttl_s after that, on its own clock.
+        self._book_t: dict[str, float] = {}
 
     def feed(self, segment: str, t_s: float | None = None) -> list[Reference]:
         # With a timestamp, expire a context older than the TTL before
@@ -1107,6 +1135,13 @@ class StreamingParser:
         ):
             released = self.flush()  # a held chapter belongs to the old passage
             self.reset()
+        if t_s is not None and self.context_ttl_s is not None:
+            # A book cited long ago, while other books kept the context
+            # alive, is not brought back by naming it again.
+            # Pruned before every scan: re-scanning the carry can put one back.
+            for book, cited_t in self._book_t.items():
+                if t_s - cited_t > self.context_ttl_s:
+                    self.ctx.chapters.pop(book, None)
         # Postprocess runs inside _prepare on the new segment only; carry was
         # already postprocessed when it arrived, so re-running it could
         # reshuffle already-ordered tokens.
@@ -1140,6 +1175,8 @@ class StreamingParser:
             # book/chapter; its age counts from here. Refs re-found inside
             # the carry-over were already reported and must not refresh it.
             self._ctx_t = t_s
+            for ref in fresh:
+                self._book_t[ref.book] = t_s
         if not self.hold_chapter_only:
             return released + fresh
         held_text = self._held_text
@@ -1214,6 +1251,7 @@ class StreamingParser:
         self.ctx = Context()
         self.carry = []
         self._ctx_t = None
+        self._book_t = {}
         self._held = []
         self._held_text = ""
 

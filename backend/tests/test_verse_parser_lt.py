@@ -137,6 +137,56 @@ class TestStreaming:
         got = [str(r) for r in sp.feed("16 eilutė")]
         assert got == ["John 3:16"], got
 
+    def test_book_named_again_restores_its_chapter(self):
+        # 10-11 service: 2 Kings 6 is read, Proverbs 18:20 is quoted, then
+        # "Taigi, Antra karalių ta istorija" returns to 2 Kings and the next
+        # verse is 6:30, not Proverbs 18:30.
+        sp = StreamingParser(language="lt")
+        sp.feed("Antra karalių šeštas skyrius dvidešimt ketvirta eilutė")
+        sp.feed("Patarlių aštuoniolikta, dvidešimta eilutė")
+        assert sp.feed("Taigi, Antra karalių ta istorija") == []
+        got = [str(r) for r in sp.feed("Ir toliau trisdešimta eilutė, karalius")]
+        assert got == ["2 Kings 6:30"], got
+
+    def test_book_named_again_ignores_the_other_books_chapter_word(self):
+        # The same, with "skyrius" in the Proverbs line: its 18 must not be
+        # taken as 2 Kings 18 (a valid verse, so the validator would pass it),
+        # and the chapter remembered for 2 Kings stays 6.
+        sp = StreamingParser(language="lt")
+        sp.feed("Antra karalių šeštas skyrius dvidešimt ketvirta eilutė")
+        sp.feed("Patarlių aštuonioliktas skyrius, dvidešimta eilutė")
+        sp.feed("Taigi, Antra karalių ta istorija")
+        got = [str(r) for r in sp.feed("Ir toliau trisdešimta eilutė")]
+        assert got == ["2 Kings 6:30"], got
+        assert sp.ctx.chapters["2 Kings"] == 6
+
+    def test_new_book_ignores_the_previous_books_chapter_word(self):
+        # "Romiečiams 8 skyrius" in the carry belongs to Romans, not John.
+        sp = StreamingParser(language="lt")
+        sp.feed("Romiečiams aštuntas skyrius 28 eilutė")
+        sp.feed("Jono trys šešiolika")
+        assert [str(r) for r in sp.feed("septinta eilutė")] == ["John 3:7"]
+
+    def test_remembered_chapter_expires_on_its_own_clock(self):
+        # Other books kept the context alive, but 2 Kings was last cited 800 s
+        # ago: naming it again no longer brings back chapter 6.
+        sp = StreamingParser(language="lt")
+        sp.feed("Antra karalių šeštas skyrius dvidešimt ketvirta eilutė", 0.0)
+        sp.feed("Patarlių aštuonioliktas skyrius, dvidešimta eilutė", 300.0)
+        sp.feed("Romiečiams aštuntas skyrius 28 eilutė", 700.0)
+        sp.feed("Taigi, Antra karalių ta istorija", 800.0)
+        assert sp.ctx.book == "Romans"
+        assert "2 Kings" not in sp.ctx.chapters
+
+    def test_one_word_book_name_keeps_context(self):
+        # "mato" is also "sees" and "Danielius" a person: a one-word name
+        # alone never moves the context back to an earlier book.
+        sp = StreamingParser(language="lt")
+        sp.feed("Mato šeštas skyrius trečia eilutė")
+        sp.feed("Filipiečiams keturi devyni")
+        sp.feed("Dievas mato, kaip Danielius")
+        assert [str(r) for r in sp.feed("septinta eilutė")] == ["Philippians 4:7"]
+
     def test_reset(self):
         sp = StreamingParser(language="lt")
         sp.feed("Romiečiams 8 skyrius")

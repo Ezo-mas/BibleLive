@@ -34,7 +34,7 @@ Prompt, hotwords, models and segmentation *settings* are in the cache key;
 
 ## 2. Inputs
 
-- **Corpus:** `benchmarks/corpus/lt-sermons.txt`, 14 services and 164 gold
+- **Corpus:** `benchmarks/corpus/lt-sermons.txt`, 14 services and 171 gold
   references. Each line is `<manifest> <record id> [START:END]`.
 - **The main checkout supplies the untracked inputs:** `bench_audio/` (the
   user's recordings, read-only), `bible_data/biblelive.sqlite` and
@@ -100,6 +100,9 @@ Report both runs:
 - The engine(s) and the commits measured.
 - Whether the runs were cached.
 - The real-time factor (rtf) for fresh runs only.
+
+When the corpus gains new recordings, also work through "Re-check on new
+recordings" in `benchmarks/BASELINE_NOTES.md`.
 
 Judge mainly by TP and **medium+high** FP. Medium and high references can be
 auto-approved onto the screen; low ones always wait for the operator, so a few

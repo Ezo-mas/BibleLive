@@ -8,6 +8,12 @@ corpus both models found the same reference in the same utterance 149 times
 out of 150, so agreement is judged per utterance, without holding references
 back for a later one.
 
+A verse with no book name ("trisdešimta eilutė"), resolved from the running
+book and chapter, is "low" from each parser. When both models resolve the same
+one it becomes "medium", unless either model's decode was shaky: on the
+benchmark corpus that made 33 more correct references auto-approvable for 1
+wrong one (BASELINE_NOTES.md, 2026-10-24).
+
 Agreement compares parsed references, never transcript text. One allowance:
 a range and its start verse agree ("Psalms 40:1-2" from one model, "Psalms
 40:1" from the other, which dropped the second number), and the range is
@@ -40,12 +46,17 @@ def _range_agrees(a: Reference, b: Reference) -> bool:
     )
 
 
-def merge_agreement(primary: list[Reference], alternate: list[Reference]) -> list[Reference]:
+def merge_agreement(
+    primary: list[Reference], alternate: list[Reference], promote_inferred: bool = False
+) -> list[Reference]:
     """One list of references from two models' parses of the same utterance.
 
     Each reference appears once, primary model's first. An agreed reference
     takes the higher of the two confidences (for a range against its start
-    verse, the range is kept); a single-model one becomes "low". The returned
+    verse, the range is kept); a single-model one becomes "low". With
+    ``promote_inferred``, a context-inferred verse both models inferred is at
+    least "medium": callers pass it only when neither model's decode was shaky
+    (``detection.unique_references`` marked those "low" on purpose). The returned
     objects are the parsers' own, updated in place.
     """
     primary_unique: dict[tuple, Reference] = {}
@@ -79,6 +90,10 @@ def merge_agreement(primary: list[Reference], alternate: list[Reference]) -> lis
         other = alternate_unique[match_key]
         kept = other if ref.verse_end is None and other.verse_end is not None else ref
         best = max(ref.confidence, other.confidence, key=lambda c: _RANK.get(c, 0))
+        if promote_inferred and best == "low" and ref.inferred and other.inferred:
+            # Both models resolved the same bare verse ("trisdešimta eilutė")
+            # against the running book and chapter.
+            best = "medium"
         kept.confidence = best
         merged.append(kept)
     for key in alternate_unique:

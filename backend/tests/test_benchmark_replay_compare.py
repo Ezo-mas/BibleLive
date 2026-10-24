@@ -48,7 +48,7 @@ class TestCompareRuns:
         _write(tmp_path / "review5span-old-b.json", {"b": _entry(2, 0, [])})
         _write(tmp_path / "review5span-new-a.json", {"a": _entry(2, 0, [], cached=True)})
         text = render({"old": load_run(tmp_path, "old"), "new": load_run(tmp_path, "new")})
-        assert "old: TP 3  FN 0  FP low 0  FP med+high 1  runtime 20s" in text
+        assert "old: TP 3  FN 0  FP low 0  FP med+high 1  repeats 0  runtime 20s" in text
         assert "MISSING 1 recording(s)" in text
         assert "1/1 replayed from cache, not a speed figure" in text
 

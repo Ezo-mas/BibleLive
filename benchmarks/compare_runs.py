@@ -33,6 +33,7 @@ class RecordingScore:
     rtf: float
     cached: bool
     failures: int
+    repeats: int = 0  # citations said again: correct, not FPs
 
 
 def score(per_recording: dict[str, Any]) -> RecordingScore:
@@ -47,6 +48,7 @@ def score(per_recording: dict[str, Any]) -> RecordingScore:
         rtf=per_recording["rtf"],
         cached=bool(per_recording.get("config", {}).get("transcripts_cached")),
         failures=len(per_recording.get("failures") or []),
+        repeats=len(per_recording.get("repeats") or []),
     )
 
 
@@ -95,7 +97,8 @@ def render(runs: dict[str, dict[str, RecordingScore]]) -> str:
         lines.append(
             f"{tag}: TP {sum(s.tp for s in scores)}  FN {sum(s.fn for s in scores)}"
             f"  FP low {sum(s.fp_low for s in scores)}"
-            f"  FP med+high {sum(s.fp_med_high for s in scores)}  {timing}"
+            f"  FP med+high {sum(s.fp_med_high for s in scores)}"
+            f"  repeats {sum(s.repeats for s in scores)}  {timing}"
             + (
                 f"  failures {sum(s.failures for s in scores)}"
                 if any(s.failures for s in scores)
