@@ -103,6 +103,12 @@ npm run typecheck     # tsc --noEmit
 npm run screenshots   # visual regression (needs the stack running)
 ```
 
+Tests drive the pages' WebSockets with the shared fakes in
+`frontend/src/test/operatorHarness.ts`: `createMockSocket(url?)`, then
+`push(socket, message)` and `lastSent(socket)` on the socket the test holds,
+and `jsonResponse(body, status)` for `fetch`. Each test file registers its own
+socket (one, or a list). `src/test/setup.ts` stubs `fetch` and cleans up.
+
 ## Caveats
 
 - **Skips are not passes.** Locally, tests skip when ffmpeg is not on
