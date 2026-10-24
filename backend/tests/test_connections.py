@@ -1,8 +1,8 @@
-"""Tests for ConnectionManager broadcast reliability (P1-2).
+"""Tests for ConnectionManager send reliability (P1-2).
 
-A stalled or half-open client must not block broadcasts to healthy clients, and
-a socket whose send fails must be pruned so future broadcasts and connection
-counts stay truthful.
+A stalled or half-open client must not block sends to healthy clients, and a
+socket whose send fails must be pruned so future sends and connection counts
+stay truthful.
 """
 
 import asyncio
@@ -78,8 +78,8 @@ def test_stalled_socket_times_out_and_is_pruned(monkeypatch):
     assert len(healthy.sent) == 1
 
 
-def test_pruned_socket_no_longer_blocks_later_broadcasts():
-    """After pruning, a subsequent broadcast only targets live sockets."""
+def test_pruned_socket_no_longer_blocks_later_sends():
+    """After pruning, a later send only targets live sockets."""
 
     async def scenario():
         dead = _FakeWebSocket(fail=True)
@@ -87,7 +87,7 @@ def test_pruned_socket_no_longer_blocks_later_broadcasts():
         cm = await _make_manager(dead, healthy)
 
         await cm.send_to_display({"type": "reference", "data": {}})
-        # Second broadcast must not invoke the dead socket again.
+        # The second send must not invoke the dead socket again.
         failed_again = await cm.send_to_display({"type": "clear", "data": {}})
         return cm, dead, healthy, failed_again
 
