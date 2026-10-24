@@ -8,6 +8,7 @@ import sys
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
+from typing import Any
 
 
 def _register_nvidia_dll_dirs() -> None:
@@ -224,6 +225,32 @@ def segment_low_confidence_reason(
     return None
 
 
+def whisper_decode_options(initial_prompt: str, hotwords: str, beam_size: int) -> dict[str, Any]:
+    """The ``WhisperModel.transcribe`` settings for one utterance, language aside.
+
+    The benchmark's windowed mode decodes with these too, so it measures what
+    live hears.
+    """
+    return {
+        "initial_prompt": initial_prompt,
+        # Only sent when set: faster-whisper releases before 1.0 reject the
+        # argument, and transcribe_utterance's broad except would then turn
+        # every utterance into "no transcript".
+        **({"hotwords": hotwords} if hotwords else {}),
+        "beam_size": beam_size,
+        "best_of": 5,
+        "temperature": 0.0,
+        "compression_ratio_threshold": COMPRESSION_RATIO_THRESHOLD,
+        "log_prob_threshold": LOG_PROB_THRESHOLD,
+        "no_speech_threshold": NO_SPEECH_THRESHOLD,
+        "condition_on_previous_text": False,
+        # Decoder-side loop guards (post-processing in _collapse_repetition is
+        # the backstop if these are ever hit).
+        "repetition_penalty": 1.05,
+        "no_repeat_ngram_size": 6,
+    }
+
+
 @dataclass(frozen=True)
 class Transcription:
     """One utterance's transcript and whether it can be trusted.
@@ -360,22 +387,7 @@ class SpeechToText:
             segments, info = self.model.transcribe(
                 audio_np,
                 language=state.language,
-                initial_prompt=state.initial_prompt,
-                # Only sent when set: faster-whisper releases before 1.0
-                # reject the argument, and the broad except below would then
-                # turn every utterance into "no transcript".
-                **({"hotwords": state.hotwords} if state.hotwords else {}),
-                beam_size=self.beam_size,
-                best_of=5,
-                temperature=0.0,
-                compression_ratio_threshold=COMPRESSION_RATIO_THRESHOLD,
-                log_prob_threshold=LOG_PROB_THRESHOLD,
-                no_speech_threshold=NO_SPEECH_THRESHOLD,
-                condition_on_previous_text=False,
-                # Decoder-side loop guards (post-processing in
-                # _collapse_repetition is the backstop if these are ever hit).
-                repetition_penalty=1.05,
-                no_repeat_ngram_size=6,
+                **whisper_decode_options(state.initial_prompt, state.hotwords, self.beam_size),
             )
 
             # Combine all segments, keeping the first quality problem seen

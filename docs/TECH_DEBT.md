@@ -166,6 +166,29 @@ below the fold.
   Extra data" was the only trace.
 - **Logged:** 2026-10-22
 
+### A direct benchmark run measured a 60 s parser context, live uses 600 s (resolved)
+- **Where:** `benchmarks/run_benchmark.py` (`--context-ttl-s`, and the defaults of
+  `run_single_recording`, `run_windowed_recording` and `feed_cache_key`) against
+  `backend/audio/detection.py` (`CONTEXT_TTL_S = 600.0`, what the live pipeline's
+  parsers get).
+- **Problem:** The benchmark is the acceptance gate for detection changes and builds
+  its parsers with the live code (`build_streaming_parser`), but the context expiry it
+  passed was its own CLI default of 60 s, not live's 600 s. Only callers that passed
+  `--context-ttl-s 600` (the detection-benchmark skill, `testing.md`) measured what
+  live does.
+- **Impact:** A run started without the flag (e.g. from `benchmarks/README.md`'s plain
+  examples) expired the book/chapter context ten times sooner than live, so it found
+  fewer context-inferred references, right and wrong, than a service would. Its
+  numbers did not compare with the skill's.
+- **Evidence:** Read 2026-10-24: `--context-ttl-s` defaulted to 60.0 (documented in
+  `benchmarks/README.md`); `StreamingParser`'s default and live's parsers use 600.
+  The TTL is part of the transcript cache key: the cache held 596 entries at 600 and
+  78 at 60, none of the 60 ones for a Kmynas engine.
+- **Logged:** 2026-10-24
+- **Resolved:** 2026-10-24 — every benchmark default is now `CONTEXT_TTL_S` (600). A run
+  without the flag measures live and replays the existing 600 s cache entries; the 78
+  old 60 s entries (Whisper-era) replay only with `--context-ttl-s 60`.
+
 ### WebSocket tests with two sockets open can hang forever (resolved)
 - **Where:** `backend/tests/conftest.py` (`client` fixture returns `TestClient(app)`
   without `with`); every test that holds a display and an operator socket at once

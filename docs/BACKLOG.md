@@ -144,6 +144,14 @@ Python 3.13 installer" above). Left:
   takes 0.5 s. Shortening them needs a production change (a constant tests can
   patch); worth ~2 s.
 
+### Switch the detection parity tests to the shared processor factory
+Size: small. `tests/test_detection_parity.py` (2026-10-24) builds its three
+processors with `BibleLiveAudioProcessor.__new__` and hand-set attributes, so the
+factory-drift test that guards `tests/processor_factory.py` does not cover them
+(a missing attribute still fails loudly, as an AttributeError). Switch them to
+`make_processor` once the factory's PR (#64) and this file's (#66) are both in
+`main`.
+
 ## Experiments
 
 ### Hybrid WebRTC + Silero VAD

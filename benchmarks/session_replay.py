@@ -31,6 +31,7 @@ from typing import Any
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT / "backend"))
 
+from audio.detection import flush_held, switch_language  # noqa: E402
 from audio.ensemble import merge_agreement  # noqa: E402
 from audio.metrics import PipelineMetrics  # noqa: E402
 from audio.pipeline import BibleLiveAudioProcessor  # noqa: E402
@@ -77,21 +78,11 @@ class Replayer:
         )
         return BibleLiveAudioProcessor._parse_transcription(self._stand_in, parser, result, t)
 
-    def _flush(self, language: str) -> list[Reference]:
-        primary = self._primary.get(language)
-        held = primary.flush() if primary is not None else []
-        alternate = self._alternate.get(language)
-        return held if alternate is None else merge_agreement(held, alternate.flush())
-
     def _switch(self, language: str) -> list[Reference]:
         """Flush held references and reset context when the language changes."""
         if language == self._last_language:
             return []
-        flushed = self._flush(self._last_language) if self._last_language is not None else []
-        flushed += self._flush(language)
-        for parser in (self._primary.get(language), self._alternate.get(language)):
-            if parser is not None:
-                parser.reset()
+        flushed = switch_language(self._primary, self._alternate, self._last_language, language)
         self._last_language = language
         return flushed
 
@@ -121,7 +112,9 @@ class Replayer:
 
     def finish(self) -> list[Reference]:
         """References still held at the end of the session."""
-        return self._flush(self._last_language) if self._last_language is not None else []
+        if self._last_language is None:
+            return []
+        return flush_held(self._primary, self._alternate, self._last_language)
 
 
 def replay(lines, replayer: Replayer, diff_only: bool = False) -> tuple[list[str], int, int]:
