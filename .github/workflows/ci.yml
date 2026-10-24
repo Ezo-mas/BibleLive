@@ -31,7 +31,7 @@ jobs:
         run: ruff format --check .
         
       - name: Type check with mypy
-        run: mypy backend/core backend/audio --install-types --non-interactive
+        run: mypy backend/core backend/audio backend/launcher benchmarks --install-types --non-interactive
 
   python-tests:
     name: Python Tests

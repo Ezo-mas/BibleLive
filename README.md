@@ -29,7 +29,8 @@ references before they go on screen.
 ## Requirements
 
 - Python 3.13 (the version the Windows installer bundles and CI tests)
-- Node.js 22, what CI uses (the dev tools need at least 20). Required to
+- Node.js 22.12 or later, what CI uses (vitest needs it; the production build
+  alone also runs on Node 20). Required to
   build the frontend into `static/frontend/`; that directory is generated and
   not committed, so it must be built once after cloning.
 - ffmpeg (required by the audio pipeline)
@@ -72,10 +73,6 @@ export LD_LIBRARY_PATH="$(python3 -c 'import os, nvidia.cublas.lib, nvidia.cudnn
 ```
 
 ```bash
-# Optional: plain requirements files instead of an install
-pip install -r backend/requirements.txt -c backend/constraints.txt
-pip install -r backend/requirements-audio.txt -c backend/constraints.txt
-
 # Required: build the frontend (once after cloning; also re-run after frontend changes)
 cd frontend && npm install && npm run build
 ```
@@ -444,7 +441,8 @@ The mode is server-side state, persisted to `BIBLELIVE_SETTINGS_PATH`
 (`data/server_settings.json`, written atomically). A persisted mode survives
 restarts and takes precedence over the `BIBLELIVE_AUTO_MODE` default, which only
 applies when nothing is persisted. Settings that are missing, malformed, or
-invalid log a warning and fall back to that default; an invalid
+invalid log a warning and fall back to that default (a damaged file is first
+copied beside it as `server_settings.damaged-<timestamp>.json`); an invalid
 `BIBLELIVE_AUTO_MODE` means `off`. The follow-along auto-show switch is saved in the
 same file.
 
@@ -479,7 +477,7 @@ options are audio-pipeline-side settings, passed as CLI flags on
 | --- | --- |
 | `make install` / `install-audio` / `install-dev` | Backend pip installs (core / +audio / +dev) |
 | `make test` / `test-integration` | pytest (`-m integration` for the subset) |
-| `make lint` / `format` / `typecheck` | ruff check / ruff format / mypy core+audio |
+| `make lint` / `format` / `typecheck` | ruff check / ruff format / mypy core+audio+launcher+benchmarks |
 | `make check` | lint + format-check + tests (backend one-route) |
 | `make dev` | uvicorn with reload on port 8000 |
 | `make frontend-install` / `frontend-dev` / `frontend-build` | npm install / dev server / production build |
@@ -520,8 +518,6 @@ BibleLive/                        # Monorepo root: tooling + shared assets
 │   │   └── config.py, metrics.py
 │   ├── tests/                    # Pytest suite
 │   ├── scripts/                  # Database conversion scripts
-│   ├── requirements.txt          # Core dependencies
-│   ├── requirements-audio.txt    # Audio pipeline dependencies
 │   └── pyproject.toml            # Installable package metadata
 ├── frontend/                     # Vite + React + TypeScript frontend
 │   ├── src/display/              # Audience screen
@@ -542,7 +538,7 @@ This is a two-part monorepo:
 
 | Directory   | Contents                                                        |
 |-------------|-----------------------------------------------------------------|
-| `backend/`  | Python server, audio pipeline, tests, scripts, requirements      |
+| `backend/`  | Python server, audio pipeline, tests, scripts                    |
 | `frontend/` | React + TypeScript UI (Vite), built into `static/frontend/`     |
 
 The root `pyproject.toml` only holds tool configuration (ruff, pytest, mypy);

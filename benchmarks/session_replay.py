@@ -35,6 +35,7 @@ from audio.detection import flush_held, switch_language  # noqa: E402
 from audio.ensemble import merge_agreement  # noqa: E402
 from audio.metrics import PipelineMetrics  # noqa: E402
 from audio.pipeline import BibleLiveAudioProcessor  # noqa: E402
+from audio.stt import Transcription  # noqa: E402
 from core.bible_lookup import BibleLookup  # noqa: E402
 from core.verse_parser import Reference, StreamingParser  # noqa: E402
 from core.verse_text import VerseTextIndex  # noqa: E402
@@ -62,7 +63,7 @@ class Replayer:
         self._last_language: str | None = None
         self._last_t: float | None = None
         # _parse_transcription only touches self.metrics.
-        self._stand_in = SimpleNamespace(metrics=PipelineMetrics())
+        self._stand_in: Any = SimpleNamespace(metrics=PipelineMetrics())
 
     def _parser(self, parsers: dict[str, StreamingParser], language: str, source: str):
         if language not in parsers:
@@ -72,8 +73,9 @@ class Replayer:
         return parsers[language]
 
     def _parse(self, parser: StreamingParser, transcript: dict[str, Any], t: float | None):
-        result = SimpleNamespace(
+        result = Transcription(
             text=transcript.get("text"),
+            duration_ms=0.0,  # not read by the parse
             low_confidence_reason=transcript.get("low_confidence_reason"),
         )
         return BibleLiveAudioProcessor._parse_transcription(self._stand_in, parser, result, t)
