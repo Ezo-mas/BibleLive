@@ -444,7 +444,8 @@ The mode is server-side state, persisted to `BIBLELIVE_SETTINGS_PATH`
 (`data/server_settings.json`, written atomically). A persisted mode survives
 restarts and takes precedence over the `BIBLELIVE_AUTO_MODE` default, which only
 applies when nothing is persisted. Settings that are missing, malformed, or
-invalid log a warning and fall back to that default; an invalid
+invalid log a warning and fall back to that default (a damaged file is first
+copied beside it as `server_settings.damaged-<timestamp>.json`); an invalid
 `BIBLELIVE_AUTO_MODE` means `off`. The follow-along auto-show switch is saved in the
 same file.
 
