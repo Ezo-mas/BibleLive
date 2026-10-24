@@ -166,6 +166,27 @@ below the fold.
   Extra data" was the only trace.
 - **Logged:** 2026-10-22
 
+### A direct benchmark run measures a 60 s parser context, live uses 600 s
+- **Where:** `benchmarks/run_benchmark.py` (`--context-ttl-s`, default 60.0, and the
+  60.0 defaults of `run_single_recording`, `run_windowed_recording` and
+  `feed_cache_key`) against `backend/audio/detection.py` (`CONTEXT_TTL_S = 600.0`, what the live
+  pipeline's parsers get).
+- **Problem:** The benchmark is the acceptance gate for detection changes and now
+  builds its parsers with the live code (`build_streaming_parser`), but the context
+  expiry it passes is its own CLI default, not live's. Only callers that pass
+  `--context-ttl-s 600` (the detection-benchmark skill, `testing.md`) measure what
+  live does.
+- **Impact:** A run started from `benchmarks/README.md`'s plain examples, or by hand,
+  expires the book/chapter context ten times sooner than live. A detection change can
+  then look better or worse than it is on real services, and its numbers don't
+  compare with the skill's. Changing the default changes the cache key, so every
+  existing default-flag result stops replaying from cache.
+- **Evidence:** Read 2026-10-24: `--context-ttl-s` defaults to 60.0 and
+  `benchmarks/README.md` documents it; `StreamingParser`'s default and live's
+  parsers use 600. `tests/test_detection_parity.py` compares the two sides only at
+  600.
+- **Logged:** 2026-10-24
+
 ### WebSocket tests with two sockets open can hang forever (resolved)
 - **Where:** `backend/tests/conftest.py` (`client` fixture returns `TestClient(app)`
   without `with`); every test that holds a display and an operator socket at once

@@ -144,6 +144,41 @@ Python 3.13 installer" above). Left:
   takes 0.5 s. Shortening them needs a production change (a constant tests can
   patch); worth ~2 s.
 
+### Follow-ups from the 2026-10-24 simplification refactor
+Size: small each. Found while doing the audit's "Now" items (F1, F2 step 1,
+F5, F7, F8, dead code); none blocks them.
+
+- **Windows smoke test after the `audio/__init__.py` change.** The package no
+  longer imports `audio.stt` on every `audio.*` import, so `stt.py`'s
+  `_register_nvidia_dll_dirs()` now runs only when `stt`, `stt_gguf`,
+  `pipeline` or `cli` is imported. Every CUDA path does that first, and the
+  launcher's audio child registers its own; the one difference is that a
+  launcher that only lists microphones (`audio.capture`) no longer adds the
+  NVIDIA folders to its own `PATH`. Check on Windows: the microphone list, a
+  `launcher --dry-run`, and a GPU service start.
+- **Frontend dev dependencies have audit warnings.** `npm audit` reports 7
+  (4 critical, in `tinypool` via vitest; `esbuild` via vite is moderate).
+  `npm audit --omit=dev` reports none, so the shipped bundle is unaffected.
+  The fix is a vitest/vite major upgrade (`npm audit fix --force`), which needs
+  its own run of the frontend suite.
+- **Two test helpers named `make_processor`.** `tests/processor_factory.py`
+  (the shared factory) and `tests/test_live_path.py` (its own, with different
+  arguments). No file imports both today; rename the live-path one before one
+  does. The shared factory's default `bible_db_path` is relative to the working
+  directory, so a test that forgets to set it and builds parsers opens the
+  developer's real database (read-only).
+- **`tests/test_detection_parity.py` builds processors with `__new__`.** Switch
+  it to `make_processor` once both branches are in.
+- **`frontend/tsconfig.json` excludes `src/test`.** The new
+  `src/test/operatorHarness.ts` is type-checked only through the test files
+  that import it.
+- **Naming drift:** the `tests/test_connections.py` docstring still says
+  "broadcast reliability" (the method is gone); the `audio/__init__.py` module
+  map omits the newer modules (segmenter, partials, stt_gguf, ensemble,
+  spelling_maps, session_log, detection); `_make_parser(language, validator,
+  verse_text, source)` and `build_streaming_parser(language, source,
+  validator, verse_text)` take their arguments in different orders.
+
 ## Experiments
 
 ### Hybrid WebRTC + Silero VAD
