@@ -52,6 +52,7 @@ from audio.capture import AudioCapture  # noqa: E402  (frame sizing reference)
 from audio.cli import add_tuning_arguments, apply_tuning_arguments  # noqa: E402
 from audio.config import AudioPipelineConfig  # noqa: E402
 from audio.detection import (  # noqa: E402
+    CONTEXT_TTL_S,
     build_streaming_parser,
     parser_sources,
     unique_references,
@@ -427,7 +428,7 @@ def feed_cache_key(
     hop_s: float | None = None,
     skip_silent: bool = False,
     silence_rms: float | None = None,
-    context_ttl_s: float | None = 60.0,
+    context_ttl_s: float | None = CONTEXT_TTL_S,
     t_range: tuple[float, float] | None = None,
     segmentation: dict[str, int] | None = None,
     stt: dict[str, Any] | None = None,
@@ -765,7 +766,7 @@ def run_single_recording(
     mode: str,
     config: AudioPipelineConfig,
     tmp_dir: Path,
-    context_ttl_s: float | None = 60.0,
+    context_ttl_s: float | None = CONTEXT_TTL_S,
     use_cache: bool = True,
     cache_dir: Path | None = None,
     t_range: tuple[float, float] | None = None,
@@ -1063,7 +1064,7 @@ def run_windowed_recording(
     hop_s: float,
     skip_silent: bool,
     silence_rms: float,
-    context_ttl_s: float | None = 60.0,
+    context_ttl_s: float | None = CONTEXT_TTL_S,
     use_cache: bool = True,
     cache_dir: Path | None = None,
     t_range: tuple[float, float] | None = None,
@@ -1383,8 +1384,8 @@ def main() -> int:
     ap.add_argument(
         "--context-ttl-s",
         type=float,
-        default=60.0,
-        help="max age (s) of the parser book/chapter context; <=0 disables expiry",
+        default=CONTEXT_TTL_S,
+        help="max age (s) of the parser book/chapter context (default: live's); <=0 disables expiry",
     )
     ap.add_argument(
         "--no-cache",
