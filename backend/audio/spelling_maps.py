@@ -24,6 +24,7 @@ KMYNAS_RULES: list[tuple[str, str]] = [
     (r"\b[aA]?[fF]iziečiams\b", "efeziečiams"),
     (r"\b[gG]avatams\b", "galatams"),
     (r"\b[eE]utį\b", "eilutį"),
+    (r"\b[iI]evut(ė|ę|ėje|ės)\b", r"eilut\1"),  # septinta Ievutė
 ]
 
 CANARY_RULES: list[tuple[str, str]] = [
