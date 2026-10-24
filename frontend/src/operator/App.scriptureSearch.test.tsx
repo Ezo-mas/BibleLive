@@ -1,54 +1,20 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import App from './App'
-import type { BibleReference, OperatorMessage } from '../shared/types'
-
-/** The subset of WebSocket the operator app uses. */
-interface MockSocket {
-  onopen: (() => void) | null
-  onmessage: ((event: { data: string }) => void) | null
-  onclose: ((event: { code: number }) => void) | null
-  onerror: ((event: unknown) => void) | null
-  readyState: number
-  send: ReturnType<typeof vi.fn>
-  close: () => void
-}
+import type { BibleReference } from '../shared/types'
+import { createMockSocket, jsonResponse, lastSent, push } from '../test/operatorHarness'
+import type { MockSocket } from '../test/operatorHarness'
 
 let socket: MockSocket | null = null
-
-function createMockSocket(): MockSocket {
-  const instance: MockSocket = {
-    onopen: null,
-    onmessage: null,
-    onclose: null,
-    onerror: null,
-    readyState: 1,
-    send: vi.fn(),
-    close: vi.fn(),
-  }
-  socket = instance
-  return instance
-}
 
 /** Constructor stub; `OPEN` is what the shared hook compares readyState to. */
 const MockWebSocket = Object.assign(
   function MockWebSocketStub() {
-    return createMockSocket()
+    socket = createMockSocket()
+    return socket
   },
   { OPEN: 1, CLOSING: 2, CLOSED: 3 }
 )
-
-function push(message: OperatorMessage) {
-  act(() => {
-    socket?.onmessage?.({ data: JSON.stringify(message) })
-  })
-}
-
-/** The last action sent to the server, parsed. */
-function lastSent() {
-  const calls = socket?.send.mock.calls ?? []
-  return calls.length ? JSON.parse(calls[calls.length - 1][0]) : null
-}
 
 /** Operator actions sent after the authenticate first-message (empty: no token). */
 function sentActions() {
@@ -138,15 +104,6 @@ const BOOKS = {
   ],
 }
 
-/** The parts of a Response the API client reads. */
-function jsonResponse(body: unknown, status = 200): Response {
-  return {
-    ok: status >= 200 && status < 300,
-    status,
-    json: async () => body,
-  } as unknown as Response
-}
-
 /**
  * The mocked fetch: routes the two endpoints the search panel calls, and answers
  * the console's own spoken-language read the way the server would, and its
@@ -217,7 +174,7 @@ function openWith(
   act(() => {
     socket?.onopen?.()
   })
-  push({
+  push(socket, {
     type: 'state_snapshot',
     data: {
       current_display: currentDisplay,
@@ -648,7 +605,7 @@ describe('Find Scripture', () => {
 
     showNext()
 
-    expect(lastSent()).toEqual({
+    expect(lastSent(socket)).toEqual({
       action: 'display_reference',
       book: 'John',
       chapter: 3,
@@ -661,7 +618,10 @@ describe('Find Scripture', () => {
     ).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Show on display' })).toBeDisabled()
 
-    push({ type: 'display_confirmed', data: { reference: manualReference('John', 3, 16, 17) } })
+    push(socket, {
+      type: 'display_confirmed',
+      data: { reference: manualReference('John', 3, 16, 17) },
+    })
 
     expect(
       within(screen.getByTestId('live-verses')).getByText('John 3:16 text')
@@ -683,7 +643,7 @@ describe('Find Scripture', () => {
     await waitFor(() => expect(screen.getByTestId('next-preview')).toBeInTheDocument())
 
     showNext()
-    push({
+    push(socket, {
       type: 'error',
       data: { action: 'display_reference', message: 'Genesis 1:60 is not in the Bible text' },
     })
@@ -721,7 +681,7 @@ describe('Find Scripture', () => {
 
     // Show now means the ordinary approval, by ID.
     showNext()
-    expect(lastSent()).toEqual({ action: 'approve', reference_id: 'p-1' })
+    expect(lastSent(socket)).toEqual({ action: 'approve', reference_id: 'p-1' })
   })
 
   it('offers a retry when the book list cannot be loaded', async () => {
@@ -768,7 +728,7 @@ describe('Find Scripture', () => {
     act(() => {
       socket?.onopen?.()
     })
-    push({
+    push(socket, {
       type: 'state_snapshot',
       data: {
         current_display: null,
@@ -809,7 +769,7 @@ describe('Enter direct display', () => {
     // One request with the parsed coordinates — the same action Show sends —
     // and no lookup, no staging, nothing else.
     expect(sentActions()).toHaveLength(1)
-    expect(lastSent()).toEqual({
+    expect(lastSent(socket)).toEqual({
       action: 'display_reference',
       book: 'John',
       chapter: 3,
@@ -834,7 +794,10 @@ describe('Enter direct display', () => {
     )
 
     pressEnter()
-    push({ type: 'display_confirmed', data: { reference: manualReference('John', 3, 16, 17) } })
+    push(socket, {
+      type: 'display_confirmed',
+      data: { reference: manualReference('John', 3, 16, 17) },
+    })
 
     expect(
       within(screen.getByTestId('live-verses')).getByText('John 3:16 text')
@@ -879,7 +842,7 @@ describe('Enter direct display', () => {
     pressEnter()
 
     expect(sentActions()).toHaveLength(1)
-    expect(lastSent()).toMatchObject({
+    expect(lastSent(socket)).toMatchObject({
       action: 'display_reference',
       book: 'Romans',
       chapter: 8,
@@ -900,7 +863,7 @@ describe('Enter direct display', () => {
     pressEnter()
 
     expect(sentActions()).toHaveLength(1)
-    expect(lastSent()).toMatchObject({
+    expect(lastSent(socket)).toMatchObject({
       action: 'display_reference',
       book: 'John',
       chapter: 3,

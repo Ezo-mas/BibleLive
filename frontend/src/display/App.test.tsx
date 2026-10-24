@@ -3,41 +3,11 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import App from './App'
 import { DISPLAY_THEME_STORAGE_KEY } from '../shared/verseText'
 import type { DisplayMessage } from '../shared/types'
-
-/** The subset of WebSocket the display app uses. */
-interface MockSocket {
-  onopen: (() => void) | null
-  onmessage: ((event: { data: string }) => void) | null
-  onclose: ((event: { code: number }) => void) | null
-  onerror: ((event: unknown) => void) | null
-  readyState: number
-  send: (data: string) => void
-  close: () => void
-}
+import { createMockSocket, push } from '../test/operatorHarness'
+import type { MockSocket } from '../test/operatorHarness'
 
 /** Captured socket instance so tests can push server messages. */
 let socket: MockSocket | null = null
-
-function createMockSocket(): MockSocket {
-  const instance: MockSocket = {
-    onopen: null,
-    onmessage: null,
-    onclose: null,
-    onerror: null,
-    readyState: 1,
-    send: vi.fn(),
-    close: vi.fn(),
-  }
-  socket = instance
-  return instance
-}
-
-/** Deliver a server message to the display app. */
-function push(message: DisplayMessage) {
-  act(() => {
-    socket?.onmessage?.({ data: JSON.stringify(message) })
-  })
-}
 
 function reference() {
   return {
@@ -65,7 +35,8 @@ beforeEach(() => {
   // A constructor returning an object replaces `this`, so the test can drive the
   // instance the app actually holds.
   vi.stubGlobal('WebSocket', function MockWebSocket() {
-    return createMockSocket()
+    socket = createMockSocket()
+    return socket
   })
 
   // jsdom has no ResizeObserver; the fit effect only needs it to exist.
@@ -93,7 +64,7 @@ describe('display theme', () => {
   it('applies the theme pushed by the server', async () => {
     render(<App />)
 
-    push({ type: 'display_settings', data: { verse_limit: 3, theme: 'light' } })
+    push(socket, { type: 'display_settings', data: { verse_limit: 3, theme: 'light' } })
 
     await waitFor(() => expect(document.documentElement.getAttribute('data-theme')).toBe('light'))
     expect(window.localStorage.getItem(DISPLAY_THEME_STORAGE_KEY)).toBe('light')
@@ -102,7 +73,7 @@ describe('display theme', () => {
   it('falls back to dark when the server sends an unknown theme', async () => {
     render(<App />)
 
-    push({
+    push(socket, {
       type: 'display_settings',
       data: { verse_limit: 3, theme: 'sepia' as never },
     })
@@ -133,7 +104,7 @@ describe('display verses', () => {
       socket?.onopen?.()
     })
 
-    push({ type: 'reference', data: reference() })
+    push(socket, { type: 'reference', data: reference() })
 
     await waitFor(() => {
       const block = screen.getByTestId('display-verses')
@@ -149,7 +120,7 @@ describe('display verses', () => {
       socket?.onopen?.()
     })
 
-    push({ type: 'reference', data: { ...reference(), book_label: 'Jono evangelija' } })
+    push(socket, { type: 'reference', data: { ...reference(), book_label: 'Jono evangelija' } })
 
     await waitFor(() => expect(screen.getByText('Jono evangelija 1:1-3')).toBeInTheDocument())
     expect(screen.queryByText('John 1:1-3')).not.toBeInTheDocument()
@@ -161,7 +132,7 @@ describe('display verses', () => {
  * tests can also push malformed ones, which the typed `idle_image` field would reject.
  */
 function pushIdlePicture(picture: unknown) {
-  push({
+  push(socket, {
     type: 'display_settings',
     data: { verse_limit: 3, theme: 'dark', idle_image: picture },
   } as unknown as DisplayMessage)
@@ -186,10 +157,10 @@ describe('idle display', () => {
     act(() => {
       socket?.onopen?.()
     })
-    push({ type: 'reference', data: reference() })
+    push(socket, { type: 'reference', data: reference() })
     await waitFor(() => expect(screen.getByText('John 1:1-3')).toBeInTheDocument())
 
-    push({ type: 'clear', data: {} })
+    push(socket, { type: 'clear', data: {} })
 
     await waitFor(() => expect(screen.queryByText('John 1:1-3')).not.toBeInTheDocument())
     expect(container.textContent).toBe('')
@@ -249,11 +220,11 @@ describe('idle display', () => {
     pushIdlePicture(PICTURE)
     expect(screen.getByTestId('display-idle-image')).toBeInTheDocument()
 
-    push({ type: 'reference', data: reference() })
+    push(socket, { type: 'reference', data: reference() })
     await waitFor(() => expect(screen.getByText('John 1:1-3')).toBeInTheDocument())
     expect(screen.queryByTestId('display-idle-image')).not.toBeInTheDocument()
 
-    push({ type: 'clear', data: {} })
+    push(socket, { type: 'clear', data: {} })
     await waitFor(() => expect(screen.getByTestId('display-idle-image')).toBeInTheDocument())
   })
 
@@ -262,13 +233,13 @@ describe('idle display', () => {
     act(() => {
       socket?.onopen?.()
     })
-    push({ type: 'reference', data: reference() })
+    push(socket, { type: 'reference', data: reference() })
     await waitFor(() => expect(screen.getByText('John 1:1-3')).toBeInTheDocument())
 
     pushIdlePicture(PICTURE)
     expect(screen.queryByTestId('display-idle-image')).not.toBeInTheDocument()
 
-    push({ type: 'clear', data: {} })
+    push(socket, { type: 'clear', data: {} })
     await waitFor(() => expect(screen.getByTestId('display-idle-image')).toBeInTheDocument())
   })
 
@@ -287,7 +258,7 @@ describe('idle display', () => {
       socket?.onopen?.()
     })
 
-    push({ type: 'display_settings', data: { verse_limit: 3, theme: 'light' } })
+    push(socket, { type: 'display_settings', data: { verse_limit: 3, theme: 'light' } })
 
     expect(container.querySelector('img')).toBeNull()
     expect(container.textContent).toBe('')

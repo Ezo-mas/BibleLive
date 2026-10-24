@@ -2,33 +2,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import App from './App'
 import type { BibleReference, OperatorMessage } from '../shared/types'
-
-/** The subset of WebSocket the operator app uses. */
-interface MockSocket {
-  onopen: (() => void) | null
-  onmessage: ((event: { data: string }) => void) | null
-  onclose: ((event: { code: number }) => void) | null
-  onerror: ((event: unknown) => void) | null
-  readyState: number
-  send: ReturnType<typeof vi.fn>
-  close: () => void
-}
+import { createMockSocket, lastSent, push } from '../test/operatorHarness'
+import type { MockSocket } from '../test/operatorHarness'
 
 let socket: MockSocket | null = null
-
-function createMockSocket(): MockSocket {
-  const instance: MockSocket = {
-    onopen: null,
-    onmessage: null,
-    onclose: null,
-    onerror: null,
-    readyState: 1,
-    send: vi.fn(),
-    close: vi.fn(),
-  }
-  socket = instance
-  return instance
-}
 
 /**
  * Constructor stub for `WebSocket`. `OPEN` matters: the shared hook only sends
@@ -37,16 +14,11 @@ function createMockSocket(): MockSocket {
  */
 const MockWebSocket = Object.assign(
   function MockWebSocketStub() {
-    return createMockSocket()
+    socket = createMockSocket()
+    return socket
   },
   { OPEN: 1, CLOSING: 2, CLOSED: 3 }
 )
-
-function push(message: OperatorMessage) {
-  act(() => {
-    socket?.onmessage?.({ data: JSON.stringify(message) })
-  })
-}
 
 function reference(
   id: string,
@@ -81,7 +53,7 @@ function openWith(overrides: Partial<OperatorMessage & { type: 'state_snapshot' 
   act(() => {
     socket?.onopen?.()
   })
-  push({
+  push(socket, {
     type: 'state_snapshot',
     data: {
       current_display: null,
@@ -116,12 +88,6 @@ function openSettings() {
   act(() => {
     screen.getByRole('button', { name: 'Settings' }).click()
   })
-}
-
-/** The last action sent to the server, parsed. */
-function lastSent() {
-  const calls = socket?.send.mock.calls ?? []
-  return calls.length ? JSON.parse(calls[calls.length - 1][0]) : null
 }
 
 /** Operator actions sent after the authenticate first-message (empty: no token). */
@@ -164,14 +130,14 @@ describe('pending selection and approval', () => {
     expect(approveButton()).toBeEnabled()
 
     press('Enter')
-    expect(lastSent()).toEqual({ action: 'approve', reference_id: 'p-2' })
+    expect(lastSent(socket)).toEqual({ action: 'approve', reference_id: 'p-2' })
   })
 
   it('selects the first item when arrowing up or down from no selection', () => {
     openWith()
     press('ArrowUp')
     press('Enter')
-    expect(lastSent()).toEqual({ action: 'approve', reference_id: 'p-1' })
+    expect(lastSent(socket)).toEqual({ action: 'approve', reference_id: 'p-1' })
   })
 
   it('deselects on Escape and stops approving', () => {
@@ -195,7 +161,7 @@ describe('pending selection and approval', () => {
     expect(card).toHaveAttribute('aria-pressed', 'true')
 
     press('Enter')
-    expect(lastSent()).toEqual({ action: 'approve', reference_id: 'p-2' })
+    expect(lastSent(socket)).toEqual({ action: 'approve', reference_id: 'p-2' })
   })
 
   it('keeps the staged selection when a queue update still holds it', () => {
@@ -206,13 +172,13 @@ describe('pending selection and approval', () => {
     // A detection arriving mid-decision must not snatch the staged reference
     // away. Approval goes by ID, so keeping it cannot show the wrong passage.
     const grown = [...pending, reference('p-4', 'Acts', 2, 1)]
-    push({ type: 'pending_update', data: { pending: grown, count: grown.length } })
+    push(socket, { type: 'pending_update', data: { pending: grown, count: grown.length } })
 
     expect(approveButton()).toBeEnabled()
     expect(screen.getByTestId('next-preview')).toHaveTextContent('John 1:1')
 
     press('Enter')
-    expect(lastSent()).toEqual({ action: 'approve', reference_id: 'p-1' })
+    expect(lastSent(socket)).toEqual({ action: 'approve', reference_id: 'p-1' })
   })
 
   it('drops the selection when the queue update no longer holds it', () => {
@@ -220,7 +186,10 @@ describe('pending selection and approval', () => {
     press('ArrowDown')
     expect(approveButton()).toBeEnabled()
 
-    push({ type: 'pending_update', data: { pending: [reference('p-9', 'Acts', 2, 1)], count: 1 } })
+    push(socket, {
+      type: 'pending_update',
+      data: { pending: [reference('p-9', 'Acts', 2, 1)], count: 1 },
+    })
     expect(approveButton()).toBeDisabled()
   })
 
@@ -228,7 +197,7 @@ describe('pending selection and approval', () => {
     openWith()
     press('ArrowDown')
     press('ArrowDown')
-    push({
+    push(socket, {
       type: 'pending_update',
       data: { pending: [reference('p-9', 'Acts', 2, 1)], count: 1 },
     })
@@ -247,7 +216,7 @@ describe('pending row buttons', () => {
       within(row).getByRole('button', { name: 'Show' }).click()
     })
 
-    expect(lastSent()).toEqual({ action: 'approve', reference_id: 'p-2' })
+    expect(lastSent(socket)).toEqual({ action: 'approve', reference_id: 'p-2' })
   })
 
   it('Stage puts that detection in Up Next and sends nothing', () => {
@@ -285,7 +254,7 @@ describe('controls under the display preview', () => {
       group.getByRole('button', { name: '10' }).click()
     })
 
-    expect(lastSent()).toEqual({ action: 'set_verse_limit', verse_limit: 10 })
+    expect(lastSent(socket)).toEqual({ action: 'set_verse_limit', verse_limit: 10 })
     expect(group.getByRole('button', { name: '10' })).toHaveAttribute('aria-pressed', 'true')
   })
 
@@ -333,7 +302,7 @@ describe('keyboard shortcuts while Settings is open', () => {
       within(screen.getByRole('dialog')).getByRole('button', { name: 'Close settings' }).click()
     })
     press('Enter')
-    expect(lastSent()).toEqual({ action: 'approve', reference_id: 'p-1' })
+    expect(lastSent(socket)).toEqual({ action: 'approve', reference_id: 'p-1' })
   })
 })
 
@@ -343,15 +312,18 @@ describe('clear actions', () => {
     const clearDisplay = screen.getByRole('button', { name: /clear display/i })
     expect(clearDisplay).toBeDisabled()
 
-    push({ type: 'approval_confirmed', data: { reference: reference('p-1', 'John', 1, 1) } })
+    push(socket, {
+      type: 'approval_confirmed',
+      data: { reference: reference('p-1', 'John', 1, 1) },
+    })
     expect(clearDisplay).toBeEnabled()
 
     act(() => {
       clearDisplay.click()
     })
-    expect(lastSent()).toEqual({ action: 'clear' })
+    expect(lastSent(socket)).toEqual({ action: 'clear' })
 
-    push({ type: 'clear_confirmed', data: {} })
+    push(socket, { type: 'clear_confirmed', data: {} })
     expect(clearDisplay).toBeDisabled()
   })
 
@@ -370,7 +342,7 @@ describe('clear actions', () => {
     act(() => {
       clearQueue.click()
     })
-    expect(lastSent()).toEqual({ action: 'clear_pending' })
+    expect(lastSent(socket)).toEqual({ action: 'clear_pending' })
   })
 })
 
@@ -391,14 +363,17 @@ describe('B clears the display', () => {
 
   function openShowing() {
     openWith()
-    push({ type: 'approval_confirmed', data: { reference: reference('p-1', 'John', 1, 1) } })
+    push(socket, {
+      type: 'approval_confirmed',
+      data: { reference: reference('p-1', 'John', 1, 1) },
+    })
   }
 
   it('clears what is on the display, with or without Shift or Caps Lock', () => {
     openShowing()
 
     const event = pressB()
-    expect(lastSent()).toEqual({ action: 'clear' })
+    expect(lastSent(socket)).toEqual({ action: 'clear' })
     expect(event.defaultPrevented).toBe(true)
 
     pressB(window, { key: 'B', shiftKey: true })
@@ -412,7 +387,7 @@ describe('B clears the display', () => {
 
     pressB(button)
 
-    expect(lastSent()).toEqual({ action: 'clear' })
+    expect(lastSent(socket)).toEqual({ action: 'clear' })
   })
 
   it('does nothing when nothing is on the display', () => {
@@ -458,14 +433,14 @@ describe('display settings', () => {
     act(() => {
       five.click()
     })
-    expect(lastSent()).toEqual({ action: 'set_verse_limit', verse_limit: 5 })
+    expect(lastSent(socket)).toEqual({ action: 'set_verse_limit', verse_limit: 5 })
     await waitFor(() => expect(five).toHaveAttribute('aria-pressed', 'true'))
 
     const light = dialog.getByRole('button', { name: 'Light' })
     act(() => {
       light.click()
     })
-    expect(lastSent()).toEqual({ action: 'set_display_theme', theme: 'light' })
+    expect(lastSent(socket)).toEqual({ action: 'set_display_theme', theme: 'light' })
     await waitFor(() => expect(light).toHaveAttribute('aria-pressed', 'true'))
   })
 

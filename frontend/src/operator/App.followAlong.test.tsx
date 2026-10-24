@@ -2,46 +2,18 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, render, screen, waitFor, within } from '@testing-library/react'
 import App from './App'
 import type { BibleReference, FollowAlongHint, OperatorMessage } from '../shared/types'
-
-/** The subset of WebSocket the operator app uses. */
-interface MockSocket {
-  onopen: (() => void) | null
-  onmessage: ((event: { data: string }) => void) | null
-  onclose: ((event: { code: number }) => void) | null
-  onerror: ((event: unknown) => void) | null
-  readyState: number
-  send: ReturnType<typeof vi.fn>
-  close: () => void
-}
+import { createMockSocket, push } from '../test/operatorHarness'
+import type { MockSocket } from '../test/operatorHarness'
 
 let socket: MockSocket | null = null
 
-function createMockSocket(): MockSocket {
-  const instance: MockSocket = {
-    onopen: null,
-    onmessage: null,
-    onclose: null,
-    onerror: null,
-    readyState: 1,
-    send: vi.fn(),
-    close: vi.fn(),
-  }
-  socket = instance
-  return instance
-}
-
 const MockWebSocket = Object.assign(
   function MockWebSocketStub() {
-    return createMockSocket()
+    socket = createMockSocket()
+    return socket
   },
   { OPEN: 1, CLOSING: 2, CLOSED: 3 }
 )
-
-function push(message: OperatorMessage) {
-  act(() => {
-    socket?.onmessage?.({ data: JSON.stringify(message) })
-  })
-}
 
 function reference(id: string, verses: number[]): BibleReference {
   return {
@@ -80,7 +52,7 @@ function openWith(currentDisplay: BibleReference | null) {
   act(() => {
     socket?.onopen?.()
   })
-  push({
+  push(socket, {
     type: 'state_snapshot',
     data: {
       current_display: currentDisplay,
@@ -134,7 +106,7 @@ describe('follow-along hint', () => {
 
   it('renders the hint for the passage on screen', () => {
     openWith(onScreen)
-    push(hintFor('d-1'))
+    push(socket, hintFor('d-1'))
 
     expect(hintRegion()).toBeInTheDocument()
     expect(screen.getByText('Reading now')).toBeInTheDocument()
@@ -144,49 +116,49 @@ describe('follow-along hint', () => {
 
   it('writes a one-verse hint without a range', () => {
     openWith(onScreen)
-    push(hintFor('d-1', { verse_start: 13, verse_end: 13 }))
+    push(socket, hintFor('d-1', { verse_start: 13, verse_end: 13 }))
 
     expect(screen.getByText('Luke 16:13')).toBeInTheDocument()
   })
 
   it('ignores a hint for a display that is no longer the current one', () => {
     openWith(onScreen)
-    push(hintFor('some-older-display'))
+    push(socket, hintFor('some-older-display'))
 
     expect(hintRegion()).not.toBeInTheDocument()
   })
 
   it('ignores a hint when nothing is on the display', () => {
     openWith(null)
-    push(hintFor('d-1'))
+    push(socket, hintFor('d-1'))
 
     expect(hintRegion()).not.toBeInTheDocument()
   })
 
   it('drops the hint when the display changes to another passage', () => {
     openWith(onScreen)
-    push(hintFor('d-1'))
+    push(socket, hintFor('d-1'))
     expect(hintRegion()).toBeInTheDocument()
 
-    push({ type: 'display_confirmed', data: { reference: reference('d-2', [20]) } })
+    push(socket, { type: 'display_confirmed', data: { reference: reference('d-2', [20]) } })
 
     expect(hintRegion()).not.toBeInTheDocument()
   })
 
   it('drops the hint when the display is cleared', () => {
     openWith(onScreen)
-    push(hintFor('d-1'))
+    push(socket, hintFor('d-1'))
 
-    push({ type: 'clear_confirmed', data: {} })
+    push(socket, { type: 'clear_confirmed', data: {} })
 
     expect(hintRegion()).not.toBeInTheDocument()
   })
 
   it('drops the hint on a fresh snapshot, which never carries one', () => {
     openWith(onScreen)
-    push(hintFor('d-1'))
+    push(socket, hintFor('d-1'))
 
-    push({
+    push(socket, {
       type: 'state_snapshot',
       data: {
         current_display: onScreen,
@@ -204,8 +176,8 @@ describe('follow-along hint', () => {
 
   it('replaces an earlier hint with the newest one', () => {
     openWith(onScreen)
-    push(hintFor('d-1'))
-    push(hintFor('d-1', { verse_start: 14, verse_end: 16 }))
+    push(socket, hintFor('d-1'))
+    push(socket, hintFor('d-1', { verse_start: 14, verse_end: 16 }))
 
     expect(screen.queryByText('Luke 16:13-15')).not.toBeInTheDocument()
     expect(screen.getByText('Luke 16:14-16')).toBeInTheDocument()
@@ -213,7 +185,7 @@ describe('follow-along hint', () => {
 
   it('Show sends display_reference with exactly the hint coordinates', () => {
     openWith(onScreen)
-    push(hintFor('d-1'))
+    push(socket, hintFor('d-1'))
 
     act(() => {
       screen.getByRole('button', { name: 'Show Luke 16:13-15 on display' }).click()
@@ -232,7 +204,7 @@ describe('follow-along hint', () => {
 
   it('does not send a second request while the first is waiting on the server', () => {
     openWith(onScreen)
-    push(hintFor('d-1'))
+    push(socket, hintFor('d-1'))
     const show = screen.getByRole('button', { name: 'Show Luke 16:13-15 on display' })
 
     act(() => show.click())
@@ -244,12 +216,12 @@ describe('follow-along hint', () => {
 
   it('goes away once the server confirms the passage is on screen', () => {
     openWith(onScreen)
-    push(hintFor('d-1'))
+    push(socket, hintFor('d-1'))
     act(() => {
       screen.getByRole('button', { name: 'Show Luke 16:13-15 on display' }).click()
     })
 
-    push({
+    push(socket, {
       type: 'display_confirmed',
       data: { reference: { ...reference('d-2', [13, 14, 15]) } },
     })
@@ -259,13 +231,13 @@ describe('follow-along hint', () => {
 
   it('stays, and can be retried, when the server refuses the request', () => {
     openWith(onScreen)
-    push(hintFor('d-1'))
+    push(socket, hintFor('d-1'))
     act(() => {
       screen.getByRole('button', { name: 'Show Luke 16:13-15 on display' }).click()
     })
     vi.spyOn(console, 'error').mockImplementation(() => {})
 
-    push({
+    push(socket, {
       type: 'error',
       data: { message: 'Passage not found', action: 'display_reference' },
     })
@@ -299,7 +271,7 @@ describe('follow-along preview text', () => {
     let answer: (response: Response) => void = () => {}
     stubFetch(() => new Promise<Response>(resolve => (answer = resolve)))
     openWith(onScreen)
-    push(hintFor('d-1'))
+    push(socket, hintFor('d-1'))
 
     const card = within(hintRegion() as HTMLElement)
     expect(card.getByText('Luke 16:13-15')).toBeInTheDocument()
@@ -320,7 +292,7 @@ describe('follow-along preview text', () => {
       throw new Error('offline')
     })
     openWith(onScreen)
-    push(hintFor('d-1'))
+    push(socket, hintFor('d-1'))
 
     await waitFor(() =>
       expect(fetchMock.mock.calls.some(([url]) => String(url).startsWith('/api/lookup'))).toBe(true)

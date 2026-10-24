@@ -3,54 +3,20 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import App from './App'
 import { PLAN_STORAGE_KEY } from './hooks/usePlan'
 import type { PlanItem } from './hooks/usePlan'
-import type { BibleReference, OperatorMessage } from '../shared/types'
-
-/** The subset of WebSocket the operator app uses. */
-interface MockSocket {
-  onopen: (() => void) | null
-  onmessage: ((event: { data: string }) => void) | null
-  onclose: ((event: { code: number }) => void) | null
-  onerror: ((event: unknown) => void) | null
-  readyState: number
-  send: ReturnType<typeof vi.fn>
-  close: () => void
-}
+import type { BibleReference } from '../shared/types'
+import { createMockSocket, jsonResponse, lastSent, push } from '../test/operatorHarness'
+import type { MockSocket } from '../test/operatorHarness'
 
 let socket: MockSocket | null = null
-
-function createMockSocket(): MockSocket {
-  const instance: MockSocket = {
-    onopen: null,
-    onmessage: null,
-    onclose: null,
-    onerror: null,
-    readyState: 1,
-    send: vi.fn(),
-    close: vi.fn(),
-  }
-  socket = instance
-  return instance
-}
 
 /** Constructor stub; `OPEN` is what the shared hook compares readyState to. */
 const MockWebSocket = Object.assign(
   function MockWebSocketStub() {
-    return createMockSocket()
+    socket = createMockSocket()
+    return socket
   },
   { OPEN: 1, CLOSING: 2, CLOSED: 3 }
 )
-
-function push(message: OperatorMessage) {
-  act(() => {
-    socket?.onmessage?.({ data: JSON.stringify(message) })
-  })
-}
-
-/** The last action sent to the server, parsed. */
-function lastSent() {
-  const calls = socket?.send.mock.calls ?? []
-  return calls.length ? JSON.parse(calls[calls.length - 1][0]) : null
-}
 
 /** Operator actions sent after the authenticate first-message (empty: no token). */
 function sentActions() {
@@ -88,14 +54,6 @@ function passageBody(url: string) {
     verses,
     text: verses.map(v => v.text).join(' '),
   }
-}
-
-function jsonResponse(body: unknown, status = 200): Response {
-  return {
-    ok: status >= 200 && status < 300,
-    status,
-    json: async () => body,
-  } as unknown as Response
 }
 
 /**
@@ -190,7 +148,7 @@ function openWith({ currentDisplay = null }: { currentDisplay?: BibleReference |
   act(() => {
     socket?.onopen?.()
   })
-  push({
+  push(socket, {
     type: 'state_snapshot',
     data: {
       current_display: currentDisplay,
@@ -401,7 +359,7 @@ describe('the plan panel', () => {
     fireEvent.doubleClick(stageButton('John 3:16'))
 
     expect(sentActions()).toHaveLength(1)
-    expect(lastSent()).toEqual({
+    expect(lastSent(socket)).toEqual({
       action: 'display_reference',
       book: 'John',
       chapter: 3,
@@ -413,7 +371,7 @@ describe('the plan panel', () => {
     // A verse is often read twice, so a shown item stays in the plan.
     expect(planTitles()).toHaveLength(3)
 
-    push({ type: 'display_confirmed', data: { reference: manualReference('John', 3, 16) } })
+    push(socket, { type: 'display_confirmed', data: { reference: manualReference('John', 3, 16) } })
     expect(screen.getByText('Shown: John 3:16 (manual)')).toBeInTheDocument()
   })
 
@@ -467,7 +425,7 @@ describe('plan row actions', () => {
 
     fireEvent.click(planRow('John 3:16').getByRole('button', { name: 'Show' }))
 
-    expect(lastSent()).toEqual({
+    expect(lastSent(socket)).toEqual({
       action: 'display_reference',
       book: 'John',
       chapter: 3,
@@ -671,6 +629,6 @@ describe('double-clicks on the plan share one in-flight guard', () => {
     fireEvent.doubleClick(stageButton('Romans 8:28'))
 
     expect(sentActions()).toHaveLength(1)
-    expect(lastSent()).toMatchObject({ action: 'display_reference', book: 'John' })
+    expect(lastSent(socket)).toMatchObject({ action: 'display_reference', book: 'John' })
   })
 })

@@ -1,56 +1,20 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, render, screen, waitFor, within } from '@testing-library/react'
 import App from './App'
-import type { DisplaySettings, OperatorMessage } from '../shared/types'
-
-/** The subset of WebSocket the operator app uses. */
-interface MockSocket {
-  onopen: (() => void) | null
-  onmessage: ((event: { data: string }) => void) | null
-  onclose: ((event: { code: number }) => void) | null
-  onerror: ((event: unknown) => void) | null
-  readyState: number
-  send: ReturnType<typeof vi.fn>
-  close: () => void
-}
+import type { DisplaySettings } from '../shared/types'
+import { createMockSocket, jsonResponse, push } from '../test/operatorHarness'
+import type { MockSocket } from '../test/operatorHarness'
 
 let socket: MockSocket | null = null
-
-function createMockSocket(): MockSocket {
-  const instance: MockSocket = {
-    onopen: null,
-    onmessage: null,
-    onclose: null,
-    onerror: null,
-    readyState: 1,
-    send: vi.fn(),
-    close: vi.fn(),
-  }
-  socket = instance
-  return instance
-}
 
 /** Constructor stub; `OPEN` is what the shared hook compares readyState to. */
 const MockWebSocket = Object.assign(
   function MockWebSocketStub() {
-    return createMockSocket()
+    socket = createMockSocket()
+    return socket
   },
   { OPEN: 1, CLOSING: 2, CLOSED: 3 }
 )
-
-function push(message: OperatorMessage) {
-  act(() => {
-    socket?.onmessage?.({ data: JSON.stringify(message) })
-  })
-}
-
-function jsonResponse(body: unknown, status = 200): Response {
-  return {
-    ok: status >= 200 && status < 300,
-    status,
-    json: async () => body,
-  } as unknown as Response
-}
 
 /** Only the idle-screen route answers; the other console reads may fail quietly. */
 const fetchMock = vi.fn(async (url: RequestInfo | URL) => {
@@ -86,7 +50,7 @@ function openConsole(displaySettings: DisplaySettings = { verse_limit: 3, theme:
   act(() => {
     socket?.onopen?.()
   })
-  push({
+  push(socket, {
     type: 'state_snapshot',
     data: {
       current_display: null,
@@ -168,7 +132,7 @@ describe('idle picture in the ON DISPLAY preview', () => {
   it('follows a settings echo that changes or removes the picture', () => {
     openConsole(withPicture)
 
-    push({
+    push(socket, {
       type: 'display_settings_confirmed',
       data: { ...withPicture, idle_image: { version: 'fedcba9876543210', fit: 'fill' } },
     })
@@ -176,7 +140,7 @@ describe('idle picture in the ON DISPLAY preview', () => {
     expect(image.getAttribute('src')).toBe('/api/idle-screen/image?v=fedcba9876543210')
     expect(image).toHaveClass('operator-idle-image--fill')
 
-    push({ type: 'display_settings_confirmed', data: { ...withPicture, idle_image: null } })
+    push(socket, { type: 'display_settings_confirmed', data: { ...withPicture, idle_image: null } })
     expect(screen.queryByTestId('live-idle-picture')).not.toBeInTheDocument()
   })
 

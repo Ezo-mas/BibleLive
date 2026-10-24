@@ -1,48 +1,20 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, render, screen, waitFor, within } from '@testing-library/react'
 import App from './App'
-import type { BibleReference, OperatorMessage } from '../shared/types'
-
-/** The subset of WebSocket the operator app uses. */
-interface MockSocket {
-  onopen: (() => void) | null
-  onmessage: ((event: { data: string }) => void) | null
-  onclose: ((event: { code: number }) => void) | null
-  onerror: ((event: unknown) => void) | null
-  readyState: number
-  send: ReturnType<typeof vi.fn>
-  close: () => void
-}
+import type { BibleReference } from '../shared/types'
+import { createMockSocket, push } from '../test/operatorHarness'
+import type { MockSocket } from '../test/operatorHarness'
 
 let socket: MockSocket | null = null
-
-function createMockSocket(): MockSocket {
-  const instance: MockSocket = {
-    onopen: null,
-    onmessage: null,
-    onclose: null,
-    onerror: null,
-    readyState: 1,
-    send: vi.fn(),
-    close: vi.fn(),
-  }
-  socket = instance
-  return instance
-}
 
 /** Constructor stub; `OPEN` is what the shared hook compares readyState to. */
 const MockWebSocket = Object.assign(
   function MockWebSocketStub() {
-    return createMockSocket()
+    socket = createMockSocket()
+    return socket
   },
   { OPEN: 1, CLOSING: 2, CLOSED: 3 }
 )
-
-function push(message: OperatorMessage) {
-  act(() => {
-    socket?.onmessage?.({ data: JSON.stringify(message) })
-  })
-}
 
 function reference(id = 'p-1', book = 'John', chapter = 1, verseStart = 1): BibleReference {
   return {
@@ -65,7 +37,7 @@ function openWith() {
   act(() => {
     socket?.onopen?.()
   })
-  push({
+  push(socket, {
     type: 'state_snapshot',
     data: {
       current_display: null,
@@ -133,7 +105,7 @@ describe('server-confirmed feedback', () => {
     // The request is on the wire but nothing has come back: no success yet.
     expect(screen.queryByText(/^Shown:/)).not.toBeInTheDocument()
 
-    push({ type: 'approval_confirmed', data: { reference: reference() } })
+    push(socket, { type: 'approval_confirmed', data: { reference: reference() } })
 
     expect(screen.getByRole('status')).toHaveTextContent('Shown: John 1:1')
   })
@@ -141,8 +113,8 @@ describe('server-confirmed feedback', () => {
   it('replaces the previous notice instead of stacking a second one', () => {
     openWith()
 
-    push({ type: 'approval_confirmed', data: { reference: reference() } })
-    push({ type: 'clear_confirmed', data: {} })
+    push(socket, { type: 'approval_confirmed', data: { reference: reference() } })
+    push(socket, { type: 'clear_confirmed', data: {} })
 
     expect(screen.getAllByRole('status')).toHaveLength(1)
     expect(screen.getByRole('status')).toHaveTextContent('Display cleared')
@@ -151,7 +123,7 @@ describe('server-confirmed feedback', () => {
   it('keeps the notice in the header, clear of the actions and the queue', () => {
     openWith()
 
-    push({ type: 'approval_confirmed', data: { reference: reference() } })
+    push(socket, { type: 'approval_confirmed', data: { reference: reference() } })
 
     // Placement is the fix for a measured problem: as a fixed overlay the notice
     // sat on the action row on a laptop and on the first queue card on a short
@@ -166,14 +138,14 @@ describe('server-confirmed feedback', () => {
   it('reports clearing the queue', () => {
     openWith()
 
-    push({ type: 'pending_cleared', data: {} })
+    push(socket, { type: 'pending_cleared', data: {} })
 
     expect(screen.getByRole('status')).toHaveTextContent('Pending queue cleared')
   })
 
   it('lets the operator dismiss the notice by hand', () => {
     openWith()
-    push({ type: 'clear_confirmed', data: {} })
+    push(socket, { type: 'clear_confirmed', data: {} })
 
     act(() => {
       screen.getByRole('button', { name: /dismiss message/i }).click()
@@ -187,7 +159,7 @@ describe('action failures', () => {
   it('surfaces a failed approval with the server reason', () => {
     openWith()
 
-    push({
+    push(socket, {
       type: 'error',
       data: { message: 'Reference not found or already processed', action: 'approve' },
     })
@@ -206,7 +178,7 @@ describe('action failures', () => {
     })
     expect(versesShown().getByRole('button', { name: '5' })).toHaveAttribute('aria-pressed', 'true')
 
-    push({
+    push(socket, {
       type: 'error',
       data: {
         message: "Invalid verse_limit; expected one of 3, 5, 10, 'all'",
@@ -238,7 +210,7 @@ describe('action failures', () => {
         .click()
     })
 
-    push({
+    push(socket, {
       type: 'error',
       data: { message: "Invalid auto_mode; expected 'off'", action: 'set_auto_mode' },
     })
@@ -259,10 +231,10 @@ describe('settings confirmations', () => {
     openWith()
     openSettings()
 
-    push({ type: 'display_settings_confirmed', data: { verse_limit: 3, theme: 'dark' } })
+    push(socket, { type: 'display_settings_confirmed', data: { verse_limit: 3, theme: 'dark' } })
     expect(screen.queryByRole('status')).not.toBeInTheDocument()
 
-    push({ type: 'display_settings_confirmed', data: { verse_limit: 5, theme: 'dark' } })
+    push(socket, { type: 'display_settings_confirmed', data: { verse_limit: 5, theme: 'dark' } })
 
     expect(screen.getByRole('status')).toHaveTextContent('Saved — verses shown 5')
     expect(versesShown().getByRole('button', { name: '5' })).toHaveAttribute('aria-pressed', 'true')
@@ -274,7 +246,7 @@ describe('settings confirmations', () => {
       openSettings().getByText('Every new detection waits for your approval.')
     ).toBeInTheDocument()
 
-    push({ type: 'auto_mode_confirmed', data: { auto_mode: 'medium_and_up' } })
+    push(socket, { type: 'auto_mode_confirmed', data: { auto_mode: 'medium_and_up' } })
 
     expect(
       screen.getByText('New high- and medium-confidence detections go straight to the display.')
