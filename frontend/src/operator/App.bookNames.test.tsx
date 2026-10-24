@@ -101,7 +101,7 @@ function reference(overrides: Partial<BibleReference> = {}): BibleReference {
 
 /** The Bible translation the server has loaded; /api/books answers for it. */
 let translation = 'ltb'
-let fetchMock: Mock<[input: RequestInfo | URL], Promise<Response>>
+let fetchMock: Mock<(input: RequestInfo | URL) => Promise<Response>>
 
 function stubFetch() {
   fetchMock = vi.fn(async (input: RequestInfo | URL) => {
