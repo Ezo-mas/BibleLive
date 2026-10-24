@@ -18,6 +18,7 @@ from benchmarks.run_benchmark import (
     Recording,
     SpanTracker,
     StubReceiver,
+    credit_repeats,
     dedupe_detections,
     feed_cache_key,
     feed_cache_path,
@@ -654,3 +655,51 @@ class TestSegmentationCacheKey:
         config = replace(self._old_config(), silero_threshold=0.35)
 
         assert _segmentation_key(monkeypatch, tmp_path, config) == self.LEGACY
+
+
+class TestRepeats:
+    """A citation said twice scores the same whether gold lists it once or twice."""
+
+    def _gold(self, t: float, v1: int | None = 28) -> GoldItem:
+        return GoldItem("r", t, t + 8.0, "", "Romans", 8, v1, None)
+
+    def _score(self, dets, gold):
+        matches, fps, fns = match_detections_to_gold(dets, gold, 5.0)
+        credited, repeats, fps, fns = credit_repeats(matches, fps, fns, gold)
+        return len(matches) + len(credited), len(repeats), len(fps), len(fns)
+
+    def test_repeat_said_again_is_not_an_fp(self):
+        # Gold lists it once; the pipeline reports both sayings.
+        assert self._score([_det(32.0), _det(55.0)], [self._gold(28.0)]) == (1, 1, 0, 0)
+
+    def test_gold_repeat_credited_to_the_found_one(self):
+        # Gold lists both sayings; the pipeline collapsed them into one.
+        # Both gold items count as found (TP + FN is the gold count).
+        assert self._score([_det(32.0)], [self._gold(28.0), self._gold(36.0)]) == (2, 0, 0, 0)
+
+    def test_chapter_only_repeat(self):
+        # "Romans 8" said a minute after Romans 8:28.
+        assert self._score([_det(32.0), _det(90.0, v1=None)], [self._gold(28.0)]) == (1, 1, 0, 0)
+
+    def test_verse_inside_a_cited_range_is_a_repeat(self):
+        # 09-24: "14, 2 ir 4" cited 14:2-4, then verse 4 is read out on its own.
+        cited = GoldItem("r", 28.0, 36.0, "", "Romans", 8, 26, 28)
+        found = _det(32.0, v1=26, v2=28)
+        assert self._score([found, _det(55.0, v1=28)], [cited]) == (1, 1, 0, 0)
+        assert self._score([found, _det(55.0, v1=29)], [cited]) == (1, 0, 1, 0)
+
+    def test_other_verse_or_past_window_is_still_an_fp(self):
+        assert self._score([_det(32.0), _det(55.0, v1=29)], [self._gold(28.0)]) == (1, 0, 1, 0)
+        assert self._score([_det(32.0), _det(200.0)], [self._gold(28.0)]) == (1, 0, 1, 0)
+
+    def test_misreading_of_another_citation_is_still_an_fp(self):
+        # 07-05: Romans 8:28 cited earlier, then "Romans 8:28" reported on the
+        # utterance where Psalm 16:8 is said: a misreading, not a repeat.
+        d = _det(70.0)
+        d.spoken_from_s, d.spoken_to_s = 62.0, 70.0
+        psalm = GoldItem("r", 62.0, 70.0, "", "Psalms", 16, 8, None)
+        assert self._score([_det(32.0), d], [self._gold(28.0), psalm]) == (1, 0, 1, 1)
+
+    def test_late_repeat_of_a_missed_citation_stays_a_miss(self):
+        # Found only 30 s late: not an FP, but the gold item is not found.
+        assert self._score([_det(62.0)], [self._gold(28.0)]) == (0, 1, 0, 1)
