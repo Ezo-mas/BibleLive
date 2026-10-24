@@ -12,6 +12,7 @@ import {
 } from './i18n'
 import { en } from './messages.en'
 import { lt } from './messages.lt'
+import { OPERATOR_TOKEN_STORAGE_KEY } from './operatorToken'
 
 afterEach(() => {
   vi.restoreAllMocks()
@@ -156,30 +157,30 @@ describe('fetchServerLanguage', () => {
     } as unknown as Response
   }
 
-  it('returns the launcher language, sending the operator token when there is one', async () => {
+  it('returns the launcher language and sends no operator token, even if saved', async () => {
+    window.localStorage.setItem(OPERATOR_TOKEN_STORAGE_KEY, 'secret')
     const fetchMock = stubFetch(async () => json({ language: 'lt' }))
-    await expect(fetchServerLanguage('secret')).resolves.toBe('lt')
-    expect(fetchMock).toHaveBeenCalledWith('/api/ui-language', {
-      headers: { Authorization: 'Bearer secret' },
-    })
+    await expect(fetchServerLanguage()).resolves.toBe('lt')
+    // Called with the URL alone: no init, so no Authorization header.
+    expect(fetchMock).toHaveBeenCalledWith('/api/ui-language')
   })
 
-  it('sends no Authorization header without a token', async () => {
+  it('sends no Authorization header when no token is saved', async () => {
     const fetchMock = stubFetch(async () => json({ language: null }))
-    await expect(fetchServerLanguage(null)).resolves.toBeNull()
-    expect(fetchMock).toHaveBeenCalledWith('/api/ui-language', { headers: {} })
+    await expect(fetchServerLanguage()).resolves.toBeNull()
+    expect(fetchMock).toHaveBeenCalledWith('/api/ui-language')
   })
 
   it('treats a refusal, an unknown language, and a dropped request as no answer', async () => {
     stubFetch(async () => json({ detail: 'nope' }, 401))
-    await expect(fetchServerLanguage(null)).resolves.toBeNull()
+    await expect(fetchServerLanguage()).resolves.toBeNull()
 
     stubFetch(async () => json({ language: 'fr' }))
-    await expect(fetchServerLanguage(null)).resolves.toBeNull()
+    await expect(fetchServerLanguage()).resolves.toBeNull()
 
     stubFetch(async () => {
       throw new TypeError('network down')
     })
-    await expect(fetchServerLanguage(null)).resolves.toBeNull()
+    await expect(fetchServerLanguage()).resolves.toBeNull()
   })
 })

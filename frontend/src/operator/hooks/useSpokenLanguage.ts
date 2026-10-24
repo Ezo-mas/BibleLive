@@ -1,10 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import {
-  LanguageApiError,
-  changeSpokenLanguage,
-  fetchSpokenLanguage,
-  spokenLanguageLabel,
-} from '../languageApi'
+import { ApiError } from '../apiClient'
+import { changeSpokenLanguage, fetchSpokenLanguage, spokenLanguageLabel } from '../languageApi'
 import { useI18n } from '../../shared/i18nContext'
 import type { Translator } from '../../shared/i18n'
 
@@ -40,7 +36,7 @@ function messageOf(error: unknown, t: Translator): string {
 
 /** Whether a failure means the pipeline itself is out of reach (not a refusal). */
 function isUnreachable(error: unknown): boolean {
-  return error instanceof LanguageApiError && (error.status === 0 || error.status >= 502)
+  return error instanceof ApiError && (error.status === 0 || error.status >= 502)
 }
 
 /**

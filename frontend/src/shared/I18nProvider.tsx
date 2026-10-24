@@ -10,7 +10,6 @@ import {
 import type { Language } from './i18n'
 import { I18nContext } from './i18nContext'
 import type { I18nValue } from './i18nContext'
-import { readStoredOperatorToken } from './operatorToken'
 
 /**
  * Supplies the console's language to everything below it.
@@ -18,8 +17,7 @@ import { readStoredOperatorToken } from './operatorToken'
  * It renders at once with the best language already known (this browser's choice,
  * else the browser's own language) and switches when the launcher's answer
  * arrives, so nothing waits on the network. The server is asked on mount and again
- * whenever the operator console connects, because the token that unlocks the
- * answer may only be entered after the first request.
+ * whenever the operator console connects.
  */
 export function I18nProvider({ children }: { children: ReactNode }) {
   const [override, setOverride] = useState<Language | null>(readStoredLanguage)
@@ -32,7 +30,7 @@ export function I18nProvider({ children }: { children: ReactNode }) {
   const requestRef = useRef(0)
   const refreshServerLanguage = useCallback(() => {
     const id = (requestRef.current += 1)
-    void fetchServerLanguage(readStoredOperatorToken()).then(answer => {
+    void fetchServerLanguage().then(answer => {
       if (id === requestRef.current) setServer(answer)
     })
   }, [])

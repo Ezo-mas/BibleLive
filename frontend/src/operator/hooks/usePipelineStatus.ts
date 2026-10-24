@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { PipelineStatus } from '../../shared/types'
+import { authHeaders } from '../apiClient'
 
 /** How often the console asks the server about the audio pipeline. */
 export const PIPELINE_POLL_MS = 5000
@@ -7,9 +8,7 @@ export const PIPELINE_POLL_MS = 5000
 /** The pipeline status, or null when the server could not be asked. */
 async function fetchPipelineStatus(token: string | null): Promise<PipelineStatus | null> {
   try {
-    const response = await fetch('/api/pipeline/status', {
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-    })
+    const response = await fetch('/api/pipeline/status', { headers: authHeaders(token) })
     if (!response.ok) return null
     return (await response.json()) as PipelineStatus
   } catch {

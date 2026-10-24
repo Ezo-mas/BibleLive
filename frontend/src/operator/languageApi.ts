@@ -1,4 +1,4 @@
-import { readFailure } from './passageApi'
+import { ApiError, authHeaders, readFailure, request } from './apiClient'
 import { defaultTranslator } from '../shared/i18n'
 import type { Translator } from '../shared/i18n'
 
@@ -22,56 +22,38 @@ export function spokenLanguageLabel(code: string, t: Translator = defaultTransla
 }
 
 /**
- * A language request that failed, carrying the server's own explanation.
- *
- * `status` is 0 for a request that never reached the server. 503 means the
- * server is fine but the audio pipeline is not running (or has its control API
- * switched off); the operator needs those told apart, because "start the
- * pipeline" and "check your connection" are different fixes.
+ * Read a language reply. 503 means the server is fine but the audio pipeline is not
+ * running (or has its control API switched off); the operator needs those told apart
+ * from a dead connection, because "start the pipeline" and "check your connection"
+ * are different fixes.
  */
-export class LanguageApiError extends Error {
-  readonly status: number
-
-  constructor(status: number, message: string) {
-    super(message)
-    this.name = 'LanguageApiError'
-    this.status = status
-  }
-}
-
-/** The language endpoint is operator-only, so requests carry the operator token. */
-function headers(token: string | null, json = false): HeadersInit {
-  return {
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    ...(json ? { 'Content-Type': 'application/json' } : {}),
-  }
-}
-
 async function readLanguage(response: Response, t: Translator): Promise<string> {
   if (!response.ok) {
-    throw new LanguageApiError(
+    throw new ApiError(
       response.status,
       await readFailure(response, t('language.controlFailed', { status: response.status }), t)
     )
   }
   const body = (await response.json()) as { language?: unknown } | null
   if (typeof body?.language !== 'string' || body.language === '') {
-    throw new LanguageApiError(502, t('language.badReply'))
+    throw new ApiError(502, t('language.badReply'))
   }
   return body.language
 }
 
-/** The language the audio pipeline is transcribing in right now. */
+/**
+ * The language the audio pipeline is transcribing in right now. The language endpoint
+ * is operator-only, so the request carries the operator token.
+ */
 export async function fetchSpokenLanguage(
   token: string | null,
   t: Translator = defaultTranslator
 ): Promise<string> {
-  let response: Response
-  try {
-    response = await fetch('/api/language', { headers: headers(token) })
-  } catch {
-    throw new LanguageApiError(0, t('language.readUnreachable'))
-  }
+  const response = await request(
+    '/api/language',
+    { headers: authHeaders(token) },
+    t('language.readUnreachable')
+  )
   return readLanguage(response, t)
 }
 
@@ -86,15 +68,14 @@ export async function changeSpokenLanguage(
   token: string | null,
   t: Translator = defaultTranslator
 ): Promise<string> {
-  let response: Response
-  try {
-    response = await fetch('/api/language', {
+  const response = await request(
+    '/api/language',
+    {
       method: 'POST',
-      headers: headers(token, true),
+      headers: authHeaders(token, true),
       body: JSON.stringify({ language }),
-    })
-  } catch {
-    throw new LanguageApiError(0, t('language.changeUnreachable'))
-  }
+    },
+    t('language.changeUnreachable')
+  )
   return readLanguage(response, t)
 }

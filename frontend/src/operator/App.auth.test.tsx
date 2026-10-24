@@ -167,7 +167,7 @@ describe('operator token in the launcher link (#token=)', () => {
     expect(window.localStorage.getItem('biblelive_operator_token')).toBe('secret')
   })
 
-  it('asks the server for the interface language with the fragment token', () => {
+  it('asks the server for the interface language without sending the fragment token', () => {
     const fetchMock = vi.fn(
       async () => new Response(JSON.stringify({ language: 'en' }), { status: 200 })
     )
@@ -179,9 +179,8 @@ describe('operator token in the launcher link (#token=)', () => {
       </I18nProvider>
     )
 
-    expect(fetchMock).toHaveBeenCalledWith('/api/ui-language', {
-      headers: { Authorization: 'Bearer secret' },
-    })
+    // A public route: called with the URL alone, so no Authorization header.
+    expect(fetchMock).toHaveBeenCalledWith('/api/ui-language')
   })
 
   it('replaces a stored token with the fragment token, as a typed one would', () => {
