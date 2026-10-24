@@ -700,7 +700,7 @@ def segmentation_settings(config: AudioPipelineConfig) -> dict[str, Any]:
 
     Part of the cache key, since changing any of them changes which audio Whisper sees.
     """
-    segmentation = {
+    segmentation: dict[str, Any] = {
         "vad_aggressiveness": config.vad_aggressiveness,
         "frame_duration_ms": FRAME_DURATION_MS,
         "end_of_speech_s": config.end_of_speech_s,

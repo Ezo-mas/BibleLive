@@ -16,7 +16,7 @@ help:
 	@echo "Quality:"
 	@echo "  make lint             Run Ruff linter (whole repo, same scope as CI)"
 	@echo "  make format           Format code with Ruff (whole repo, same scope as CI)"
-	@echo "  make typecheck        Run mypy type checker (backend)"
+	@echo "  make typecheck        Run mypy type checker (backend, launcher, benchmarks)"
 	@echo ""
 	@echo "Testing:"
 	@echo "  make test             Run all backend tests"
@@ -58,7 +58,7 @@ format:
 	ruff format .
 
 typecheck:
-	mypy $(BACKEND)/core $(BACKEND)/audio --install-types --non-interactive
+	mypy $(BACKEND)/core $(BACKEND)/audio $(BACKEND)/launcher benchmarks --install-types --non-interactive
 
 test:
 	pytest $(BACKEND)/tests -v

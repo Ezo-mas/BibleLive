@@ -106,6 +106,10 @@ def _windows_ram_bytes() -> int | None:
 
 
 def _windows_cpu_name() -> str | None:
+    # sys.platform (not os.name) so mypy skips this body on Linux, where
+    # typeshed has no winreg attributes.
+    if sys.platform != "win32":
+        return None
     try:
         import winreg
 

@@ -10,7 +10,7 @@ this guide is the full command reference and the caveats around them.
 make install-dev      # pip install -e "./backend[dev,audio]" — permitted, once
 make test             # pytest backend/tests -v
 make check            # ruff lint + format-check + tests in one go
-make typecheck        # mypy core audio (separate from check)
+make typecheck        # mypy core audio launcher benchmarks (separate from check)
 make lint / format    # ruff check / ruff format (line-length 100, target py313)
 make dev              # uvicorn --factory core.server.app:create_app --reload, port 8000
 ```
@@ -26,7 +26,7 @@ On Windows there is no `make`: use `.venv\Scripts\python.exe -m ...` with
 .venv/Scripts/python.exe -m ruff check .
 .venv/Scripts/python.exe -m ruff format --check .
 .venv/Scripts/python.exe -m pytest backend/tests -q
-.venv/Scripts/python.exe -m mypy backend/core backend/audio --install-types --non-interactive
+.venv/Scripts/python.exe -m mypy backend/core backend/audio backend/launcher benchmarks --install-types --non-interactive
 ```
 
 ## Detection-accuracy benchmark
