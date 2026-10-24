@@ -310,7 +310,7 @@ class BibleLiveAudioProcessor:
             "stt_engine": config.stt_engine,
             "models": {
                 name: os.path.basename(getattr(config, f"{name}_model") or "")
-                for name in getattr(self, "_stt_models", [])
+                for name in self._stt_models
             },
             "whisper_model": config.whisper_model,
             "device": config.whisper_device,
@@ -324,7 +324,7 @@ class BibleLiveAudioProcessor:
             return None
 
     def _close_session_log(self) -> None:
-        session_log = getattr(self, "session_log", None)
+        session_log = self.session_log
         if session_log is not None:
             session_log.close()
             self.session_log = None
@@ -493,7 +493,7 @@ class BibleLiveAudioProcessor:
 
         dropped = self.segmenter.reset()
         self._partial_mailbox.discard(self._utterance_seq)
-        session_log = getattr(self, "session_log", None)
+        session_log = self.session_log
         if session_log is not None:
             session_log.event("language", language=pending, dropped_frames=dropped)
         if dropped:
@@ -526,7 +526,7 @@ class BibleLiveAudioProcessor:
             self._last_frame_at = now
             self._note_microphone_level(frame, now)
             self.metrics.audio_chunks_captured += 1
-            session_log = getattr(self, "session_log", None)
+            session_log = self.session_log
             if session_log is not None:
                 session_log.write_frame(frame)
 
@@ -534,7 +534,7 @@ class BibleLiveAudioProcessor:
             if event is not None:
                 if event.kind == "start":
                     self._utterance_seq += 1
-                    session_log = getattr(self, "session_log", None)
+                    session_log = self.session_log
                     if session_log is not None:
                         session_log.speech_started(event.onset_frames)
                     logger.info("Voice activity detected, capturing utterance...")
@@ -617,7 +617,7 @@ class BibleLiveAudioProcessor:
             # The silence clock runs from the new stream, not from before the outage.
             self._last_loud_at = time.monotonic()
             self._mic_silent_logged = False
-            session_log = getattr(self, "session_log", None)
+            session_log = self.session_log
             if session_log is not None:
                 session_log.event("capture_restarted")
             self._capture_restarted_at_s = self.audio_capture.captured_seconds
@@ -670,7 +670,7 @@ class BibleLiveAudioProcessor:
         if event.kind == "end":
             # Before the put: once queued, the transcription thread may log
             # the utterance at once, and must find its position.
-            session_log = getattr(self, "session_log", None)
+            session_log = self.session_log
             if session_log is not None:
                 session_log.utterance_queued(frames, event.trailing_silent_frames)
             try:
@@ -732,7 +732,7 @@ class BibleLiveAudioProcessor:
                 parsers = getattr(self._local, "streaming_parsers", None) or {}
                 for held_language in list(parsers):
                     flushed = self._flush_held(held_language)
-                    session_log = getattr(self, "session_log", None)
+                    session_log = self.session_log
                     if session_log is not None:
                         session_log.references("shutdown_flush", flushed)
                     for ref in flushed:
@@ -786,7 +786,7 @@ class BibleLiveAudioProcessor:
         # English and Lithuanian parsing stay separate implementations; the
         # language selects which tables a parser is built with. GGUF models
         # transcribe Lithuanian only, so other languages' parsers read Whisper.
-        models = getattr(self, "_stt_models", [])
+        models = self._stt_models
         parsers: dict[str, StreamingParser] = {}
         # Two-model mode: the second model's transcripts get their own parsers,
         # so its context never mixes with the first model's.
@@ -946,7 +946,7 @@ class BibleLiveAudioProcessor:
     def _process_utterance(self, language: str, speech_frames: list[bytes]):
         """Process a completed utterance captured in ``language``"""
         result, references = self._detect_references(language, speech_frames)
-        session_log = getattr(self, "session_log", None)
+        session_log = self.session_log
         if session_log is not None:
             session_log.utterance(speech_frames, language, result, references)
 

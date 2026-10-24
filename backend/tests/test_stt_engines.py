@@ -10,10 +10,10 @@ import types
 
 import numpy as np
 import pytest
+from processor_factory import make_processor
 
 from audio.config import AudioPipelineConfig
 from audio.ensemble import merge_agreement
-from audio.metrics import PipelineMetrics
 from audio.pipeline import BibleLiveAudioProcessor
 from audio.spelling_maps import MappedStreamingParser, spelling_map
 from audio.stt import Transcription
@@ -396,19 +396,14 @@ class _ScriptedSTT:
 
 
 def _two_model_processor(result: Transcription, tmp_path) -> BibleLiveAudioProcessor:
-    proc = BibleLiveAudioProcessor.__new__(BibleLiveAudioProcessor)
-    proc.config = AudioPipelineConfig(language="lt", stt_engine="kmynas+canary")
-    proc._stt_models = ["kmynas", "canary"]
-    proc.stt = _ScriptedSTT(result)
-    proc.metrics = PipelineMetrics()
-    proc._frame_duration_s = 0.03
-    proc._local = threading.local()
-    proc.sender = _RecordingSender()
-    proc.transcript_sender = _RecordingTranscripts()
-    proc._consecutive_transcription_errors = 0
-    proc.bible_db_path = str(tmp_path / "missing.sqlite")  # parse without validation
-    proc.verse_text_db_path = None
-    proc._parser_issues = []
+    proc = make_processor(
+        config=AudioPipelineConfig(language="lt", stt_engine="kmynas+canary"),
+        _stt_models=["kmynas", "canary"],
+        stt=_ScriptedSTT(result),
+        sender=_RecordingSender(),
+        transcript_sender=_RecordingTranscripts(),
+        bible_db_path=str(tmp_path / "missing.sqlite"),  # parse without validation
+    )
     proc._init_thread_local_parsers()
     return proc
 
@@ -498,8 +493,8 @@ def test_whisper_starts_in_a_language_it_will_hear(monkeypatch, engine, models, 
     # said "language=lt" on the installed CPU tier.
     created: list[str] = []
     monkeypatch.setattr("audio.pipeline.SpeechToText", lambda **kw: created.append(kw["language"]))
-    proc = BibleLiveAudioProcessor.__new__(BibleLiveAudioProcessor)
-    proc.config = AudioPipelineConfig(language="lt", stt_engine=engine)
-    proc._stt_models = models
+    proc = make_processor(
+        config=AudioPipelineConfig(language="lt", stt_engine=engine), _stt_models=models
+    )
     proc._create_whisper()
     assert created == [expected]

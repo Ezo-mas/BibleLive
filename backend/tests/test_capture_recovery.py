@@ -12,12 +12,11 @@ import time
 from queue import Queue
 
 import pytest
+from processor_factory import make_processor
 
 from audio import capture as capture_module
 from audio.capture import AudioCapture
 from audio.config import AudioPipelineConfig
-from audio.metrics import PipelineMetrics
-from audio.partials import PartialMailbox
 from audio.pipeline import BibleLiveAudioProcessor
 from audio.segmenter import Segmenter
 
@@ -177,28 +176,14 @@ class _FlakyCapture:
 
 def _processor(capture, **config) -> BibleLiveAudioProcessor:
     """A processor wired to ``capture`` without ffmpeg, a VAD model or Whisper."""
-    proc = BibleLiveAudioProcessor.__new__(BibleLiveAudioProcessor)
-    proc.config = AudioPipelineConfig(**config)
-    proc.is_running = True
-    proc.audio_capture = capture
-    proc.segmenter = Segmenter(lambda frame: True)
-    proc.vad_queue = Queue(maxsize=10)
-    proc.metrics = PipelineMetrics()
-    proc.frame_duration_ms = 30
-    proc._frame_duration_s = 0.03
-    proc._capture_language = "en"
-    proc._pending_language = None
-    proc._pending_language_lock = threading.Lock()
-    proc._capture_lock = threading.Lock()
-    proc._capture_restart_attempt = 0
-    proc._capture_restarted_at_s = None
-    proc._capture_down = False
-    proc._partial_mailbox = PartialMailbox()
-    proc._partial_schedule = None  # partial transcripts are not under test here
-    proc._utterance_seq = 0
-    proc._last_loud_at = None
-    proc._mic_silent_logged = False
-    return proc
+    return make_processor(
+        config=AudioPipelineConfig(**config),
+        is_running=True,
+        audio_capture=capture,
+        segmenter=Segmenter(lambda frame: True),
+        vad_queue=Queue(maxsize=10),
+        _partial_schedule=None,  # partial transcripts are not under test here
+    )
 
 
 def test_restart_queues_the_utterance_in_progress_and_restarts_capture():

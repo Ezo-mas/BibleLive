@@ -11,17 +11,16 @@ as in test_audio_language_switch.py. The VAD loop runs on the test thread.
 
 import argparse
 import logging
-import threading
-import time
 from queue import Queue
 from types import SimpleNamespace
 
 import pytest
+from processor_factory import make_processor
 
 from audio.cli import add_tuning_arguments, apply_tuning_arguments, build_parser
 from audio.config import AudioPipelineConfig
 from audio.metrics import PipelineMetrics
-from audio.partials import PartialMailbox, PartialScheduler, PartialSnapshot, PartialTranscript
+from audio.partials import PartialSnapshot, PartialTranscript
 from audio.pipeline import BibleLiveAudioProcessor
 from audio.segmenter import Segmenter
 from audio.stt import SpeechToText, Transcription
@@ -165,40 +164,17 @@ class _Stream:
 
 def _processor(config, stt=None, transcripts=None) -> BibleLiveAudioProcessor:
     """A processor assembled as __init__ does, minus audio capture and speech models."""
-    proc = BibleLiveAudioProcessor.__new__(BibleLiveAudioProcessor)
-    proc.config = config
-    proc.is_running = True
-    proc.audio_capture = None
-    proc.stt = stt or _ScriptedSTT()
-    proc.segmenter = Segmenter.from_config(lambda frame: frame == VOICED, config)
-    proc.vad_queue = Queue(maxsize=10)
-    proc.metrics = PipelineMetrics()
-    proc.frame_duration_ms = 30
-    proc._frame_duration_s = 0.03
-    proc._capture_language = config.language
-    proc._pending_language = None
-    proc._pending_language_lock = threading.Lock()
-    proc._capture_lock = threading.Lock()
-    proc._capture_restarted_at_s = None
-    proc._capture_down = False
-    proc._last_frame_at = None
-    proc._last_loud_at = None
-    proc._mic_silent_logged = False
-    proc._consecutive_transcription_errors = 0
-    proc._parser_issues = []
-    proc._local = threading.local()
-    proc.sender = _RecordingSender()
-    proc.transcript_sender = transcripts or _ArmableTranscripts()
-    proc.session_log = None
-    proc.heartbeat = None
-    proc.last_metrics_log = time.time()
-    proc._utterance_seq = 0
-    proc._partial_schedule = (
-        PartialScheduler.from_config(config) if config.partial_transcripts else None
+    return make_processor(
+        config=config,
+        is_running=True,
+        stt=stt or _ScriptedSTT(),
+        segmenter=Segmenter.from_config(lambda frame: frame == VOICED, config),
+        vad_queue=Queue(maxsize=10),
+        sender=_RecordingSender(),
+        transcript_sender=transcripts or _ArmableTranscripts(),
+        # Built even with partials off (the factory leaves it None then).
+        _partial_transcript=PartialTranscript(config.partial_mode),
     )
-    proc._partial_mailbox = PartialMailbox()
-    proc._partial_transcript = PartialTranscript(config.partial_mode)
-    return proc
 
 
 def _run_vad(proc, frames) -> None:

@@ -1,10 +1,8 @@
 """The Lithuanian verse-text index goes to the Lithuanian parser only, and only if its file exists."""
 
-import threading
-
 import pytest
+from processor_factory import make_processor
 
-from audio.pipeline import BibleLiveAudioProcessor
 from core.verse_text import VerseTextIndex
 
 # Requires the optional audio extras (faster-whisper, webrtcvad, numpy).
@@ -13,11 +11,7 @@ pytestmark = pytest.mark.audio
 
 def _parsers(bible_db, verse_text_db_path):
     """Build the per-language parsers as the transcription thread does."""
-    proc = BibleLiveAudioProcessor.__new__(BibleLiveAudioProcessor)
-    proc.bible_db_path = str(bible_db)
-    proc.verse_text_db_path = verse_text_db_path
-    proc._local = threading.local()
-    proc._parser_issues = []
+    proc = make_processor(bible_db_path=str(bible_db), verse_text_db_path=verse_text_db_path)
     proc._init_thread_local_parsers()
     # The tests only inspect the parsers; close the Bible lookup the setup
     # opened, or Python 3.13 reports the unclosed connection in a later test.
