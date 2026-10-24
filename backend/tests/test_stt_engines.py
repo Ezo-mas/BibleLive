@@ -82,6 +82,27 @@ def test_single_model_references_become_low():
     ]
 
 
+def _inferred(book: str, chapter: int, verse: int) -> Reference:
+    return Reference(book, chapter, verse, None, "low", inferred=True)
+
+
+def test_context_verse_both_models_inferred_becomes_medium():
+    # "Ir toliau trisdešimta eilutė" with 2 Kings 6 running, in both transcripts.
+    merged = merge_agreement([_inferred("2 Kings", 6, 30)], [_inferred("2 Kings", 6, 30)])
+    assert [(str(r), r.confidence) for r in merged] == [("2 Kings 6:30", "medium")]
+
+
+def test_context_verse_stays_low_from_one_model_or_one_inferred():
+    # One model alone, or agreement where one side was a plain low parse
+    # (not inferred), keeps the operator in the loop.
+    alone = merge_agreement([_inferred("2 Kings", 6, 30)], [])
+    mixed = merge_agreement([_inferred("2 Kings", 6, 30)], [_ref("2 Kings", 6, 30, "low")])
+    assert [(str(r), r.confidence) for r in alone + mixed] == [
+        ("2 Kings 6:30", "low"),
+        ("2 Kings 6:30", "low"),
+    ]
+
+
 def test_merge_reports_each_reference_once():
     merged = merge_agreement(
         [_ref("John", 3, 16), _ref("John", 3, 16)], [_ref("John", 3, 16), _ref("John", 3, 16)]
