@@ -125,6 +125,14 @@ through. English (Whisper) takes no partial transcripts and is unmeasured.
 
 ## Maintenance
 
+### npm 10.9 cannot install vitest 4.1.11 or later
+Size: small. The frontend dev tools moved to vite 6 and vitest 5 to clear
+`npm audit` (2026-10-24). npm 10.9.9 crashes installing vitest 4.1.11 and later
+(`Cannot read properties of null (reading 'edgesOut')` in its peer loader,
+reproduced in an empty project); 5.0.5 installs. `package.json` allows
+`^5.0.5`, so only `package-lock.json` holds it at 5.0.5: before an
+`npm update` that moves vitest, check that it installs, or upgrade npm first.
+
 ### Test suite audit
 Size: small, what is left. Not urgent.
 

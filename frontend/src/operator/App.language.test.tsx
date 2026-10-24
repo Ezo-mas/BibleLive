@@ -26,7 +26,7 @@ let language = 'en'
 let fail: { status: number; detail: string } | null = null
 let release: (() => void) | null = null
 let hold = false
-let fetchMock: Mock<[input: RequestInfo | URL, init?: RequestInit], Promise<Response>>
+let fetchMock: Mock<(input: RequestInfo | URL, init?: RequestInit) => Promise<Response>>
 
 function stubFetch() {
   language = 'en'
