@@ -87,11 +87,8 @@ def create_bible_lookup(db_path: str | None = None) -> BibleLookup:
         db_path = str(config.resolve_db_path())
     try:
         lookup = BibleLookup(db_path, readonly=config.DB_READONLY)
-        metadata = lookup.get_metadata()
-        if metadata:
-            translation = metadata.get("translation", "unknown")
-            logger.info(f"Bible database ready: {translation}, {lookup.book_count()} books")
-        else:
+        # BibleLookup logs the translation, path and book count when there is metadata.
+        if not lookup.get_metadata():
             logger.info("Bible database ready (no metadata)")
         return lookup
     except FileNotFoundError as e:
@@ -1119,18 +1116,7 @@ def create_app(bible_lookup: BibleLookup | None = None) -> FastAPI:
 
         Requires authentication if BIBLELIVE_REQUIRE_AUTH is enabled.
         """
-        return StateResponse(
-            current_display=app_state.current_display,
-            pending=app_state.pending_references,
-            history=app_state.reference_history[:20],  # Last 20 items
-            pending_count=len(app_state.pending_references),
-            history_count=len(app_state.reference_history),
-            display_connections=len(app_state.connection_manager.display_connections),
-            operator_connections=len(app_state.connection_manager.operator_connections),
-            display_settings=app_state.display_settings,
-            auto_mode=app_state.auto_mode,
-            follow_auto=app_state.follow_auto_in_effect,
-        )
+        return app_state.state_snapshot()
 
     @app.post(
         "/api/pipeline/heartbeat",

@@ -77,7 +77,10 @@ class BibleLookup:
             metadata = self.get_metadata()
             if metadata:
                 translation = metadata.get("translation", "unknown")
-                logger.info(f"Bible database loaded: {translation} ({self.db_path})")
+                logger.info(
+                    f"Bible database loaded: {translation} ({self.db_path}), "
+                    f"{self.book_count()} books"
+                )
         except Exception:
             # Metadata table might not exist in older databases
             logger.warning(f"Bible database loaded without metadata: {self.db_path}")

@@ -133,23 +133,7 @@ export interface FollowAlongHint {
 
 /** Messages the server sends to operator clients (ws /ws/operator). */
 export type OperatorMessage =
-  | {
-      type: 'state_snapshot'
-      data: {
-        current_display: BibleReference | null
-        pending: BibleReference[]
-        history: BibleReference[]
-        pending_count: number
-        history_count: number
-        display_connections: number
-        operator_connections: number
-        display_settings?: DisplaySettings
-        /** Absent when talking to an older server. */
-        auto_mode?: AutoMode
-        /** Absent when talking to an older server, which leaves follow-along auto-show off. */
-        follow_auto?: boolean
-      }
-    }
+  | { type: 'state_snapshot'; data: AppStateSnapshot }
   | { type: 'pending_update'; data: { pending: BibleReference[]; count: number } }
   | { type: 'approval_confirmed'; data: { reference: BibleReference } }
   | { type: 'clear_confirmed'; data: Record<string, never> }
@@ -242,7 +226,10 @@ export type OperatorAction =
   | SetFollowAutoAction
   | DisplayReferenceAction
 
-/** Snapshot of server state returned by GET /api/state. */
+/**
+ * Snapshot of server state: the data of the operator's `state_snapshot` message,
+ * and the body of GET /api/state.
+ */
 export interface AppStateSnapshot {
   current_display: BibleReference | null
   pending: BibleReference[]
@@ -252,7 +239,9 @@ export interface AppStateSnapshot {
   display_connections: number
   operator_connections: number
   display_settings?: DisplaySettings
+  /** Absent when talking to an older server. */
   auto_mode?: AutoMode
+  /** Absent when talking to an older server, which leaves follow-along auto-show off. */
   follow_auto?: boolean
 }
 
