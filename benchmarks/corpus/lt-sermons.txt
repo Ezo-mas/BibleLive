@@ -1,5 +1,6 @@
-# The Lithuanian services run: 14 services, 164 gold references. Results in BASELINE_NOTES.md
-# dated before 2026-10-19 used the first 13 (158 gold); 10-18 is the first live BibleLive service.
+# The Lithuanian services run: 14 services, 171 gold references. Results in BASELINE_NOTES.md
+# dated before 2026-10-19 used the first 13 (158 gold), before 2026-10-24 164 gold; 10-18 is the
+# first live BibleLive service.
 # One run per line: <manifest> <record id> [--t-range START:END = the sermon part].
 manifest-04-05-lt.json 04-05-live-lt-norm
 manifest-04-19-lt.json 04-19-live-lt-norm

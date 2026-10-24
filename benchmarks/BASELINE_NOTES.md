@@ -480,3 +480,97 @@ out), so read these columns as a comparison, not exact times.
   later verse worded like the one being read (Matthew 7:24 -> 7:26, 5:29 -> 5:30;
   533 such verse pairs within 3 verses in the whole Bible), which auto-show would
   put on screen; this corpus has no such passage, so the benchmark could not see it.
+
+## Book named again restores its chapter (2026-10-24)
+
+The parser now remembers the last chapter cited for each book. A book named
+again with no number ("Taigi, Antra karalių ta istorija", after a Proverbs
+18:20 quote) switches the context back to that book and chapter, so the next
+bare "trisdešimta eilutė" is 2 Kings 6:30 and not Proverbs 18:30. Only names of
+two or more words count: one-word names are also verbs and people ("Dievas
+mato", "kaip Danielius") and moved the context to Matthew or Daniel 9 times in
+the corpus. Cached replay, 14 services, 164 gold, on all refactor PRs merged:
+`kmynas` 153 / 9 -> 154 / 9, `kmynas+canary` 158 / 4 -> 159 / 4 (TP / medium+
+high FP; low FPs unchanged). Fixed 10-11's 2 Kings 6:30; nothing else moved.
+
+## Repeats scored consistently, and "Ievutė" (2026-10-24)
+
+Gold listed repeats inconsistently (09-13 has Ephesians 4:25 twice; 05-31 and
+07-19 list Deuteronomy 32:11 and Isaiah 1:16 once though each is said twice),
+so the same pipeline behavior scored as an FN in one service and an FP in
+another. The scorer now treats a citation said again within 120 s as correct
+(`credit_repeats` in `run_benchmark.py`, rule in `README.md`): a gold repeat
+counts as found when its other citation is, and a detection naming a gold
+citation (or its chapter) is a repeat, not an FP, unless its speech is where a
+different gold citation was said (07-05: Hosea 4:16 reported on the Psalm 16:8
+utterance stays an FP). TP + FN stays the gold count. The Kmynas map also reads
+"Ievutė" as "eilutė" (10-11, GPU tier: "septinta Ievutė", Philippians 4:7);
+Canary's "įvate" for the same word is left alone (too ambiguous). Cached
+replay, 14 services:
+
+| Run | TP | FN | FP low | FP med+high | Repeats |
+| --- | --- | --- | --- | --- | --- |
+| `kmynas`, before | 153 | 11 | 14 | 9 | - |
+| `kmynas`, book context + repeats | 155 | 9 | 11 | 5 | 7 |
+| `kmynas+canary`, before | 158 | 6 | 29 | 4 | - |
+| `kmynas+canary`, book context + Ievutė + repeats | 161 | 3 | 23 | 0 | 10 |
+
+Results written before this change were scored without the repeat rule:
+re-run the "before" side (a cached replay) rather than comparing against old
+result files.
+
+## Context verse both models inferred is medium; gold rule for reading on (2026-10-24)
+
+**Gold rule:** a verse the speaker announces by number while reading on in the
+cited passage is a gold reference (the corpus already counted Genesis 22:3 and
+2 Kings 6:26/30 this way but not others). Added, timed from the transcripts
+(`transcript-span`, not listened to): 07-05 Numbers 33:55; 07-12 1 Kings
+19:10, 19:11 and 2 Corinthians 1:10; 10-11 Isaiah 26:4, Luke 7:39 and 7:50.
+171 gold now. 05-31's Isaiah 40:27 stays excluded (the annotator's
+"27 ignoruojama"). The repeat rule also counts one verse of a cited range said
+again (09-24: "14, 2 ir 4" parses and is gold as 14:2-4; verse 4 is then read
+out on its own).
+
+**Two-model agreement:** a verse with no book name, resolved from the running
+book and chapter ("Ir toliau trisdešimta eilutė"), is "low" from each parser;
+when both models infer the same one it is now "medium" (`audio/ensemble.py`).
+Cached replay, 171 gold, `kmynas+canary`:
+
+| Run | TP high / medium / low | FN | FP low | FP medium+high |
+| --- | --- | --- | --- | --- |
+| before | 61 / 45 / 61 | 4 | 14 | 0 |
+| after | 61 / 78 / 28 | 4 | 13 | 1 |
+
+33 more correct references can be auto-approved; the one medium FP is Isaiah
+40:27 above. The risk is a wrong running book (both models then agree on a
+wrong verse): the same-book check in "Book named again restores its chapter"
+removed the case seen here (Proverbs 18:30). `kmynas` alone is unchanged (one
+model, no agreement): 161 TP / 10 FN / 3 low / 4 medium+high FP, 49 TPs low.
+
+Tried and not adopted: dropping a reference only one model found when that
+model's own parse was already low and not inferred (number shapes near a
+book-like word, shaky decodes). Before the gold rule: 4 fewer low FPs for 1
+lost TP (Ephesians 2:5-6, split across two utterances). Low references never
+auto-show, and split citations are common, so a missed reference costs more
+than a glance at a wrong low one.
+
+## Re-check on new recordings
+
+These were fitted and measured on the same 14 services, so their gains are
+optimistic until checked on recordings added later. When new services join
+the corpus, run both tiers and check each item; record the outcome here.
+
+- **Context verse both models inferred is "medium"** (`audio/ensemble.py`).
+  The risk is a wrong running book or chapter: both models then agree on a
+  wrong verse and it can be auto-shown. List the medium/high FPs with
+  `"inferred": true` in the result JSON and read each against the transcript.
+  More than about 1 genuinely wrong per 30 promoted references is a reason to
+  revert it.
+- **Book named again restores its chapter** (`core/verse_parser.py`): only
+  names of two or more words. Look for inferred FPs right after a bare book
+  mention.
+- **Kmynas "Ievutė" -> "eilutė"** (`audio/spelling_maps.py`): seen once. Any
+  spelling-map rule can be dropped if new recordings never use it.
+- **Repeat scoring** (`credit_repeats`, 120 s window) and the gold rule for
+  verses announced while reading on: new gold should follow the rule, so the
+  scorer and gold keep matching.
