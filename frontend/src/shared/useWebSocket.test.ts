@@ -1,30 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, renderHook } from '@testing-library/react'
 import { useWebSocket } from './useWebSocket'
-
-interface MockSocket {
-  onopen: (() => void) | null
-  onmessage: ((event: { data: string }) => void) | null
-  onclose: ((event: { code: number }) => void) | null
-  onerror: ((event: unknown) => void) | null
-  readyState: number
-  send: ReturnType<typeof vi.fn>
-  close: ReturnType<typeof vi.fn>
-}
+import { createMockSocket } from '../test/operatorHarness'
+import type { MockSocket } from '../test/operatorHarness'
 
 const created: MockSocket[] = []
 
 const MockWebSocket = Object.assign(
   function MockWebSocketStub() {
-    const instance: MockSocket = {
-      onopen: null,
-      onmessage: null,
-      onclose: null,
-      onerror: null,
-      readyState: 1,
-      send: vi.fn(),
-      close: vi.fn(),
-    }
+    const instance = createMockSocket()
     created.push(instance)
     return instance
   },

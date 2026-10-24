@@ -4,14 +4,7 @@ import { useIdleScreen } from './hooks/useIdleScreen'
 import type { IdleScreenState } from './hooks/useIdleScreen'
 import { IdleScreenSettings } from './components/IdleScreenSettings'
 import { IDLE_SCREEN_MAX_BYTES, parseIdleScreenInfo } from './idleScreenApi'
-
-function jsonResponse(body: unknown, status = 200): Response {
-  return {
-    ok: status >= 200 && status < 300,
-    status,
-    json: async () => body,
-  } as unknown as Response
-}
+import { jsonResponse } from '../test/operatorHarness'
 
 /** What the fake server holds: the fit mode and whether a picture is set. */
 let server: { fit: 'logo' | 'fill'; image: { version: string } | null } = {

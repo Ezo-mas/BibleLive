@@ -1,48 +1,20 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import App from './App'
-import type { AutoMode, OperatorMessage } from '../shared/types'
-
-/** The subset of WebSocket the operator app uses. */
-interface MockSocket {
-  onopen: (() => void) | null
-  onmessage: ((event: { data: string }) => void) | null
-  onclose: ((event: { code: number }) => void) | null
-  onerror: ((event: unknown) => void) | null
-  readyState: number
-  send: ReturnType<typeof vi.fn>
-  close: () => void
-}
+import type { AutoMode } from '../shared/types'
+import { createMockSocket, push } from '../test/operatorHarness'
+import type { MockSocket } from '../test/operatorHarness'
 
 let socket: MockSocket | null = null
-
-function createMockSocket(): MockSocket {
-  const instance: MockSocket = {
-    onopen: null,
-    onmessage: null,
-    onclose: null,
-    onerror: null,
-    readyState: 1,
-    send: vi.fn(),
-    close: vi.fn(),
-  }
-  socket = instance
-  return instance
-}
 
 /** Constructor stub; `OPEN` is what the shared hook compares readyState to. */
 const MockWebSocket = Object.assign(
   function MockWebSocketStub() {
-    return createMockSocket()
+    socket = createMockSocket()
+    return socket
   },
   { OPEN: 1, CLOSING: 2, CLOSED: 3 }
 )
-
-function push(message: OperatorMessage) {
-  act(() => {
-    socket?.onmessage?.({ data: JSON.stringify(message) })
-  })
-}
 
 /** The socket's send spy, so tests can assert what the dialog sent. */
 function sentMessages() {
@@ -56,7 +28,7 @@ function openWith(autoMode: AutoMode = 'off') {
   act(() => {
     socket?.onopen?.()
   })
-  push({
+  push(socket, {
     type: 'state_snapshot',
     data: {
       current_display: null,
@@ -287,7 +259,7 @@ describe('auto-approve in settings', () => {
 
   it('turns On back on to the last mode that was on', () => {
     openWith()
-    push({ type: 'auto_mode_confirmed', data: { auto_mode: 'medium_and_up' } })
+    push(socket, { type: 'auto_mode_confirmed', data: { auto_mode: 'medium_and_up' } })
     expect(autoQuick().on).toHaveAttribute('aria-pressed', 'true')
 
     act(() => {
@@ -342,7 +314,7 @@ describe('auto-approve in settings', () => {
     openWith()
     openSettings()
 
-    push({ type: 'auto_mode_confirmed', data: { auto_mode: 'all' } })
+    push(socket, { type: 'auto_mode_confirmed', data: { auto_mode: 'all' } })
 
     expect(autoOptions().getByRole('button', { name: 'All' })).toHaveAttribute(
       'aria-pressed',

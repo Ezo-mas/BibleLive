@@ -2,41 +2,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import App from './App'
 import type { AutoMode, OperatorMessage } from '../shared/types'
-
-/** The subset of WebSocket the operator app uses. */
-interface MockSocket {
-  onopen: (() => void) | null
-  onmessage: ((event: { data: string }) => void) | null
-  onclose: ((event: { code: number }) => void) | null
-  onerror: ((event: unknown) => void) | null
-  readyState: number
-  send: (data: string) => void
-  close: () => void
-}
+import { createMockSocket, push } from '../test/operatorHarness'
+import type { MockSocket } from '../test/operatorHarness'
 
 /** Captured socket instance so tests can push server messages. */
 let socket: MockSocket | null = null
-
-function createMockSocket(): MockSocket {
-  const instance: MockSocket = {
-    onopen: null,
-    onmessage: null,
-    onclose: null,
-    onerror: null,
-    readyState: 1,
-    send: vi.fn(),
-    close: vi.fn(),
-  }
-  socket = instance
-  return instance
-}
-
-/** Deliver a server message to the operator app. */
-function push(message: OperatorMessage) {
-  act(() => {
-    socket?.onmessage?.({ data: JSON.stringify(message) })
-  })
-}
 
 function reference() {
   return {
@@ -111,7 +81,8 @@ beforeEach(() => {
     'WebSocket',
     Object.assign(
       function MockWebSocket() {
-        return createMockSocket()
+        socket = createMockSocket()
+        return socket
       },
       { OPEN: 1 }
     )
@@ -144,7 +115,7 @@ describe('operator approval history', () => {
     const panel = historyPanel()
     expect(panel.getByText('No history yet')).toBeInTheDocument()
 
-    push({ type: 'approval_confirmed', data: { reference: reference() } })
+    push(socket, { type: 'approval_confirmed', data: { reference: reference() } })
 
     await waitFor(() => expect(panel.getByText('John 1:1-3')).toBeInTheDocument())
     // The history tab carries no count, so the list itself is the only evidence.
@@ -158,8 +129,8 @@ describe('operator approval history', () => {
       socket?.onopen?.()
     })
 
-    push({ type: 'approval_confirmed', data: { reference: reference() } })
-    push({
+    push(socket, { type: 'approval_confirmed', data: { reference: reference() } })
+    push(socket, {
       type: 'approval_confirmed',
       data: {
         reference: {
@@ -197,7 +168,7 @@ describe('auto-approve mode', () => {
     // Before any snapshot the panel assumes manual approval.
     expect(autoModeButton('Off')).toHaveAttribute('aria-pressed', 'true')
 
-    push(snapshot('medium_and_up'))
+    push(socket, snapshot('medium_and_up'))
 
     await waitFor(() => expect(autoModeButton('Med+')).toHaveAttribute('aria-pressed', 'true'))
     expect(autoModeButton('Off')).toHaveAttribute('aria-pressed', 'false')
@@ -210,7 +181,7 @@ describe('auto-approve mode', () => {
     })
     openSettings()
 
-    push(snapshot('whenever' as unknown as AutoMode))
+    push(socket, snapshot('whenever' as unknown as AutoMode))
 
     await waitFor(() => expect(autoModeButton('Off')).toHaveAttribute('aria-pressed', 'true'))
   })
@@ -236,7 +207,7 @@ describe('auto-approve mode', () => {
     })
     openSettings()
 
-    push({ type: 'auto_mode_confirmed', data: { auto_mode: 'high' } })
+    push(socket, { type: 'auto_mode_confirmed', data: { auto_mode: 'high' } })
 
     await waitFor(() => expect(autoModeButton('High')).toHaveAttribute('aria-pressed', 'true'))
     expect(autoModeButton('Off')).toHaveAttribute('aria-pressed', 'false')
@@ -254,7 +225,7 @@ describe('auto-approve mode', () => {
     expect(auto.getByRole('button', { name: 'Off' })).toHaveAttribute('aria-pressed', 'true')
     expect(screen.queryByRole('group', { name: 'Auto-approve mode' })).not.toBeInTheDocument()
 
-    push(snapshot('medium_and_up'))
+    push(socket, snapshot('medium_and_up'))
 
     await waitFor(() =>
       expect(auto.getByRole('button', { name: 'On' })).toHaveAttribute('aria-pressed', 'true')

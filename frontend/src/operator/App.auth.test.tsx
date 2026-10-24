@@ -2,33 +2,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, fireEvent, render, screen } from '@testing-library/react'
 import App from './App'
 import { I18nProvider } from '../shared/I18nProvider'
-
-/** The subset of WebSocket the operator app uses, plus the URL it was opened with. */
-interface MockSocket {
-  url: string
-  onopen: (() => void) | null
-  onmessage: ((event: { data: string }) => void) | null
-  onclose: ((event: { code: number }) => void) | null
-  onerror: ((event: unknown) => void) | null
-  readyState: number
-  send: ReturnType<typeof vi.fn>
-  close: ReturnType<typeof vi.fn>
-}
+import { createMockSocket } from '../test/operatorHarness'
+import type { MockSocket } from '../test/operatorHarness'
 
 const created: MockSocket[] = []
 
 const MockWebSocket = Object.assign(
   function MockWebSocketStub(url: string) {
-    const instance: MockSocket = {
-      url,
-      onopen: null,
-      onmessage: null,
-      onclose: null,
-      onerror: null,
-      readyState: 1,
-      send: vi.fn(),
-      close: vi.fn(),
-    }
+    const instance = createMockSocket(url)
     created.push(instance)
     return instance
   },

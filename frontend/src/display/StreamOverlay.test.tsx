@@ -1,25 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { act, render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import StreamOverlay from './StreamOverlay'
-import type { DisplayMessage } from '../shared/types'
-
-interface MockSocket {
-  onopen: (() => void) | null
-  onmessage: ((event: { data: string }) => void) | null
-  onclose: ((event: { code: number }) => void) | null
-  onerror: ((event: unknown) => void) | null
-  readyState: number
-  send: (data: string) => void
-  close: () => void
-}
+import { createMockSocket, push } from '../test/operatorHarness'
+import type { MockSocket } from '../test/operatorHarness'
 
 let socket: MockSocket | null = null
-
-function push(message: DisplayMessage) {
-  act(() => {
-    socket?.onmessage?.({ data: JSON.stringify(message) })
-  })
-}
 
 function reference() {
   return {
@@ -45,15 +30,7 @@ beforeEach(() => {
   window.localStorage.clear()
   window.history.replaceState(null, '', '/display?mode=obs&height=40')
   vi.stubGlobal('WebSocket', function MockWebSocket() {
-    socket = {
-      onopen: null,
-      onmessage: null,
-      onclose: null,
-      onerror: null,
-      readyState: 1,
-      send: vi.fn(),
-      close: vi.fn(),
-    }
+    socket = createMockSocket()
     return socket
   })
   vi.stubGlobal(
@@ -81,8 +58,8 @@ describe('stream overlay', () => {
 
   it('shows the passage on a band of the height from the URL', async () => {
     render(<StreamOverlay />)
-    push({ type: 'display_settings', data: { verse_limit: 'all', theme: 'dark' } })
-    push({ type: 'reference', data: reference() })
+    push(socket, { type: 'display_settings', data: { verse_limit: 'all', theme: 'dark' } })
+    push(socket, { type: 'reference', data: reference() })
 
     const band = await screen.findByTestId('stream-band')
     await waitFor(() => expect(band.className).toContain('stream-band--visible'))
@@ -94,8 +71,8 @@ describe('stream overlay', () => {
 
   it("follows the projector's verse limit and says how many are left out", async () => {
     render(<StreamOverlay />)
-    push({ type: 'display_settings', data: { verse_limit: 3, theme: 'dark' } })
-    push({ type: 'reference', data: reference() })
+    push(socket, { type: 'display_settings', data: { verse_limit: 3, theme: 'dark' } })
+    push(socket, { type: 'reference', data: reference() })
 
     await screen.findByText('All things were made by him.')
     expect(screen.queryByText('In him was life.')).toBeNull()
@@ -104,16 +81,16 @@ describe('stream overlay', () => {
 
   it('fades out and removes the band when the projector is cleared', async () => {
     render(<StreamOverlay />)
-    push({ type: 'reference', data: reference() })
+    push(socket, { type: 'reference', data: reference() })
     await screen.findByTestId('stream-band')
 
-    push({ type: 'clear', data: {} })
+    push(socket, { type: 'clear', data: {} })
     await waitFor(() => expect(screen.queryByTestId('stream-band')).toBeNull())
   })
 
   it('never shows the idle picture, even when the server sends one (it sits over a camera)', async () => {
     const { container } = render(<StreamOverlay />)
-    push({
+    push(socket, {
       type: 'display_settings',
       data: {
         verse_limit: 3,
@@ -124,9 +101,9 @@ describe('stream overlay', () => {
     expect(container.querySelector('img')).toBeNull()
     expect(container.textContent).toBe('')
 
-    push({ type: 'reference', data: reference() })
+    push(socket, { type: 'reference', data: reference() })
     await screen.findByTestId('stream-band')
-    push({ type: 'clear', data: {} })
+    push(socket, { type: 'clear', data: {} })
     await waitFor(() => expect(screen.queryByTestId('stream-band')).toBeNull())
 
     expect(container.querySelector('img')).toBeNull()
