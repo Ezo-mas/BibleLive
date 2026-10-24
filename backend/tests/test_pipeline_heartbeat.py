@@ -8,10 +8,10 @@ from types import SimpleNamespace
 
 import pytest
 import requests
+from processor_factory import make_processor
 
 from audio.config import AudioPipelineConfig
 from audio.heartbeat import HeartbeatSender
-from audio.metrics import PipelineMetrics
 from audio.pipeline import AUDIO_STALL_S, SILENT_MIC_S, BibleLiveAudioProcessor, frame_is_loud
 from audio.stt import Transcription
 
@@ -37,26 +37,16 @@ class _FakeSTT:
 
 def _processor(stt=None, **config) -> BibleLiveAudioProcessor:
     """A processor with just enough wiring to report its health."""
-    proc = BibleLiveAudioProcessor.__new__(BibleLiveAudioProcessor)
-    proc.config = AudioPipelineConfig(**config)
-    proc.is_running = True
-    proc.stt = stt or _FakeSTT()
-    proc.metrics = PipelineMetrics()
-    proc._frame_duration_s = 0.03
-    proc._local = threading.local()
-    proc.vad_thread = None
-    proc.transcription_thread = None
-    proc.sender = SimpleNamespace(delivery_problem=None)
-    proc.transcript_sender = SimpleNamespace(submit=lambda text, language: None)
-    proc._partial_schedule = None  # partial transcripts are not under test here
-    proc._capture_down = False
-    proc._last_frame_at = time.monotonic()
-    proc._last_loud_at = time.monotonic()
-    proc._mic_silent_logged = False
-    proc._consecutive_transcription_errors = 0
-    proc._parser_issues = []
-    proc.verse_text_db_path = None  # set by __init__ in the real pipeline
-    return proc
+    return make_processor(
+        config=AudioPipelineConfig(**config),
+        is_running=True,
+        stt=stt or _FakeSTT(),
+        sender=SimpleNamespace(delivery_problem=None),
+        transcript_sender=SimpleNamespace(submit=lambda text, language: None),
+        _partial_schedule=None,  # partial transcripts are not under test here
+        _last_frame_at=time.monotonic(),
+        _last_loud_at=time.monotonic(),
+    )
 
 
 # ---------------------------------------------------------------------------

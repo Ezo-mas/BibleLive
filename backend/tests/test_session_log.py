@@ -1,15 +1,12 @@
 """Tests for the live session log (``--session-log-dir``, ``--session-audio``)."""
 
 import json
-import threading
 import wave
 
 import pytest
+from processor_factory import make_processor
 
 from audio.cli import build_parser
-from audio.config import AudioPipelineConfig
-from audio.metrics import PipelineMetrics
-from audio.pipeline import BibleLiveAudioProcessor
 from audio.session_log import SessionLog
 from audio.stt import Transcription
 from core.verse_parser import Reference
@@ -113,18 +110,12 @@ class _Recording:
 
 
 def test_pipeline_logs_each_processed_utterance(tmp_path):
-    proc = BibleLiveAudioProcessor.__new__(BibleLiveAudioProcessor)
-    proc.config = AudioPipelineConfig()
-    proc.stt = _ScriptedSTT()
-    proc.metrics = PipelineMetrics()
-    proc._frame_duration_s = 0.03
-    proc._local = threading.local()
-    proc.sender = _Recording()
-    proc.transcript_sender = _Recording()
-    proc._consecutive_transcription_errors = 0
-    proc.bible_db_path = str(tmp_path / "missing.sqlite")
-    proc.verse_text_db_path = None
-    proc._parser_issues = []
+    proc = make_processor(
+        stt=_ScriptedSTT(),
+        sender=_Recording(),
+        transcript_sender=_Recording(),
+        bible_db_path=str(tmp_path / "missing.sqlite"),
+    )
     proc._init_thread_local_parsers()
     proc.session_log = SessionLog(tmp_path / "sessions", False, {}, 0.03)
 
@@ -157,11 +148,10 @@ class _CheckingQueue:
 def _queueing_processor(tmp_path, full: bool):
     from audio.segmenter import SegmentEvent
 
-    proc = BibleLiveAudioProcessor.__new__(BibleLiveAudioProcessor)
-    proc.metrics = PipelineMetrics()
-    proc._frame_duration_s = 0.03
-    proc._capture_language = "lt"
-    proc.session_log = SessionLog(tmp_path, False, {}, 0.03)
+    proc = make_processor(
+        _capture_language="lt",
+        session_log=SessionLog(tmp_path, False, {}, 0.03),
+    )
     proc.vad_queue = _CheckingQueue(proc.session_log, full)
     event = SegmentEvent("end", frames=[FRAME] * 20, reason="silence")
     return proc, event

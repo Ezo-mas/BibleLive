@@ -12,15 +12,13 @@ with ``__new__`` and the processor is assembled from fakes.
 """
 
 import socket
-import threading
 from queue import Queue
 
 import pytest
+from processor_factory import make_processor
 
 from audio.config import AudioPipelineConfig
 from audio.control import LanguageControlServer
-from audio.metrics import PipelineMetrics
-from audio.partials import PartialMailbox
 from audio.pipeline import BibleLiveAudioProcessor
 from audio.segmenter import Segmenter, SegmentEvent
 from audio.stt import SUPPORTED_LANGUAGES, WHISPER_INITIAL_PROMPTS, SpeechToText, Transcription
@@ -118,33 +116,15 @@ class _FailingCapture:
 
 def _processor(language: str = "en") -> BibleLiveAudioProcessor:
     """Assemble a processor without starting audio capture or loading a model."""
-    proc = BibleLiveAudioProcessor.__new__(BibleLiveAudioProcessor)
-    proc.config = AudioPipelineConfig(language=language)
-    proc.is_running = False
-    proc.stt = _FakeSTT(language)
-    proc.audio_capture = None
-    proc.control_server = None
-    proc.vad_thread = None
-    proc.transcription_thread = None
-    proc.segmenter = Segmenter(lambda frame: True)
-    proc.vad_queue = Queue(maxsize=10)
-    proc.metrics = PipelineMetrics()
-    proc.frame_duration_ms = 30
-    proc._frame_duration_s = 0.03
-    proc._capture_language = language
-    proc._pending_language = None
-    proc._pending_language_lock = threading.Lock()
-    proc._local = threading.local()
-    proc.heartbeat = None
-    proc.sender = _RecordingSender()
-    proc.transcript_sender = _RecordingTranscripts()
-    proc._capture_down = False
-    proc._partial_mailbox = PartialMailbox()
-    proc._partial_schedule = None  # partial transcripts are not under test here
-    proc._utterance_seq = 0
-    proc._consecutive_transcription_errors = 0
-    proc._parser_issues = []
-    return proc
+    return make_processor(
+        config=AudioPipelineConfig(language=language),
+        stt=_FakeSTT(language),
+        segmenter=Segmenter(lambda frame: True),
+        vad_queue=Queue(maxsize=10),
+        sender=_RecordingSender(),
+        transcript_sender=_RecordingTranscripts(),
+        _partial_schedule=None,  # partial transcripts are not under test here
+    )
 
 
 def _install_parsers(proc: BibleLiveAudioProcessor) -> dict[str, StreamingParser]:
