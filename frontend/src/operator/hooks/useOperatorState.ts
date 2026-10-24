@@ -44,11 +44,7 @@ import type { SpokenLanguageState } from './useSpokenLanguage'
 import type { ConnectionState } from '../../components'
 import { useI18n } from '../../shared/i18nContext'
 import type { MessageKey } from '../../shared/i18n'
-import {
-  OPERATOR_TOKEN_STORAGE_KEY,
-  readStoredOperatorToken,
-  takeOperatorTokenFragment,
-} from '../../shared/operatorToken'
+import { useOperatorToken } from './useOperatorToken'
 
 /** How long a click counts as the start of a double-click, for restoring Up Next. */
 const DOUBLE_CLICK_MS = 500
@@ -58,9 +54,6 @@ const FLASH_MS = 150
 
 /** How long a notice stays up before it removes itself. */
 const NOTICE_MS: Record<NoticeTone, number> = { success: 3000, info: 4000, error: 6000 }
-
-/** Local storage key for operator token */
-const TOKEN_STORAGE_KEY = OPERATOR_TOKEN_STORAGE_KEY
 
 /**
  * How many history entries a state snapshot carries (the server sends the last
@@ -302,22 +295,8 @@ export interface OperatorState {
  */
 export function useOperatorState(): OperatorState {
   const { t } = useI18n()
-  const [token, setToken] = useState<string | null>(() => {
-    // A console the launcher opened carries its token in the fragment. It is saved
-    // the same way a typed token is (handleTokenSubmit), so a refusal and the rest
-    // of the flow are identical. This runs during the first render, before the
-    // I18nProvider's mount-time language request reads storage.
-    const fromLink = takeOperatorTokenFragment()
-    if (fromLink === null) return readStoredOperatorToken()
-    try {
-      localStorage.setItem(TOKEN_STORAGE_KEY, fromLink)
-    } catch {
-      // Storage is blocked (private browsing): the link's token still works on this page.
-    }
-    return fromLink
-  })
-  const [tokenInput, setTokenInput] = useState('')
-  const [authFailed, setAuthFailed] = useState(false)
+  const { token, authFailed, tokenInput, setTokenInput, submitToken, logout, onSocketClose } =
+    useOperatorToken()
 
   const [pending, setPending] = useState<BibleReference[]>([])
   const [history, setHistory] = useState<BibleReference[]>([])
@@ -439,6 +418,29 @@ export function useOperatorState(): OperatorState {
 
   // Filled in once the hook below exists; the socket handler is declared before it.
   const applyBibleVersionRef = useRef<(data: unknown) => void>(() => {})
+
+  // How each optimistic control goes back to its last confirmed value when the server
+  // rejects it. The four are not alike: verse limit and theme are also kept in
+  // localStorage, auto mode and follow-along are not, so each entry is written out.
+  // A Map, not an object, so an action name can never match an inherited property.
+  const revertOptimistic = new Map<string, { apply: () => void; persist?: () => void }>([
+    [
+      'set_verse_limit',
+      {
+        apply: () => setVerseLimit(confirmedRef.current.verseLimit),
+        persist: () => writeStoredVerseLimit(confirmedRef.current.verseLimit, window.localStorage),
+      },
+    ],
+    [
+      'set_display_theme',
+      {
+        apply: () => setDisplayTheme(confirmedRef.current.theme),
+        persist: () => writeStoredDisplayTheme(confirmedRef.current.theme, window.localStorage),
+      },
+    ],
+    ['set_auto_mode', { apply: () => setAutoMode(confirmedRef.current.autoMode) }],
+    ['set_follow_auto', { apply: () => setFollowAuto(confirmedRef.current.followAuto) }],
+  ])
 
   const handleMessage = (message: OperatorMessage) => {
     switch (message.type) {
@@ -606,17 +608,9 @@ export function useOperatorState(): OperatorState {
         )
         // An optimistic change is only provisional. Put the last confirmed value
         // back so the console matches what the display is really using.
-        if (action === 'set_verse_limit') {
-          setVerseLimit(confirmedRef.current.verseLimit)
-          writeStoredVerseLimit(confirmedRef.current.verseLimit, window.localStorage)
-        } else if (action === 'set_display_theme') {
-          setDisplayTheme(confirmedRef.current.theme)
-          writeStoredDisplayTheme(confirmedRef.current.theme, window.localStorage)
-        } else if (action === 'set_auto_mode') {
-          setAutoMode(confirmedRef.current.autoMode)
-        } else if (action === 'set_follow_auto') {
-          setFollowAuto(confirmedRef.current.followAuto)
-        }
+        const revert = revertOptimistic.get(action)
+        revert?.apply()
+        revert?.persist?.()
         break
       }
     }
@@ -633,20 +627,10 @@ export function useOperatorState(): OperatorState {
       token: token ?? '',
     } satisfies AuthenticateAction,
     onClose: event => {
-      // WebSocket close code 1008 = policy violation (auth failure)
-      if (event.code === 1008) {
-        // A refusal answers the first message, before anything else: with no
-        // token tried there is nothing to call failed, so the prompt opens
-        // without the error text. A 1008 is only ever sent pre-auth, so the
-        // socket behind it was never really connected.
-        if (token !== null) {
-          setAuthFailed(true)
-          // Clear invalid token
-          localStorage.removeItem(TOKEN_STORAGE_KEY)
-          setToken(null)
-        }
-        setHasConnected(false)
-      }
+      onSocketClose(event)
+      // A 1008 is only ever sent pre-auth, so the socket behind it was never really
+      // connected: it must not count as a session that reached the server.
+      if (event.code === 1008) setHasConnected(false)
     },
   })
 
@@ -661,23 +645,6 @@ export function useOperatorState(): OperatorState {
   useEffect(() => {
     if (status !== 'open') setShowInFlight(false)
   }, [status])
-
-  const handleTokenSubmit = (e: FormEvent) => {
-    e.preventDefault()
-    const trimmed = tokenInput.trim()
-    if (trimmed) {
-      localStorage.setItem(TOKEN_STORAGE_KEY, trimmed)
-      setToken(trimmed)
-      setTokenInput('')
-      setAuthFailed(false)
-    }
-  }
-
-  const logout = () => {
-    localStorage.removeItem(TOKEN_STORAGE_KEY)
-    setToken(null)
-    setAuthFailed(false)
-  }
 
   const sendAction = useCallback(
     (action: OperatorAction) => {
@@ -763,27 +730,24 @@ export function useOperatorState(): OperatorState {
     [beginGesture, showNotice, t]
   )
 
-  const selectNext = useCallback(() => {
-    setStaged(prev => {
-      const currentId = prev?.kind === 'pending' ? prev.id : null
-      if (pending.length === 0) return null
-      if (currentId === null) return { kind: 'pending', id: pending[0].id }
-      const index = pending.findIndex(ref => ref.id === currentId)
-      if (index === -1) return { kind: 'pending', id: pending[0].id }
-      return { kind: 'pending', id: pending[Math.min(index + 1, pending.length - 1)].id }
-    })
-  }, [pending])
+  // Up and down the queue: the staged detection moves by `step`, held at either end.
+  const selectBy = useCallback(
+    (step: number) => {
+      setStaged(prev => {
+        const currentId = prev?.kind === 'pending' ? prev.id : null
+        if (pending.length === 0) return null
+        if (currentId === null) return { kind: 'pending', id: pending[0].id }
+        const index = pending.findIndex(ref => ref.id === currentId)
+        if (index === -1) return { kind: 'pending', id: pending[0].id }
+        const target = Math.min(Math.max(index + step, 0), pending.length - 1)
+        return { kind: 'pending', id: pending[target].id }
+      })
+    },
+    [pending]
+  )
 
-  const selectPrevious = useCallback(() => {
-    setStaged(prev => {
-      const currentId = prev?.kind === 'pending' ? prev.id : null
-      if (pending.length === 0) return null
-      if (currentId === null) return { kind: 'pending', id: pending[0].id }
-      const index = pending.findIndex(ref => ref.id === currentId)
-      if (index === -1) return { kind: 'pending', id: pending[0].id }
-      return { kind: 'pending', id: pending[Math.max(index - 1, 0)].id }
-    })
-  }, [pending])
+  const selectNext = useCallback(() => selectBy(1), [selectBy])
+  const selectPrevious = useCallback(() => selectBy(-1), [selectBy])
 
   const deselect = useCallback(() => setStaged(null), [])
 
@@ -1030,7 +994,7 @@ export function useOperatorState(): OperatorState {
     authFailed,
     tokenInput,
     setTokenInput,
-    submitToken: handleTokenSubmit,
+    submitToken,
     logout,
     isAuthenticated: token !== null,
 

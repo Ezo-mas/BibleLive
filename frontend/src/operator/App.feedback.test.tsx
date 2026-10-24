@@ -200,6 +200,36 @@ describe('action failures', () => {
     expect(screen.getByRole('alert')).toHaveTextContent('reverted')
   })
 
+  it('puts the confirmed verse limit and theme back in storage when the server refuses them', () => {
+    openWith()
+    const settings = openSettings()
+
+    act(() => {
+      versesShown().getByRole('button', { name: '5' }).click()
+    })
+    expect(window.localStorage.getItem('biblelive_display_verse_limit')).toBe('5')
+    push(socket, {
+      type: 'error',
+      data: {
+        message: "Invalid verse_limit; expected one of 3, 5, 10, 'all'",
+        action: 'set_verse_limit',
+      },
+    })
+    expect(window.localStorage.getItem('biblelive_display_verse_limit')).toBe('3')
+
+    act(() => {
+      within(settings.getByRole('group', { name: 'Display background theme' }))
+        .getByRole('button', { name: 'Light' })
+        .click()
+    })
+    expect(window.localStorage.getItem('biblelive_display_theme')).toBe('light')
+    push(socket, {
+      type: 'error',
+      data: { message: 'Invalid display_theme', action: 'set_display_theme' },
+    })
+    expect(window.localStorage.getItem('biblelive_display_theme')).toBe('dark')
+  })
+
   it('falls back to the confirmed auto-approve mode when the change fails', async () => {
     openWith()
     openSettings()
