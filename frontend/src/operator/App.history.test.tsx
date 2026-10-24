@@ -1,54 +1,20 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import App from './App'
-import type { BibleReference, OperatorMessage } from '../shared/types'
-
-/** The subset of WebSocket the operator app uses. */
-interface MockSocket {
-  onopen: (() => void) | null
-  onmessage: ((event: { data: string }) => void) | null
-  onclose: ((event: { code: number }) => void) | null
-  onerror: ((event: unknown) => void) | null
-  readyState: number
-  send: ReturnType<typeof vi.fn>
-  close: () => void
-}
+import type { BibleReference } from '../shared/types'
+import { createMockSocket, lastSent, push } from '../test/operatorHarness'
+import type { MockSocket } from '../test/operatorHarness'
 
 let socket: MockSocket | null = null
-
-function createMockSocket(): MockSocket {
-  const instance: MockSocket = {
-    onopen: null,
-    onmessage: null,
-    onclose: null,
-    onerror: null,
-    readyState: 1,
-    send: vi.fn(),
-    close: vi.fn(),
-  }
-  socket = instance
-  return instance
-}
 
 /** Constructor stub; `OPEN` is what the shared hook compares readyState to. */
 const MockWebSocket = Object.assign(
   function MockWebSocketStub() {
-    return createMockSocket()
+    socket = createMockSocket()
+    return socket
   },
   { OPEN: 1, CLOSING: 2, CLOSED: 3 }
 )
-
-function push(message: OperatorMessage) {
-  act(() => {
-    socket?.onmessage?.({ data: JSON.stringify(message) })
-  })
-}
-
-/** The last action sent to the server, parsed. */
-function lastSent() {
-  const calls = socket?.send.mock.calls ?? []
-  return calls.length ? JSON.parse(calls[calls.length - 1][0]) : null
-}
 
 /** Operator actions sent after the authenticate first-message (empty: no token). */
 function sentActions() {
@@ -107,7 +73,7 @@ function openWith(
   act(() => {
     socket?.onopen?.()
   })
-  push({
+  push(socket, {
     type: 'state_snapshot',
     data: {
       current_display: currentDisplay,
@@ -132,7 +98,7 @@ function openWithSnapshot({
   entries?: BibleReference[]
   historyCount?: number
 }) {
-  push({
+  push(socket, {
     type: 'state_snapshot',
     data: {
       current_display: currentDisplay,
@@ -249,7 +215,7 @@ describe('history list', () => {
     openWith()
 
     for (let verse = 1; verse <= 21; verse += 1) {
-      push({
+      push(socket, {
         type: 'approval_confirmed',
         data: { reference: entry(`v-${verse}`, 'John', 3, verse) },
       })
@@ -281,7 +247,7 @@ describe('one row per passage', () => {
 
     selectHistory(/John 3:16/)
     show()
-    expect(lastSent()).toEqual({
+    expect(lastSent(socket)).toEqual({
       action: 'display_reference',
       book: 'John',
       chapter: 3,
@@ -295,7 +261,7 @@ describe('one row per passage', () => {
 
     selectHistory(/Psalms 23:1/)
     show()
-    push({
+    push(socket, {
       type: 'display_confirmed',
       data: { reference: entry('m-4', 'Psalms', 23, 1, 'manual') },
     })
@@ -308,7 +274,7 @@ describe('one row per passage', () => {
     selectHistory(/John 3:16/)
 
     // Another detection of the same verse is approved: its row replaces the staged one.
-    push({ type: 'approval_confirmed', data: { reference: entry('h-new', 'John', 3, 16) } })
+    push(socket, { type: 'approval_confirmed', data: { reference: entry('h-new', 'John', 3, 16) } })
 
     const card = historyCard(/John 3:16/)
     expect(card).toHaveAttribute('aria-pressed', 'true')
@@ -318,7 +284,7 @@ describe('one row per passage', () => {
     expect(screen.getByText('History', { selector: '.operator-next-badge' })).toBeInTheDocument()
 
     show()
-    expect(lastSent()).toEqual({
+    expect(lastSent(socket)).toEqual({
       action: 'display_reference',
       book: 'John',
       chapter: 3,
@@ -376,7 +342,7 @@ describe('Show again', () => {
 
     show()
 
-    expect(lastSent()).toEqual({
+    expect(lastSent(socket)).toEqual({
       action: 'display_reference',
       book: 'John',
       chapter: 3,
@@ -391,7 +357,10 @@ describe('Show again', () => {
     expect(screen.queryByText(/^Shown:/)).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Show on display' })).toBeDisabled()
 
-    push({ type: 'display_confirmed', data: { reference: entry('m-1', 'John', 3, 16, 'manual') } })
+    push(socket, {
+      type: 'display_confirmed',
+      data: { reference: entry('m-1', 'John', 3, 16, 'manual') },
+    })
 
     expect(
       within(screen.getByTestId('live-verses')).getByText('John 3:16 text')
@@ -410,7 +379,7 @@ describe('Show again', () => {
     selectHistory(/John 3:16/)
 
     show()
-    expect(lastSent()).toEqual({
+    expect(lastSent(socket)).toEqual({
       action: 'display_reference',
       book: 'John',
       chapter: 3,
@@ -418,7 +387,10 @@ describe('Show again', () => {
       verse_end: null,
     })
 
-    push({ type: 'display_confirmed', data: { reference: entry('m-3', 'John', 3, 16, 'manual') } })
+    push(socket, {
+      type: 'display_confirmed',
+      data: { reference: entry('m-3', 'John', 3, 16, 'manual') },
+    })
 
     expect(screen.getByText('Nothing staged')).toBeInTheDocument()
     expect(
@@ -441,7 +413,7 @@ describe('Show again', () => {
     selectHistory(/John 3:16/)
     show()
 
-    push({
+    push(socket, {
       type: 'error',
       data: { action: 'display_reference', message: 'John 3:16 is not in the Bible text' },
     })
@@ -467,7 +439,10 @@ describe('Show again', () => {
     // the first request arrives.
     selectHistory(/Romans 8:28/)
 
-    push({ type: 'display_confirmed', data: { reference: entry('m-1', 'John', 3, 16, 'manual') } })
+    push(socket, {
+      type: 'display_confirmed',
+      data: { reference: entry('m-1', 'John', 3, 16, 'manual') },
+    })
 
     expect(
       within(screen.getByTestId('live-verses')).getByText('John 3:16 text')
@@ -493,7 +468,7 @@ describe('Show again', () => {
 
     // Show re-resolves the coordinates on the server, so ageing out changes nothing.
     show()
-    expect(lastSent()).toEqual({
+    expect(lastSent(socket)).toEqual({
       action: 'display_reference',
       book: 'John',
       chapter: 3,
@@ -534,14 +509,14 @@ describe('switching between the lists', () => {
 
     selectHistory(/Romans 8:28/)
     show()
-    expect(lastSent()).toEqual({
+    expect(lastSent(socket)).toEqual({
       action: 'display_reference',
       book: 'Romans',
       chapter: 8,
       verse_start: 28,
       verse_end: 28,
     })
-    push({ type: 'display_confirmed', data: { reference: roman } })
+    push(socket, { type: 'display_confirmed', data: { reference: roman } })
     expect(screen.getByText('Nothing staged')).toBeInTheDocument()
 
     const queuedCard = pendingPanel().getByRole('button', { name: /John 1:1/ })
@@ -550,7 +525,7 @@ describe('switching between the lists', () => {
     })
     expect(screen.getByText('Detected')).toBeInTheDocument()
     show()
-    expect(lastSent()).toEqual({ action: 'approve', reference_id: 'p-1' })
+    expect(lastSent(socket)).toEqual({ action: 'approve', reference_id: 'p-1' })
   })
 
   it('never puts a history entry in the pending queue', () => {

@@ -83,6 +83,16 @@ The projector window's Edge flags (no sync, no extensions, no implicit sign-in)
 were checked only on a fresh Windows profile. Check once on a PC whose Edge is
 signed in with extensions installed.
 
+### Windows check after the audio package stopped re-exporting
+Size: small. `audio/__init__.py` no longer imports `audio.stt` on every
+`audio.*` import (2026-10-24), so `stt.py`'s `_register_nvidia_dll_dirs()` now
+runs only when `stt`, `stt_gguf`, `pipeline` or `cli` is imported. Every CUDA
+path imports one of those first, and the launcher's audio child registers its
+own; the one difference is that a launcher that only lists microphones
+(`audio.capture`) no longer adds the NVIDIA folders to its own `PATH`. Check
+on Windows: the microphone list, a `launcher --dry-run`, and a GPU service
+start.
+
 ### A test service on the Python 3.13 installer
 Since 2026-10-21 everything runs on one Python version, 3.13: the installer's
 bundled Python, CI and development (PR #53). Every pin has a Windows cp313 wheel
@@ -143,6 +153,14 @@ Python 3.13 installer" above). Left:
   and `test_capture_recovery.py::test_vad_loop_resumes_after_ffmpeg_dies`
   takes 0.5 s. Shortening them needs a production change (a constant tests can
   patch); worth ~2 s.
+
+### Switch the detection parity tests to the shared processor factory
+Size: small. `tests/test_detection_parity.py` (2026-10-24) builds its three
+processors with `BibleLiveAudioProcessor.__new__` and hand-set attributes, so the
+factory-drift test that guards `tests/processor_factory.py` does not cover them
+(a missing attribute still fails loudly, as an AttributeError). Switch them to
+`make_processor` once the factory's PR (#64) and this file's (#66) are both in
+`main`.
 
 ## Experiments
 

@@ -72,9 +72,6 @@ class Config(BaseSettings):
     # own default.
     UI_LANGUAGE: Literal["lt", "en"] | None = None
 
-    # Bible data
-    KJV_JSON_PATH: str = "data/kjv2.json"
-
     # Authentication configuration
     # Simple token-based auth for operator access.
     # Set BIBLELIVE_OPERATOR_TOKEN in production to protect operator endpoints.
@@ -85,11 +82,6 @@ class Config(BaseSettings):
     # CORS configuration
     # Comma-separated list of allowed origins, or "*" for all (dev only)
     CORS_ORIGINS: str = ""
-
-    # API configuration
-    API_TITLE: str = "BibleLive API"
-    API_VERSION: str = "0.1.0"
-    API_DESCRIPTION: str = "Real-time Bible reference display system"
 
     # Queue limits to prevent unbounded memory growth
     MAX_PENDING_REFERENCES: int = 100

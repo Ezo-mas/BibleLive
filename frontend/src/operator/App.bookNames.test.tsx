@@ -2,61 +2,30 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Mock } from 'vitest'
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import App from './App'
-import type { BibleReference, OperatorMessage } from '../shared/types'
+import type { BibleReference } from '../shared/types'
+import { createMockSocket, jsonResponse, push } from '../test/operatorHarness'
+import type { MockSocket } from '../test/operatorHarness'
 
 /**
  * Book names follow the spoken language: Lithuanian labels for what the server
  * sends and what the search lists, canonical names for everything it is asked.
  */
 
-interface MockSocket {
-  onopen: (() => void) | null
-  onmessage: ((event: { data: string }) => void) | null
-  onclose: ((event: { code: number }) => void) | null
-  onerror: ((event: unknown) => void) | null
-  readyState: number
-  send: ReturnType<typeof vi.fn>
-  close: () => void
-}
-
 let socket: MockSocket | null = null
 
 const MockWebSocket = Object.assign(
   function MockWebSocketStub() {
-    const instance: MockSocket = {
-      onopen: null,
-      onmessage: null,
-      onclose: null,
-      onerror: null,
-      readyState: 1,
-      send: vi.fn(),
-      close: vi.fn(),
-    }
-    socket = instance
-    return instance
+    socket = createMockSocket()
+    return socket
   },
   { OPEN: 1, CLOSING: 2, CLOSED: 3 }
 )
-
-function push(message: OperatorMessage) {
-  act(() => {
-    socket?.onmessage?.({ data: JSON.stringify(message) })
-  })
-}
 
 function sentActions() {
   const calls = socket?.send.mock.calls ?? []
   return calls
     .map(([text]) => JSON.parse(text))
     .filter(message => message.action !== 'authenticate')
-}
-
-function jsonResponse(body: unknown, status = 200): Response {
-  return {
-    ok: status >= 200 && status < 300,
-    status,
-    json: async () => body,
-  } as unknown as Response
 }
 
 /** A slice of the canon as /api/books serves it while KJV is loaded: no names of its own. */
@@ -144,7 +113,7 @@ function openWith(
   act(() => {
     socket?.onopen?.()
   })
-  push({
+  push(socket, {
     type: 'state_snapshot',
     data: {
       current_display: currentDisplay,
@@ -297,7 +266,7 @@ describe('book names from the loaded Bible translation', () => {
 
     // Another operator (or this one) switches to the Lithuanian translation.
     translation = 'ltb'
-    push({
+    push(socket, {
       type: 'bible_version_confirmed',
       data: { version: 'ltb', available: ['kjv', 'ltb'] },
     })

@@ -1,54 +1,20 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, fireEvent, render, screen } from '@testing-library/react'
 import App from './App'
-import type { BibleReference, OperatorMessage } from '../shared/types'
-
-/** The subset of WebSocket the operator app uses. */
-interface MockSocket {
-  onopen: (() => void) | null
-  onmessage: ((event: { data: string }) => void) | null
-  onclose: ((event: { code: number }) => void) | null
-  onerror: ((event: unknown) => void) | null
-  readyState: number
-  send: ReturnType<typeof vi.fn>
-  close: () => void
-}
+import type { BibleReference } from '../shared/types'
+import { createMockSocket, lastSent, push } from '../test/operatorHarness'
+import type { MockSocket } from '../test/operatorHarness'
 
 let socket: MockSocket | null = null
-
-function createMockSocket(): MockSocket {
-  const instance: MockSocket = {
-    onopen: null,
-    onmessage: null,
-    onclose: null,
-    onerror: null,
-    readyState: 1,
-    send: vi.fn(),
-    close: vi.fn(),
-  }
-  socket = instance
-  return instance
-}
 
 /** Constructor stub; `OPEN` is what the shared hook compares readyState to. */
 const MockWebSocket = Object.assign(
   function MockWebSocketStub() {
-    return createMockSocket()
+    socket = createMockSocket()
+    return socket
   },
   { OPEN: 1, CLOSING: 2, CLOSED: 3 }
 )
-
-function push(message: OperatorMessage) {
-  act(() => {
-    socket?.onmessage?.({ data: JSON.stringify(message) })
-  })
-}
-
-/** The last action sent to the server, parsed. */
-function lastSent() {
-  const calls = socket?.send.mock.calls ?? []
-  return calls.length ? JSON.parse(calls[calls.length - 1][0]) : null
-}
 
 /** Operator actions sent after the authenticate first-message (empty: no token). */
 function sentActions() {
@@ -102,7 +68,7 @@ function openWith({
   act(() => {
     socket?.onopen?.()
   })
-  push({
+  push(socket, {
     type: 'state_snapshot',
     data: {
       current_display: currentDisplay,
@@ -186,7 +152,7 @@ describe('double-click on a history entry', () => {
 
     fireEvent.doubleClick(card)
 
-    expect(lastSent()).toEqual({
+    expect(lastSent(socket)).toEqual({
       action: 'display_reference',
       book: 'John',
       chapter: 3,
@@ -197,7 +163,10 @@ describe('double-click on a history entry', () => {
     // Nothing is on the display until the server confirms it.
     expect(screen.getByTestId('live-verses')).toHaveTextContent('Luke 2:11 text')
 
-    push({ type: 'display_confirmed', data: { reference: entry('m-1', 'John', 3, 16, 'manual') } })
+    push(socket, {
+      type: 'display_confirmed',
+      data: { reference: entry('m-1', 'John', 3, 16, 'manual') },
+    })
     expect(screen.getByText('Shown: John 3:16 (manual)')).toBeInTheDocument()
   })
 
@@ -206,7 +175,7 @@ describe('double-click on a history entry', () => {
     const card = historyCard(/John 3:16/)
 
     fireEvent.doubleClick(card)
-    push({
+    push(socket, {
       type: 'error',
       data: { action: 'display_reference', message: 'John 3:16 is not in the Bible text' },
     })
@@ -245,7 +214,7 @@ describe('double-click on a queued detection', () => {
     openWith({ currentDisplay: live, pending: [queued, queuedAgain] })
 
     fireEvent.doubleClick(queuedCard(/John 1:1/))
-    push({ type: 'approval_confirmed', data: { reference: queued } })
+    push(socket, { type: 'approval_confirmed', data: { reference: queued } })
     fireEvent.doubleClick(queuedCard(/Acts 2:38/))
 
     expect(sentActions()).toEqual([
@@ -272,7 +241,10 @@ describe('a double-click leaves Up Next as it was', () => {
     ])
     expect(screen.getByTestId('next-preview')).toHaveTextContent('Psalms 23:1')
 
-    push({ type: 'display_confirmed', data: { reference: entry('m-1', 'John', 3, 16, 'manual') } })
+    push(socket, {
+      type: 'display_confirmed',
+      data: { reference: entry('m-1', 'John', 3, 16, 'manual') },
+    })
     expect(screen.getByTestId('live-verses')).toHaveTextContent('John 3:16 text')
     expect(screen.getByTestId('next-preview')).toHaveTextContent('Psalms 23:1')
   })
@@ -291,7 +263,7 @@ describe('a double-click leaves Up Next as it was', () => {
     expect(sentActions()).toEqual([{ action: 'approve', reference_id: 'p-1' }])
     expect(screen.getByTestId('next-preview')).toHaveTextContent('Psalms 23:1')
 
-    push({ type: 'approval_confirmed', data: { reference: queued } })
+    push(socket, { type: 'approval_confirmed', data: { reference: queued } })
     expect(screen.getByTestId('next-preview')).toHaveTextContent('Psalms 23:1')
   })
 })
@@ -326,6 +298,6 @@ describe('one in-flight guard for double-clicks and Show', () => {
     fireEvent.doubleClick(queuedCard(/John 1:1/))
 
     expect(sentActions()).toHaveLength(1)
-    expect(lastSent()).toMatchObject({ action: 'display_reference', book: 'Romans' })
+    expect(lastSent(socket)).toMatchObject({ action: 'display_reference', book: 'Romans' })
   })
 })

@@ -2,33 +2,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, fireEvent, render, screen } from '@testing-library/react'
 import App from './App'
 import { I18nProvider } from '../shared/I18nProvider'
-
-/** The subset of WebSocket the operator app uses, plus the URL it was opened with. */
-interface MockSocket {
-  url: string
-  onopen: (() => void) | null
-  onmessage: ((event: { data: string }) => void) | null
-  onclose: ((event: { code: number }) => void) | null
-  onerror: ((event: unknown) => void) | null
-  readyState: number
-  send: ReturnType<typeof vi.fn>
-  close: ReturnType<typeof vi.fn>
-}
+import { createMockSocket } from '../test/operatorHarness'
+import type { MockSocket } from '../test/operatorHarness'
 
 const created: MockSocket[] = []
 
 const MockWebSocket = Object.assign(
   function MockWebSocketStub(url: string) {
-    const instance: MockSocket = {
-      url,
-      onopen: null,
-      onmessage: null,
-      onclose: null,
-      onerror: null,
-      readyState: 1,
-      send: vi.fn(),
-      close: vi.fn(),
-    }
+    const instance = createMockSocket(url)
     created.push(instance)
     return instance
   },
@@ -186,7 +167,7 @@ describe('operator token in the launcher link (#token=)', () => {
     expect(window.localStorage.getItem('biblelive_operator_token')).toBe('secret')
   })
 
-  it('asks the server for the interface language with the fragment token', () => {
+  it('asks the server for the interface language without sending the fragment token', () => {
     const fetchMock = vi.fn(
       async () => new Response(JSON.stringify({ language: 'en' }), { status: 200 })
     )
@@ -198,9 +179,8 @@ describe('operator token in the launcher link (#token=)', () => {
       </I18nProvider>
     )
 
-    expect(fetchMock).toHaveBeenCalledWith('/api/ui-language', {
-      headers: { Authorization: 'Bearer secret' },
-    })
+    // A public route: called with the URL alone, so no Authorization header.
+    expect(fetchMock).toHaveBeenCalledWith('/api/ui-language')
   })
 
   it('replaces a stored token with the fragment token, as a typed one would', () => {

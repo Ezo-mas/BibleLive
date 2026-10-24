@@ -147,16 +147,6 @@ body {
   opacity: 0.8;
 }
 
-/* Optional Translation Indicator */
-.display-translation {
-  font-size: clamp(0.875rem, 1.5vw, 1.25rem);
-  font-family: var(--font-sans);
-  color: var(--color-text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  opacity: 0.6;
-}
-
 /* "+N more verses" note when a passage is longer than the chosen limit */
 .display-range-note {
   font-family: var(--font-sans);

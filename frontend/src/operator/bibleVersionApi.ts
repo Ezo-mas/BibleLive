@@ -1,4 +1,4 @@
-import { readFailure } from './passageApi'
+import { ApiError, authHeaders, readFailure, request } from './apiClient'
 import { defaultTranslator } from '../shared/i18n'
 import type { MessageKey, Translator } from '../shared/i18n'
 
@@ -21,25 +21,6 @@ export function bibleVersionLabel(id: string, t: Translator = defaultTranslator)
   return key ? t(key) : id.toUpperCase()
 }
 
-/** A Bible-version request that failed; `status` is 0 when it never reached the server. */
-export class BibleVersionApiError extends Error {
-  readonly status: number
-
-  constructor(status: number, message: string) {
-    super(message)
-    this.name = 'BibleVersionApiError'
-    this.status = status
-  }
-}
-
-/** The endpoint is operator-only, so requests carry the operator token. */
-function headers(token: string | null, json = false): HeadersInit {
-  return {
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    ...(json ? { 'Content-Type': 'application/json' } : {}),
-  }
-}
-
 /** Validate the shape of a version reply; shared with the WebSocket confirmation. */
 export function parseBibleVersionInfo(body: unknown): BibleVersionInfo | null {
   if (typeof body !== 'object' || body === null) return null
@@ -51,29 +32,31 @@ export function parseBibleVersionInfo(body: unknown): BibleVersionInfo | null {
 
 async function readInfo(response: Response, t: Translator): Promise<BibleVersionInfo> {
   if (!response.ok) {
-    throw new BibleVersionApiError(
+    throw new ApiError(
       response.status,
       await readFailure(response, t('version.requestFailed', { status: response.status }), t)
     )
   }
   const info = parseBibleVersionInfo(await response.json())
   if (!info) {
-    throw new BibleVersionApiError(502, t('version.badReply'))
+    throw new ApiError(502, t('version.badReply'))
   }
   return info
 }
 
-/** Which translation is active, and which others can be chosen. */
+/**
+ * Which translation is active, and which others can be chosen. The endpoint is
+ * operator-only, so the request carries the operator token.
+ */
 export async function fetchBibleVersion(
   token: string | null,
   t: Translator = defaultTranslator
 ): Promise<BibleVersionInfo> {
-  let response: Response
-  try {
-    response = await fetch('/api/bible-version', { headers: headers(token) })
-  } catch {
-    throw new BibleVersionApiError(0, t('version.readUnreachable'))
-  }
+  const response = await request(
+    '/api/bible-version',
+    { headers: authHeaders(token) },
+    t('version.readUnreachable')
+  )
   return readInfo(response, t)
 }
 
@@ -83,15 +66,14 @@ export async function changeBibleVersion(
   token: string | null,
   t: Translator = defaultTranslator
 ): Promise<BibleVersionInfo> {
-  let response: Response
-  try {
-    response = await fetch('/api/bible-version', {
+  const response = await request(
+    '/api/bible-version',
+    {
       method: 'POST',
-      headers: headers(token, true),
+      headers: authHeaders(token, true),
       body: JSON.stringify({ version }),
-    })
-  } catch {
-    throw new BibleVersionApiError(0, t('version.changeUnreachable'))
-  }
+    },
+    t('version.changeUnreachable')
+  )
   return readInfo(response, t)
 }

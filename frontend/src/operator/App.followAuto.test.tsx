@@ -2,47 +2,19 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import App from './App'
 import type { BibleReference, FollowAlongHint, OperatorMessage } from '../shared/types'
-
-/** The subset of WebSocket the operator app uses. */
-interface MockSocket {
-  onopen: (() => void) | null
-  onmessage: ((event: { data: string }) => void) | null
-  onclose: ((event: { code: number }) => void) | null
-  onerror: ((event: unknown) => void) | null
-  readyState: number
-  send: ReturnType<typeof vi.fn>
-  close: () => void
-}
+import { createMockSocket, push } from '../test/operatorHarness'
+import type { MockSocket } from '../test/operatorHarness'
 
 let socket: MockSocket | null = null
-
-function createMockSocket(): MockSocket {
-  const instance: MockSocket = {
-    onopen: null,
-    onmessage: null,
-    onclose: null,
-    onerror: null,
-    readyState: 1,
-    send: vi.fn(),
-    close: vi.fn(),
-  }
-  socket = instance
-  return instance
-}
 
 /** Constructor stub; `OPEN` is what the shared hook compares readyState to. */
 const MockWebSocket = Object.assign(
   function MockWebSocketStub() {
-    return createMockSocket()
+    socket = createMockSocket()
+    return socket
   },
   { OPEN: 1, CLOSING: 2, CLOSED: 3 }
 )
-
-function push(message: OperatorMessage) {
-  act(() => {
-    socket?.onmessage?.({ data: JSON.stringify(message) })
-  })
-}
 
 /** The socket's send spy, so tests can assert what the console sent. */
 function sentMessages() {
@@ -95,7 +67,7 @@ function openWith({ currentDisplay = null, history = [], followAuto = false }: O
   act(() => {
     socket?.onopen?.()
   })
-  push({
+  push(socket, {
     type: 'state_snapshot',
     data: {
       current_display: currentDisplay,
@@ -202,10 +174,10 @@ describe('follow-along auto-show switch', () => {
       followOptions().getByRole('button', { name: 'On' }).click()
     })
 
-    push({ type: 'follow_auto_confirmed', data: { follow_auto: true } })
+    push(socket, { type: 'follow_auto_confirmed', data: { follow_auto: true } })
     expect(screen.getByText('Follow the reading automatically: On')).toBeInTheDocument()
 
-    push({ type: 'follow_auto_confirmed', data: { follow_auto: false } })
+    push(socket, { type: 'follow_auto_confirmed', data: { follow_auto: false } })
     expect(followOptions().getByRole('button', { name: 'Off' })).toHaveAttribute(
       'aria-pressed',
       'true'
@@ -221,7 +193,7 @@ describe('follow-along auto-show switch', () => {
     })
     vi.spyOn(console, 'error').mockImplementation(() => {})
 
-    push({
+    push(socket, {
       type: 'error',
       data: { message: 'Invalid follow_auto; expected true or false', action: 'set_follow_auto' },
     })
@@ -268,7 +240,7 @@ describe('follow-along hint while the switch is on', () => {
 
   it('keeps the plain label: a hint still listed is one the server left to the operator', () => {
     openWith({ currentDisplay: onScreen, followAuto: true })
-    push(hintFor('d-1'))
+    push(socket, hintFor('d-1'))
 
     expect(screen.getByText('Reading now')).toBeInTheDocument()
     expect(screen.getByText('Luke 16:13-15')).toBeInTheDocument()
@@ -276,9 +248,9 @@ describe('follow-along hint while the switch is on', () => {
 
   it('keeps the hint when the server turns the switch on mid-service', () => {
     openWith({ currentDisplay: onScreen })
-    push(hintFor('d-1'))
+    push(socket, hintFor('d-1'))
 
-    push({ type: 'follow_auto_confirmed', data: { follow_auto: true } })
+    push(socket, { type: 'follow_auto_confirmed', data: { follow_auto: true } })
 
     expect(hintRegion()).toBeInTheDocument()
     expect(screen.getByText('Reading now')).toBeInTheDocument()
@@ -316,7 +288,7 @@ describe('auto-followed passages', () => {
   it('announces a followed passage as followed, not as a manual show', () => {
     openWith()
 
-    push({ type: 'display_confirmed', data: { reference: followed('f-1', [13, 14, 15]) } })
+    push(socket, { type: 'display_confirmed', data: { reference: followed('f-1', [13, 14, 15]) } })
 
     expect(screen.getByText(/Shown: Luke 16:13-15 \(followed automatically\)/)).toBeInTheDocument()
   })
@@ -355,13 +327,13 @@ describe('an auto-followed passage and a Show from this console', () => {
     stageFromHistory(/Stage Luke 16:22 from history/)
     expect(showButton()).toBeDisabled()
 
-    push({ type: 'display_confirmed', data: { reference: followed('f-1', [13, 14, 15]) } })
+    push(socket, { type: 'display_confirmed', data: { reference: followed('f-1', [13, 14, 15]) } })
 
     // The follow confirmation answers no Show of this console: it is still pending.
     expect(showButton()).toBeDisabled()
     expect(screen.getByTestId('next-preview')).toHaveTextContent('Luke 16:22')
 
-    push({ type: 'display_confirmed', data: { reference: manual('m-3', [20, 21]) } })
+    push(socket, { type: 'display_confirmed', data: { reference: manual('m-3', [20, 21]) } })
 
     // Its own confirmation ends the Show, so Show is available for what is staged next.
     expect(showButton()).toBeEnabled()
@@ -372,7 +344,7 @@ describe('an auto-followed passage and a Show from this console', () => {
     openWith({ history: [manual('m-1', [13, 14, 15])] })
     stageFromHistory(/Stage Luke 16:13-15 from history/)
 
-    push({ type: 'display_confirmed', data: { reference: followed('f-1', [13, 14, 15]) } })
+    push(socket, { type: 'display_confirmed', data: { reference: followed('f-1', [13, 14, 15]) } })
 
     // This console did not ask for the followed passage, so what it staged stays staged.
     expect(screen.getByTestId('next-preview')).toHaveTextContent('Luke 16:13-15')

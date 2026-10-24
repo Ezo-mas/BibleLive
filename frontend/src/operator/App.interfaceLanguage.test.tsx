@@ -3,51 +3,18 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import App from './App'
 import { I18nProvider } from '../shared/I18nProvider'
 import { LANGUAGE_STORAGE_KEY } from '../shared/i18n'
-import type { OperatorMessage } from '../shared/types'
-
-/** The subset of WebSocket the operator app uses. */
-interface MockSocket {
-  onopen: (() => void) | null
-  onmessage: ((event: { data: string }) => void) | null
-  onclose: ((event: { code: number }) => void) | null
-  onerror: ((event: unknown) => void) | null
-  readyState: number
-  send: ReturnType<typeof vi.fn>
-  close: () => void
-}
+import { createMockSocket, jsonResponse, push } from '../test/operatorHarness'
+import type { MockSocket } from '../test/operatorHarness'
 
 let socket: MockSocket | null = null
 
 const MockWebSocket = Object.assign(
   function MockWebSocketStub() {
-    const instance: MockSocket = {
-      onopen: null,
-      onmessage: null,
-      onclose: null,
-      onerror: null,
-      readyState: 1,
-      send: vi.fn(),
-      close: vi.fn(),
-    }
-    socket = instance
-    return instance
+    socket = createMockSocket()
+    return socket
   },
   { OPEN: 1, CLOSING: 2, CLOSED: 3 }
 )
-
-function push(message: OperatorMessage) {
-  act(() => {
-    socket?.onmessage?.({ data: JSON.stringify(message) })
-  })
-}
-
-function jsonResponse(body: unknown, status = 200): Response {
-  return {
-    ok: status >= 200 && status < 300,
-    status,
-    json: async () => body,
-  } as unknown as Response
-}
 
 /** What the launcher reports for the console's language; null means it has no setting. */
 let launcherLanguage: string | null = null
@@ -79,7 +46,7 @@ async function renderConnected() {
   act(() => {
     socket?.onopen?.()
   })
-  push({
+  push(socket, {
     type: 'state_snapshot',
     data: {
       current_display: null,
@@ -174,7 +141,7 @@ describe('console language', () => {
     launcherLanguage = 'lt'
     window.localStorage.setItem(LANGUAGE_STORAGE_KEY, 'en')
     await renderConnected()
-    await waitFor(() => expect(fetch).toHaveBeenCalledWith('/api/ui-language', expect.anything()))
+    await waitFor(() => expect(fetch).toHaveBeenCalledWith('/api/ui-language'))
     expect(screen.getByRole('heading', { name: 'On Display' })).toBeInTheDocument()
   })
 

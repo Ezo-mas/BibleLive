@@ -3,31 +3,14 @@ import { act, render, screen } from '@testing-library/react'
 import App from './App'
 import { PIPELINE_POLL_MS } from './hooks/usePipelineStatus'
 import type { PipelineStatus } from '../shared/types'
-
-/** The subset of WebSocket the operator app uses. */
-interface MockSocket {
-  onopen: (() => void) | null
-  onmessage: ((event: { data: string }) => void) | null
-  onclose: ((event: { code: number }) => void) | null
-  onerror: ((event: unknown) => void) | null
-  readyState: number
-  send: ReturnType<typeof vi.fn>
-  close: ReturnType<typeof vi.fn>
-}
+import { createMockSocket } from '../test/operatorHarness'
+import type { MockSocket } from '../test/operatorHarness'
 
 const created: MockSocket[] = []
 
 const MockWebSocket = Object.assign(
   function MockWebSocketStub() {
-    const instance: MockSocket = {
-      onopen: null,
-      onmessage: null,
-      onclose: null,
-      onerror: null,
-      readyState: 1,
-      send: vi.fn(),
-      close: vi.fn(),
-    }
+    const instance = createMockSocket()
     created.push(instance)
     return instance
   },

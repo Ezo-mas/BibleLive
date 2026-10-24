@@ -18,7 +18,6 @@ class ConnectionManager:
 
     def __init__(self):
         """Initialize the connection manager with empty connection sets."""
-        self.active_connections: list[WebSocket] = []
         self.display_connections: set[WebSocket] = set()
         self.operator_connections: set[WebSocket] = set()
 
@@ -35,7 +34,6 @@ class ConnectionManager:
         """
         if not accepted:
             await websocket.accept()
-        self.active_connections.append(websocket)
         if client_type == "display":
             self.display_connections.add(websocket)
         elif client_type == "operator":
@@ -47,8 +45,6 @@ class ConnectionManager:
         Args:
             websocket: The WebSocket connection to remove.
         """
-        if websocket in self.active_connections:
-            self.active_connections.remove(websocket)
         self.display_connections.discard(websocket)
         self.operator_connections.discard(websocket)
 
@@ -102,7 +98,3 @@ class ConnectionManager:
     async def send_to_operator(self, message: dict) -> list[WebSocket]:
         """Send message to all operator connections; returns failed sockets."""
         return await self._send_to_connections(message, self.operator_connections)
-
-    async def broadcast(self, message: dict):
-        """Send message to all connections"""
-        await self._send_to_connections(message, self.active_connections)

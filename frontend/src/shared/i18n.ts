@@ -131,13 +131,12 @@ export function writeStoredLanguage(language: Language | null): void {
 /**
  * The launcher's interface language from `GET /api/ui-language`, or null when the
  * server does not say: an older server or no connection. The
- * page renders without it and switches once it arrives.
+ * page renders without it and switches once it arrives. The route is public, so the
+ * request carries no operator token.
  */
-export async function fetchServerLanguage(token: string | null): Promise<Language | null> {
+export async function fetchServerLanguage(): Promise<Language | null> {
   try {
-    const response = await fetch('/api/ui-language', {
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-    })
+    const response = await fetch('/api/ui-language')
     if (!response.ok) return null
     const body = (await response.json()) as { language?: unknown } | null
     const language = body?.language

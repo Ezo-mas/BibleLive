@@ -95,10 +95,12 @@ python benchmarks/run_benchmark.py --manifest ... --mode windowed \
 ### Parser context TTL
 
 The streaming parser keeps the running book/chapter for continuations
-(`taip pat 30 eilutė`). `--context-ttl-s` (default 60) drops a context older
-than that after the last reported reference, so a stale book can't claim
-stray numbers minutes later. Applies to all modes and to production.
-`--context-ttl-s 0` disables expiry.
+(`taip pat 30 eilutė`). `--context-ttl-s` (default 600, the live pipeline's
+value) drops a context older than that after the last reported reference, so a
+stale book can't claim stray numbers minutes later. Applies to all modes and to
+production. `--context-ttl-s 0` disables expiry. The value is part of the
+transcript cache key: results cached before 2026-10-24 with the old default
+(60) replay only with `--context-ttl-s 60`.
 
 ### Transcript cache and time ranges (fast iteration)
 

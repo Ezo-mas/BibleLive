@@ -108,9 +108,8 @@ Tests should:
 - Clean up resources in teardown
 - Be runnable in any order
 
-## Demo Scripts
+## Maintenance Scripts
 
-Demo and simulation scripts live in `backend/scripts/`:
+Database conversion scripts live in `backend/scripts/` (for example `convert_sqlite_bibles.py`):
 - These are not pytest tests
-- Used for manual testing and demonstration
-- May require a running server or audio hardware
+- They take `--source` and a required `--output` path and write a new database there

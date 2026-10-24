@@ -1,38 +1,17 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, render, screen } from '@testing-library/react'
 import App from './App'
-
-/** The subset of WebSocket the operator app uses. */
-interface MockSocket {
-  onopen: (() => void) | null
-  onmessage: ((event: { data: string }) => void) | null
-  onclose: ((event: { code: number }) => void) | null
-  onerror: ((event: unknown) => void) | null
-  readyState: number
-  send: ReturnType<typeof vi.fn>
-  close: ReturnType<typeof vi.fn>
-}
+import { createMockSocket } from '../test/operatorHarness'
+import type { MockSocket } from '../test/operatorHarness'
 
 /** Every socket the app opened, in order, so a reconnect is observable. */
 const created: MockSocket[] = []
 
-function createMockSocket(): MockSocket {
-  const instance: MockSocket = {
-    onopen: null,
-    onmessage: null,
-    onclose: null,
-    onerror: null,
-    readyState: 1,
-    send: vi.fn(),
-    close: vi.fn(),
-  }
-  created.push(instance)
-  return instance
-}
-
 const MockWebSocket = Object.assign(
   function MockWebSocketStub() {
-    return createMockSocket()
+    const instance = createMockSocket()
+    created.push(instance)
+    return instance
   },
   { OPEN: 1, CLOSING: 2, CLOSED: 3 }
 )

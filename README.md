@@ -519,7 +519,7 @@ BibleLive/                        # Monorepo root: tooling + shared assets
 │   │   ├── control.py            # Runtime language-control HTTP server
 │   │   └── config.py, metrics.py
 │   ├── tests/                    # Pytest suite
-│   ├── scripts/                  # Demo and verification scripts
+│   ├── scripts/                  # Database conversion scripts
 │   ├── requirements.txt          # Core dependencies
 │   ├── requirements-audio.txt    # Audio pipeline dependencies
 │   └── pyproject.toml            # Installable package metadata

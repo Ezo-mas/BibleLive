@@ -2,14 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { act, fireEvent, render, renderHook, screen, waitFor } from '@testing-library/react'
 import { useBibleVersion } from './hooks/useBibleVersion'
 import { BibleVersionSettings } from './components/BibleVersionSettings'
-
-function jsonResponse(body: unknown, status = 200): Response {
-  return {
-    ok: status >= 200 && status < 300,
-    status,
-    json: async () => body,
-  } as unknown as Response
-}
+import { jsonResponse } from '../test/operatorHarness'
 
 let server = { version: 'kjv', available: ['kjv', 'ltb'] }
 

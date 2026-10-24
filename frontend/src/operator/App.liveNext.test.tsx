@@ -1,48 +1,20 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, render, screen, within } from '@testing-library/react'
 import App from './App'
-import type { BibleReference, OperatorMessage, VerseLimit } from '../shared/types'
-
-/** The subset of WebSocket the operator app uses. */
-interface MockSocket {
-  onopen: (() => void) | null
-  onmessage: ((event: { data: string }) => void) | null
-  onclose: ((event: { code: number }) => void) | null
-  onerror: ((event: unknown) => void) | null
-  readyState: number
-  send: ReturnType<typeof vi.fn>
-  close: () => void
-}
+import type { BibleReference, VerseLimit } from '../shared/types'
+import { createMockSocket, lastSent, push } from '../test/operatorHarness'
+import type { MockSocket } from '../test/operatorHarness'
 
 let socket: MockSocket | null = null
-
-function createMockSocket(): MockSocket {
-  const instance: MockSocket = {
-    onopen: null,
-    onmessage: null,
-    onclose: null,
-    onerror: null,
-    readyState: 1,
-    send: vi.fn(),
-    close: vi.fn(),
-  }
-  socket = instance
-  return instance
-}
 
 /** Constructor stub; `OPEN` is what the shared hook compares readyState to. */
 const MockWebSocket = Object.assign(
   function MockWebSocketStub() {
-    return createMockSocket()
+    socket = createMockSocket()
+    return socket
   },
   { OPEN: 1, CLOSING: 2, CLOSED: 3 }
 )
-
-function push(message: OperatorMessage) {
-  act(() => {
-    socket?.onmessage?.({ data: JSON.stringify(message) })
-  })
-}
 
 /** A reference with one verse per number given. */
 function reference(id: string, book: string, chapter: number, verses: number[]): BibleReference {
@@ -81,7 +53,7 @@ function openWith(
   act(() => {
     socket?.onopen?.()
   })
-  push({
+  push(socket, {
     type: 'state_snapshot',
     data: {
       current_display: currentDisplay,
@@ -101,12 +73,6 @@ function selectCard(name: RegExp) {
   act(() => {
     screen.getByRole('button', { name }).click()
   })
-}
-
-/** The last action sent to the server, parsed. */
-function lastSent() {
-  const calls = socket?.send.mock.calls ?? []
-  return calls.length ? JSON.parse(calls[calls.length - 1][0]) : null
 }
 
 /** Operator actions sent after the authenticate first-message (empty: no token). */
@@ -179,7 +145,7 @@ describe('LIVE panel', () => {
   it('moves an approved reference onto the display', () => {
     openWith()
 
-    push({ type: 'approval_confirmed', data: { reference: psalms } })
+    push(socket, { type: 'approval_confirmed', data: { reference: psalms } })
 
     expect(
       within(screen.getByTestId('live-verses')).getByText('Psalms 23:1 text')
@@ -190,7 +156,7 @@ describe('LIVE panel', () => {
   it('returns to the empty state when the display is cleared', () => {
     openWith({ currentDisplay: psalms })
 
-    push({ type: 'clear_confirmed', data: {} })
+    push(socket, { type: 'clear_confirmed', data: {} })
 
     expect(screen.getByText('Nothing on display')).toBeInTheDocument()
   })
@@ -199,7 +165,7 @@ describe('LIVE panel', () => {
     openWith({ currentDisplay: psalms })
     expect(screen.getByTestId('live-stage')).toHaveAttribute('data-theme', 'dark')
 
-    push({ type: 'display_settings_confirmed', data: { verse_limit: 3, theme: 'light' } })
+    push(socket, { type: 'display_settings_confirmed', data: { verse_limit: 3, theme: 'light' } })
 
     expect(screen.getByTestId('live-stage')).toHaveAttribute('data-theme', 'light')
   })
@@ -246,11 +212,11 @@ describe('NEXT panel', () => {
     act(() => {
       screen.getByRole('button', { name: 'Show on display' }).click()
     })
-    expect(lastSent()).toEqual({ action: 'approve', reference_id: 'p-2' })
+    expect(lastSent(socket)).toEqual({ action: 'approve', reference_id: 'p-2' })
 
     // The server confirms the approval, then sends the queue without it.
-    push({ type: 'approval_confirmed', data: { reference: romans } })
-    push({ type: 'pending_update', data: { pending: [john], count: 1 } })
+    push(socket, { type: 'approval_confirmed', data: { reference: romans } })
+    push(socket, { type: 'pending_update', data: { pending: [john], count: 1 } })
 
     expect(
       within(screen.getByTestId('live-verses')).getByText('Romans 8:28 text')
@@ -275,7 +241,7 @@ describe('NEXT panel', () => {
 
   it('disables Show while the socket is not open', () => {
     render(<App />)
-    push({
+    push(socket, {
       type: 'state_snapshot',
       data: {
         current_display: null,
