@@ -828,7 +828,7 @@ class BibleLiveAudioProcessor:
         source: str,
     ) -> StreamingParser:
         """One streaming parser for ``source``'s transcripts in ``language``."""
-        return build_streaming_parser(language, source, validator, verse_text)
+        return build_streaming_parser(language, validator, verse_text, source)
 
     def _flush_held(self, language: str) -> list[Reference]:
         """Release ``language``'s held references (both models' in two-model mode)."""

@@ -39,9 +39,9 @@ def parser_sources(models: list[str], language: str) -> list[str]:
 
 def build_streaming_parser(
     language: str,
-    source: str,
     validator: Callable[[Reference], bool] | None,
     verse_text: VerseTextIndex | None,
+    source: str,
     context_ttl_s: float | None = CONTEXT_TTL_S,
 ) -> StreamingParser:
     """One streaming parser for ``source``'s transcripts in ``language``."""

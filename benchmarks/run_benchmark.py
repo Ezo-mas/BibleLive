@@ -523,7 +523,7 @@ def make_parsers(
     sources = parser_sources(engine_models(config.stt_engine), language)
 
     def build(source: str) -> StreamingParser:
-        return build_streaming_parser(language, source, _VALIDATOR, _VERSE_TEXT, context_ttl_s)
+        return build_streaming_parser(language, _VALIDATOR, _VERSE_TEXT, source, context_ttl_s)
 
     return build(sources[0]), (build(sources[1]) if len(sources) > 1 else None)
 
@@ -1100,7 +1100,7 @@ def run_windowed_recording(
     cpath = feed_cache_path(cache_dir, key) if cache_dir is not None and use_cache else None
 
     # Windowed mode decodes with Whisper only.
-    parser = build_streaming_parser(rec.language, "whisper", _VALIDATOR, _VERSE_TEXT, context_ttl_s)
+    parser = build_streaming_parser(rec.language, _VALIDATOR, _VERSE_TEXT, "whisper", context_ttl_s)
     raw: list[Detection] = []
     transcripts: list[tuple[float, str]] = []
     config_snapshot = {
