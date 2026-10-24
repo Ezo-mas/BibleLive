@@ -97,14 +97,21 @@ const ERROR_PREFIX_KEYS: Record<string, MessageKey> = {
 /**
  * Actions the console applies optimistically. When the server rejects one, the
  * control has to go back to the last confirmed value or it would keep claiming
- * a setting the display is not using.
+ * a setting the display is not using (each one's revert is in `useOperatorState`,
+ * which must cover every name here: its type says so).
  */
-const OPTIMISTIC_ACTIONS = new Set([
+const OPTIMISTIC_ACTIONS = [
   'set_verse_limit',
   'set_display_theme',
   'set_auto_mode',
   'set_follow_auto',
-])
+] as const
+type OptimisticAction = (typeof OPTIMISTIC_ACTIONS)[number]
+const OPTIMISTIC_ACTION_SET: ReadonlySet<string> = new Set(OPTIMISTIC_ACTIONS)
+
+function isOptimisticAction(action: string): action is OptimisticAction {
+  return OPTIMISTIC_ACTION_SET.has(action)
+}
 
 /**
  * What Up Next is holding: a queued detection the operator selected, a passage
@@ -422,25 +429,20 @@ export function useOperatorState(): OperatorState {
   // How each optimistic control goes back to its last confirmed value when the server
   // rejects it. The four are not alike: verse limit and theme are also kept in
   // localStorage, auto mode and follow-along are not, so each entry is written out.
-  // A Map, not an object, so an action name can never match an inherited property.
-  const revertOptimistic = new Map<string, { apply: () => void; persist?: () => void }>([
-    [
-      'set_verse_limit',
-      {
-        apply: () => setVerseLimit(confirmedRef.current.verseLimit),
-        persist: () => writeStoredVerseLimit(confirmedRef.current.verseLimit, window.localStorage),
-      },
-    ],
-    [
-      'set_display_theme',
-      {
-        apply: () => setDisplayTheme(confirmedRef.current.theme),
-        persist: () => writeStoredDisplayTheme(confirmedRef.current.theme, window.localStorage),
-      },
-    ],
-    ['set_auto_mode', { apply: () => setAutoMode(confirmedRef.current.autoMode) }],
-    ['set_follow_auto', { apply: () => setFollowAuto(confirmedRef.current.followAuto) }],
-  ])
+  // Keyed by OptimisticAction, so leaving one out does not type-check; it is only
+  // read after isOptimisticAction, so an inherited property can never match.
+  const revertOptimistic: Record<OptimisticAction, { apply: () => void; persist?: () => void }> = {
+    set_verse_limit: {
+      apply: () => setVerseLimit(confirmedRef.current.verseLimit),
+      persist: () => writeStoredVerseLimit(confirmedRef.current.verseLimit, window.localStorage),
+    },
+    set_display_theme: {
+      apply: () => setDisplayTheme(confirmedRef.current.theme),
+      persist: () => writeStoredDisplayTheme(confirmedRef.current.theme, window.localStorage),
+    },
+    set_auto_mode: { apply: () => setAutoMode(confirmedRef.current.autoMode) },
+    set_follow_auto: { apply: () => setFollowAuto(confirmedRef.current.followAuto) },
+  }
 
   const handleMessage = (message: OperatorMessage) => {
     switch (message.type) {
@@ -600,17 +602,20 @@ export function useOperatorState(): OperatorState {
         // A rejected or failed action is over: let the operator try again.
         if (action === 'approve' || action === 'display_reference') setShowInFlight(false)
         const prefix = t(ERROR_PREFIX_KEYS[action] ?? 'notice.errGeneric')
+        const optimistic = isOptimisticAction(action)
         showNotice(
           'error',
-          OPTIMISTIC_ACTIONS.has(action)
+          optimistic
             ? t('notice.reverted', { prefix, reason })
             : t('notice.failed', { prefix, reason })
         )
         // An optimistic change is only provisional. Put the last confirmed value
         // back so the console matches what the display is really using.
-        const revert = revertOptimistic.get(action)
-        revert?.apply()
-        revert?.persist?.()
+        if (optimistic) {
+          const revert = revertOptimistic[action]
+          revert.apply()
+          revert.persist?.()
+        }
         break
       }
     }
