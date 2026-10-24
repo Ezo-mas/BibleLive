@@ -157,33 +157,6 @@ class BibleLookup:
             # Metadata table doesn't exist (old database)
             return {}
 
-    def load_kjv_from_json(self, json_path: str) -> None:
-        """DEPRECATED: Use import_bible CLI instead.
-
-        This method is kept for backwards compatibility but logs a warning.
-        New code should use: python -m core.import_bible --source data/kjv2.json
-        """
-        logger.warning(
-            "BibleLookup.load_kjv_from_json() is deprecated. "
-            "Use 'python -m core.import_bible --translation kjv --source data/kjv2.json' instead."
-        )
-        # For backwards compatibility, we'll still attempt the import if called
-        # This allows existing tests and scripts to continue working
-        if __package__:
-            from .import_bible import BibleImporter
-        else:
-            from import_bible import BibleImporter  # type: ignore[no-redef]
-
-        importer = BibleImporter(str(self.db_path))
-        try:
-            importer.conn = self.conn  # Reuse existing connection
-            importer.create_schema()
-            importer.import_kjv_json(json_path)
-            importer.set_metadata("kjv", json_path)
-        except Exception as e:
-            logger.error(f"Failed to load KJV from JSON: {e}")
-            raise
-
     def _remember_validation(self, cache_key: tuple[str, int, int | None], result: bool) -> None:
         """Cache a validation result, evicting the oldest entry when full."""
         if (
@@ -335,25 +308,3 @@ class BibleLookup:
         """Close the database connection."""
         if self.conn:
             self.conn.close()
-
-
-# Example usage and testing
-if __name__ == "__main__":
-    # Initialize Bible lookup
-    bible = BibleLookup()
-
-    # If we had a JSON file, we could load it:
-    # bible.load_kjv_from_json("path/to/kjv.json")
-
-    # For now, let's test with some known good/bad references
-    print("Bible lookup initialized")
-    print(
-        "To use: create BibleLookup instance and pass its.get_validator_hook() to ReferenceParser"
-    )
-
-    # Example:
-    # parser = ReferenceParser(validator=bible.get_validator_hook())
-    # refs = parser.parse("John 3:16")
-    # print(refs)  # Will only return ref if John 3:16 exists in loaded Bible
-
-    bible.close()

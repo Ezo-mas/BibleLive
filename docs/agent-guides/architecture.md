@@ -68,10 +68,12 @@ easy to break by accident.
    `backend/tests/test_manual_reference.py` and (follow-along)
    `backend/tests/test_follow_along.py` (including the auto-show class) and
    `backend/tests/test_follow_auto.py` (the switch).
-   Both doors resolve a passage the same way: `display_reference` carries
-   coordinates only (no ID, no confidence, no text) and the server
-   re-resolves them through `core/passage.py`, so a client cannot inject
-   verse text or pass a manual selection off as a detection.
+   Both doors take their verse text from the database, never from the client.
+   `display_reference` carries coordinates only (no ID, no confidence, no text)
+   and the server re-resolves them through `core/passage.py` (`resolve_passage`);
+   approval re-resolves the queued detection with `AppState._resolve_verses`.
+   A client therefore cannot inject verse text or pass a manual selection off
+   as a detection.
    **Show Again** (Phase 4: showing a passage from display history) is
    that same action, not a third door: the console stages a history entry
    locally and sends its coordinates, so the server re-validates and
