@@ -51,17 +51,22 @@ from audio import stt as stt_module  # noqa: E402  (prompt/hotwords fingerprint 
 from audio.capture import AudioCapture  # noqa: E402  (frame sizing reference)
 from audio.cli import add_tuning_arguments, apply_tuning_arguments  # noqa: E402
 from audio.config import AudioPipelineConfig  # noqa: E402
+from audio.detection import (  # noqa: E402
+    build_streaming_parser,
+    parser_sources,
+    unique_references,
+    whisper_start_language,
+)
 from audio.ensemble import merge_agreement  # noqa: E402
 from audio.metrics import PipelineMetrics  # noqa: E402
 from audio.segmenter import FRAME_DURATION_MS, Segmenter, SegmentEvent  # noqa: E402
 from audio.sender import ReferenceSender  # noqa: E402
-from audio.spelling_maps import MappedStreamingParser, spelling_map  # noqa: E402
 from audio.stt import SpeechToText  # noqa: E402
-from audio.stt_gguf import GGUF_LANGUAGES, create_gguf_speech_to_text, engine_models  # noqa: E402
+from audio.stt_gguf import create_gguf_speech_to_text, engine_models  # noqa: E402
 from audio.vad import create_vad, silero_neg_threshold  # noqa: E402
 from core.bible_lookup import BibleLookup  # noqa: E402
 from core.verse_parser import Reference as ParsedReference  # noqa: E402
-from core.verse_parser import ReferenceParser, StreamingParser  # noqa: E402
+from core.verse_parser import StreamingParser  # noqa: E402
 from core.verse_text import VerseTextIndex  # noqa: E402
 
 # Detection-vs-gold tolerance in seconds (allows for utterance batching lag).
@@ -485,17 +490,19 @@ def stt_cache_identity(config: AudioPipelineConfig) -> dict[str, Any] | None:
 def make_stt(config: AudioPipelineConfig, language: str) -> Any:
     """The live pipeline's speech-to-text for ``config`` (Whisper or GGUF models)."""
 
+    models = engine_models(config.stt_engine)
+
     def whisper() -> SpeechToText:
         return SpeechToText(
             model_size=config.whisper_model,
             device=config.whisper_device,
-            language=language,
+            language=whisper_start_language(models, language),
             compute_type=config.whisper_compute_type,
             beam_size=config.beam_size,
             cpu_threads=config.cpu_threads,
         )
 
-    if not engine_models(config.stt_engine):
+    if not models:
         return whisper()
     return create_gguf_speech_to_text(
         config.stt_engine,
@@ -512,20 +519,10 @@ def make_parsers(
 ) -> tuple[StreamingParser, StreamingParser | None]:
     """The parser for the (first) model's transcripts and, in two-model mode,
     one for the second model's; each applies its model's spelling map, as live."""
-    models = engine_models(config.stt_engine) if language in GGUF_LANGUAGES else []
-    sources = models or ["whisper"]
+    sources = parser_sources(engine_models(config.stt_engine), language)
 
     def build(source: str) -> StreamingParser:
-        options: dict[str, Any] = {
-            "context_ttl_s": context_ttl_s,
-            "hold_chapter_only": True,  # as live
-            "verse_text": _VERSE_TEXT if language == "lt" else None,
-        }
-        parser = ReferenceParser(language=language, validator=_VALIDATOR)
-        rewrite = spelling_map(source, language)
-        if rewrite is not None:
-            return MappedStreamingParser(parser, spelling_map=rewrite, **options)
-        return StreamingParser(parser, **options)
+        return build_streaming_parser(language, source, _VALIDATOR, _VERSE_TEXT, context_ttl_s)
 
     return build(sources[0]), (build(sources[1]) if len(sources) > 1 else None)
 
@@ -676,17 +673,7 @@ def _model_refs(
     """One model's references in its text, each once ("low" after a shaky decode)."""
     if text is None:  # this model heard nothing in a two-model utterance
         return []
-    refs: list[ParsedReference] = []
-    keys: set[tuple] = set()
-    for ref in parser.feed(text, t_s):
-        key = ref_key(ref.book, ref.chapter, ref.verse_start, ref.verse_end)
-        if key in keys:
-            continue
-        keys.add(key)
-        if low_reason:
-            ref.confidence = "low"
-        refs.append(ref)
-    return refs
+    return unique_references(parser.feed(text, t_s), low_reason)[0]
 
 
 def release_held(
@@ -1038,7 +1025,7 @@ def _transcribe_window_segments(
 
     ``SpeechToText.transcribe_utterance`` joins Whisper's segments and discards
     their timestamps, so this calls ``stt.model.transcribe`` directly with the
-    same decoding kwargs as ``transcribe_utterance`` in ``backend/audio/stt.py``.
+    same decoding settings as ``transcribe_utterance`` (``whisper_decode_options``).
     The text post-processing (``_fix_common_transcription_errors`` and
     ``_collapse_repetition``) is the production code, called read-only.
 
@@ -1051,17 +1038,7 @@ def _transcribe_window_segments(
     segments, _info = stt.model.transcribe(
         chunk,
         language=language,
-        initial_prompt=stt.initial_prompt,
-        **({"hotwords": stt.hotwords} if stt.hotwords else {}),
-        beam_size=stt.beam_size,
-        best_of=5,
-        temperature=0.0,
-        compression_ratio_threshold=stt_module.COMPRESSION_RATIO_THRESHOLD,
-        log_prob_threshold=stt_module.LOG_PROB_THRESHOLD,
-        no_speech_threshold=stt_module.NO_SPEECH_THRESHOLD,
-        condition_on_previous_text=False,
-        repetition_penalty=1.05,
-        no_repeat_ngram_size=6,
+        **stt_module.whisper_decode_options(stt.initial_prompt, stt.hotwords, stt.beam_size),
     )
     pieces: list[tuple[float | None, str]] = []
     for seg in segments:
@@ -1121,12 +1098,8 @@ def run_windowed_recording(
     )
     cpath = feed_cache_path(cache_dir, key) if cache_dir is not None and use_cache else None
 
-    parser = StreamingParser(
-        ReferenceParser(language=rec.language, validator=_VALIDATOR),
-        context_ttl_s=context_ttl_s,
-        hold_chapter_only=True,  # as live
-        verse_text=_VERSE_TEXT if rec.language == "lt" else None,
-    )
+    # Windowed mode decodes with Whisper only.
+    parser = build_streaming_parser(rec.language, "whisper", _VALIDATOR, _VERSE_TEXT, context_ttl_s)
     raw: list[Detection] = []
     transcripts: list[tuple[float, str]] = []
     config_snapshot = {
