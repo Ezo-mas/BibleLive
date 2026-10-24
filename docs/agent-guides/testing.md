@@ -127,6 +127,11 @@ npm run screenshots   # visual regression (needs the stack running)
   pulling this change.
 - If a check fails with "command not found", run `make install-dev` once
   (permitted) and retry before reporting.
+- A test that needs the audio pipeline object without its models or threads
+  builds it with `make_processor(**overrides)` from
+  `backend/tests/processor_factory.py`, not `BibleLiveAudioProcessor.__new__`
+  plus hand-set attributes. A new attribute in `__init__` needs a default
+  there too; `test_processor_factory.py` fails and names it otherwise.
 - Tests for transcript post-processing (`audio/stt.py` corrections, parser
   inputs) must use realistic Whisper output: already-formatted `John 3:16`,
   multi-digit chapters and verses (`Psalms 119:105`), merged digits
