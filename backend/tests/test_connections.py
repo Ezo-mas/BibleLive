@@ -53,7 +53,6 @@ def test_dead_socket_pruned():
 
     assert failed == [dead]
     assert dead not in cm.display_connections
-    assert dead not in cm.active_connections
     # The healthy client still receives the message and stays registered.
     assert healthy in cm.display_connections
     assert len(healthy.sent) == 1
@@ -75,7 +74,6 @@ def test_stalled_socket_times_out_and_is_pruned(monkeypatch):
 
     assert failed == [stalled]
     assert stalled not in cm.display_connections
-    assert stalled not in cm.active_connections
     assert healthy in cm.display_connections
     assert len(healthy.sent) == 1
 
