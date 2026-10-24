@@ -139,13 +139,10 @@ class SettingsStore:
 
     def save_bible_version(self, version: str, db_path: str) -> bool:
         """Persist the chosen Bible translation id; returns False when the write failed."""
-        settings = self._read()
-        settings["bible_version"] = version
-        settings["bible_version_db_path"] = db_path
-        if not self._write(settings):
-            return False
-        logger.info(f"Persisted Bible version '{version}' to {self.path}")
-        return True
+        return self._update(
+            {"bible_version": version, "bible_version_db_path": db_path},
+            log=f"Persisted Bible version '{version}' to {self.path}",
+        )
 
     def save_auto_mode(self, auto_mode: AutoMode) -> bool:
         """Persist ``auto_mode`` atomically; returns False when the write failed.
@@ -154,12 +151,10 @@ class SettingsStore:
         in-memory value either way: a read-only or missing settings directory
         must not block an operator action on a live server.
         """
-        settings = self._read()
-        settings["auto_mode"] = auto_mode
-        if not self._write(settings):
-            return False
-        logger.info(f"Persisted auto-approve mode '{auto_mode}' to {self.path}")
-        return True
+        return self._update(
+            {"auto_mode": auto_mode},
+            log=f"Persisted auto-approve mode '{auto_mode}' to {self.path}",
+        )
 
     def save_follow_auto(self, enabled: bool) -> bool:
         """Persist the follow-along auto-show switch; returns False when the write failed.
@@ -167,12 +162,10 @@ class SettingsStore:
         Saved like ``save_auto_mode``: other keys are kept, and a failed write leaves
         the in-memory value in force.
         """
-        settings = self._read()
-        settings["follow_auto"] = enabled
-        if not self._write(settings):
-            return False
-        logger.info(f"Persisted follow-along auto-show {'on' if enabled else 'off'} to {self.path}")
-        return True
+        return self._update(
+            {"follow_auto": enabled},
+            log=f"Persisted follow-along auto-show {'on' if enabled else 'off'} to {self.path}",
+        )
 
     @property
     def directory(self) -> Path:
@@ -205,12 +198,10 @@ class SettingsStore:
 
     def save_idle_screen_fit(self, fit: IdleScreenFit) -> bool:
         """Persist the idle-screen fit mode; returns False when the write failed."""
-        settings = self._read()
-        settings["idle_screen_fit"] = fit
-        if not self._write(settings):
-            return False
-        logger.info(f"Persisted idle-screen fit '{fit}' to {self.path}")
-        return True
+        return self._update(
+            {"idle_screen_fit": fit},
+            log=f"Persisted idle-screen fit '{fit}' to {self.path}",
+        )
 
     def save_idle_screen_image(self, image: IdleImage) -> bool:
         """Persist the idle-screen picture's record; returns False when the write failed.
@@ -218,20 +209,37 @@ class SettingsStore:
         The picture file itself is written by the caller before this, so a failed save
         leaves the previous record in force.
         """
-        settings = self._read()
-        settings["idle_screen_image"] = {"kind": image.kind, "version": image.version}
-        if not self._write(settings):
-            return False
-        logger.info(f"Persisted idle-screen picture ({image.kind}) to {self.path}")
-        return True
+        return self._update(
+            {"idle_screen_image": {"kind": image.kind, "version": image.version}},
+            log=f"Persisted idle-screen picture ({image.kind}) to {self.path}",
+        )
 
     def clear_idle_screen_image(self) -> bool:
         """Remove the idle-screen picture's record; returns False when the write failed."""
+        return self._update(
+            remove=("idle_screen_image",),
+            log=f"Removed the idle-screen picture record from {self.path}",
+        )
+
+    def _update(
+        self,
+        changes: dict[str, Any] | None = None,
+        *,
+        remove: tuple[str, ...] = (),
+        log: str,
+    ) -> bool:
+        """Set the keys in ``changes``, drop the keys in ``remove``, and write the file.
+
+        Every other key is kept. ``log`` is logged at INFO after a successful write;
+        returns False when the write failed.
+        """
         settings = self._read()
-        settings.pop("idle_screen_image", None)
+        settings.update(changes or {})
+        for key in remove:
+            settings.pop(key, None)
         if not self._write(settings):
             return False
-        logger.info(f"Removed the idle-screen picture record from {self.path}")
+        logger.info(log)
         return True
 
     def _write(self, settings: dict[str, Any]) -> bool:
