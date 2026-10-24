@@ -144,23 +144,13 @@ Python 3.13 installer" above). Left:
   takes 0.5 s. Shortening them needs a production change (a constant tests can
   patch); worth ~2 s.
 
-### Follow-ups from the 2026-10-24 simplification refactor
-Size: small each. Left after the audit's items (PRs #64-#74); the rest of the
-list found during that work is done in those PRs.
-
-- **Windows smoke test after the `audio/__init__.py` change (#67).** The
-  package no longer imports `audio.stt` on every `audio.*` import, so `stt.py`'s
-  `_register_nvidia_dll_dirs()` now runs only when `stt`, `stt_gguf`,
-  `pipeline` or `cli` is imported. Every CUDA path does that first, and the
-  launcher's audio child registers its own; the one difference is that a
-  launcher that only lists microphones (`audio.capture`) no longer adds the
-  NVIDIA folders to its own `PATH`. Check on Windows: the microphone list, a
-  `launcher --dry-run`, and a GPU service start.
-- **`tests/test_detection_parity.py` builds processors with `__new__`.** Switch
-  it to `make_processor` once #64 and #66 are both in `main`.
-- **npm 10.9.9 cannot install vitest 4.1.11 or later** (a crash in its peer
-  loader, reproduced in an empty project). #74 pins vitest 5.0.5; check a later
-  `npm update` within 5.x installs, or upgrade npm first.
+### Switch the detection parity tests to the shared processor factory
+Size: small. `tests/test_detection_parity.py` (2026-10-24) builds its three
+processors with `BibleLiveAudioProcessor.__new__` and hand-set attributes, so the
+factory-drift test that guards `tests/processor_factory.py` does not cover them
+(a missing attribute still fails loudly, as an AttributeError). Switch them to
+`make_processor` once the factory's PR (#64) and this file's (#66) are both in
+`main`.
 
 ## Experiments
 
