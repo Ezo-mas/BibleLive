@@ -92,8 +92,7 @@ export default function App() {
     }
   }, [settingsOpen, isConnected, refreshSpokenLanguage, refreshBibleVersion, refreshIdleScreen])
 
-  // The launcher's interface language is asked for again on connect: the operator's
-  // token is often entered only after the first request, which the server refuses.
+  // The launcher's interface language is asked for again on connect.
   const { refreshServerLanguage, t } = useI18n()
   useEffect(() => {
     if (isConnected) refreshServerLanguage()

@@ -1,3 +1,4 @@
+import { ApiError, authHeaders, request } from './apiClient'
 import { defaultTranslator } from '../shared/i18n'
 import type { MessageKey, Translator } from '../shared/i18n'
 import type { IdleScreenFit } from '../shared/idleScreen'
@@ -9,25 +10,6 @@ export const IDLE_SCREEN_MAX_BYTES = 8 * 1024 * 1024
 export interface IdleScreenInfo {
   fit: IdleScreenFit
   image: { version: string } | null
-}
-
-/** An idle-screen request that failed; `status` is 0 when it never reached the server. */
-export class IdleScreenApiError extends Error {
-  readonly status: number
-
-  constructor(status: number, message: string) {
-    super(message)
-    this.name = 'IdleScreenApiError'
-    this.status = status
-  }
-}
-
-/** The endpoints are operator-only, so requests carry the operator token. */
-function headers(token: string | null, json = false): HeadersInit {
-  return {
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    ...(json ? { 'Content-Type': 'application/json' } : {}),
-  }
 }
 
 /** Validate the shape of a reply from any idle-screen endpoint. */
@@ -65,14 +47,9 @@ async function send(
   messages: RequestMessages,
   t: Translator
 ): Promise<IdleScreenInfo> {
-  let response: Response
-  try {
-    response = await fetch(path, init)
-  } catch {
-    throw new IdleScreenApiError(0, t(messages.unreachable))
-  }
+  const response = await request(path, init, t(messages.unreachable))
   if (!response.ok) {
-    throw new IdleScreenApiError(response.status, failureText(response.status, messages.failed, t))
+    throw new ApiError(response.status, failureText(response.status, messages.failed, t))
   }
   let body: unknown = null
   try {
@@ -81,7 +58,7 @@ async function send(
     // Not JSON: handled as a reply the console cannot read, below.
   }
   const info = parseIdleScreenInfo(body)
-  if (!info) throw new IdleScreenApiError(502, t('idle.badReply'))
+  if (!info) throw new ApiError(502, t('idle.badReply'))
   return info
 }
 
@@ -92,7 +69,7 @@ export function fetchIdleScreen(
 ): Promise<IdleScreenInfo> {
   return send(
     '/api/idle-screen',
-    { headers: headers(token) },
+    { headers: authHeaders(token) },
     { unreachable: 'idle.readUnreachable', failed: 'idle.readFailed' },
     t
   )
@@ -109,7 +86,7 @@ export function uploadIdleScreen(
 ): Promise<IdleScreenInfo> {
   return send(
     '/api/idle-screen',
-    { method: 'POST', headers: headers(token), body: file },
+    { method: 'POST', headers: authHeaders(token), body: file },
     { unreachable: 'idle.unreachable', failed: 'idle.uploadFailed' },
     t
   )
@@ -123,7 +100,7 @@ export function changeIdleScreenFit(
 ): Promise<IdleScreenInfo> {
   return send(
     '/api/idle-screen/fit',
-    { method: 'PUT', headers: headers(token, true), body: JSON.stringify({ fit }) },
+    { method: 'PUT', headers: authHeaders(token, true), body: JSON.stringify({ fit }) },
     { unreachable: 'idle.unreachable', failed: 'idle.fitFailed' },
     t
   )
@@ -136,7 +113,7 @@ export function removeIdleScreen(
 ): Promise<IdleScreenInfo> {
   return send(
     '/api/idle-screen',
-    { method: 'DELETE', headers: headers(token) },
+    { method: 'DELETE', headers: authHeaders(token) },
     { unreachable: 'idle.unreachable', failed: 'idle.removeFailed' },
     t
   )

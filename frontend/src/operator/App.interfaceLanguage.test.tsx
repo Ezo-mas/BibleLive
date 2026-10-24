@@ -141,7 +141,7 @@ describe('console language', () => {
     launcherLanguage = 'lt'
     window.localStorage.setItem(LANGUAGE_STORAGE_KEY, 'en')
     await renderConnected()
-    await waitFor(() => expect(fetch).toHaveBeenCalledWith('/api/ui-language', expect.anything()))
+    await waitFor(() => expect(fetch).toHaveBeenCalledWith('/api/ui-language'))
     expect(screen.getByRole('heading', { name: 'On Display' })).toBeInTheDocument()
   })
 
