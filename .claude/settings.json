@@ -1,5 +1,20 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "enabledPlugins": {
+    "pyright-lsp@claude-plugins-official": true,
+    "typescript-lsp@claude-plugins-official": true,
+    "gopls-lsp@claude-plugins-official": false,
+    "frontend-design@anthropic-plugin-directory": true,
+    "context7@anthropic-plugin-directory": true,
+    "superpowers@anthropic-plugin-directory": false,
+    "code-simplifier@anthropic-plugin-directory": false,
+    "playwright@anthropic-plugin-directory": false
+  },
+  "skillOverrides": {
+    "claude-api": "off",
+    "plugin-authoring": "off",
+    "dataviz": "name-only"
+  },
   "attribution": {
     "commit": "",
     "pr": "",
