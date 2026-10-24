@@ -29,7 +29,8 @@ def make_processor(**overrides: Any) -> BibleLiveAudioProcessor:
     partials_on = config.partial_transcripts
     defaults: dict[str, Any] = {
         "config": config,
-        "bible_db_path": "bible_data/biblelive.sqlite",
+        # Never the developer's real database: a test that needs one passes its own.
+        "bible_db_path": "/nonexistent/biblelive-test.sqlite",
         "verse_text_db_path": None,
         "server_url": "http://localhost:8000",
         # Not built: models, audio capture, and the senders and heartbeat that run threads.

@@ -435,7 +435,7 @@ def connect_clients(port: int, stack):
     return operator, display, snapshot
 
 
-def make_processor(kjv_db: Path, port: int, **overrides) -> BibleLiveAudioProcessor:
+def make_live_processor(kjv_db: Path, port: int, **overrides) -> BibleLiveAudioProcessor:
     return BibleLiveAudioProcessor(
         bible_db_path=str(kjv_db),
         server_url=f"http://127.0.0.1:{port}",
@@ -557,7 +557,7 @@ def _run_detect_then_approve(
         [("silence", 1.0), ("speech", 2.0), ("silence", 30.0)],
     )
     stt = install_fake_stt([transcription])
-    processor = make_processor(kjv_db, live_server.port)
+    processor = make_live_processor(kjv_db, live_server.port)
     vad_input = record_vad_input(processor)
 
     with ExitStack() as stack:
@@ -722,7 +722,7 @@ def test_unexpected_ffmpeg_exit_flushes_then_restarts(
         make_wav(tmp_path / "microphone_back.wav", [("silence", 30.0)]),
     ]
     stt = install_fake_stt([Transcription(text="John 3:16", duration_ms=1.0)])
-    processor = make_processor(
+    processor = make_live_processor(
         kjv_db,
         live_server.port,
         capture_restart_base_delay=RESTART_DELAY_S,
