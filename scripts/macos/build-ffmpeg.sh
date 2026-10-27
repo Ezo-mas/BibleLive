@@ -16,8 +16,10 @@
 # Usage: scripts/macos/build-ffmpeg.sh <output-dir>
 #
 # Output: <output-dir>/ffmpeg (static, macOS >= 14), <output-dir>/COPYING.LGPLv2.1,
-# and the evidence files <output-dir>/{buildconf.txt,devices.txt,linkage.txt}.
-# Exits non-zero if the tarball hash, the device list or the linkage check fails.
+# and the evidence files
+# <output-dir>/{buildconf.txt,devices.txt,smoke.txt,linkage.txt}.
+# Exits non-zero if the tarball hash, the device list, the GPL assertion, the audio
+# round-trip or the linkage check fails.
 set -euo pipefail
 
 SOURCE_URL="https://ffmpeg.org/releases/ffmpeg-8.1.3.tar.xz"
@@ -69,6 +71,25 @@ if ! grep -qi avfoundation "$DEST/devices.txt"; then
   echo "AVFOUNDATION: FAIL - the built ffmpeg has no avfoundation input device"
   exit 1
 fi
+if grep -q -- '--enable-gpl' "$DEST/buildconf.txt"; then
+  echo "LICENSE: FAIL - the build reports --enable-gpl, so it is not an LGPL-only artifact"
+  exit 1
+fi
+
+# "Input device listed" only proves the option was compiled in; make the binary
+# actually process audio the way BibleLive does (16 kHz mono PCM in, decode out).
+echo "==> functional smoke (audio round-trip)"
+if ! "$DEST/ffmpeg" -hide_banner -loglevel error \
+  -f lavfi -i "sine=frequency=440:duration=1" -ar 16000 -ac 1 -c:a pcm_s16le "$WORK/smoke.wav"; then
+  echo "SMOKE: FAIL - could not encode a test tone to 16 kHz mono WAV"
+  exit 1
+fi
+if ! "$DEST/ffmpeg" -hide_banner -i "$WORK/smoke.wav" -f null - > "$DEST/smoke.txt" 2>&1; then
+  echo "SMOKE: FAIL - could not decode the produced WAV"
+  exit 1
+fi
+tail -n 3 "$DEST/smoke.txt"
+echo "SMOKE: PASS"
 otool -L "$DEST/ffmpeg" | tail -n +2 | awk '{print $1}' | sort -u > "$DEST/linkage.txt"
 non_system="$(grep -vE '^(/System/|/usr/lib/)' "$DEST/linkage.txt" || true)"
 if [ -n "$non_system" ]; then
