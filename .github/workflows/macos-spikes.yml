@@ -154,6 +154,10 @@ jobs:
             LT_SOURCE="$SPIKE_DIR/lt-source.aiff"
             echo "Lithuanian fixture: say voice '$LT_VOICE'"
           elif [ -f "$GITHUB_WORKSPACE/backend/tests/fixtures/lt-john-3-16.wav" ]; then
+            # This file decides whether the gate proves recognition at all, so verify
+            # its published checksum first: a truncated or edited fixture must fail
+            # the run rather than quietly change what was proven.
+            ( cd "$GITHUB_WORKSPACE/backend/tests/fixtures" && shasum -a 256 -c lt-john-3-16.wav.sha256 )
             LT_SOURCE="$GITHUB_WORKSPACE/backend/tests/fixtures/lt-john-3-16.wav"
             echo "Lithuanian fixture: checked-in backend/tests/fixtures/lt-john-3-16.wav"
           else
@@ -161,6 +165,8 @@ jobs:
           fi
           LT_WAV=""
           if [ -n "$LT_SOURCE" ]; then
+            shasum -a 256 "$LT_SOURCE" > lt-fixture.sha256
+            cat lt-fixture.sha256
             "$FFMPEG" -y -loglevel error -i "$LT_SOURCE" -ar 16000 -ac 1 -c:a pcm_s16le "$SPIKE_DIR/lt.wav"
             LT_WAV="$SPIKE_DIR/lt.wav"
           fi
@@ -214,8 +220,8 @@ jobs:
             echo '```'
           } > "$report"
           for f in python-archive.sha256 python-source.txt tk.txt voices.txt \
-                   ffmpeg/buildconf.txt ffmpeg/devices.txt ffmpeg/smoke.txt \
-                   ffmpeg/linkage.txt avfoundation-list-devices.txt \
+                   lt-fixture.sha256 ffmpeg/buildconf.txt ffmpeg/devices.txt \
+                   ffmpeg/smoke.txt ffmpeg/linkage.txt avfoundation-list-devices.txt \
                    pip-install.txt speech.txt; do
             {
               echo
@@ -247,10 +253,11 @@ jobs:
           elif [ "$sp_status" = BLOCKED ]; then
             {
               echo
-              echo "**PIN STATUS: blocked** - the Lithuanian recognition smoke could not run"
-              echo "(no suitable voice and no checked-in fixture). Provide"
-              echo "backend/tests/fixtures/lt-john-3-16.wav with a documented source,"
-              echo "license and checksum, then rerun."
+              echo "**PIN STATUS: blocked** - the Lithuanian recognition smoke could not run:"
+              echo "the runner has no lt-LT voice and backend/tests/fixtures/"
+              echo "lt-john-3-16.wav is missing. Add that fixture (documented source,"
+              echo "license and checksum - see backend/tests/fixtures/README.md),"
+              echo "then rerun."
             } >> "$report"
           else
             {

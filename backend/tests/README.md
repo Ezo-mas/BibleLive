@@ -18,6 +18,7 @@ backend/tests/
 ├── test_bible_integration.py       # Imported-database integration tests
 ├── test_import_flat_format.py      # Flat e-Sword JSON import
 ├── test_working_references.py      # Reference validation against a real DB
+├── fixtures/                       # Speech fixtures for the macOS spike (fixtures/README.md)
 └── conftest.py                     # Shared pytest fixtures
 ```
 
