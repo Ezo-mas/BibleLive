@@ -578,6 +578,7 @@ and `/operator` (returns 503 with build instructions if not built).
 - `DATABASE_SETUP.md` — importing Bible data, DB schema and locations
 - `DEPLOYMENT.md` — production deployment (systemd, nginx, health checks)
 - `SECURITY.md` — authentication endpoints and tokens
+- `docs/macos-arm64.md` — Apple Silicon spike results and the remaining build plan
 - `docs/TECH_DEBT.md` — known deferred issues
 - `docs/BACKLOG.md` — planned features and checks, with rough size
 - `docs/agent-guides/` — conventions for AI coding agents (entry point: `AGENTS.md`)
