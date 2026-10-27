@@ -100,7 +100,10 @@ def run_gguf(
     start = time.perf_counter()
     with transcribe_cpp.Model(model_path, backend="cpu") as model:
         timing(label, "cold_load", time.perf_counter() - start, audio_s)
-        if model.backend != "cpu":
+        # The native library reports the resolved backend in its own casing
+        # ("CPU" on macOS arm64), so compare case-insensitively. The log line from
+        # the library ("parakeet: using cpu backend (strict)") is the second witness.
+        if model.backend.upper() != "CPU":
             print(f"{label}: FAIL - requested backend='cpu', got {model.backend!r}")
             return False, ""
         text = ""
