@@ -41,7 +41,9 @@ jobs:
     runs-on: macos-15
     timeout-minutes: 60
     env:
-      SPIKE_DIR: ${{ runner.temp }}/macos-spikes
+      # The runner context is not available in job-level env (the earlier version
+      # used runner.temp here and GitHub rejected the whole file).
+      SPIKE_DIR: ${{ github.workspace }}/.spike
     steps:
       - uses: actions/checkout@v7
 
@@ -277,5 +279,5 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: macos-spike-results
-          path: ${{ runner.temp }}/macos-spikes
+          path: ${{ github.workspace }}/.spike
           if-no-files-found: error
