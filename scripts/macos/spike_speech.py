@@ -103,8 +103,9 @@ def run_gguf(
         # The native library reports the resolved backend in its own casing
         # ("CPU" on macOS arm64), so compare case-insensitively. The log line from
         # the library ("parakeet: using cpu backend (strict)") is the second witness.
-        if model.backend.upper() != "CPU":
-            print(f"{label}: FAIL - requested backend='cpu', got {model.backend!r}")
+        backend = model.backend
+        if backend.upper() != "CPU":
+            print(f"{label}: FAIL - requested backend='cpu', got {backend!r}")
             return False, ""
         text = ""
         with model.session(n_threads=threads) as session:
@@ -112,7 +113,9 @@ def run_gguf(
                 start = time.perf_counter()
                 text = session.run(memoryview(audio), language="lt").text or ""
                 timing(label, "run", time.perf_counter() - start, audio_s, trial)
-    print(f"{label}: backend={model.backend!r} text={text!r}")
+    # Read the backend before the model closed: transcribe_cpp raises
+    # TranscribeError("model is closed") for attribute access after the with block.
+    print(f"{label}: backend={backend!r} text={text!r}")
     return True, text
 
 
