@@ -1,0 +1,297 @@
+name: macOS spikes (arm64)
+
+# Pre-pin spikes for the macOS installer plan. Manual run only, plus a push on the
+# paths below while this branch is being tested:
+#
+#   1. bundled Python + Tk   - a real, *viewable* Tk window and a real file dialog
+#                              waiting for input (spike_tk.py)
+#   2. ffmpeg               - builds the pinned source (LGPL-only, AVFoundation enabled
+#                              explicitly) and verifies the artifact: input devices, an
+#                              audio encode/decode round-trip and linkage, plus an
+#                              assertion that the build reports no GPL parts
+#                              (scripts/macos/build-ffmpeg.sh)
+#   3. speech engines       - transcribe.cpp backends, explicit CPU selection, and a
+#                             language-matched recognition smoke with the BibleLive parser
+#
+# The speech step installs the pinned set from backend/constraints.txt, so a green run
+# also proves those pins resolve and run on arm64 macOS - only the speech subset, not
+# the whole backend[audio] set (webrtcvad is not installed here). A run downloads
+# ~1.5 GB (speech models, ffmpeg source, Python) and takes roughly 3-6 minutes.
+#
+# Status semantics: each required check writes a *.status file; the Report step reads
+# them and exits non-zero unless every one is PASS. So a green run means "all runtime
+# checks passed, pinning may proceed after review"; BLOCKED (e.g. no Lithuanian voice
+# and no checked-in fixture) and FAILED runs are red on purpose, and a failed step or
+# missing artifact can never yield PIN STATUS: passed.
+#
+# The Lithuanian smoke runs from the checked-in backend/tests/fixtures/lt-john-3-16.wav
+# (documented source, license and checksum) so every run proves the same input; a
+# runner `say` voice is only a fallback if the fixture is absent, and the smoke stays
+# BLOCKED until one of the two exists. A single synthesized
+# utterance is a capability smoke test, not evidence of production recognition
+# accuracy: that remains the detection benchmark's job, as does the database
+# validation gate - both are later phases, not part of this harness.
+
+on:
+  workflow_dispatch:
+  # workflow_dispatch needs the file on the default branch, so a push that adds or
+  # changes this workflow or scripts/macos/ on a spike/** branch runs the spikes there.
+  # Not on main: once the file is there workflow_dispatch covers manual runs, and a
+  # push to main must not start a 10x-billed macOS job.
+  push:
+    branches:
+      - 'spike/**'
+    paths:
+      - '.github/workflows/macos-spikes.yml'
+      - 'scripts/macos/**'
+
+permissions:
+  contents: read
+
+jobs:
+  spikes:
+    name: Python/Tk, ffmpeg/AVFoundation, speech
+    runs-on: macos-15
+    # A run takes 3-6 min; macOS bills 10x, so a hang held to 60 min would burn 600
+    # included minutes.
+    timeout-minutes: 20
+    env:
+      # Not a hidden directory: actions/upload-artifact skips hidden paths. And no
+      # runner.* here: that context is not available in job-level env (using
+      # runner.temp here once made GitHub reject the whole workflow file).
+      SPIKE_DIR: ${{ github.workspace }}/spike-out
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Runner information
+        run: |
+          set -euo pipefail
+          mkdir -p "$SPIKE_DIR"
+          {
+            sw_vers
+            echo "arch: $(uname -m)"
+            echo "cpus: $(sysctl -n hw.ncpu)"
+            echo "cpu: $(sysctl -n machdep.cpu.brand_string 2>/dev/null || echo unknown)"
+            echo "console user: $(stat -f %Su /dev/console 2>/dev/null || echo unknown)"
+            echo "login sessions: $(who | wc -l | tr -d ' ')"
+          } | tee "$SPIKE_DIR/runner.txt"
+
+      - name: Python + Tk spike
+        run: |
+          set -euo pipefail
+          cd "$SPIKE_DIR"
+          printf 'FAIL\n' > tk.status
+          # Pinned, not "latest": resolving the newest release through the
+          # unauthenticated GitHub API failed with HTTP 403 (rate limit) and could
+          # silently swap the Python under test between runs. Same version and same
+          # release as the Windows pin (scripts/windows/deps.json), and the hash is
+          # the release's own SHA256SUMS entry, re-verified by downloading the asset
+          # before pinning it here.
+          PY_ASSET="cpython-3.13.16+20261013-aarch64-apple-darwin-install_only.tar.gz"
+          PY_URL="https://github.com/astral-sh/python-build-standalone/releases/download/20261013/cpython-3.13.16%2B20261013-aarch64-apple-darwin-install_only.tar.gz"
+          PY_SHA256="ca0e6a70fb75a0984751bd75493e3de77680aef7fbd0fea9b903c299537b3423"
+          curl -fsSL -o python.tar.gz "$PY_URL"
+          echo "$PY_SHA256  python.tar.gz" | shasum -a 256 -c -
+          printf '%s\n%s\n' "$PY_ASSET" "$PY_URL" > python-source.txt
+          shasum -a 256 python.tar.gz | tee python-archive.sha256
+          tar -xzf python.tar.gz
+          PY="$SPIKE_DIR/python/bin/python3"
+          "$PY" -c "import sqlite3, ssl, tkinter; print('imports OK: Tk', tkinter.TkVersion, 'sqlite', sqlite3.sqlite_version)"
+          echo "PY=$PY" >> "$GITHUB_ENV"
+          if "$PY" "$GITHUB_WORKSPACE/scripts/macos/spike_tk.py" | tee tk.txt; then
+            printf 'PASS\n' > tk.status
+          else
+            exit 1
+          fi
+
+      - name: Voice availability
+        if: always()
+        run: |
+          set -euo pipefail
+          cd "$SPIKE_DIR"
+          printf 'MISSING\n' > lt-voice.status
+          say -v '?' > voices.txt
+          LT_VOICE="$(awk '$2 ~ /^lt[_-]LT/ {print $1; exit}' voices.txt || true)"
+          # Prefer a standard voice: the first en_US entry alphabetically is often a
+          # robotic novelty voice, and one clipped the reference's first word.
+          EN_VOICE=""
+          for name in Samantha Alex Daniel Karen Tessa; do
+            if awk -v n="$name" '$1 == n {found=1} END {exit !found}' voices.txt; then
+              EN_VOICE="$name"
+              break
+            fi
+          done
+          if [ -z "$EN_VOICE" ]; then
+            EN_VOICE="$(awk '$2 ~ /^en[_-]US/ {print $1; exit}' voices.txt || true)"
+          fi
+          printf '%s\n' "${LT_VOICE:-none}" > lt-voice.status
+          {
+            echo "LT_VOICE=$LT_VOICE"
+            echo "EN_VOICE=${EN_VOICE:-Albert}"
+          } >> "$GITHUB_ENV"
+          echo "voices: $(wc -l < voices.txt | tr -d ' ') listed; Lithuanian: ${LT_VOICE:-none}; English: ${EN_VOICE:-Albert}"
+
+      - name: FFmpeg spike (build pinned source, verify AVFoundation)
+        if: always()
+        run: |
+          set -euo pipefail
+          cd "$SPIKE_DIR"
+          printf 'FAIL\n' > avfoundation.status
+          bash "$GITHUB_WORKSPACE/scripts/macos/build-ffmpeg.sh" "$SPIKE_DIR/ffmpeg"
+          FFMPEG="$SPIKE_DIR/ffmpeg/ffmpeg"
+          echo "FFMPEG=$FFMPEG" >> "$GITHUB_ENV"
+          # -list_devices always exits non-zero (the empty input fails to open), so
+          # judge it by its output: at least one audio device must be enumerated live.
+          "$FFMPEG" -hide_banner -f avfoundation -list_devices true -i "" > avfoundation-list-devices.txt 2>&1 || true
+          tail -25 avfoundation-list-devices.txt
+          if ! awk '/AVFoundation audio devices:/ {a=1; next} a && /\[[0-9]+\]/ {found=1} END {exit !found}' avfoundation-list-devices.txt; then
+            echo "AVFOUNDATION: FAIL - no audio input device enumerated"
+            exit 1
+          fi
+          printf 'PASS\n' > avfoundation.status
+
+      - name: Speech spike (pinned wheels + recognition smoke)
+        if: always()
+        run: |
+          set -euo pipefail
+          cd "$SPIKE_DIR"
+          printf 'FAIL\n' > speech.status
+          if [ ! -x "${PY:-}" ] || [ ! -x "${FFMPEG:-}" ]; then
+            printf 'SKIPPED\n' > speech.status
+            echo "SKIPPED: the bundled Python and/or ffmpeg are missing because an earlier step failed"
+            exit 0
+          fi
+          LT_SOURCE=""
+          if [ -f "$GITHUB_WORKSPACE/backend/tests/fixtures/lt-john-3-16.wav" ]; then
+            # This file decides whether the gate proves recognition at all, so verify
+            # its published checksum first: a truncated or edited fixture must fail
+            # the run rather than quietly change what was proven.
+            ( cd "$GITHUB_WORKSPACE/backend/tests/fixtures" && shasum -a 256 -c lt-john-3-16.wav.sha256 )
+            LT_SOURCE="$GITHUB_WORKSPACE/backend/tests/fixtures/lt-john-3-16.wav"
+            echo "Lithuanian fixture: checked-in backend/tests/fixtures/lt-john-3-16.wav"
+          elif [ -n "${LT_VOICE:-}" ]; then
+            say -v "$LT_VOICE" -o lt-source.aiff "Jono evangelija trečias skyrius šešiolikta eilutė"
+            LT_SOURCE="$SPIKE_DIR/lt-source.aiff"
+            echo "Lithuanian fixture: say voice '$LT_VOICE' (no checked-in fixture)"
+          else
+            echo "No Lithuanian voice and no checked-in fixture: the Lithuanian smoke is BLOCKED"
+          fi
+          LT_WAV=""
+          if [ -n "$LT_SOURCE" ]; then
+            shasum -a 256 "$LT_SOURCE" > lt-fixture.sha256
+            cat lt-fixture.sha256
+            "$FFMPEG" -y -loglevel error -i "$LT_SOURCE" -ar 16000 -ac 1 -c:a pcm_s16le "$SPIKE_DIR/lt.wav"
+            LT_WAV="$SPIKE_DIR/lt.wav"
+          fi
+          # A lead-in sentence so a clipped first word cannot remove the book name.
+          say -v "${EN_VOICE:-Albert}" -o en.aiff "Today we read from the gospel of John, chapter three, verse sixteen."
+          "$FFMPEG" -y -loglevel error -i en.aiff -ar 16000 -ac 1 -c:a pcm_s16le en.wav
+          set +e
+          "$PY" -m pip install --quiet --disable-pip-version-check \
+            -c "$GITHUB_WORKSPACE/backend/constraints.txt" \
+            transcribe-cpp numpy faster-whisper huggingface_hub 2>&1 | tee pip-install.txt
+          rc=$?
+          set -e
+          if [ "$rc" -ne 0 ]; then
+            echo "pip install of the pinned set failed ($rc)"
+            exit "$rc"
+          fi
+          set +e
+          PYTHONPATH="$GITHUB_WORKSPACE/backend" "$PY" "$GITHUB_WORKSPACE/scripts/macos/spike_speech.py" \
+            --lt-wav "$LT_WAV" --en-wav "$SPIKE_DIR/en.wav" --trials 3 | tee speech.txt
+          rc=$?
+          set -e
+          if [ "$rc" -ne 0 ]; then
+            echo "speech spike exited $rc"
+            exit "$rc"
+          fi
+          if grep -q "LT SMOKE: BLOCKED" speech.txt; then
+            printf 'BLOCKED\n' > speech.status
+          else
+            printf 'PASS\n' > speech.status
+          fi
+
+      - name: Report
+        if: always()
+        run: |
+          set -uo pipefail
+          cd "$SPIKE_DIR"
+          status_of() {
+            if [ -f "$1" ]; then tr -d '\n' < "$1"; else echo MISSING; fi
+          }
+          tk_status="$(status_of tk.status)"
+          av_status="$(status_of avfoundation.status)"
+          sp_status="$(status_of speech.status)"
+          lt_voice="$(status_of lt-voice.status)"
+          report=report.md
+          {
+            echo "# macOS spike report"
+            echo
+            echo "## Runner"
+            echo '```'
+            cat runner.txt 2>/dev/null || echo "(no runner info)"
+            echo '```'
+          } > "$report"
+          for f in python-archive.sha256 python-source.txt tk.txt voices.txt \
+                   lt-fixture.sha256 ffmpeg/buildconf.txt ffmpeg/devices.txt \
+                   ffmpeg/smoke.txt ffmpeg/linkage.txt avfoundation-list-devices.txt \
+                   pip-install.txt speech.txt; do
+            {
+              echo
+              echo "## $f"
+              echo '```'
+              cat "$f" 2>/dev/null || echo "(missing - the step before it failed or was skipped)"
+              echo '```'
+            } >> "$report"
+          done
+          {
+            echo
+            echo "## Verdict"
+            echo "- bundled Python + Tk dialog: $tk_status"
+            echo "- ffmpeg AVFoundation + audio smoke (built from the pinned ffmpeg-8.1.3.tar.xz): $av_status"
+            echo "- Lithuanian voice on the runner: $lt_voice"
+            echo "- speech spike (pins from backend/constraints.txt): $sp_status"
+          } >> "$report"
+          exit_code=1
+          if [ "$tk_status" = PASS ] && [ "$av_status" = PASS ] && [ "$sp_status" = PASS ]; then
+            {
+              echo
+              echo "**PIN STATUS: passed** - every runtime check passed on this runner;"
+              echo "dependency pinning may proceed after review."
+              echo
+              echo "_A single synthesized utterance is a capability smoke test; recognition"
+              echo "accuracy still requires the detection benchmark._"
+            } >> "$report"
+            exit_code=0
+          elif [ "$sp_status" = BLOCKED ]; then
+            {
+              echo
+              echo "**PIN STATUS: blocked** - the Lithuanian recognition smoke could not run:"
+              echo "the runner has no lt-LT voice and backend/tests/fixtures/"
+              echo "lt-john-3-16.wav is missing. Add that fixture (documented source,"
+              echo "license and checksum - see backend/tests/fixtures/README.md),"
+              echo "then rerun."
+            } >> "$report"
+          else
+            {
+              echo
+              echo "**PIN STATUS: failed** - at least one runtime check did not pass;"
+              echo "investigate with the sections above."
+            } >> "$report"
+          fi
+          cat "$report" >> "$GITHUB_STEP_SUMMARY"
+          exit "$exit_code"
+
+      - name: Upload spike results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: macos-spike-results
+          retention-days: 14
+          # Evidence only: the extracted Python tree and its tarball are reproducible
+          # from the pinned URL + hash and made the artifact ~136 MB.
+          path: |
+            ${{ github.workspace }}/spike-out
+            !${{ github.workspace }}/spike-out/python
+            !${{ github.workspace }}/spike-out/python.tar.gz
+          if-no-files-found: error
