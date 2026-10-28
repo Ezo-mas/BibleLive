@@ -103,6 +103,9 @@ jobs:
           name: BibleLive-Setup
           path: dist/BibleLive-Setup-*.exe
           compression-level: 0
+          # ~1 GB counts against the 2 GB storage allowance until it expires (default
+          # 90 days); tagged builds keep their copy on the release.
+          retention-days: 7
           if-no-files-found: error
 
       - name: Attach to the GitHub release
