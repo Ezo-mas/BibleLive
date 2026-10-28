@@ -119,14 +119,14 @@ def run_gguf(
     return True, text
 
 
-def run_whisper(wav_path: str, model_name: str, trials: int) -> tuple[bool, str]:
+def run_whisper(wav_path: str, model_name: str, revision: str, trials: int) -> tuple[bool, str]:
     """English smoke: faster-whisper ``small`` int8 on the processor."""
     from faster_whisper import WhisperModel
 
     audio = read_wav_16k_mono(wav_path)
     audio_s = len(audio) / SAMPLE_RATE
     start = time.perf_counter()
-    model = WhisperModel(model_name, device="cpu", compute_type="int8")
+    model = WhisperModel(model_name, device="cpu", compute_type="int8", revision=revision)
     timing(f"whisper/{model_name}", "cold_load", time.perf_counter() - start, audio_s)
     text = ""
     for trial in range(1, trials + 1):
@@ -142,11 +142,16 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="macOS speech spike")
     parser.add_argument("--gguf-repo", default="Ezomas/kmynas-parakeet-lt-v4-gguf")
     parser.add_argument("--gguf-file", default="kmynas-v4-Q8_0.gguf")
+    # Model repos are pinned to a commit like every other input: a re-upload under
+    # the same filename must not change what a green run proved.
+    parser.add_argument("--gguf-revision", default="b4c73adf13eae8ae563b30395fd2870e7c565a1a")
     parser.add_argument("--lt-wav", default="", help="Lithuanian fixture (empty = BLOCKED)")
     parser.add_argument("--lt-expect", default="John 3:16")
     parser.add_argument("--en-wav", default="", help="English fixture (empty = BLOCKED)")
     parser.add_argument("--en-expect", default="John 3:16")
     parser.add_argument("--whisper-model", default="small")
+    # Commit of Systran/faster-whisper-small, the repo faster-whisper resolves "small" to.
+    parser.add_argument("--whisper-revision", default="536b0662742c02347bc0e980a01041f333bce120")
     parser.add_argument("--trials", type=int, default=3)
     parser.add_argument("--threads", type=int, default=DEFAULT_THREADS)
     args = parser.parse_args()
@@ -161,8 +166,10 @@ def main() -> int:
 
     from huggingface_hub import hf_hub_download
 
-    print(f"downloading {args.gguf_repo}/{args.gguf_file} ...")
-    model_path = hf_hub_download(repo_id=args.gguf_repo, filename=args.gguf_file)
+    print(f"downloading {args.gguf_repo}/{args.gguf_file} @ {args.gguf_revision} ...")
+    model_path = hf_hub_download(
+        repo_id=args.gguf_repo, filename=args.gguf_file, revision=args.gguf_revision
+    )
     print(f"model: {model_path}")
 
     silence = np.zeros(int(SILENCE_SECONDS * SAMPLE_RATE), dtype=np.float32)
@@ -185,7 +192,7 @@ def main() -> int:
         print("LT SMOKE: BLOCKED - no Lithuanian fixture on this run")
 
     if args.en_wav:
-        ok, text = run_whisper(args.en_wav, args.whisper_model, args.trials)
+        ok, text = run_whisper(args.en_wav, args.whisper_model, args.whisper_revision, args.trials)
         refs = parse_references(text, "en")
         found = args.en_expect in refs
         print(

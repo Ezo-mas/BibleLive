@@ -14,8 +14,9 @@ name: macOS spikes (arm64)
 #                             language-matched recognition smoke with the BibleLive parser
 #
 # The speech step installs the pinned set from backend/constraints.txt, so a green run
-# also proves the pins resolve and run on arm64 macOS. A run downloads ~1.5 GB (speech
-# models, ffmpeg source, Python) and takes roughly 15-45 minutes.
+# also proves those pins resolve and run on arm64 macOS - only the speech subset, not
+# the whole backend[audio] set (webrtcvad is not installed here). A run downloads
+# ~1.5 GB (speech models, ffmpeg source, Python) and takes roughly 3-6 minutes.
 #
 # Status semantics: each required check writes a *.status file; the Report step reads
 # them and exits non-zero unless every one is PASS. So a green run means "all runtime
@@ -23,9 +24,10 @@ name: macOS spikes (arm64)
 # and no checked-in fixture) and FAILED runs are red on purpose, and a failed step or
 # missing artifact can never yield PIN STATUS: passed.
 #
-# The Lithuanian smoke runs from a `say` voice when the runner has one, otherwise from
-# a checked-in backend/tests/fixtures/lt-john-3-16.wav (documented source, license and
-# checksum) - and stays BLOCKED until one of the two exists. A single synthesized
+# The Lithuanian smoke runs from the checked-in backend/tests/fixtures/lt-john-3-16.wav
+# (documented source, license and checksum) so every run proves the same input; a
+# runner `say` voice is only a fallback if the fixture is absent, and the smoke stays
+# BLOCKED until one of the two exists. A single synthesized
 # utterance is a capability smoke test, not evidence of production recognition
 # accuracy: that remains the detection benchmark's job, as does the database
 # validation gate - both are later phases, not part of this harness.
@@ -33,9 +35,12 @@ name: macOS spikes (arm64)
 on:
   workflow_dispatch:
   # workflow_dispatch needs the file on the default branch, so a push that adds or
-  # changes this workflow or scripts/macos/ runs the spikes from whatever branch it
-  # landed on. Remove this trigger if you want manual runs only.
+  # changes this workflow or scripts/macos/ on a spike/** branch runs the spikes there.
+  # Not on main: once the file is there workflow_dispatch covers manual runs, and a
+  # push to main must not start a 10x-billed macOS job.
   push:
+    branches:
+      - 'spike/**'
     paths:
       - '.github/workflows/macos-spikes.yml'
       - 'scripts/macos/**'
@@ -47,7 +52,9 @@ jobs:
   spikes:
     name: Python/Tk, ffmpeg/AVFoundation, speech
     runs-on: macos-15
-    timeout-minutes: 60
+    # A run takes 3-6 min; macOS bills 10x, so a hang held to 60 min would burn 600
+    # included minutes.
+    timeout-minutes: 20
     env:
       # Not a hidden directory: actions/upload-artifact skips hidden paths. And no
       # runner.* here: that context is not available in job-level env (using
@@ -133,8 +140,14 @@ jobs:
           bash "$GITHUB_WORKSPACE/scripts/macos/build-ffmpeg.sh" "$SPIKE_DIR/ffmpeg"
           FFMPEG="$SPIKE_DIR/ffmpeg/ffmpeg"
           echo "FFMPEG=$FFMPEG" >> "$GITHUB_ENV"
+          # -list_devices always exits non-zero (the empty input fails to open), so
+          # judge it by its output: at least one audio device must be enumerated live.
           "$FFMPEG" -hide_banner -f avfoundation -list_devices true -i "" > avfoundation-list-devices.txt 2>&1 || true
           tail -25 avfoundation-list-devices.txt
+          if ! awk '/AVFoundation audio devices:/ {a=1; next} a && /\[[0-9]+\]/ {found=1} END {exit !found}' avfoundation-list-devices.txt; then
+            echo "AVFOUNDATION: FAIL - no audio input device enumerated"
+            exit 1
+          fi
           printf 'PASS\n' > avfoundation.status
 
       - name: Speech spike (pinned wheels + recognition smoke)
@@ -149,17 +162,17 @@ jobs:
             exit 0
           fi
           LT_SOURCE=""
-          if [ -n "${LT_VOICE:-}" ]; then
-            say -v "$LT_VOICE" -o lt-source.aiff "Jono evangelija trečias skyrius šešiolikta eilutė"
-            LT_SOURCE="$SPIKE_DIR/lt-source.aiff"
-            echo "Lithuanian fixture: say voice '$LT_VOICE'"
-          elif [ -f "$GITHUB_WORKSPACE/backend/tests/fixtures/lt-john-3-16.wav" ]; then
+          if [ -f "$GITHUB_WORKSPACE/backend/tests/fixtures/lt-john-3-16.wav" ]; then
             # This file decides whether the gate proves recognition at all, so verify
             # its published checksum first: a truncated or edited fixture must fail
             # the run rather than quietly change what was proven.
             ( cd "$GITHUB_WORKSPACE/backend/tests/fixtures" && shasum -a 256 -c lt-john-3-16.wav.sha256 )
             LT_SOURCE="$GITHUB_WORKSPACE/backend/tests/fixtures/lt-john-3-16.wav"
             echo "Lithuanian fixture: checked-in backend/tests/fixtures/lt-john-3-16.wav"
+          elif [ -n "${LT_VOICE:-}" ]; then
+            say -v "$LT_VOICE" -o lt-source.aiff "Jono evangelija trečias skyrius šešiolikta eilutė"
+            LT_SOURCE="$SPIKE_DIR/lt-source.aiff"
+            echo "Lithuanian fixture: say voice '$LT_VOICE' (no checked-in fixture)"
           else
             echo "No Lithuanian voice and no checked-in fixture: the Lithuanian smoke is BLOCKED"
           fi
@@ -274,5 +287,11 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: macos-spike-results
-          path: ${{ github.workspace }}/spike-out
+          retention-days: 14
+          # Evidence only: the extracted Python tree and its tarball are reproducible
+          # from the pinned URL + hash and made the artifact ~136 MB.
+          path: |
+            ${{ github.workspace }}/spike-out
+            !${{ github.workspace }}/spike-out/python
+            !${{ github.workspace }}/spike-out/python.tar.gz
           if-no-files-found: error
