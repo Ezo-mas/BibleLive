@@ -1,55 +1,47 @@
-name: CI
+name: CI (backend)
+
+# Frontend jobs live in ci-frontend.yml: separate files so each half runs only when its
+# own files change (workflow-level path filters cost nothing; a "what changed?" job
+# would bill a minute on every run).
 
 on:
   push:
     branches: [main, develop]
+    paths-ignore: &ignored
+      - 'frontend/**'
+      - '.node-version'
+      - '**.md'
+      - 'docs/**'
+      - '.github/workflows/ci-frontend.yml'
+      - '.github/workflows/macos-spikes.yml'
+      - '.github/workflows/windows-installer.yml'
   pull_request:
     branches: [main, develop]
+    paths-ignore: *ignored
+
+# A new push to a PR cancels that PR's run still in progress; runs on main finish.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  python-quality:
-    name: Python Lint & Type Check
+  python:
+    name: Python lint, types & tests
+    # The merge commit of a PR was already tested as the PR's merge ref, so its push
+    # to main is skipped; direct pushes to main still run.
+    if: github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'Merge pull request')
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    # Install + lint + types + ~1 min of tests takes ~2-3 min; a hung test fails here
+    # instead of holding the job to GitHub's 6-hour limit.
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
-      
+
       - name: Set up Python
         uses: actions/setup-python@v7
         with:
           python-version: '3.13'
-          
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -e "./backend[dev]" -c backend/constraints.txt
-          
-      - name: Lint with Ruff
-        run: ruff check .
-        
-      - name: Format check with Ruff
-        run: ruff format --check .
-        
-      - name: Type check with mypy
-        run: mypy backend/core backend/audio backend/launcher benchmarks --install-types --non-interactive
 
-  python-tests:
-    name: Python Tests
-    runs-on: ubuntu-latest
-    # A full leg takes ~2-3 min (install + ~1 min of tests); a hung test fails here
-    # instead of holding the job to GitHub's 6-hour limit.
-    timeout-minutes: 15
-    strategy:
-      matrix:
-        python-version: ['3.13']
-    steps:
-      - uses: actions/checkout@v7
-      
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v7
-        with:
-          python-version: ${{ matrix.python-version }}
-          
       - name: Get runner image version
         id: image
         run: echo "version=$ImageOS-$ImageVersion" >> "$GITHUB_OUTPUT"
@@ -85,6 +77,7 @@ jobs:
           ffmpeg -version
 
       - name: Install dependencies
+        id: install
         run: |
           python -m pip install --upgrade pip
           # Audio extras are installed so the audio-marked tests run too; the
@@ -92,87 +85,22 @@ jobs:
           # constraints hold every package to the versions recorded in
           # backend/constraints.txt, so CI tests what a fresh install gets.
           pip install -e "./backend[dev,audio]" -c backend/constraints.txt
-          
+
+      # Each check runs even if an earlier one failed, so one run reports them all.
+      - name: Lint with Ruff
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: ruff check .
+
+      - name: Format check with Ruff
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: ruff format --check .
+
+      - name: Type check with mypy
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: mypy backend/core backend/audio backend/launcher benchmarks --install-types --non-interactive
+
       - name: Run tests
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         # Coverage is printed in this job's log; nothing uploads it (the Codecov
         # upload had no token and was being rate-limited, and nothing read it).
         run: pytest backend/tests -v --cov=core --cov-report=term
-
-  frontend-quality:
-    name: Frontend Lint & Type Check
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    defaults:
-      run:
-        working-directory: ./frontend
-    steps:
-      - uses: actions/checkout@v7
-      
-      - name: Set up Node.js
-        uses: actions/setup-node@v7
-        with:
-          node-version-file: .node-version
-          cache: 'npm'
-          cache-dependency-path: frontend/package-lock.json
-          
-      - name: Install dependencies
-        run: npm ci
-        
-      - name: Lint
-        run: npm run lint
-        
-      - name: Type check
-        run: npm run typecheck
-        
-      - name: Format check
-        run: npm run format:check
-        if: always()
-
-  frontend-tests:
-    name: Frontend Tests
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    defaults:
-      run:
-        working-directory: ./frontend
-    steps:
-      - uses: actions/checkout@v7
-      
-      - name: Set up Node.js
-        uses: actions/setup-node@v7
-        with:
-          node-version-file: .node-version
-          cache: 'npm'
-          cache-dependency-path: frontend/package-lock.json
-          
-      - name: Install dependencies
-        run: npm ci
-        
-      - name: Run tests
-        run: npm test -- --coverage
-
-  frontend-build:
-    name: Frontend Build
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    defaults:
-      run:
-        working-directory: ./frontend
-    steps:
-      - uses: actions/checkout@v7
-      
-      - name: Set up Node.js
-        uses: actions/setup-node@v7
-        with:
-          node-version-file: .node-version
-          cache: 'npm'
-          cache-dependency-path: frontend/package-lock.json
-          
-      - name: Install dependencies
-        run: npm ci
-        
-      - name: Build production
-        run: npm run build
-        
-      - name: Check build output
-        run: ls -lh ../static/frontend/
