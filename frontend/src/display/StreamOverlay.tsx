@@ -47,13 +47,18 @@ export default function StreamOverlay() {
       setVerseLimit(coerceVerseLimit(message.data.verse_limit))
       return
     }
-    window.clearTimeout(swapTimerRef.current)
-    setVisible(false)
-    const next = message.type === 'reference' ? message.data : null
-    swapTimerRef.current = window.setTimeout(() => {
-      setReference(next)
-      setVisible(next !== null)
-    }, FADE_MS)
+    if (message.type === 'reference' || message.type === 'clear') {
+      window.clearTimeout(swapTimerRef.current)
+      setVisible(false)
+      const next = message.type === 'reference' ? message.data : null
+      swapTimerRef.current = window.setTimeout(() => {
+        setReference(next)
+        setVisible(next !== null)
+      }, FADE_MS)
+    } else {
+      const unhandled: never = message
+      void unhandled
+    }
   }
 
   // Like the projector, the overlay must survive server restarts unattended.

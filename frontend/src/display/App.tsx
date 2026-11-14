@@ -59,10 +59,9 @@ export default function App() {
       return
     }
 
-    // A newer message always wins; cancel any in-flight content swap.
-    window.clearTimeout(swapTimerRef.current)
-
     if (message.type === 'reference') {
+      // A newer reference always wins; cancel any in-flight content swap.
+      window.clearTimeout(swapTimerRef.current)
       const next = message.data
       // Fade out whatever is showing, then swap in the new reference.
       setVisible(false)
@@ -70,12 +69,16 @@ export default function App() {
         setReference(next)
         setVisible(true)
       }, FADE_MS)
-    } else {
+    } else if (message.type === 'clear') {
+      window.clearTimeout(swapTimerRef.current)
       // 'clear': fade out, then return to the waiting state.
       setVisible(false)
       swapTimerRef.current = window.setTimeout(() => {
         setReference(null)
       }, FADE_MS)
+    } else {
+      const unhandled: never = message
+      void unhandled
     }
   }
 
