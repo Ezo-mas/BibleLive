@@ -59,6 +59,12 @@ export const en = {
     one: 'Speech recognition failed on the last {count} utterance',
     other: 'Speech recognition failed on the last {count} utterances',
   },
+  'pipeline.issue.utterance_failed': {
+    one: 'Processing failed on the last {count} utterance; it was skipped',
+    other: 'Processing failed on the last {count} utterances; they were skipped',
+  },
+  'pipeline.issue.bible_version_unavailable':
+    'The pipeline cannot open translation {version}; it keeps checking references against the previous one',
   'pipeline.issue.delivery_failed': 'The last detected reference was not delivered: {detail}',
   'pipeline.issue.bible_db_unavailable':
     'The pipeline could not open the Bible database, so detections are not checked against it',

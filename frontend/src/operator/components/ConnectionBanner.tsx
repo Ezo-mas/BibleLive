@@ -9,7 +9,7 @@ export interface ConnectionBannerProps {
  * Shown while the console has no server connection.
  *
  * A closed socket is not cosmetic: every control on the page is disabled and
- * cannot reach the server, and the automatic retries are finite. Rather than
+ * cannot reach the server while automatic retries continue. Rather than
  * leaving the operator to guess why nothing responds, the banner says what is
  * true and offers a manual reconnect through the shared hook. It renders below
  * the header and never replaces the console, so the last known queue and display

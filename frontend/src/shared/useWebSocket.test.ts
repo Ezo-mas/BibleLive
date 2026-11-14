@@ -56,6 +56,15 @@ describe('useWebSocket reconnect backoff', () => {
     expect(waits.slice(-4)).toEqual([30_000, 30_000, 30_000, 30_000])
   })
 
+  it('does not retry after a 1008 close even with unlimited retries', () => {
+    renderHook(() => useWebSocket('/ws/operator', () => {}, { maxReconnectAttempts: Infinity }))
+    act(() => {
+      created[0].onclose?.({ code: 1008 })
+      vi.advanceTimersByTime(120_000)
+    })
+    expect(created).toHaveLength(1)
+  })
+
   it('starts over at 3 s once a connection succeeds', () => {
     renderHook(() => useWebSocket('/ws/display', () => {}, { maxReconnectAttempts: Infinity }))
     for (let i = 0; i < 12; i += 1) dropAndMeasureRetry()

@@ -627,6 +627,7 @@ export function useOperatorState(): OperatorState {
   }
 
   const { status, send, reconnect } = useWebSocket<OperatorMessage>('/ws/operator', handleMessage, {
+    maxReconnectAttempts: Infinity,
     // The token goes in the socket's first message, not the URL: URLs end up
     // in server and proxy logs. Always sent, even empty: with auth on and no
     // token saved, the empty message draws the server's refusal at once
