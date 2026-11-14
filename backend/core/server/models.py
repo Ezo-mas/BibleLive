@@ -2,7 +2,7 @@
 
 import uuid
 from datetime import UTC, datetime
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, Field, StrictBool, StrictFloat, StrictInt, StrictStr
 
@@ -465,4 +465,182 @@ OperatorAction = Annotated[
     | OperatorSetFollowAutoAction
     | OperatorDisplayReferenceAction,
     Field(discriminator="action"),
+]
+
+
+# Outbound WebSocket envelopes preserve the server's type/data key order.
+
+
+class PendingUpdateData(BaseModel):
+    """The pending queue and its current size."""
+
+    pending: list[BibleReference]
+    count: int
+
+
+class ReferenceConfirmedData(BaseModel):
+    """The reference that reached the audience display."""
+
+    reference: BibleReference
+
+
+class ConnectionStatusData(BaseModel):
+    """Connected audience displays and operator consoles."""
+
+    display: int
+    operator: int
+
+
+class AutoModeConfirmedData(BaseModel):
+    """The server's current auto-approve mode."""
+
+    auto_mode: AutoMode
+
+
+class FollowAutoConfirmedData(BaseModel):
+    """Whether follow-along auto-show is in effect."""
+
+    follow_auto: bool
+
+
+class WebSocketErrorData(BaseModel):
+    """An error, including the unknown action value echoed verbatim by the server."""
+
+    message: str
+    action: Any
+
+
+class OperatorStateSnapshot(BaseModel):
+    """Server-to-client ``state_snapshot`` message."""
+
+    type: Literal["state_snapshot"] = "state_snapshot"
+    data: StateResponse
+
+
+class OperatorPendingUpdate(BaseModel):
+    """Server-to-client ``pending_update`` message."""
+
+    type: Literal["pending_update"] = "pending_update"
+    data: PendingUpdateData
+
+
+class OperatorApprovalConfirmed(BaseModel):
+    """Server-to-client ``approval_confirmed`` message."""
+
+    type: Literal["approval_confirmed"] = "approval_confirmed"
+    data: ReferenceConfirmedData
+
+
+class OperatorDisplayConfirmed(BaseModel):
+    """Server-to-client ``display_confirmed`` message."""
+
+    type: Literal["display_confirmed"] = "display_confirmed"
+    data: ReferenceConfirmedData
+
+
+class OperatorClearConfirmed(BaseModel):
+    """Server-to-client ``clear_confirmed`` message."""
+
+    type: Literal["clear_confirmed"] = "clear_confirmed"
+    data: dict[str, Any] = Field(max_length=0)
+
+
+class OperatorPendingCleared(BaseModel):
+    """Server-to-client ``pending_cleared`` message."""
+
+    type: Literal["pending_cleared"] = "pending_cleared"
+    data: dict[str, Any] = Field(max_length=0)
+
+
+class OperatorConnectionStatus(BaseModel):
+    """Server-to-client ``connection_status`` message."""
+
+    type: Literal["connection_status"] = "connection_status"
+    data: ConnectionStatusData
+
+
+class OperatorDisplaySettingsConfirmed(BaseModel):
+    """Server-to-client ``display_settings_confirmed`` message."""
+
+    type: Literal["display_settings_confirmed"] = "display_settings_confirmed"
+    data: DisplaySettings
+
+
+class OperatorAutoModeConfirmed(BaseModel):
+    """Server-to-client ``auto_mode_confirmed`` message."""
+
+    type: Literal["auto_mode_confirmed"] = "auto_mode_confirmed"
+    data: AutoModeConfirmedData
+
+
+class OperatorFollowAutoConfirmed(BaseModel):
+    """Server-to-client ``follow_auto_confirmed`` message."""
+
+    type: Literal["follow_auto_confirmed"] = "follow_auto_confirmed"
+    data: FollowAutoConfirmedData
+
+
+class OperatorBibleVersionConfirmed(BaseModel):
+    """Server-to-client ``bible_version_confirmed`` message."""
+
+    type: Literal["bible_version_confirmed"] = "bible_version_confirmed"
+    data: BibleVersionResponse
+
+
+class OperatorFollowAlong(BaseModel):
+    """Server-to-client ``follow_along`` message."""
+
+    type: Literal["follow_along"] = "follow_along"
+    data: FollowAlongHint
+
+
+class OperatorError(BaseModel):
+    """Server-to-client ``error`` message."""
+
+    type: Literal["error"] = "error"
+    data: WebSocketErrorData
+
+
+class DisplayReference(BaseModel):
+    """Server-to-client ``reference`` message."""
+
+    type: Literal["reference"] = "reference"
+    data: BibleReference
+
+
+class DisplayClear(BaseModel):
+    """Server-to-client ``clear`` message."""
+
+    type: Literal["clear"] = "clear"
+    data: dict[str, Any] = Field(max_length=0)
+
+
+class DisplaySettingsMessage(BaseModel):
+    """Server-to-client ``display_settings`` message."""
+
+    type: Literal["display_settings"] = "display_settings"
+    data: DisplaySettings
+
+
+OperatorServerMessage = Annotated[
+    OperatorStateSnapshot
+    | OperatorPendingUpdate
+    | OperatorApprovalConfirmed
+    | OperatorDisplayConfirmed
+    | OperatorClearConfirmed
+    | OperatorPendingCleared
+    | OperatorConnectionStatus
+    | OperatorDisplaySettingsConfirmed
+    | OperatorAutoModeConfirmed
+    | OperatorFollowAutoConfirmed
+    | OperatorBibleVersionConfirmed
+    | OperatorFollowAlong
+    | OperatorError,
+    Field(discriminator="type"),
+]
+
+
+DisplayServerMessage = Annotated[
+    DisplayReference | DisplayClear | DisplaySettingsMessage,
+    Field(discriminator="type"),
 ]

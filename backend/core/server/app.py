@@ -42,6 +42,7 @@ from .log_redaction import install_token_redaction
 from .models import (
     ApprovalRequest,
     ApprovalResponse,
+    AutoModeConfirmedData,
     BibleReference,
     BibleVersionRequest,
     BibleVersionResponse,
@@ -50,9 +51,14 @@ from .models import (
     ClearPendingResponse,
     ClearResponse,
     ErrorResponse,
+    FollowAutoConfirmedData,
     LanguageRequest,
     LanguageResponse,
     OperatorAction,
+    OperatorAutoModeConfirmed,
+    OperatorDisplaySettingsConfirmed,
+    OperatorError,
+    OperatorFollowAutoConfirmed,
     PassageResponse,
     PipelineHeartbeat,
     PipelineStatusResponse,
@@ -63,6 +69,7 @@ from .models import (
     TranscriptSubmitResponse,
     UiLanguageResponse,
     VerseText,
+    WebSocketErrorData,
 )
 from .settings_store import ALLOWED_AUTO_MODES
 from .state import AppState
@@ -120,7 +127,9 @@ async def _ws_error(websocket: WebSocket, action: str, message: str) -> None:
     WebSocket handler's branches.
     """
     await websocket.send_text(
-        json.dumps({"type": "error", "data": {"message": message, "action": action}})
+        json.dumps(
+            OperatorError(data=WebSocketErrorData(message=message, action=action)).model_dump()
+        )
     )
 
 
@@ -186,7 +195,7 @@ async def _handle_set_verse_limit(
     # Confirm to operators (including this one) so their controls reflect the
     # value displays are now using.
     await app_state.connection_manager.send_to_operator(
-        {"type": "display_settings_confirmed", "data": app_state.display_settings.model_dump()}
+        OperatorDisplaySettingsConfirmed(data=app_state.display_settings).model_dump()
     )
 
 
@@ -202,7 +211,7 @@ async def _handle_set_display_theme(
     # Confirm to operators (including this one) so their controls reflect the
     # value displays are now using.
     await app_state.connection_manager.send_to_operator(
-        {"type": "display_settings_confirmed", "data": app_state.display_settings.model_dump()}
+        OperatorDisplaySettingsConfirmed(data=app_state.display_settings).model_dump()
     )
 
 
@@ -267,7 +276,9 @@ async def _handle_set_auto_mode(
     # Confirm to operators (including this one) so the selector reflects the mode
     # the server will apply to the next detection.
     await app_state.connection_manager.send_to_operator(
-        {"type": "auto_mode_confirmed", "data": {"auto_mode": app_state.auto_mode}}
+        OperatorAutoModeConfirmed(
+            data=AutoModeConfirmedData(auto_mode=app_state.auto_mode)
+        ).model_dump()
     )
 
 
@@ -292,7 +303,9 @@ async def _handle_set_follow_auto(
     # Confirm to operators (including this one) so the toggle reflects the setting the
     # server will apply to the next transcript.
     await app_state.connection_manager.send_to_operator(
-        {"type": "follow_auto_confirmed", "data": {"follow_auto": app_state.follow_auto_in_effect}}
+        OperatorFollowAutoConfirmed(
+            data=FollowAutoConfirmedData(follow_auto=app_state.follow_auto_in_effect)
+        ).model_dump()
     )
 
 
@@ -549,7 +562,7 @@ def create_app(bible_lookup: BibleLookup | None = None) -> FastAPI:
 
                 # Handle messages from operator
                 if client_type == "operator":
-                    action = message.get("action")
+                    action = message.get("action") if isinstance(message, dict) else None
                     if not action:
                         await _ws_error(websocket, "unknown", "Missing 'action' field")
                         continue
