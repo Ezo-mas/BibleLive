@@ -68,6 +68,12 @@ easy to break by accident.
    `backend/tests/test_manual_reference.py` and (follow-along)
    `backend/tests/test_follow_along.py` (including the auto-show class) and
    `backend/tests/test_follow_auto.py` (the switch).
+   A state change and the start of the broadcast reporting it must happen in
+   one synchronous step, with no `await` between mutating `AppState` (such
+   as `current_display` or the pending queue) and starting the send.
+   Otherwise another operator action can interleave and leave a display
+   showing a message that disagrees with `current_display`. See the comments
+   in `change_bible_version` and `offer_follow_along` in `state.py`.
    Both doors take their verse text from the database, never from the client.
    `display_reference` carries coordinates only (no ID, no confidence, no text)
    and the server re-resolves them through `core/passage.py` (`resolve_passage`);

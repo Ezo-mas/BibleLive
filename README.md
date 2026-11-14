@@ -405,11 +405,12 @@ in `%APPDATA%\BibleLive\logs\sessions`.
 ## WebSocket protocol
 
 - `ws://<host>/ws/display` — display clients receive `reference`, `clear`,
-  `display_settings`, and `connection_status` events
+  and `display_settings` events
 - `ws://<host>/ws/operator` — operator clients receive `pending_update`,
   `approval_confirmed`, `clear_confirmed`, `pending_cleared`, `state_snapshot`,
   `auto_mode_confirmed`, `follow_auto_confirmed`, `display_settings_confirmed`,
-  `bible_version_confirmed` (`{version, available}`), and `connection_status`
+  `bible_version_confirmed` (`{version, available}`), `display_confirmed`,
+  `follow_along`, `error`, and `connection_status`
   events; they send these actions:
   - `{action: 'authenticate', token}` — first, when authentication is enabled
     (ignored otherwise)

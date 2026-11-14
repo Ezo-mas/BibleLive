@@ -98,6 +98,40 @@ describe('display theme', () => {
 })
 
 describe('display verses', () => {
+  it.each(['shown', 'swapping'])('ignores unknown messages while a passage is %s', state => {
+    vi.useFakeTimers()
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const { container, unmount } = render(<App />)
+    try {
+      push(socket, { type: 'reference', data: reference() })
+      act(() => vi.advanceTimersByTime(400))
+      expect(screen.getByText('John 1:1-3')).toBeInTheDocument()
+
+      if (state === 'swapping') {
+        push(socket, { type: 'reference', data: { ...reference(), id: 'ref-2', book: 'Luke' } })
+        act(() => vi.advanceTimersByTime(200))
+      }
+      const fadeClass = container.querySelector('.display-content')?.className
+
+      expect(() =>
+        push(socket, { type: 'ping', data: {} } as unknown as DisplayMessage)
+      ).not.toThrow()
+      expect(container.querySelector('.display-content')?.className).toBe(fadeClass)
+      expect(screen.getByText('John 1:1-3')).toBeInTheDocument()
+
+      act(() => vi.advanceTimersByTime(state === 'swapping' ? 200 : 400))
+      expect(
+        screen.getByText(state === 'swapping' ? 'Luke 1:1-3' : 'John 1:1-3')
+      ).toBeInTheDocument()
+      expect(container.querySelector('.display-content')).toHaveClass('display-fade-in')
+      expect(errors).not.toHaveBeenCalled()
+    } finally {
+      unmount()
+      errors.mockRestore()
+      vi.useRealTimers()
+    }
+  })
+
   it('shows the passage and the reference once approved', async () => {
     render(<App />)
     act(() => {

@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { act, render, screen, waitFor } from '@testing-library/react'
 import StreamOverlay from './StreamOverlay'
+import type { DisplayMessage } from '../shared/types'
 import { createMockSocket, push } from '../test/operatorHarness'
 import type { MockSocket } from '../test/operatorHarness'
 
@@ -50,6 +51,40 @@ afterEach(() => {
 })
 
 describe('stream overlay', () => {
+  it.each(['shown', 'swapping'])('ignores unknown messages while a passage is %s', state => {
+    vi.useFakeTimers()
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const { unmount } = render(<StreamOverlay />)
+    try {
+      push(socket, { type: 'reference', data: reference() })
+      act(() => vi.advanceTimersByTime(400))
+      expect(screen.getByText('John 1:1-4')).toBeInTheDocument()
+
+      if (state === 'swapping') {
+        push(socket, { type: 'reference', data: { ...reference(), id: 'ref-2', book: 'Luke' } })
+        act(() => vi.advanceTimersByTime(200))
+      }
+      const bandClass = screen.getByTestId('stream-band').className
+
+      expect(() =>
+        push(socket, { type: 'ping', data: {} } as unknown as DisplayMessage)
+      ).not.toThrow()
+      expect(screen.getByTestId('stream-band').className).toBe(bandClass)
+      expect(screen.getByText('John 1:1-4')).toBeInTheDocument()
+
+      act(() => vi.advanceTimersByTime(state === 'swapping' ? 200 : 400))
+      expect(
+        screen.getByText(state === 'swapping' ? 'Luke 1:1-4' : 'John 1:1-4')
+      ).toBeInTheDocument()
+      expect(screen.getByTestId('stream-band')).toHaveClass('stream-band--visible')
+      expect(errors).not.toHaveBeenCalled()
+    } finally {
+      unmount()
+      errors.mockRestore()
+      vi.useRealTimers()
+    }
+  })
+
   it('leaves the page transparent and shows nothing before a passage', () => {
     render(<StreamOverlay />)
     expect(document.documentElement.classList.contains('stream-overlay-page')).toBe(true)

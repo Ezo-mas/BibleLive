@@ -31,11 +31,27 @@ from .idle_screen import (
 from .models import (
     AutoMode,
     BibleReference,
+    BibleVersionResponse,
+    ConnectionStatusData,
+    DisplayClear,
+    DisplayReference,
     DisplaySettings,
+    DisplaySettingsMessage,
     FollowAlongHint,
     IdleScreenPicture,
+    OperatorApprovalConfirmed,
+    OperatorBibleVersionConfirmed,
+    OperatorClearConfirmed,
+    OperatorConnectionStatus,
+    OperatorDisplayConfirmed,
+    OperatorFollowAlong,
+    OperatorPendingCleared,
+    OperatorPendingUpdate,
+    OperatorStateSnapshot,
+    PendingUpdateData,
     PipelineHeartbeat,
     PipelineStatusResponse,
+    ReferenceConfirmedData,
     StateResponse,
     VerseText,
 )
@@ -167,13 +183,11 @@ class AppState:
     async def _send_pending_update(self) -> None:
         """Notify operators of the current pending queue."""
         await self.connection_manager.send_to_operator(
-            {
-                "type": "pending_update",
-                "data": {
-                    "pending": [ref.model_dump() for ref in self.pending_references],
-                    "count": len(self.pending_references),
-                },
-            }
+            OperatorPendingUpdate(
+                data=PendingUpdateData(
+                    pending=self.pending_references, count=len(self.pending_references)
+                )
+            ).model_dump()
         )
 
     async def _send_display_reference(self, ref: BibleReference) -> None:
@@ -187,13 +201,11 @@ class AppState:
         (``source="follow"``). Nothing else — and in particular no unapproved
         detection — can reach this method.
         """
-        await self.connection_manager.send_to_display(
-            {"type": "reference", "data": ref.model_dump()}
-        )
+        await self.connection_manager.send_to_display(DisplayReference(data=ref).model_dump())
 
     async def _send_display_clear(self) -> None:
         """Notify displays to clear."""
-        await self.connection_manager.send_to_display({"type": "clear", "data": {}})
+        await self.connection_manager.send_to_display(DisplayClear(data={}).model_dump())
 
     async def send_display_settings(self, websocket: WebSocket | None = None) -> None:
         """Send the current display settings to displays (or one specific client).
@@ -201,10 +213,7 @@ class AppState:
         Displays are presentation-only: settings are chosen in the operator
         console and pushed here, so every projector shows the same passage size.
         """
-        message = {
-            "type": "display_settings",
-            "data": self.display_settings.model_dump(),
-        }
+        message = DisplaySettingsMessage(data=self.display_settings).model_dump()
         if websocket:
             await self.connection_manager._safe_send(websocket, message)
         else:
@@ -403,7 +412,7 @@ class AppState:
 
     async def send_operator_state_snapshot(self, websocket: WebSocket | None = None) -> None:
         """Send complete state snapshot to a specific operator or all operators."""
-        snapshot = {"type": "state_snapshot", "data": self.state_snapshot().model_dump()}
+        snapshot = OperatorStateSnapshot(data=self.state_snapshot()).model_dump()
         # The snapshot replaces the console's state, hint included: resend the
         # hint that still follows on from the passage on screen.
         hint = self.follow_along.last_hint
@@ -411,7 +420,7 @@ class AppState:
             hint = None
         messages = [snapshot]
         if hint is not None:
-            messages.append({"type": "follow_along", "data": hint.model_dump()})
+            messages.append(OperatorFollowAlong(data=hint).model_dump())
         for message in messages:
             if websocket:
                 await self.connection_manager._safe_send(websocket, message)
@@ -422,10 +431,10 @@ class AppState:
         """Send current display state to a newly connected display client."""
         if self.current_display:
             await self.connection_manager._safe_send(
-                websocket, {"type": "reference", "data": self.current_display.model_dump()}
+                websocket, DisplayReference(data=self.current_display).model_dump()
             )
         else:
-            await self.connection_manager._safe_send(websocket, {"type": "clear", "data": {}})
+            await self.connection_manager._safe_send(websocket, DisplayClear(data={}).model_dump())
 
         # Settings follow the content so a fresh display renders the passage
         # immediately rather than at the default verse count first.
@@ -441,13 +450,11 @@ class AppState:
         """
         cm = self.connection_manager
         await cm.send_to_operator(
-            {
-                "type": "connection_status",
-                "data": {
-                    "display": len(cm.display_connections),
-                    "operator": len(cm.operator_connections),
-                },
-            }
+            OperatorConnectionStatus(
+                data=ConnectionStatusData(
+                    display=len(cm.display_connections), operator=len(cm.operator_connections)
+                )
+            ).model_dump()
         )
 
     def available_bible_versions(self) -> dict[str, BibleVersion]:
@@ -510,16 +517,17 @@ class AppState:
             dropped = len(self.pending_references)
             self.pending_references.clear()
         await self.connection_manager.send_to_operator(
-            {
-                "type": "bible_version_confirmed",
-                "data": {
-                    "version": self.active_bible_version(),
-                    "available": sorted(self.available_bible_versions()),
-                },
-            }
+            OperatorBibleVersionConfirmed(
+                data=BibleVersionResponse(
+                    version=self.active_bible_version(),
+                    available=sorted(self.available_bible_versions()),
+                )
+            ).model_dump()
         )
         if dropped:
-            await self.connection_manager.send_to_operator({"type": "pending_cleared", "data": {}})
+            await self.connection_manager.send_to_operator(
+                OperatorPendingCleared(data={}).model_dump()
+            )
             await self._send_pending_update()
             logger.info(f"Cleared {dropped} pending reference(s): Bible version changed")
         return version
@@ -651,7 +659,7 @@ class AppState:
             return None
 
         await self.connection_manager.send_to_operator(
-            {"type": "approval_confirmed", "data": {"reference": ref.model_dump()}}
+            OperatorApprovalConfirmed(data=ReferenceConfirmedData(reference=ref)).model_dump()
         )
         await self._send_pending_update()
         return ref
@@ -758,7 +766,7 @@ class AppState:
         # Confirm to operators (including this one) only after the display has the
         # passage, so the console never claims a passage is live before it is.
         await self.connection_manager.send_to_operator(
-            {"type": "display_confirmed", "data": {"reference": ref.model_dump()}}
+            OperatorDisplayConfirmed(data=ReferenceConfirmedData(reference=ref)).model_dump()
         )
         return ref
 
@@ -793,7 +801,7 @@ class AppState:
                 return armed
             hint.book_label = self.book_label(hint.book)
             await self.connection_manager.send_to_operator(
-                {"type": "follow_along", "data": hint.model_dump()}
+                OperatorFollowAlong(data=hint).model_dump()
             )
         return armed
 
@@ -834,7 +842,7 @@ class AppState:
     async def clear_and_notify(self) -> None:
         """Clear the display and confirm it to operators."""
         await self.clear_display()
-        await self.connection_manager.send_to_operator({"type": "clear_confirmed", "data": {}})
+        await self.connection_manager.send_to_operator(OperatorClearConfirmed(data={}).model_dump())
 
     async def clear_pending(self) -> None:
         """Clear all pending references.
@@ -853,6 +861,6 @@ class AppState:
         """
         count = len(self.pending_references)
         await self.clear_pending()
-        await self.connection_manager.send_to_operator({"type": "pending_cleared", "data": {}})
+        await self.connection_manager.send_to_operator(OperatorPendingCleared(data={}).model_dump())
         await self._send_pending_update()
         return count

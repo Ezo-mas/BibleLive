@@ -618,6 +618,11 @@ export function useOperatorState(): OperatorState {
         }
         break
       }
+      default: {
+        const unhandled: never = message
+        void unhandled
+        break
+      }
     }
   }
 
