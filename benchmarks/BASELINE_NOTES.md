@@ -296,6 +296,28 @@ through a stand-in for `SpeechToText` that keeps its text clean-up.
   dynamic int8, Lithuanian not selectable). The spelling maps were fitted
   on these recordings, so their scores are optimistic until checked on
   new ones.
+- **Upelis 0.6B LT v1** (`datolabs/upelis-0.6b-lt-v1`, 2026-11-14; a
+  LIEPA-3 fine-tune of `nemotron-labs-unified-asr-0.6b`, RNN-T with a
+  language prompt, streaming or offline; FLEURS WER 8.07 vs Kmynas 10.55 on
+  its card). NeMo-only release; converted to GGUF with `convert-parakeet.py`
+  plus a local profile (the unified-en encoder and the nemotron-3.5 prompt
+  MLP are both already supported), Q8_0 706 MB, runs on the stock
+  `transcribe-cpp` 0.4.0 wheel. Run offline as `--stt kmynas --kmynas-model
+  <upelis gguf>`, so with Kmynas's spelling map; 14 recordings, CPU, 6
+  threads, 171 gold: **158 / 6** (FN 13) vs Kmynas Q8 161 / 4 (FN 10), CPU
+  rtf 0.067-0.127 (mostly ~0.08, about 30 % slower than Kmynas: RNN-T
+  decodes every frame where TDT skips). Lost 5, won 2. Its number format
+  hurts: 10 and up come out as digits, 1-9 as words, so references merge or
+  split ("Apreiškimo 214" for 21:4, "iš 10 trečios psalmės", "Izajo 10
+  penki" -> wrong references). It also writes "eutė" for "eilutė" (2 lost
+  references, a spelling-map fix). Not adopted for the CPU tier. As the
+  second model of the GPU pair in place of Canary (`--stt kmynas+canary
+  --canary-model <upelis gguf>`, so with Canary's spelling map, bundled
+  Vulkan library): **164 / 4** (FN 7, 7 low FPs) vs Kmynas+Canary 167 / 1
+  (FN 4, 13 low FPs), rtf 0.029-0.065. Fewer low FPs, but more references
+  lost and more medium/high FPs, so Canary stays. Upelis's file is smaller
+  than Canary's (706 MB vs 1.1 GB; VRAM not measured), the only point left
+  in its favour, for 4 GB cards.
 
 Speed and memory, timed alone on the same 160 s / 480 s of 10-11 (Ryzen 7
 5800X, RTX 5070 Ti); real-time factor, lower is faster:
