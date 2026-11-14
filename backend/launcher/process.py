@@ -7,6 +7,7 @@ so a CLI (or a later GUI) can sit on top.
 import contextlib
 import logging
 import os
+import signal
 import socket
 import subprocess
 import sys
@@ -35,6 +36,21 @@ EventCallback = Callable[[str, str], None]
 # Fixed texts of "status" events, so UIs can translate them by identity.
 MSG_STARTING_SERVER_PREFIX = "Starting server"
 MSG_STARTING_AUDIO = "Starting audio pipeline..."
+
+
+class RestartMessage(str):
+    """The run thread sets attempt/delay once; callback and GUI threads only read them."""
+
+    attempt: int
+    delay: int
+
+    def __new__(cls, name: str, attempt: int, delay: int) -> "RestartMessage":
+        message = super().__new__(
+            cls, f"{name.capitalize()} exited; restarting in {delay} s (attempt {attempt})"
+        )
+        message.attempt = attempt
+        message.delay = delay
+        return message
 
 
 def _ignore_event(_kind: str, _message: str) -> None:
@@ -113,6 +129,7 @@ def build_plan(
         env["BIBLELIVE_REQUIRE_AUTH"] = "true"
         env["BIBLELIVE_OPERATOR_TOKEN"] = network_token
     env["BIBLELIVE_SETTINGS_PATH"] = str(data_dir / "server_settings.json")
+    env["BIBLELIVE_SERVICE_LOG_DIR"] = str(data_dir / "logs" / "services")
     env["BIBLELIVE_AUTO_MODE"] = settings.auto_mode
     # "auto" is not a language the server knows: resolve it here to the Windows UI language.
     env["BIBLELIVE_UI_LANGUAGE"] = resolve_ui_language(settings.ui_language)
@@ -220,27 +237,48 @@ def wait_for_ready(
 
 
 def kill_tree(proc: subprocess.Popen[bytes], *, grace: float = 5.0) -> None:
-    """Stop ``proc`` and its children (taskkill /T /F on Windows, terminate elsewhere)."""
-    if proc.poll() is not None:
-        return
+    """Stop a child tree; POSIX also signals the group after its leader has exited."""
     if sys.platform == "win32":
+        if proc.poll() is not None:
+            return
         subprocess.run(
             ["taskkill.exe", "/PID", str(proc.pid), "/T", "/F"],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             check=False,
         )
+        try:
+            proc.wait(timeout=grace)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait(timeout=grace)
     else:
-        proc.terminate()
-    try:
-        proc.wait(timeout=grace)
-    except subprocess.TimeoutExpired:
-        proc.kill()
+        try:
+            os.killpg(proc.pid, signal.SIGTERM)
+        except (ProcessLookupError, PermissionError):
+            if proc.poll() is None:
+                proc.terminate()
+        with contextlib.suppress(subprocess.TimeoutExpired):
+            proc.wait(timeout=grace)
+        # The leader may have exited while ffmpeg ignored TERM. Always finish the group
+        # before a replacement can take the microphone/GPU.
+        try:
+            os.killpg(proc.pid, signal.SIGKILL)
+        except (ProcessLookupError, PermissionError):
+            if proc.poll() is None:
+                proc.kill()
         proc.wait(timeout=grace)
 
 
 class Launcher:
-    """Runs a :class:`LaunchPlan`: server, readiness wait, audio, monitor, shutdown."""
+    """Runs a :class:`LaunchPlan`: startup, supervision and shutdown.
+
+    Each child must first stay alive for 60 seconds before it can be restarted.
+
+    The run thread owns restart bookkeeping and error fields. Child references,
+    log handles and stopped-emission state are shared with stop() under _lock.
+    _stop is an Event shared by the run and GUI/CLI threads; plan is read-only.
+    """
 
     def __init__(
         self,
@@ -250,12 +288,14 @@ class Launcher:
         popen: Callable[..., subprocess.Popen[bytes]] = subprocess.Popen,
         ready_timeout: float = READY_TIMEOUT_S,
         poll_interval: float = 0.5,
+        clock: Callable[[], float] = time.monotonic,
     ) -> None:
         self.plan = plan
         self._on_event = on_event or _ignore_event
         self._popen = popen
         self._ready_timeout = ready_timeout
         self._poll_interval = poll_interval
+        self._clock = clock
         self._stop = threading.Event()
         self._server: subprocess.Popen[bytes] | None = None
         self._audio: subprocess.Popen[bytes] | None = None
@@ -276,12 +316,16 @@ class Launcher:
         self._emit("error", message)
 
     def request_stop(self) -> None:
+        # Also called from CLI signal handlers, including while _lock is held.
         self._stop.set()
 
     def _spawn(self, name: str, cmd: list[str]) -> subprocess.Popen[bytes]:
         self.plan.log_dir.mkdir(parents=True, exist_ok=True)
-        log = open(self.plan.log_dir / f"{name}.log", "ab")  # noqa: SIM115 (closed in stop())
-        self._logs.append(log)
+        path = self.plan.log_dir / f"{name}.log"
+        log = next((stream for stream in self._logs if stream.name == str(path)), None)
+        if log is None:
+            log = open(path, "ab")  # noqa: SIM115 (closed in stop())
+            self._logs.append(log)
         log.write(f"\n=== {time.strftime('%Y-%m-%d %H:%M:%S')} {' '.join(cmd)}\n".encode())
         log.flush()
         extra: dict[str, int] = {}
@@ -291,6 +335,8 @@ class Launcher:
             extra["creationflags"] = (
                 subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW
             )
+        else:
+            extra["start_new_session"] = True
         return self._popen(
             cmd,
             cwd=str(self.plan.cwd),
@@ -301,8 +347,34 @@ class Launcher:
             **extra,
         )
 
+    def _wait(self, delay: float) -> None:
+        self._stop.wait(delay)
+
+    def _start_child(self, name: str, cmd: list[str]) -> subprocess.Popen[bytes] | None:
+        # Publish under the shutdown lock: stop() can never miss a new child.
+        with self._lock:
+            if self._stop.is_set():
+                return None
+            proc = self._spawn(name, cmd)
+            if self._stop.is_set():
+                kill_tree(proc)
+                return None
+            if name == "server":
+                self._server = proc
+            else:
+                self._audio = proc
+            return proc
+
+    def _child_exited(self, name: str, code: int) -> int:
+        self._fail(
+            f"{name}_exited",
+            f"The {name} process exited (code {code}); see {self.plan.log_dir / f'{name}.log'}",
+            str(self.plan.log_dir / f"{name}.log"),
+        )
+        return code or 1
+
     def run(self) -> int:
-        """Start everything and block until a child exits or stop is requested.
+        """Start children and supervise those that have each stayed up for 60 seconds.
 
         Returns 0 on a requested stop, otherwise a non-zero code.
         """
@@ -325,16 +397,19 @@ class Launcher:
 
         self._emit("status", f"{MSG_STARTING_SERVER_PREFIX} on {LOOPBACK}:{self.plan.port}...")
         try:
-            self._server = self._spawn("server", self.plan.server_cmd)
+            server = self._start_child("server", self.plan.server_cmd)
         except OSError as exc:
             self._fail("server_spawn", f"Could not start the server: {exc}", str(exc))
             return 1
-        server = self._server
+        if server is None:
+            return 0
+        server_started = self._clock()
         outcome = wait_for_ready(
             self.plan.ready_url,
             lambda: server.poll() is None and not self._stop.is_set(),
             timeout=self._ready_timeout,
             interval=self._poll_interval,
+            sleep=self._wait,
         )
         if self._stop.is_set():
             return 0
@@ -355,23 +430,116 @@ class Launcher:
 
         self._emit("status", MSG_STARTING_AUDIO)
         try:
-            self._audio = self._spawn("audio", self.plan.audio_cmd)
+            audio = self._start_child("audio", self.plan.audio_cmd)
         except OSError as exc:
             self._fail("audio_spawn", f"Could not start the audio pipeline: {exc}", str(exc))
             return 1
+        if audio is None or self._stop.is_set():
+            return 0
+        audio_started = self._clock()
+        for name, initial_proc in (("server", server), ("audio", audio)):
+            code = initial_proc.poll()
+            if code is not None:
+                return self._child_exited(name, code)
         self._emit("running", f"Audio pipeline running; logs in {self.plan.log_dir}")
 
+        started = {"server": server_started, "audio": audio_started}
+        proven = dict.fromkeys(started, False)
+        exits: dict[str, list[float]] = {"server": [], "audio": []}
+        attempts = dict.fromkeys(started, 0)
+        pending: dict[str, float] = {}
         while not self._stop.wait(self._poll_interval):
-            for name, proc in (("server", self._server), ("audio", self._audio)):
-                code = proc.poll()
-                if code is not None:
-                    self._fail(
-                        f"{name}_exited",
-                        f"The {name} process exited (code {code}); see "
-                        f"{self.plan.log_dir / f'{name}.log'}",
-                        str(self.plan.log_dir / f"{name}.log"),
+            for name in started:
+                if self._stop.is_set():
+                    return 0
+                now = self._clock()
+                proc = self._server if name == "server" else self._audio
+                if name not in pending:
+                    if proc is None:  # Concurrent stop() has already cleaned up.
+                        return 0
+                    code = proc.poll()
+                    if code is None:
+                        if now - started[name] >= 60:
+                            proven[name] = True
+                        continue
+                    if not proven[name]:
+                        with self._lock:
+                            if self._stop.is_set():
+                                return 0
+                            return self._child_exited(name, code)
+                    if now - started[name] >= 60:
+                        attempts[name] = 0
+                    exits[name] = [t for t in exits[name] if now - t < 60]
+                    exits[name].append(now)
+                    # Even an exited leader can leave ffmpeg alive on POSIX.
+                    with self._lock:
+                        if self._stop.is_set():
+                            return 0
+                        kill_tree(proc)
+                        if name == "server":
+                            self._server = None
+                        else:
+                            self._audio = None
+                    if self._stop.is_set():
+                        return 0
+                    if len(exits[name]) >= 3:
+                        detail = str(self.plan.log_dir / f"{name}.log")
+                        self._fail(
+                            f"{name}_restart_gave_up",
+                            f"Repeated {name} exits; see {detail}",
+                            detail,
+                        )
+                        return code or 1
+                    attempts[name] += 1
+                    delay = min(2 ** min(attempts[name] - 1, 5), 30)
+                    pending[name] = self._clock() + delay
+                    self._emit(f"{name}_restarting", RestartMessage(name, attempts[name], delay))
+                    continue
+                if now < pending[name]:
+                    continue
+                cmd = self.plan.server_cmd if name == "server" else self.plan.audio_cmd
+                try:
+                    proc = self._start_child(name, cmd)
+                except OSError as exc:
+                    self._fail(f"{name}_spawn", f"Could not start {name}: {exc}", str(exc))
+                    return 1
+                if proc is None:
+                    return 0
+                del pending[name]
+                started[name] = self._clock()
+                if name == "server":
+
+                    def is_alive(child: subprocess.Popen[bytes] = proc) -> bool:
+                        audio_child = self._audio
+                        if (
+                            audio_child is not None
+                            and audio_child.poll() is None
+                            and self._clock() - started["audio"] >= 60
+                        ):
+                            proven["audio"] = True
+                        return child.poll() is None and not self._stop.is_set()
+
+                    outcome = wait_for_ready(
+                        self.plan.ready_url,
+                        is_alive,
+                        timeout=self._ready_timeout,
+                        interval=self._poll_interval,
+                        sleep=self._wait,
                     )
-                    return code or 1
+                    if self._stop.is_set():
+                        return 0
+                    if outcome == "died":
+                        continue  # Count this replacement's exit on the next monitor pass.
+                    if outcome != "ready":
+                        self._fail(
+                            "server_timeout",
+                            "The restarted server was not ready in time",
+                            str(self.plan.log_dir / "server.log"),
+                        )
+                        return 1
+                    self._emit("ready", self.plan.base_url)
+                else:
+                    self._emit("running", f"Audio pipeline running; logs in {self.plan.log_dir}")
         return 0
 
     def stop(self) -> None:
@@ -380,11 +548,15 @@ class Launcher:
         Thread-safe and idempotent: may be called from a GUI thread while ``run()`` is
         active; "stopped" is emitted once.
         """
-        self._stop.set()
+        self.request_stop()
         with self._lock:
             for proc in (self._audio, self._server):
                 if proc is not None:
-                    kill_tree(proc)
+                    try:
+                        kill_tree(proc)
+                    except Exception:
+                        logger.exception("Could not stop child process %s", proc.pid)
+            self._audio = self._server = None
             for log in self._logs:
                 with contextlib.suppress(OSError):
                     log.close()

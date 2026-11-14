@@ -572,7 +572,7 @@ class App:
                 described = describe_event(kind, message, code, detail)
                 if described:
                     self._log(described[1], described[0])
-            if kind == "ready":
+            if kind == "ready" and self.status.audio == "stopped":
                 self._on_server_ready()
             self._refresh_status()
         elif tag == "finished":
