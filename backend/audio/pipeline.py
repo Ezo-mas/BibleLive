@@ -10,8 +10,10 @@ from queue import Empty, Full, Queue
 from typing import Any
 
 from core.bible_lookup import BibleLookup
+from core.bible_versions import discover_versions
 from core.verse_parser import Reference, StreamingParser
 from core.verse_text import VerseTextIndex
+from core.version import version_string
 
 from .capture import AudioCapture
 from .config import AudioPipelineConfig
@@ -197,7 +199,11 @@ class BibleLiveAudioProcessor:
         self._consecutive_utterance_failures = 0
         self._parser_issues: list[dict[str, Any]] = []
         self.heartbeat: HeartbeatSender | None = (
-            HeartbeatSender(server_url, self.config, self.health_report)
+            HeartbeatSender(
+                server_url,
+                self.config,
+                lambda: {**self.health_report(), "version": version_string()},
+            )
             if self.config.heartbeat_interval > 0
             else None
         )
@@ -738,6 +744,10 @@ class BibleLiveAudioProcessor:
 
         try:
             while self.is_running:
+                try:
+                    self._follow_bible_version()
+                except Exception:
+                    logger.exception("Could not follow the server's Bible translation")
                 # Finals first (each carries the language it was captured in): a queued
                 # utterance waits behind at most the one partial already running.
                 try:
@@ -858,6 +868,93 @@ class BibleLiveAudioProcessor:
             f"Thread {threading.current_thread().name}: Initialized parsers for "
             f"{', '.join(parsers) or 'no languages'}"
         )
+
+    def _follow_bible_version(self) -> None:
+        """Swap only validators between utterances (transcription thread only).
+
+        The heartbeat owns the requested id. All new ``_local`` fields (active id
+        and last attempted/warned requests) belong solely to this thread, as do the lookup,
+        parsers and ``_parser_issues``. Failed ids retry on the next heartbeat.
+        """
+        heartbeat = self.heartbeat
+        requested = heartbeat.requested_bible_version if heartbeat is not None else None
+        if requested is None:
+            return
+        lookup = self._local.bible_lookup
+        if not hasattr(self._local, "bible_version"):
+            try:
+                translation = lookup.get_metadata().get("translation") if lookup else None
+                self._local.bible_version = (
+                    str(translation).strip().lower() if translation else None
+                )
+            except Exception:
+                self._local.bible_version = None
+        if requested == self._local.bible_version:
+            self._parser_issues = [
+                issue
+                for issue in self._parser_issues
+                if issue["code"] != "bible_version_unavailable"
+            ]
+            return
+        # Avoid scanning SQLite files on every 100 ms poll while a file is absent.
+        now = time.monotonic()
+        last_id, last_at = getattr(self._local, "bible_version_attempt", (None, 0.0))
+        if requested == last_id and now - last_at < self.config.heartbeat_interval:
+            return
+        self._local.bible_version_attempt = (requested, now)
+        replacement = None
+        try:
+            version = discover_versions(Path(self.bible_db_path).resolve().parent).get(requested)
+            if version is None:
+                raise FileNotFoundError(requested)
+            replacement = BibleLookup(str(version.path), readonly=True)
+            if (
+                replacement.conn is None
+                or replacement.conn.execute(
+                    "SELECT b.name, v.chapter, v.verse FROM verses v "
+                    "JOIN books b ON b.id = v.book_id LIMIT 1"
+                ).fetchone()
+                is None
+            ):
+                raise ValueError(f"Bible translation '{requested}' contains no usable verses")
+            validator = replacement.get_validator_hook()
+        except Exception as e:
+            if replacement is not None:
+                replacement.close()
+            self._parser_issues = [
+                issue
+                for issue in self._parser_issues
+                if issue["code"] != "bible_version_unavailable"
+            ] + [
+                _health_issue(
+                    "bible_version_unavailable",
+                    f"The pipeline cannot open translation {requested}; it keeps checking "
+                    "references against the previous one",
+                    version=requested,
+                )
+            ]
+            warned: set[str] = getattr(self._local, "bible_version_warnings", set())
+            if requested not in warned:
+                logger.warning("Could not switch pipeline Bible to %s: %s", requested, e)
+                warned.add(requested)
+                self._local.bible_version_warnings = warned
+            return
+        previous = self._local.bible_version
+        for parsers in (self._local.streaming_parsers, self._local.alternate_parsers):
+            for parser in parsers.values():
+                parser.parser.validator = validator
+        self._local.bible_lookup = replacement
+        self._local.bible_version = requested
+        self._parser_issues = [
+            issue
+            for issue in self._parser_issues
+            if issue["code"] not in {"bible_version_unavailable", "bible_db_unavailable"}
+        ]
+        if lookup is not None:
+            lookup.close()
+        session_log = self.session_log
+        if session_log is not None:
+            session_log.event("bible_version", **{"from": previous, "to": requested})
 
     @staticmethod
     def _make_parser(

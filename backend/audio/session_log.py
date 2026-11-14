@@ -23,6 +23,7 @@ from pathlib import Path
 from typing import Any
 
 from core.verse_parser import Reference
+from core.version import version_string
 
 from .stt import Transcription
 
@@ -106,6 +107,7 @@ class SessionLog:
                 "started": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
                 "audio_file": self.audio_path.name if self.audio_path else None,
                 **header,
+                "version": version_string(),
             }
         )
         logger.info(

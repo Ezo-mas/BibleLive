@@ -28,6 +28,7 @@ from ..book_names import lithuanian_search_variants
 from ..books import CANONICAL_BOOKS
 from ..config import config
 from ..passage import PassageError, resolve_passage, validate_detection
+from ..version import version_string
 from . import language_control
 from .auth import token_matches, verify_operator_token
 from .idle_screen import (
@@ -61,6 +62,7 @@ from .models import (
     OperatorFollowAutoConfirmed,
     PassageResponse,
     PipelineHeartbeat,
+    PipelineHeartbeatResponse,
     PipelineStatusResponse,
     ReferenceSubmitRequest,
     ReferenceSubmitResponse,
@@ -454,7 +456,7 @@ def create_app(bible_lookup: BibleLookup | None = None) -> FastAPI:
     @app.get("/healthz")
     async def healthz() -> dict:
         """Basic health check endpoint - returns 200 if server is running."""
-        return {"status": "healthy"}
+        return {"status": "healthy", "version": version_string()}
 
     @app.get("/readyz")
     async def readyz() -> dict:
@@ -1141,15 +1143,16 @@ def create_app(bible_lookup: BibleLookup | None = None) -> FastAPI:
 
     @app.post(
         "/api/pipeline/heartbeat",
-        status_code=204,
+        status_code=200,
+        response_model=PipelineHeartbeatResponse,
         responses={
-            204: {"description": "Report recorded"},
+            200: {"description": "Report recorded; active Bible translation"},
             401: {"model": ErrorResponse, "description": "Unauthorized"},
             422: {"model": ErrorResponse, "description": "Invalid report"},
         },
         dependencies=[Depends(verify_operator_token)],
     )
-    async def receive_pipeline_heartbeat(report: PipelineHeartbeat) -> None:
+    async def receive_pipeline_heartbeat(report: PipelineHeartbeat) -> PipelineHeartbeatResponse:
         """Record the audio pipeline's periodic health report.
 
         Token-protected like ``/api/reference``, so only the pipeline can tell
@@ -1164,6 +1167,7 @@ def create_app(bible_lookup: BibleLookup | None = None) -> FastAPI:
                 logger.warning(f"Audio pipeline {current.status}: {'; '.join(current.problems)}")
             else:
                 logger.info(f"Audio pipeline {current.status}")
+        return PipelineHeartbeatResponse(bible_version=app_state.active_bible_version())
 
     @app.get(
         "/api/pipeline/status",

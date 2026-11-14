@@ -223,6 +223,23 @@ foreach ($pkg in 'core', 'audio', 'launcher') {
     if ($LASTEXITCODE -ge 8) { throw "robocopy failed for $pkg (exit $LASTEXITCODE)" }
 }
 $global:LASTEXITCODE = 0
+$Stamp = $Version
+if (Get-Command git -ErrorAction SilentlyContinue) {
+    try {
+        $BuildId = & git -C $Repo rev-parse --short HEAD 2>$null
+        if ($LASTEXITCODE -eq 0 -and $BuildId) {
+            $changes = & git -C $Repo status --porcelain --untracked-files=normal 2>$null
+            if ($LASTEXITCODE -eq 0) {
+                $Stamp = "$Version+$BuildId"
+                if ($changes) { $Stamp += '.dirty' }
+            }
+        }
+    } catch {
+        Write-Warning 'Could not read git build information; using package version only.'
+    }
+}
+$global:LASTEXITCODE = 0
+Set-Content -Encoding ASCII (Join-Path $App 'backend\core\build-id.txt') $Stamp
 New-Item -ItemType Directory -Force (Join-Path $App 'static') | Out-Null
 & robocopy.exe $FrontendDist (Join-Path $App 'static\frontend') /E /NFL /NDL /NJH /NJS /NP | Out-Null
 if ($LASTEXITCODE -ge 8) { throw "robocopy failed for the frontend bundle (exit $LASTEXITCODE)" }
@@ -318,6 +335,8 @@ try {
         Invoke-Native $Py @('-m', 'launcher', '--dry-run')
         Write-Host '- imports'
         Invoke-Native $Py @('-c', "import faster_whisper, ctranslate2, webrtcvad, transcribe_cpp, tkinter, core.config as c; print('imports OK, PROJECT_ROOT =', c.PROJECT_ROOT)")
+        Write-Host '- version stamp'
+        Invoke-Native $Py @('-c', "from core.version import version_string; s = version_string(); print('version:', s); assert not s.startswith('unknown')")
         Write-Host '- ffmpeg'
         Invoke-Native (Join-Path $ffDir 'ffmpeg.exe') @('-hide_banner', '-version')
     } finally { Pop-Location }

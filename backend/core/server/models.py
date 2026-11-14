@@ -299,6 +299,12 @@ class PipelineIssue(BaseModel):
 class PipelineHeartbeat(BaseModel):
     """The audio pipeline's periodic health report (``POST /api/pipeline/heartbeat``)."""
 
+    version: str | None = Field(
+        None,
+        min_length=1,
+        max_length=128,
+        description="Pipeline package version and optional build id",
+    )
     language: str = Field(..., min_length=1, max_length=16, description="Spoken language")
     interval_s: float = Field(..., gt=0, le=300, description="Seconds until the next report is due")
     problems: list[Annotated[str, Field(min_length=1, max_length=300)]] = Field(
@@ -311,6 +317,12 @@ class PipelineHeartbeat(BaseModel):
         max_length=10,
         description="The same problems as 'problems', each with a code; empty from older pipelines",
     )
+
+
+class PipelineHeartbeatResponse(BaseModel):
+    """Active translation for the pipeline's local reference validator."""
+
+    bible_version: str | None
 
 
 class PipelineStatusResponse(BaseModel):
