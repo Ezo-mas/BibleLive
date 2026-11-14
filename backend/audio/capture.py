@@ -5,10 +5,13 @@ import re
 import subprocess
 import sys
 import threading
+import time
 from collections import deque
 from queue import Empty, Full, Queue
 
 logger = logging.getLogger(__name__)
+
+FRAME_WAIT_S = 0.5
 
 # ``ffmpeg -list_devices true -f dshow`` prints each device as
 # ``"Microphone (Realtek(R) Audio)" (audio)``; the alternative-name lines that
@@ -49,6 +52,10 @@ class AudioCapture:
         self.ffmpeg_process: subprocess.Popen[bytes] | None = None
         self.capture_thread: threading.Thread | None = None
         self.stderr_thread: threading.Thread | None = None
+        # Lifecycle thread invalidates the stream under this lock; readers use it
+        # to publish data and failure only while their stream is current.
+        self._stream_lock = threading.Lock()
+        self._stream_generation = 0
 
         # Carry-over buffer for ffmpeg chunks that don't align with the frame
         # size requested by get_audio_frame(). Without this, any bytes past the
@@ -102,8 +109,11 @@ class AudioCapture:
                 self.audio_queue.get_nowait()
             except Empty:
                 break
-        self.failed = False
-        self.is_running = True
+        with self._stream_lock:
+            self._stream_generation += 1
+            generation = self._stream_generation
+            self.failed = False
+            self.is_running = True
 
         ffmpeg_cmd = [
             "ffmpeg",
@@ -139,7 +149,10 @@ class AudioCapture:
 
         # Start thread to read audio data
         capture_thread = threading.Thread(
-            target=self._read_audio_data, daemon=True, name="audio-capture"
+            target=self._read_audio_data,
+            args=(self.ffmpeg_process, generation),
+            daemon=True,
+            name="audio-capture",
         )
         self.capture_thread = capture_thread
         capture_thread.start()
@@ -164,38 +177,49 @@ class AudioCapture:
         except Exception as e:
             logger.warning(f"Error consuming ffmpeg stderr: {e}")
 
-    def _read_audio_data(self):
+    def _read_audio_data(self, proc: subprocess.Popen[bytes], generation: int):
         """Read audio data from ffmpeg stdout and put in queue"""
         chunk_size = 2 * self.sample_rate // 100  # 10ms chunks (2 bytes per sample)
 
         try:
-            while self.is_running and self.ffmpeg_process:
-                proc = self.ffmpeg_process
-                if proc is None or proc.stdout is None:
+            while True:
+                if proc.stdout is None:
                     break
                 try:
                     raw_data = proc.stdout.read(chunk_size)
-                    if not raw_data:
-                        self._report_ffmpeg_exit()
+                    with self._stream_lock:
+                        if not self.is_running or generation != self._stream_generation:
+                            break
+                        if not raw_data:
+                            break
+                        self.total_bytes_captured += len(raw_data)
+                        self.total_chunks += 1
+                        if self.total_chunks == 1:
+                            logger.info(
+                                "First audio input received from device "
+                                f"({len(raw_data)} bytes, {self.sample_rate}Hz mono s16le)"
+                            )
+                    deadline = time.monotonic() + 0.1
+                    active = True
+                    while True:
+                        with self._stream_lock:
+                            if not self.is_running or generation != self._stream_generation:
+                                active = False
+                                break
+                            try:
+                                self.audio_queue.put_nowait(raw_data)
+                                break
+                            except Full:
+                                if time.monotonic() >= deadline:
+                                    self.dropped_chunks += 1
+                                    logger.warning(
+                                        "Audio queue full, dropping audio chunk "
+                                        f"({self.dropped_chunks} dropped so far)"
+                                    )
+                                    break
+                        time.sleep(0.005)
+                    if not active:
                         break
-
-                    self.total_bytes_captured += len(raw_data)
-                    self.total_chunks += 1
-                    if self.total_chunks == 1:
-                        logger.info(
-                            "First audio input received from device "
-                            f"({len(raw_data)} bytes, {self.sample_rate}Hz mono s16le)"
-                        )
-
-                    # Use non-blocking put with timeout to handle backpressure
-                    try:
-                        self.audio_queue.put(raw_data, timeout=0.1)
-                    except Full:
-                        self.dropped_chunks += 1
-                        logger.warning(
-                            "Audio queue full, dropping audio chunk "
-                            f"({self.dropped_chunks} dropped so far)"
-                        )
 
                     self._log_capture_progress()
 
@@ -208,8 +232,12 @@ class AudioCapture:
         finally:
             # Leaving the read loop while capture is still meant to run means no
             # audio will ever arrive on this stream again.
-            if self.is_running:
-                self.failed = True
+            with self._stream_lock:
+                current = self.is_running and generation == self._stream_generation
+                if current:
+                    self.failed = True
+            if current:
+                self._report_ffmpeg_exit()
             logger.info(
                 f"Audio capture thread stopped "
                 f"({self.captured_seconds:.1f}s of audio captured, "
@@ -259,7 +287,9 @@ class AudioCapture:
     def stop_capture(self):
         """Stop audio capture and cleanup resources"""
         logger.info("Stopping audio capture...")
-        self.is_running = False
+        with self._stream_lock:
+            self.is_running = False
+            self._stream_generation += 1
 
         if self.ffmpeg_process:
             try:
@@ -286,9 +316,8 @@ class AudioCapture:
     def get_audio_frame(self, frame_duration_ms: int = 30) -> bytes | None:
         """Get audio frame of specified duration.
 
-        Returns ``None`` when capture is stopped, or when the stream has failed
-        and the audio it already delivered has been used up; the caller checks
-        :attr:`failed` to tell the two apart.
+        Returns ``None`` after a bounded wait, on stop, or when a failed stream
+        has been drained. Partial frames remain buffered across calls.
         """
         # Calculate bytes needed for frame duration
         bytes_per_sample = 2  # 16-bit
@@ -299,12 +328,14 @@ class AudioCapture:
         # ffmpeg writes chunks of arbitrary size, so bytes past the end of a
         # frame are kept here for the next call instead of being discarded
         # (previously the excess was silently dropped, losing VAD/STT audio).
+        deadline = time.monotonic() + FRAME_WAIT_S
         while len(self._frame_buffer) < bytes_per_frame and self.is_running:
             try:
-                self._frame_buffer.extend(self.audio_queue.get(timeout=0.1))
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    break
+                self._frame_buffer.extend(self.audio_queue.get(timeout=min(0.1, remaining)))
             except Empty:
-                # A failed stream sends nothing more: return instead of waiting
-                # forever, once the queued audio is drained.
                 if not self.is_running or self.failed:
                     break
                 continue

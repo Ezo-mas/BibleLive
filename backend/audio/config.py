@@ -49,6 +49,8 @@ class AudioPipelineConfig:
     capture_restart_base_delay: float = 1.0  # seconds
     capture_restart_max_delay: float = 30.0  # seconds
     capture_healthy_s: float = 10.0  # seconds of audio
+    capture_stall_restart_s: float = 10.0  # seconds without a frame
+    capture_first_frame_grace_s: float = 30.0  # seconds after launch before first frame
 
     # Deduplication window
     dedup_window_seconds: float = 5.0  # Don't send same reference within 5s

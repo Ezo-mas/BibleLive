@@ -69,8 +69,8 @@ class SessionLog:
     """One service's transcript log (and optional audio), safe across pipeline threads.
 
     The VAD thread calls :meth:`write_frame`, :meth:`speech_started` and
-    :meth:`utterance_queued`; the transcription thread calls :meth:`utterance`;
-    any thread may call :meth:`event`.
+    :meth:`utterance_queued`; the transcription thread calls :meth:`utterance`
+    and :meth:`utterance_failed`; any thread may call :meth:`event`.
     """
 
     def __init__(
@@ -164,6 +164,17 @@ class SessionLog:
             span = self._pending.pop(id(frames), None)
         if span is not None:
             self.event("utterance_dropped", start_s=round(span[0], 2), end_s=round(span[1], 2))
+
+    def utterance_failed(self, frames: list[bytes], language: str) -> None:
+        """Forget and record a failed utterance (transcription thread)."""
+        with self._lock:
+            span = self._pending.pop(id(frames), None)
+        self.event(
+            "utterance_failed",
+            language=language,
+            start_s=round(span[0], 2) if span is not None else None,
+            end_s=round(span[1], 2) if span is not None else None,
+        )
 
     def utterance(
         self,
