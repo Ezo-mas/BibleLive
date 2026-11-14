@@ -52,6 +52,8 @@ class Config(BaseSettings):
     PORT: int = 8000
     RELOAD: bool = False
     LOG_LEVEL: str = "INFO"
+    # Optional directory for the server's coordinate-only service log.
+    SERVICE_LOG_DIR: str = ""
 
     # Database configuration
     DB_PATH: str = "bible_data/biblelive.sqlite"
@@ -168,6 +170,13 @@ class Config(BaseSettings):
         """Resolve SETTINGS_PATH, which may be relative to the project root."""
         settings_path = Path(self.SETTINGS_PATH)
         return settings_path if settings_path.is_absolute() else PROJECT_ROOT / settings_path
+
+    def resolve_service_log_dir(self) -> Path | None:
+        """Resolve SERVICE_LOG_DIR against the project root, or disable logging."""
+        if not self.SERVICE_LOG_DIR:
+            return None
+        directory = Path(self.SERVICE_LOG_DIR)
+        return directory if directory.is_absolute() else PROJECT_ROOT / directory
 
     def validate_config(self) -> None:
         """Validate configuration and log warnings for production concerns."""

@@ -514,3 +514,62 @@ def test_ws_validates_action_payloads_with_pydantic(client):
         confirmed = json.loads(websocket.receive_text())
         assert confirmed["type"] == "display_settings_confirmed"
         assert confirmed["data"]["verse_limit"] == 5
+
+
+def test_no_text_approval_error_precedes_queue_update(client, app_state, monkeypatch):
+    from protocol_golden import golden
+    from pydantic import TypeAdapter
+
+    from core.server.models import OperatorServerMessage
+
+    live_id = _submit_reference(client)
+    assert client.post("/api/approve", json={"reference_id": live_id}).status_code == 200
+    current = app_state.current_display
+    history = list(app_state.reference_history)
+    refused_id = _submit_reference(client)
+    monkeypatch.setattr(app_state.bible_lookup, "get_verse_range", lambda *_: [])
+    with (
+        client.websocket_connect("/ws/display") as display,
+        client.websocket_connect("/ws/operator") as operator,
+        client.websocket_connect("/ws/operator") as other,
+    ):
+        assert display.receive_json()["type"] == "reference"
+        assert display.receive_json()["type"] == "display_settings"
+        assert operator.receive_json()["type"] == "state_snapshot"
+        assert other.receive_json()["type"] == "state_snapshot"
+        operator.send_json({"action": "approve", "reference_id": refused_id})
+        wire = operator.receive_text()
+        error = json.loads(wire)
+        assert error == {
+            "type": "error",
+            "data": {
+                "message": "Reference has no text in the active translation",
+                "action": "approve",
+            },
+        }
+        assert (
+            json.dumps(TypeAdapter(OperatorServerMessage).validate_json(wire).model_dump()) == wire
+        )
+        golden("errors", "approve_no_text", wire)
+        for socket in (operator, other):
+            assert socket.receive_json() == {
+                "type": "pending_update",
+                "data": {"pending": [], "count": 0},
+            }
+        assert app_state.current_display is current
+        assert app_state.reference_history == history
+        # A subsequent clear is a barrier: no reference may precede it on the display.
+        operator.send_json({"action": "clear"})
+        assert operator.receive_json()["type"] == "clear_confirmed"
+        assert display.receive_json()["type"] == "clear"
+
+
+def test_http_no_text_approval_is_refused(client, app_state, monkeypatch):
+    reference_id = _submit_reference(client)
+    monkeypatch.setattr(app_state.bible_lookup, "get_verse_range", lambda *_: [])
+    response = client.post("/api/approve", json={"reference_id": reference_id})
+    assert response.status_code == 422
+    assert response.json()["detail"] == "Reference has no text in the active translation"
+    assert app_state.pending_references == []
+    assert app_state.current_display is None
+    assert app_state.reference_history == []

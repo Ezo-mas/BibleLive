@@ -22,7 +22,7 @@ import os
 import tempfile
 from datetime import datetime
 from pathlib import Path
-from typing import Any, TypeGuard
+from typing import Any, Literal, TypeGuard
 
 from .idle_screen import (
     DEFAULT_IDLE_SCREEN_FIT,
@@ -194,6 +194,38 @@ class SettingsStore:
         """Return the persisted follow-along auto-show switch, or ``default``."""
         return coerce_follow_auto(self._read().get("follow_auto"), default=default)
 
+    def load_verse_limit(self) -> int | Literal["all"]:
+        """Return a valid saved display limit, or the default of three verses."""
+        value = self._read().get("verse_limit")
+        if type(value) is int and value in (3, 5, 10):
+            return value
+        if value == "all":
+            return "all"
+        if value is not None:
+            logger.warning("Ignoring invalid verse limit %r; using 3", value)
+        return 3
+
+    def load_theme(self) -> Literal["dark", "light"]:
+        """Return a valid saved display theme, or dark."""
+        value = self._read().get("theme")
+        if value == "light":
+            return "light"
+        if value != "dark" and value is not None:
+            logger.warning("Ignoring invalid display theme %r; using dark", value)
+        return "dark"
+
+    def save_verse_limit(self, value: int | str) -> bool:
+        """Persist a limit accepted by the operator handlers."""
+        if not (type(value) is int and value in (3, 5, 10)) and value != "all":
+            return False
+        return self._update({"verse_limit": value}, log=f"Persisted verse limit to {self.path}")
+
+    def save_theme(self, value: str) -> bool:
+        """Persist a theme accepted by the operator handlers."""
+        if value not in ("dark", "light"):
+            return False
+        return self._update({"theme": value}, log=f"Persisted display theme to {self.path}")
+
     def load_bible_version(self, db_path: str) -> str | None:
         """Return the persisted Bible translation id, or None if none applies.
 
@@ -321,12 +353,12 @@ class SettingsStore:
         settings.update(changes or {})
         for key in remove:
             settings.pop(key, None)
-        if not self._write(settings):
+        if not self.write_json(settings):
             return False
         logger.info(log)
         return True
 
-    def _write(self, settings: dict[str, Any]) -> bool:
+    def write_json(self, settings: dict[str, Any]) -> bool:
         """Write ``settings`` atomically; returns False when the write failed."""
         tmp_path: Path | None = None
         try:
