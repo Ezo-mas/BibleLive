@@ -92,7 +92,7 @@ below the fold.
   independent review of PR #7, reproduced 2026-10-12.
 - **Logged:** 2026-10-12
 
-### Approving a reference can display with no verse text
+### Approving a reference can display with no verse text (resolved)
 - **Where:** `backend/core/server/state.py` (`AppState.approve_pending` via
   `_resolve_verses`).
 - **Problem:** When the range resolves to no verses, `_resolve_verses` logs a
@@ -109,8 +109,14 @@ below the fold.
   `:314` and `:322` display unconditionally. Flagged by the follow-up review
   of the import/ingest work; logged, not fixed.
 - **Logged:** 2026-10-13
+- **Resolved:** 2026-11-15 (M2, owner decision Q2) — `approve_pending` drops a reference that
+  resolves to no verses from the queue and leaves the display, `current_display` and history
+  untouched. The approving operator gets the `error` message "Reference has no text in the
+  active translation" (action `approve`), then every operator gets `pending_update`; HTTP
+  approve returns 422; an auto-approved one disappears with a server-log warning and a
+  service-log event. Covered by `backend/tests/test_websocket_approval.py`.
 
-### Capture-restart health reporting flaps, and a hung ffmpeg is never restarted
+### Capture-restart health reporting flaps, and a hung ffmpeg is never restarted (resolved)
 - **Where:** `backend/audio/pipeline.py` (`_restart_capture`,
   `_note_capture_healthy`, `health_report`).
 - **Problem:** (a) `_capture_down` is cleared as soon as the relaunched ffmpeg
@@ -128,8 +134,15 @@ below the fold.
   backoff behavior is covered by `test_capture_recovery.py`. Flagged by the
   follow-up review; logged, not fixed.
 - **Logged:** 2026-10-13
+- **Resolved:** 2026-11-15 (M2) — (a) `_capture_down` is cleared when the first frame arrives
+  after a restart, not at launch. (b) `get_audio_frame` returns `None` after a bounded wait
+  (carry-over kept), and the VAD loop restarts capture through the normal backoff when no frame
+  has arrived for `capture_stall_restart_s` (10 s; `capture_first_frame_grace_s`, 30 s, until a
+  stream's first frame). Readers are bound to a stream generation so a stalled old reader cannot
+  feed the new stream. Covered by `backend/tests/test_capture_recovery.py` and
+  `test_live_path.py`.
 
-### The audio pipeline keeps the startup Bible and ignores a version switch
+### The audio pipeline keeps the startup Bible and ignores a version switch (resolved)
 - **Where:** `backend/audio/pipeline.py` (the `BibleLookup` it builds at startup,
   used to validate parsed references before they are sent).
 - **Problem:** The pipeline is a separate process with its own database
@@ -146,6 +159,13 @@ below the fold.
   once at pipeline startup and never reopened; the server's switch lives in
   `AppState.bible_lookup` and is not visible to it. Logged, not fixed.
 - **Logged:** 2026-10-14
+- **Resolved:** 2026-11-15 (M2, owner decision Q3) — `POST /api/pipeline/heartbeat` replies 200
+  with `{"bible_version": id}`. The pipeline validates the id against the discovered versions
+  and, on the transcription thread between utterances, reopens its lookup and swaps the
+  validator in every parser without resetting their context. A translation missing on the
+  pipeline's side keeps the old lookup and raises the `bible_version_unavailable` health issue.
+  The window is up to one heartbeat (5 s). Covered by
+  `backend/tests/test_translation_follow.py`.
 
 ### A damaged settings file is overwritten on the next save, dropping every other setting (resolved)
 - **Where:** `backend/core/server/settings_store.py` (`SettingsStore._read` and every

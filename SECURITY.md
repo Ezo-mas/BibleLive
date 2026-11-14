@@ -54,7 +54,7 @@ BIBLELIVE_OPERATOR_TOKEN=your-generated-token-here
 
 - `GET /` — root (redirects to the display page)
 - `GET /display` — display page
-- `GET /healthz` — health check
+- `GET /healthz` — health check returning the version stamp (unauthenticated)
 - `GET /readyz` — readiness check
 - `GET /api/ui-language` — the interface language the launcher chose (`lt`, `en`, or null);
   the display page reads it too, and it returns nothing else
