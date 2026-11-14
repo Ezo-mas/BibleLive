@@ -1,0 +1,4 @@
+item_id,window_id,sentence_no,version,target_lang,system,reference_lt,input_lt,translation,adequacy,critical,critical_type,fluency,note
+1011-cite-001,1011-cite,1,recognized,ru,A,"<your corrected sentence>","<what the speech model wrote>","<translation to rate>",,,,,
+1011-cite-001,1011-cite,1,recognized,ru,B,"<your corrected sentence>","<what the speech model wrote>","<translation to rate>",,,,,
+1011-cite-001,1011-cite,1,clean,ru,A,"<your corrected sentence>","<your corrected sentence>","<translation to rate>",,,,,
