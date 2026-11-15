@@ -634,6 +634,9 @@ class AppState:
     async def approve_pending(self, reference_id: str) -> BibleReference | ApprovalRefusal | None:
         return await self._display_session.approve_pending(reference_id)
 
+    async def discard_pending(self, reference_id: str) -> bool:
+        return await self._display_session.discard_pending(reference_id)
+
     async def approve_and_notify(
         self,
         reference_id: str,

@@ -161,6 +161,11 @@ export interface ClearAction {
   action: 'clear'
 }
 
+export interface DiscardPendingAction {
+  action: 'discard_pending'
+  reference_id: string
+}
+
 export interface ClearPendingAction {
   action: 'clear_pending'
 }
@@ -218,6 +223,7 @@ export interface AuthenticateAction {
 export type OperatorAction =
   | AuthenticateAction
   | ApproveAction
+  | DiscardPendingAction
   | ClearAction
   | ClearPendingAction
   | SetVerseLimitAction

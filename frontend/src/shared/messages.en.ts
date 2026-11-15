@@ -313,6 +313,7 @@ export const en = {
   'notice.errDisplayReference': 'Could not show that passage',
   'notice.errClear': 'Could not clear the display',
   'notice.errClearPending': 'Could not clear the queue',
+  'notice.errDiscardPending': 'Could not remove the reference',
   'notice.errVerseLimit': 'Could not change the verses shown',
   'notice.errTheme': 'Could not change the background',
   'notice.errAutoMode': 'Could not change auto-approve',

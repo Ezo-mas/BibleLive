@@ -36,6 +36,7 @@ EVENT_FIELDS = {
     },
     "cleared": set(),
     "queue_cleared": {"count"},
+    "pending_discarded": {"reference_id", "book", "chapter", "verse_start", "verse_end"},
     "queue_overflowed": {"count"},
     "translation_switched": {"from", "to"},
     "pipeline_status": {"status", "issue_codes"},

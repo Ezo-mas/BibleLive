@@ -198,6 +198,8 @@ export default function App() {
               selectedId={operator.selectedId}
               onSelect={operator.selectPending}
               onShow={operator.approvePending}
+              onRemove={operator.discardPending}
+              discardInFlight={operator.discardInFlight}
               canShow={operator.isConnected}
             >
               <QueueFooter

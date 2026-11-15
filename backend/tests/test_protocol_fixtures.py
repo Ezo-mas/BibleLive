@@ -23,6 +23,7 @@ REFERENCE_ID = "00000000-0000-0000-0000-000000000001"
 ACTIONS = {
     "authenticate": {"action": "authenticate", "token": "example-token"},
     "approve": {"action": "approve", "reference_id": REFERENCE_ID},
+    "discard_pending": {"action": "discard_pending", "reference_id": REFERENCE_ID},
     "clear": {"action": "clear"},
     "clear_pending": {"action": "clear_pending"},
     "set_verse_limit": {"action": "set_verse_limit", "verse_limit": 5},
@@ -96,6 +97,15 @@ def test_real_server_protocol_fixtures(client, app_state, kjv_db, monkeypatch):
             receive(operator, "operator", "approval_confirmed")
             receive(operator, "operator", "pending_update", save=False)
             receive(display, "display", "reference")
+
+            response = client.post(
+                "/api/reference",
+                json={"book": "John", "chapter": 3, "verse_start": 17, "confidence": "high"},
+            )
+            assert response.status_code == 201
+            receive(operator, "operator", "pending_update", save=False)
+            send(operator, "discard_pending")
+            receive(operator, "operator", "pending_update", save=False)
 
             send(operator, "display_reference")
             receive(operator, "operator", "display_confirmed")

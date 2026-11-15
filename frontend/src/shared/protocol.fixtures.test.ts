@@ -64,7 +64,7 @@ function deliver(url: string, message: OperatorMessage | DisplayMessage) {
 
 describe('checked-in protocol fixtures', () => {
   it('loads every operator action example', () => {
-    expect(Object.keys(actions)).toHaveLength(9)
+    expect(Object.keys(actions)).toHaveLength(10)
     for (const [path, message] of Object.entries(actions)) {
       expect(path.endsWith(`/${message.action}.json`)).toBe(true)
     }

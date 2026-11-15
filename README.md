@@ -424,6 +424,7 @@ A missing local translation keeps the previous validator and reports
   - `{action: 'authenticate', token}` — first, when authentication is enabled
     (ignored otherwise)
   - `{action: 'approve', reference_id: 'uuid'}`
+  - `{action: 'discard_pending', reference_id: 'uuid'}`
   - `{action: 'clear'}`
   - `{action: 'clear_pending'}`
   - `{action: 'set_verse_limit', verse_limit: 3 | 5 | 10 | 'all'}`

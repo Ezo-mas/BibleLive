@@ -42,13 +42,6 @@ skipped. It needs a protocol change (for example an optional flag on the `clear`
 message and a persisted setting in `settings_store.py`), so ask before building it.
 The mock of the Settings row is in the design thread, not in the repo.
 
-### Remove a single Pending row
-Pending rows have Show and Stage only; the server can only approve one or clear the
-whole queue (`clear_pending`). A per-row Remove needs a new operator action (for
-example `discard_pending` with a `reference_id`) that drops the entry from
-`pending_references` and sends the usual `pending_update`. It never puts anything on
-the display, but it changes the operator protocol, so ask first.
-
 ### Small console follow-ups
 - The source label (detected, manual, history) on Up Next is now screen-reader-only, so a
   sighted operator cannot see whether Show approves a queued detection or re-shows

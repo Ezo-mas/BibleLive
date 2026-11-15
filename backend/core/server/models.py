@@ -391,6 +391,13 @@ class OperatorApproveAction(BaseModel):
     reference_id: str
 
 
+class OperatorDiscardPendingAction(BaseModel):
+    """Action to discard a pending reference by ID."""
+
+    action: Literal["discard_pending"]
+    reference_id: str
+
+
 class OperatorClearDisplayAction(BaseModel):
     """Action to clear the current display."""
 
@@ -469,6 +476,7 @@ class OperatorAuthenticateAction(BaseModel):
 OperatorAction = Annotated[
     OperatorAuthenticateAction
     | OperatorApproveAction
+    | OperatorDiscardPendingAction
     | OperatorClearDisplayAction
     | OperatorClearPendingAction
     | OperatorSetVerseLimitAction

@@ -52,6 +52,9 @@ const DOUBLE_CLICK_MS = 500
 /** How long the button "pressed" feedback lasts after a confirmation. */
 const FLASH_MS = 150
 
+/** Keep a second click from removing the row that moves under the pointer. */
+const DISCARD_COOLDOWN_MS = 500
+
 /** How long a notice stays up before it removes itself. */
 const NOTICE_MS: Record<NoticeTone, number> = { success: 3000, info: 4000, error: 6000 }
 
@@ -88,6 +91,7 @@ const ERROR_PREFIX_KEYS: Record<string, MessageKey> = {
   display_reference: 'notice.errDisplayReference',
   clear: 'notice.errClear',
   clear_pending: 'notice.errClearPending',
+  discard_pending: 'notice.errDiscardPending',
   set_verse_limit: 'notice.errVerseLimit',
   set_display_theme: 'notice.errTheme',
   set_auto_mode: 'notice.errAutoMode',
@@ -241,6 +245,8 @@ export interface OperatorState {
   showHistory: (reference: BibleReference) => void
   /** Approve a queued detection at once (double-click), skipping Up Next. */
   approvePending: (id: string) => void
+  discardPending: (id: string) => void
+  discardInFlight: boolean
 
   /** Passages lined up in advance, kept in this browser. */
   plan: PlanState
@@ -339,6 +345,15 @@ export function useOperatorState(): OperatorState {
   // queue the same passage twice, and a confirmation that never comes (the
   // socket dropped) must not leave Show disabled — see the status effect below.
   const [showInFlight, setShowInFlight] = useState(false)
+  const [discardInFlight, setDiscardInFlight] = useState(false)
+  const discardIdRef = useRef<string | null>(null)
+  const discardTimerRef = useRef<number | undefined>(undefined)
+  const clearDiscardInFlight = useCallback(() => {
+    window.clearTimeout(discardTimerRef.current)
+    discardTimerRef.current = undefined
+    discardIdRef.current = null
+    setDiscardInFlight(false)
+  }, [])
   // The latest follow-along hint. Transient: never in a snapshot, and only ever
   // offered while its `display_id` is still the passage on screen.
   const [followAlongHint, setFollowAlongHint] = useState<FollowAlongHint | null>(null)
@@ -400,6 +415,7 @@ export function useOperatorState(): OperatorState {
     () => () => {
       window.clearTimeout(flashTimerRef.current)
       window.clearTimeout(noticeTimerRef.current)
+      window.clearTimeout(discardTimerRef.current)
     },
     []
   )
@@ -484,6 +500,13 @@ export function useOperatorState(): OperatorState {
         setPending(message.data.pending)
         setPendingCount(message.data.count)
         keepStagedReference(message.data.pending)
+        if (
+          discardIdRef.current !== null &&
+          discardTimerRef.current === undefined &&
+          !message.data.pending.some(ref => ref.id === discardIdRef.current)
+        ) {
+          discardTimerRef.current = window.setTimeout(clearDiscardInFlight, DISCARD_COOLDOWN_MS)
+        }
         break
       case 'approval_confirmed': {
         const shown = message.data.reference
@@ -599,6 +622,7 @@ export function useOperatorState(): OperatorState {
       case 'error': {
         const { action, message: reason } = message.data
         console.error('Server error:', reason)
+        if (action === 'discard_pending') clearDiscardInFlight()
         // A rejected or failed action is over: let the operator try again.
         if (action === 'approve' || action === 'display_reference') setShowInFlight(false)
         const prefix = t(ERROR_PREFIX_KEYS[action] ?? 'notice.errGeneric')
@@ -626,7 +650,11 @@ export function useOperatorState(): OperatorState {
     }
   }
 
-  const { status, send, reconnect } = useWebSocket<OperatorMessage>('/ws/operator', handleMessage, {
+  const {
+    status,
+    send,
+    reconnect: reconnectSocket,
+  } = useWebSocket<OperatorMessage>('/ws/operator', handleMessage, {
     maxReconnectAttempts: Infinity,
     // The token goes in the socket's first message, not the URL: URLs end up
     // in server and proxy logs. Always sent, even empty: with auth on and no
@@ -639,11 +667,17 @@ export function useOperatorState(): OperatorState {
     } satisfies AuthenticateAction,
     onClose: event => {
       onSocketClose(event)
+      clearDiscardInFlight()
       // A 1008 is only ever sent pre-auth, so the socket behind it was never really
       // connected: it must not count as a session that reached the server.
       if (event.code === 1008) setHasConnected(false)
     },
   })
+
+  const reconnect = useCallback(() => {
+    clearDiscardInFlight()
+    reconnectSocket()
+  }, [clearDiscardInFlight, reconnectSocket])
 
   // Remember a successful connection: it is what separates a dropped socket (the
   // console stays, with a reconnect banner) from a server that wants a token.
@@ -654,8 +688,11 @@ export function useOperatorState(): OperatorState {
   // A show request only exists while the socket is open. If it dropped, the
   // confirmation is not coming and the staged passage is still theirs to show.
   useEffect(() => {
-    if (status !== 'open') setShowInFlight(false)
-  }, [status])
+    if (status !== 'open') {
+      setShowInFlight(false)
+      clearDiscardInFlight()
+    }
+  }, [status, clearDiscardInFlight])
 
   const sendAction = useCallback(
     (action: OperatorAction) => {
@@ -671,6 +708,18 @@ export function useOperatorState(): OperatorState {
       sendAction({ action: 'approve', reference_id: staged.id })
     }
   }, [staged, sendAction])
+
+  const discardPending = useCallback(
+    (id: string) => {
+      if (status !== 'open' || discardIdRef.current !== null) return
+      window.clearTimeout(discardTimerRef.current)
+      discardTimerRef.current = undefined
+      discardIdRef.current = id
+      setDiscardInFlight(true)
+      sendAction({ action: 'discard_pending', reference_id: id })
+    },
+    [sendAction, status]
+  )
 
   const clearDisplay = useCallback(() => {
     sendAction({ action: 'clear' })
@@ -1038,6 +1087,8 @@ export function useOperatorState(): OperatorState {
     selectHistory,
     showHistory,
     approvePending,
+    discardPending,
+    discardInFlight,
     plan,
     planSnippets,
     followAlongText,

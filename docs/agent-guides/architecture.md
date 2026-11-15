@@ -37,10 +37,9 @@ easy to break by accident.
    a confidence (it is `source="manual"`, or `source="follow"` for an
    auto-show, so nothing can auto-approve it). The supported operator actions are
    `authenticate` (the token, as the socket's first message; it carries no
-   operation and is ignored once the socket is let in), `approve`, `clear`, `clear_pending`, `set_verse_limit`,
+   operation and is ignored once the socket is let in), `approve`, `discard_pending`, `clear`, `clear_pending`, `set_verse_limit`,
    `set_display_theme`, `set_auto_mode`, `set_follow_auto`, `display_reference` — there is no
-   `reject` action; discarding a wrong detection is done implicitly by
-   approving the next one or via `clear_pending`.
+   `reject` action; `discard_pending` removes one pending row and broadcasts only `pending_update`.
    `bible_version_confirmed` (server → operators only) announces a
    translation change; it never reaches display sockets, and
    `follow_along` (server → operators only, never display sockets) is a

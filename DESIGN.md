@@ -126,7 +126,7 @@ change colours, so every button in a row has the same size.
 | --- | --- | --- |
 | `primary` | filled `--color-primary`, edge `--color-primary-edge` (a darker mix) | The main action of a card or row: Show on display, Show, Connect |
 | `secondary` | `--color-surface-raised`, border `--color-border-strong` | Default for any action: Unstage (Up Next), Clear display, Stage, Clear queue, Reconnect, gear, Logout |
-| `danger` | secondary box, danger border and text | Removing a plan row |
+| `danger` | secondary box, danger border and text | Removing a Pending or Plan row |
 | `ghost` | no box until hovered | Only inside something that already frames it: dialog close, toast dismiss, reorder arrows |
 
 `is-on` on a secondary button marks an active state (the staged row's Stage button);
@@ -141,7 +141,7 @@ buttons with custom inner layout (search results) use the classes directly.
 Pending, Plan and History rows share `.ref-item`: a boxed item (hairline border,
 `--card-bg`, `--radius-control`) holding the reference, the start of its text as a
 muted quote clamped to two lines, and, for Pending and Plan, the row's buttons
-(`.ref-item-actions`). Pending: Show (primary) and Stage. Plan: Show, Stage and
+(`.ref-item-actions`). Pending: Show (primary), Stage and Remove (danger). Plan: Show, Stage and
 Remove (danger), with the reorder arrows at the top right; a click on the title
 stages, a double-click shows. History is read-only (click stages, double-click
 shows). The staged row takes the accent border and fill all round. Plan text comes

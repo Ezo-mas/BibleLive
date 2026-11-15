@@ -81,6 +81,22 @@ async def _handle_approve(
         await _ws_error(websocket, app_state, "approve", "Internal error processing approval")
 
 
+async def _handle_discard_pending(
+    websocket: WebSocket, app_state: AppState, message: dict[str, Any]
+) -> None:
+    """Discard one pending reference (operator action ``discard_pending``)."""
+    try:
+        if not await app_state.discard_pending(message["reference_id"]):
+            await _ws_error(
+                websocket, app_state, "discard_pending", "Reference not found or already processed"
+            )
+    except Exception as e:
+        logger.error(f"Error discarding pending reference: {e}", exc_info=True)
+        await _ws_error(
+            websocket, app_state, "discard_pending", "Internal error discarding pending reference"
+        )
+
+
 async def _handle_clear(
     websocket: WebSocket, app_state: AppState, _message: dict[str, Any]
 ) -> None:
@@ -314,6 +330,7 @@ async def _authenticate_operator(websocket: WebSocket, query_token: str | None) 
 _OPERATOR_ACTIONS: dict[str, Any] = {
     "authenticate": _handle_authenticate,
     "approve": _handle_approve,
+    "discard_pending": _handle_discard_pending,
     "clear": _handle_clear,
     "clear_pending": _handle_clear_pending,
     "set_verse_limit": _handle_set_verse_limit,

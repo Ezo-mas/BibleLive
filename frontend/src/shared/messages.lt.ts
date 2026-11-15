@@ -322,6 +322,7 @@ export const lt: Record<MessageKey, MessageEntry> = {
   'notice.errDisplayReference': 'Nepavyko rodyti šios ištraukos',
   'notice.errClear': 'Nepavyko išvalyti ekrano',
   'notice.errClearPending': 'Nepavyko išvalyti eilės',
+  'notice.errDiscardPending': 'Nepavyko pašalinti nuorodos',
   'notice.errVerseLimit': 'Nepavyko pakeisti rodomų eilučių',
   'notice.errTheme': 'Nepavyko pakeisti fono',
   'notice.errAutoMode': 'Nepavyko pakeisti automatinio patvirtinimo',

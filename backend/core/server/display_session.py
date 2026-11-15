@@ -240,6 +240,30 @@ class DisplaySession:
 
         return ref
 
+    async def discard_pending(self, reference_id: str) -> bool:
+        """Remove one queued reference and notify operators."""
+        for i, ref in enumerate(self.pending_references):
+            if ref.id == reference_id:
+                self.pending_references.pop(i)
+                self._owner.service_log.emit(
+                    "pending_discarded",
+                    reference_id=ref.id,
+                    book=ref.book,
+                    chapter=ref.chapter,
+                    verse_start=ref.verse_start,
+                    verse_end=ref.verse_end,
+                )
+                logger.info(
+                    "Pending reference discarded: %s %s:%s (%s)",
+                    ref.book,
+                    ref.chapter,
+                    ref.verse_start,
+                    ref.id,
+                )
+                await self._owner._send_pending_update()
+                return True
+        return False
+
     async def approve_and_notify(
         self,
         reference_id: str,

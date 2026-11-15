@@ -1,7 +1,7 @@
 # BibleLive Security Guide
 
 BibleLive supports optional token-based authentication for operator endpoints.
-When enabled, all operator actions (approve, clear, clear queue, settings,
+When enabled, all operator actions (approve, discard pending, clear, clear queue, settings,
 manual display) and reference ingestion from the audio pipeline require
 authentication via:
 
