@@ -14,10 +14,11 @@ from typing import Literal
 from fastapi import WebSocket
 
 from ..bible_lookup import BibleLookup
-from ..bible_versions import BibleVersion, discover_versions
+from ..bible_versions import BibleVersion
 from ..book_names import BookNames
 from ..config import config
 from ..passage import PassageError, ResolvedPassage, resolve_passage
+from .bible_version_service import BibleVersions
 from .connections import ConnectionManager
 from .follow_along import FollowAlong, VerseIndexes
 from .idle_screen import IdleImage, IdleScreenFit, IdleScreenState, ImageKind
@@ -113,7 +114,7 @@ class AppState:
         self.pending_references: list[BibleReference] = []
         self.reference_history: list[BibleReference] = []
         self.connection_manager = ConnectionManager()
-        self.bible_lookup = bible_lookup
+        self._bible_versions = BibleVersions(self, bible_lookup)
         self.settings_store = (
             settings_store
             if settings_store is not None
@@ -142,6 +143,14 @@ class AppState:
         self.follow_along = FollowAlong()
         # Book labels (``local_name``) of whichever translation is loaded.
         self.book_names = BookNames()
+
+    @property
+    def bible_lookup(self) -> BibleLookup:
+        return self._bible_versions.bible_lookup
+
+    @bible_lookup.setter
+    def bible_lookup(self, value: BibleLookup) -> None:
+        self._bible_versions.bible_lookup = value
 
     @property
     def pipeline_report(self) -> PipelineHeartbeat | None:
@@ -473,45 +482,13 @@ class AppState:
         )
 
     def available_bible_versions(self) -> dict[str, BibleVersion]:
-        """Translations that can be switched to, found next to the configured database."""
-        return discover_versions(config.resolve_db_path().parent)
+        return self._bible_versions.available_bible_versions()
 
     def active_bible_version(self) -> str | None:
-        """The translation id the loaded Bible text reports, if it has metadata."""
-        translation = self.bible_lookup.get_metadata().get("translation")
-        return str(translation).strip().lower() if translation else None
+        return self._bible_versions.active_bible_version()
 
     def switch_bible_version(self, version: str) -> str:
-        """Load another translation and use it for all verse text from now on.
-
-        This only swaps the text source. It does not touch the pending queue: a
-        queued detection was validated against the old translation, so callers must
-        drop it (``change_bible_version`` does, in the same step as the swap). The
-        passage on screen is not re-rendered. The new database
-        is opened and checked before the old one is released, so a bad file leaves
-        the server on the translation it had.
-
-        Raises:
-            KeyError: ``version`` is not an available translation.
-            ValueError: the translation's file loads but holds no verses.
-        """
-        target = self.available_bible_versions().get(version)
-        if target is None:
-            raise KeyError(version)
-
-        new_lookup = BibleLookup(str(target.path), readonly=config.DB_READONLY)
-        if new_lookup.verse_count() == 0:
-            new_lookup.close()
-            raise ValueError(f"Bible translation '{version}' contains no verses.")
-
-        previous = self.active_bible_version()
-        old_lookup, self.bible_lookup = self.bible_lookup, new_lookup
-        old_lookup.close()
-        if previous != version:
-            self.service_log.emit("translation_switched", **{"from": previous, "to": version})
-        self.settings_store.save_bible_version(version, str(config.resolve_db_path()))
-        logger.info(f"Bible version switched to '{version}' ({target.path.name})")
-        return version
+        return self._bible_versions.switch_bible_version(version)
 
     async def change_bible_version(self, version: str) -> str:
         """Switch translation (see ``switch_bible_version``) and tell every operator.
@@ -552,25 +529,7 @@ class AppState:
         return version
 
     def apply_start_language_version(self, language: str | None, saved: str | None) -> None:
-        """At startup, open the translation of the language the pipeline starts in.
-
-        Without this a fresh install, or one whose saved translation is the other
-        language's default (English chosen at the end of the last service), opens
-        on that text while the pipeline listens in Lithuanian. A saved translation
-        that is no language's default (WEB) was picked by hand and is kept. Best
-        effort, like the runtime switch: a missing translation is logged and skipped.
-        """
-        if not config.AUTO_BIBLE_VERSION or not language:
-            return
-        target = config.LANGUAGE_BIBLE_VERSIONS.get(language.strip().lower())
-        if not target or target == self.active_bible_version():
-            return
-        if saved and saved not in config.LANGUAGE_BIBLE_VERSIONS.values():
-            return
-        try:
-            self.switch_bible_version(target)
-        except (KeyError, ValueError, OSError, sqlite3.Error) as e:
-            logger.warning(f"Not opening Bible version {target!r} for language {language!r}: {e!r}")
+        return self._bible_versions.apply_start_language_version(language, saved)
 
     async def apply_language_default_version(self, language: str) -> None:
         """After a spoken-language switch, move to that language's default translation.
