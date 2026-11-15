@@ -24,6 +24,10 @@ class BibleVersionsOwner(Protocol):
 
     def switch_bible_version(self, version: str) -> str: ...
 
+    def _open_bible_version(self, version: str) -> BibleLookup: ...
+
+    def _install_bible_version(self, version: str, new_lookup: BibleLookup) -> str | None: ...
+
 
 class BibleVersions:
     """Own the lookup; shared dependencies are looked up on the owner at call time.
@@ -59,15 +63,27 @@ class BibleVersions:
             KeyError: ``version`` is not an available translation.
             ValueError: the translation's file loads but holds no verses.
         """
+        new_lookup = self._owner._open_bible_version(version)
+        self._owner._install_bible_version(version, new_lookup)
+        return version
+
+    def open_bible_version(self, version: str) -> BibleLookup:
+        """Open and check a candidate without changing live state (worker-safe)."""
         target = self._owner.available_bible_versions().get(version)
         if target is None:
             raise KeyError(version)
 
         new_lookup = BibleLookup(str(target.path), readonly=config.DB_READONLY)
-        if new_lookup.verse_count() == 0:
+        try:
+            if new_lookup.verse_count() == 0:
+                raise ValueError(f"Bible translation '{version}' contains no verses.")
+        except BaseException:
             new_lookup.close()
-            raise ValueError(f"Bible translation '{version}' contains no verses.")
+            raise
+        return new_lookup
 
+    def install_bible_version(self, version: str, new_lookup: BibleLookup) -> str | None:
+        """Install on the owner thread; return the version active just before this swap."""
         previous = self._owner.active_bible_version()
         old_lookup, self.bible_lookup = self.bible_lookup, new_lookup
         old_lookup.close()
@@ -76,8 +92,8 @@ class BibleVersions:
                 "translation_switched", **{"from": previous, "to": version}
             )
         self._owner.settings_store.save_bible_version(version, str(config.resolve_db_path()))
-        logger.info(f"Bible version switched to '{version}' ({target.path.name})")
-        return version
+        logger.info(f"Bible version switched to '{version}' ({new_lookup.db_path.name})")
+        return previous
 
     def apply_start_language_version(self, language: str | None, saved: str | None) -> None:
         """At startup, open the translation of the language the pipeline starts in.

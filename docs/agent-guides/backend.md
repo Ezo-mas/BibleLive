@@ -168,6 +168,12 @@ Installer commands (`commands.py`): `--check-gpu` (exit 0, or 3 without a CUDA G
 
 ## Database lookup / import pointers
 
+- Translation discovery (`core/bible_versions.py`) lists/stats `*.sqlite` on
+  every call; metadata scans are cached by directory, file names, modification
+  times and sizes; scans with SQLite errors are retried. Results are returned as
+  fresh dicts. `BibleVersions` splits
+  opening/checking from installation; runtime changes open in `asyncio.to_thread`
+  before installing and clearing the queue synchronously. Startup stays synchronous.
 - Verse-text lookup: `backend/core/bible_lookup.py` over the SQLite DB at
   `bible_data/biblelive.sqlite`. It has **no** abbreviation-mapping dict —
   lookups go through the SQLite `books` table (also see `architecture.md`,

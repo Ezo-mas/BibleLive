@@ -14,6 +14,7 @@ import logging
 import re
 import sqlite3
 from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -30,12 +31,16 @@ class BibleVersion:
     path: Path
 
 
+class _IncompleteScan(Exception):
+    """A scan with SQLite errors; return its partial results without caching them."""
+
+    def __init__(self, versions: dict[str, BibleVersion]) -> None:
+        self.versions = versions
+
+
 def _read_translation(path: Path) -> str | None:
     """The ``translation`` id stored in ``path``, or None if it is not a Bible DB."""
-    try:
-        conn = sqlite3.connect(f"file:{path.as_posix()}?mode=ro", uri=True)
-    except sqlite3.Error:
-        return None
+    conn = sqlite3.connect(f"file:{path.as_posix()}?mode=ro", uri=True)
     try:
         tables = {
             row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")
@@ -43,8 +48,6 @@ def _read_translation(path: Path) -> str | None:
         if not {"books", "verses", "bible_metadata"} <= tables:
             return None
         row = conn.execute("SELECT value FROM bible_metadata WHERE key = 'translation'").fetchone()
-    except sqlite3.Error:
-        return None
     finally:
         conn.close()
     value = str(row[0]).strip().lower() if row and row[0] else ""
@@ -57,11 +60,36 @@ def discover_versions(directory: Path) -> dict[str, BibleVersion]:
     When two files claim the same translation the first by filename wins and the
     clash is logged, so the choice is stable rather than filesystem-order luck.
     """
-    versions: dict[str, BibleVersion] = {}
     if not directory.is_dir():
-        return versions
+        return {}
+    signature = []
     for path in sorted(directory.glob("*.sqlite")):
-        translation = _read_translation(path)
+        try:
+            stat = path.stat()
+        except FileNotFoundError:
+            continue  # A translation was removed while listing the directory.
+        signature.append((path.name, stat.st_mtime_ns, stat.st_size))
+    try:
+        versions = _discover_versions(directory, tuple(signature))
+    except _IncompleteScan as exc:
+        versions = exc.versions
+    return versions.copy()
+
+
+@lru_cache(maxsize=32)
+def _discover_versions(
+    directory: Path, signature: tuple[tuple[str, int, int], ...]
+) -> dict[str, BibleVersion]:
+    """Read metadata once per folder signature; callers receive a separate dict."""
+    versions: dict[str, BibleVersion] = {}
+    incomplete = False
+    for name, _mtime, _size in signature:
+        path = directory / name
+        try:
+            translation = _read_translation(path)
+        except sqlite3.Error:
+            incomplete = True
+            continue
         if translation is None:
             continue
         if translation in versions:
@@ -71,4 +99,7 @@ def discover_versions(directory: Path) -> dict[str, BibleVersion]:
             )
             continue
         versions[translation] = BibleVersion(id=translation, path=path)
+    if incomplete:
+        # lru_cache does not cache exceptions, so the next call retries the scan.
+        raise _IncompleteScan(versions)
     return versions

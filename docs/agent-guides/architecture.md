@@ -65,6 +65,11 @@ easy to break by accident.
    `AppState.bible_lookup` is the one live lookup — read it through
    `app_state`, never a reference captured at startup, or a switch will not
    reach you.
+   Runtime translation changes open and count the candidate in a worker thread.
+   After that await, installation reads the previous translation, swaps/closes
+   the lookup and clears the pending queue without yielding. Concurrent switches
+   install atomically: last install wins, comparing against the immediately
+   preceding translation. Startup switches remain synchronous.
    Covered by `backend/tests/test_websocket_approval.py`,
    `backend/tests/test_manual_reference.py` and (follow-along)
    `backend/tests/test_follow_along.py` (including the auto-show class) and

@@ -490,14 +490,53 @@ class AppState:
     def switch_bible_version(self, version: str) -> str:
         return self._bible_versions.switch_bible_version(version)
 
+    def _open_bible_version(self, version: str) -> BibleLookup:
+        return self._bible_versions.open_bible_version(version)
+
+    def _install_bible_version(self, version: str, new_lookup: BibleLookup) -> str | None:
+        return self._bible_versions.install_bible_version(version, new_lookup)
+
     async def change_bible_version(self, version: str) -> str:
         """Switch translation (see ``switch_bible_version``) and tell every operator.
 
         The broadcast is how a second operator tab, or an automatic switch that
         followed a language change, shows the new translation without polling.
         """
-        previous = self.active_bible_version()
-        self.switch_bible_version(version)
+        opening_lock = threading.Lock()
+        opened: BibleLookup | None = None
+        abandoned = False
+
+        def open_candidate() -> BibleLookup:
+            nonlocal opened
+            lookup = self._open_bible_version(version)
+            with opening_lock:
+                if abandoned:
+                    lookup.close()
+                else:
+                    opened = lookup
+            return lookup
+
+        try:
+            new_lookup = await asyncio.to_thread(open_candidate)
+        except asyncio.CancelledError:
+            # Cancelling to_thread cannot stop its worker. Either reclaim an
+            # already-opened result or leave cleanup to the worker, even if the
+            # event loop shuts down before that worker finishes.
+            with opening_lock:
+                abandoned = True
+                if opened is not None:
+                    opened.close()
+            raise
+        # Concurrent opens may finish in either order. Each install is atomic and
+        # the last install wins; compare against the version active NOW, not the
+        # one that was active before the worker started.
+        try:
+            previous = self._install_bible_version(version, new_lookup)
+        except BaseException:
+            # Never close a lookup that the failed install already made live.
+            if self.bible_lookup is not new_lookup:
+                new_lookup.close()
+            raise
         # A queued detection was validated against the previous translation but is
         # displayed from this one. Translations differ in which verses exist
         # (KJV Acts 8:37 is absent from WEB) and in how they number them (LTB
