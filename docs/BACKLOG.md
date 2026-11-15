@@ -23,12 +23,6 @@ Small follow-ups found in review (2026-10-22), none urgent:
   console until it is reopened.
 - The Settings hint no longer says the picture never shows on the OBS overlay (it
   still does not). Add it back if operators ask.
-- `CORSMiddleware` allows only GET and POST, so a cross-origin console cannot use the
-  PUT and DELETE idle-screen routes. Only matters with `BIBLELIVE_CORS_ORIGINS` set.
-- With auth off, a cross-site page can send a simple `POST /api/idle-screen` and change
-  the projected picture (same as `/api/clear`; the security review noted it as accepted
-  under the auth-off model). Requiring `Content-Type: application/octet-stream` on the
-  upload would force a preflight and close it; the console's upload call must send it.
 
 ### Redesigned operator console: check on a real service
 Built on branch `worktree-operator-design-pass` (amber palette, the Original layout

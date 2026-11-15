@@ -109,7 +109,7 @@ def create_app(bible_lookup: BibleLookup | None = None) -> FastAPI:
             CORSMiddleware,
             allow_origins=origins,
             allow_credentials=True,
-            allow_methods=["GET", "POST"],
+            allow_methods=["GET", "POST", "PUT", "DELETE"],
             allow_headers=["*"],
         )
         logger.info(f"CORS enabled for origins: {origins}")

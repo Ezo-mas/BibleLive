@@ -65,7 +65,7 @@ def build_router(app_state: AppState) -> APIRouter:
         responses={
             401: {"model": ErrorResponse, "description": "Unauthorized"},
             413: {"model": ErrorResponse, "description": "The picture is too large"},
-            415: {"model": ErrorResponse, "description": "Not a PNG, JPEG or WebP picture"},
+            415: {"model": ErrorResponse, "description": "Invalid content type or picture format"},
             422: {"model": ErrorResponse, "description": "Invalid fit"},
             500: {"model": ErrorResponse, "description": "The picture could not be saved"},
         },
@@ -77,10 +77,14 @@ def build_router(app_state: AppState) -> APIRouter:
         """Store the request body as the idle-screen picture.
 
         The body is the picture itself, not a multipart form. Its format comes from its
-        first bytes; only PNG, JPEG and WebP are accepted, and the client's content type
-        and any file name are ignored. ``fit`` optionally sets the fit mode in the same
-        call. Requires authentication if BIBLELIVE_REQUIRE_AUTH is enabled.
+        first bytes; only PNG, JPEG and WebP are accepted. The content type must be
+        application/octet-stream; any file name is ignored. ``fit`` optionally sets the
+        fit mode in the same call. Requires authentication if BIBLELIVE_REQUIRE_AUTH is enabled.
         """
+        if request.headers.get("content-type", "").split(";", 1)[0].strip().lower() != (
+            "application/octet-stream"
+        ):
+            raise HTTPException(415, "Upload the picture as application/octet-stream.")
         try:
             data = await read_upload(request)
             kind = sniff_image_kind(data)

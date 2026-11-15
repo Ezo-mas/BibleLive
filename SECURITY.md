@@ -89,7 +89,8 @@ BIBLELIVE_OPERATOR_TOKEN=your-generated-token-here
 - `POST /api/bible-version` — switch the Bible translation used for verse text
 - `GET /api/idle-screen` — idle-screen fit mode and whether a picture is set
 - `POST /api/idle-screen` — upload the idle-screen picture (raw image body, at most 8 MB;
-  format from its magic bytes, never SVG)
+  Content-Type application/octet-stream required, so a browser must preflight a
+  cross-site upload even with authentication off; format from its magic bytes, never SVG)
 - `PUT /api/idle-screen/fit` — choose how the idle picture fills the screen
 - `DELETE /api/idle-screen` — remove the idle picture (the display goes blank)
 - `GET /ws/operator` — operator WebSocket (token in the first message)

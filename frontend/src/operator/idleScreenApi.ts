@@ -77,7 +77,7 @@ export function fetchIdleScreen(
 
 /**
  * Store `file` as the idle picture. The body is the file itself; the server finds its format
- * from its first bytes and ignores the content type and name the browser sends.
+ * from its first bytes and ignores the name the browser sends.
  */
 export function uploadIdleScreen(
   file: Blob,
@@ -86,7 +86,11 @@ export function uploadIdleScreen(
 ): Promise<IdleScreenInfo> {
   return send(
     '/api/idle-screen',
-    { method: 'POST', headers: authHeaders(token), body: file },
+    {
+      method: 'POST',
+      headers: { ...authHeaders(token), 'Content-Type': 'application/octet-stream' },
+      body: file,
+    },
     { unreachable: 'idle.unreachable', failed: 'idle.uploadFailed' },
     t
   )
