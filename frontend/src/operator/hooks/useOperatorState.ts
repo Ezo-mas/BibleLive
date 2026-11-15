@@ -654,12 +654,19 @@ export function useOperatorState(): OperatorState {
         applyBibleVersionRef.current(message.data)
         break
       case 'error': {
-        const { action, message: reason } = message.data
+        const { action: echoed, message: reason } = message.data
+        // The server echoes an unknown action as sent, so it can be any JSON value.
+        const action = typeof echoed === 'string' ? echoed : ''
         console.error('Server error:', reason)
         if (action === 'discard_pending') clearDiscardInFlight()
         // A rejected or failed action is over: let the operator try again.
         if (action === 'approve' || action === 'display_reference') setShowInFlight(false)
-        const prefix = t(ERROR_PREFIX_KEYS[action] ?? 'notice.errGeneric')
+        // Own keys only: an echoed "constructor" must not find Object.prototype's.
+        const prefix = t(
+          Object.prototype.hasOwnProperty.call(ERROR_PREFIX_KEYS, action)
+            ? ERROR_PREFIX_KEYS[action]
+            : 'notice.errGeneric'
+        )
         const optimistic = isOptimisticAction(action)
         showNotice(
           'error',

@@ -154,7 +154,8 @@ export type OperatorMessage =
   | { type: 'display_confirmed'; data: { reference: BibleReference } }
   /** Transient suggestion to show the verses after the current display (operators only). */
   | { type: 'follow_along'; data: FollowAlongHint }
-  | { type: 'error'; data: { message: string; action: string } }
+  /** `action` is echoed verbatim, so an unknown action can come back as any JSON value. */
+  | { type: 'error'; data: { message: string; action: unknown } }
 
 /** Messages the operator client sends to the server. */
 export interface ApproveAction {
