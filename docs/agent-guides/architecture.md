@@ -26,8 +26,9 @@ easy to break by accident.
    them and pushes to the operator over
    WebSocket; `_send_display_reference` (the only path that pushes a
    reference to display sockets) is called from exactly two
-   operator-authorized places: `AppState.approve_pending()`, and
-   `AppState.display_manual_passage()` — the `display_reference` action,
+   operator-authorized places: `DisplaySession.approve_pending()`, and
+   `DisplaySession.display_manual_passage()` in `display_session.py` (via the
+   one-line `AppState` forwarders, which the door guard allows) — the `display_reference` action,
    which shows a passage the operator picked by hand, and a third caller:
    follow-along auto-show (`offer_follow_along`), which shows the next verses
    by itself only while the operator's `follow_auto` switch is on (see

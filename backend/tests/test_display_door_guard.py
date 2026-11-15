@@ -9,21 +9,26 @@ SCRIPTS = BACKEND.parent / "scripts"
 
 ALLOWED = {
     "_send_display_reference": {
-        ("state.py", "AppState.approve_pending"),
-        ("state.py", "AppState.display_manual_passage"),
+        ("display_session.py", "DisplaySession.approve_pending"),
+        ("display_session.py", "DisplaySession.display_manual_passage"),
+        ("state.py", "AppState._send_display_reference"),  # one-line forwarder
     },
     "display_manual_passage": {
         ("ws.py", "_handle_display_reference"),
         ("state.py", "AppState.offer_follow_along"),
+        ("state.py", "AppState.display_manual_passage"),  # one-line forwarder
     },
-    "approve_pending": {("state.py", "AppState.approve_and_notify")},
+    "approve_pending": {
+        ("display_session.py", "DisplaySession.approve_and_notify"),
+        ("state.py", "AppState.approve_pending"),  # one-line forwarder
+    },
     "send_to_display": {
-        ("state.py", "AppState._send_display_reference"),
-        ("state.py", "AppState._send_display_clear"),
+        ("display_session.py", "DisplaySession._send_display_reference"),
+        ("display_session.py", "DisplaySession._send_display_clear"),
         ("state.py", "AppState.send_display_settings"),
     },
     "DisplayReference": {
-        ("state.py", "AppState._send_display_reference"),
+        ("display_session.py", "DisplaySession._send_display_reference"),
         ("state.py", "AppState.send_display_current_state"),
     },
 }
