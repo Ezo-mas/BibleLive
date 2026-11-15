@@ -252,22 +252,32 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(format_plan(plan))
         return 0
 
+    opened_page = False  # Owned by the run thread, like on_event.
+    reported_network = False
+
     def on_event(kind: str, message: str) -> None:
+        nonlocal opened_page, reported_network
         stream = sys.stderr if kind in ("error", "warning") else sys.stdout
         print(f"[{kind}] {message}", file=stream, flush=True)
-        if kind == "ready" and plan.network_token:
+        if kind == "ready" and plan.network_token and not reported_network:
             for line in network_lines(plan.port, plan.network_token):
                 print(f"[network] {line}", flush=True)
             hint = firewall_hint()
             if hint:
                 print(f"[network] {hint}", file=sys.stderr, flush=True)
-        if kind == "ready" and args.open_page and args.open_page != "none":
+            reported_network = True
+        if kind == "ready" and args.open_page and args.open_page != "none" and not opened_page:
             webbrowser.open(page_url(plan, args.open_page))
+            opened_page = True
 
     launcher = Launcher(plan, on_event)
     signal.signal(signal.SIGINT, lambda *_: launcher.request_stop())
     if hasattr(signal, "SIGBREAK"):
         signal.signal(signal.SIGBREAK, lambda *_: launcher.request_stop())
+    if hasattr(signal, "SIGTERM"):
+        signal.signal(signal.SIGTERM, lambda *_: launcher.request_stop())
+    if hasattr(signal, "SIGHUP"):
+        signal.signal(signal.SIGHUP, lambda *_: launcher.request_stop())
     return launcher.run()
 
 

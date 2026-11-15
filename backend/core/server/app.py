@@ -28,6 +28,7 @@ from ..book_names import lithuanian_search_variants
 from ..books import CANONICAL_BOOKS
 from ..config import config
 from ..passage import PassageError, resolve_passage, validate_detection
+from ..version import version_string
 from . import language_control
 from .auth import token_matches, verify_operator_token
 from .idle_screen import (
@@ -61,6 +62,7 @@ from .models import (
     OperatorFollowAutoConfirmed,
     PassageResponse,
     PipelineHeartbeat,
+    PipelineHeartbeatResponse,
     PipelineStatusResponse,
     ReferenceSubmitRequest,
     ReferenceSubmitResponse,
@@ -72,7 +74,7 @@ from .models import (
     WebSocketErrorData,
 )
 from .settings_store import ALLOWED_AUTO_MODES
-from .state import AppState
+from .state import NO_TEXT_MESSAGE, ApprovalRefusal, AppState
 
 logger = logging.getLogger(__name__)
 
@@ -143,7 +145,12 @@ async def _handle_approve(
         return
 
     try:
-        ref = await app_state.approve_and_notify(reference_id)
+        ref = await app_state.approve_and_notify(
+            reference_id,
+            on_no_text=lambda: _ws_error(websocket, "approve", NO_TEXT_MESSAGE),
+        )
+        if ref is ApprovalRefusal.NO_TEXT:
+            return
         if ref:
             logger.info(
                 f"Reference approved via WebSocket: {ref.book} {ref.chapter}:{ref.verse_start or '?'}"
@@ -416,6 +423,7 @@ def create_app(bible_lookup: BibleLookup | None = None) -> FastAPI:
                 logger.warning(f"Could not restore Bible version {saved_version!r}: {e!r}")
         # ...unless the pipeline starts in a language whose translation that is not.
         app_state.apply_start_language_version(config.START_LANGUAGE, saved_version)
+        app_state.restore_runtime_state()
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI):
@@ -448,7 +456,7 @@ def create_app(bible_lookup: BibleLookup | None = None) -> FastAPI:
     @app.get("/healthz")
     async def healthz() -> dict:
         """Basic health check endpoint - returns 200 if server is running."""
-        return {"status": "healthy"}
+        return {"status": "healthy", "version": version_string()}
 
     @app.get("/readyz")
     async def readyz() -> dict:
@@ -715,6 +723,8 @@ def create_app(bible_lookup: BibleLookup | None = None) -> FastAPI:
         # Confirms to connected operators and broadcasts the updated queue in one
         # place, matching the WebSocket handler's order exactly.
         ref = await app_state.approve_and_notify(request.reference_id)
+        if ref is ApprovalRefusal.NO_TEXT:
+            raise HTTPException(status_code=422, detail=NO_TEXT_MESSAGE)
 
         if ref is None:
             logger.warning(f"Approval failed: reference {request.reference_id[:8]}... not found")
@@ -1133,15 +1143,16 @@ def create_app(bible_lookup: BibleLookup | None = None) -> FastAPI:
 
     @app.post(
         "/api/pipeline/heartbeat",
-        status_code=204,
+        status_code=200,
+        response_model=PipelineHeartbeatResponse,
         responses={
-            204: {"description": "Report recorded"},
+            200: {"description": "Report recorded; active Bible translation"},
             401: {"model": ErrorResponse, "description": "Unauthorized"},
             422: {"model": ErrorResponse, "description": "Invalid report"},
         },
         dependencies=[Depends(verify_operator_token)],
     )
-    async def receive_pipeline_heartbeat(report: PipelineHeartbeat) -> None:
+    async def receive_pipeline_heartbeat(report: PipelineHeartbeat) -> PipelineHeartbeatResponse:
         """Record the audio pipeline's periodic health report.
 
         Token-protected like ``/api/reference``, so only the pipeline can tell
@@ -1156,6 +1167,7 @@ def create_app(bible_lookup: BibleLookup | None = None) -> FastAPI:
                 logger.warning(f"Audio pipeline {current.status}: {'; '.join(current.problems)}")
             else:
                 logger.info(f"Audio pipeline {current.status}")
+        return PipelineHeartbeatResponse(bible_version=app_state.active_bible_version())
 
     @app.get(
         "/api/pipeline/status",

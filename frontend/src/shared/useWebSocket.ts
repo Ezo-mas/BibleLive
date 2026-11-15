@@ -19,10 +19,9 @@ interface UseWebSocketResult {
   /**
    * Replace the current socket with a fresh connection immediately.
    *
-   * The automatic retries are finite, so a page that ran out of attempts (or
-   * one whose retry is still waiting out its backoff) needs a way for the user
-   * to ask again without reloading. This is a plain client-side reconnect: the
-   * same path, the same messages, nothing new on the wire.
+   * Reconnect immediately and reset the backoff. With a finite
+   * maxReconnectAttempts, this also revives a page that ran out of retries.
+   * This is a plain client-side reconnect: the same path and messages.
    */
   reconnect: () => void
 }

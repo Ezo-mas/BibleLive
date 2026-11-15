@@ -7,9 +7,11 @@ ffmpeg, device, model or GPU is needed: ``subprocess.Popen`` is faked.
 """
 
 import io
+import json
 import threading
 import time
 from queue import Queue
+from types import SimpleNamespace
 
 import pytest
 from processor_factory import make_processor
@@ -19,6 +21,7 @@ from audio.capture import AudioCapture
 from audio.config import AudioPipelineConfig
 from audio.pipeline import BibleLiveAudioProcessor
 from audio.segmenter import Segmenter
+from audio.session_log import SessionLog
 
 # The pipeline module imports faster-whisper (optional audio extras).
 pytestmark = pytest.mark.audio
@@ -293,4 +296,384 @@ def test_operator_hears_about_the_outage_until_capture_is_back(monkeypatch):
     proc._restart_capture()
 
     assert down_while_waiting == [True, True]
-    assert proc._capture_down is False
+    assert proc._capture_down is True
+
+
+def test_partial_frame_survives_bounded_wait(monkeypatch):
+    monkeypatch.setattr(capture_module, "FRAME_WAIT_S", 0.05)
+    capture = AudioCapture()
+    capture.is_running = True
+    data = bytes(i % 251 for i in range(FRAME_BYTES))
+    capture.audio_queue.put(data[:300])
+    assert capture.get_audio_frame() is None
+    capture.audio_queue.put(data[300:])
+    assert capture.get_audio_frame() == data
+    assert not capture._frame_buffer
+
+
+class _HungFfmpeg(_StreamingFfmpeg):
+    """The capture reader waits until the VAD thread signals termination."""
+
+    def read(self, size):
+        self._stopped.wait()
+        return b""
+
+
+def test_hung_capture_restarts_without_health_flapping(monkeypatch):
+    monkeypatch.setattr(capture_module, "FRAME_WAIT_S", 0.05)
+    first, second = _HungFfmpeg(), _HungFfmpeg()
+    _fake_popen(monkeypatch, [first, second, _StreamingFfmpeg()])
+    capture = AudioCapture()
+    proc = _processor(
+        capture,
+        capture_restart_base_delay=0.0,
+        capture_stall_restart_s=0.3,
+        capture_first_frame_grace_s=0.8,
+    )
+    proc.sender = SimpleNamespace(delivery_problem=None)
+    proc.stt = SimpleNamespace(language="en")
+    proc.last_metrics_log = time.time()
+    capture.start_capture()
+    thread = threading.Thread(target=proc._vad_loop)
+    thread.start()
+    try:
+        deadline = time.monotonic() + 8
+        while proc.metrics.capture_restarts < 1 and time.monotonic() < deadline:
+            time.sleep(0.01)
+        assert proc.metrics.capture_restarts == 1
+        assert [i["code"] for i in proc.health_report()["issues"]] == ["capture_stopped"]
+        time.sleep(0.1)
+        assert [i["code"] for i in proc.health_report()["issues"]] == ["capture_stopped"]
+        while proc.metrics.audio_chunks_captured == 0 and time.monotonic() < deadline:
+            time.sleep(0.01)
+        assert proc.metrics.capture_restarts == 2
+        assert proc.metrics.audio_chunks_captured > 0
+        assert proc.health_report()["issues"] == []
+    finally:
+        proc.is_running = False
+        with proc._capture_lock:
+            capture.stop_capture()
+        thread.join(timeout=2)
+    assert not thread.is_alive()
+
+
+def test_vad_loop_recovers_from_exception_and_stops(monkeypatch):
+    capture = _FlakyCapture()
+    capture.failed = False
+    proc = _processor(capture)
+    calls = []
+    recovered = threading.Event()
+    release = threading.Event()
+
+    def read(_duration):
+        calls.append(1)
+        if len(calls) == 1:
+            raise RuntimeError("bad frame")
+        recovered.set()
+        release.wait(2)
+        return None
+
+    capture.get_audio_frame = read
+    proc.sender = SimpleNamespace(delivery_problem=None)
+    proc.stt = SimpleNamespace(language="en")
+    thread = threading.Thread(target=proc._vad_loop)
+    proc.vad_thread = thread
+    thread.start()
+    assert recovered.wait(2)
+    assert thread.is_alive()
+    assert not any(issue["code"] == "thread_stopped" for issue in proc.health_report()["issues"])
+    proc.is_running = False
+    release.set()
+    thread.join(timeout=2)
+    assert not thread.is_alive()
+    assert len(calls) == 2
+
+
+def test_utterance_failures_report_and_clear_while_thread_runs(monkeypatch):
+    proc = _processor(_FlakyCapture())
+    proc.sender = SimpleNamespace(delivery_problem=None)
+    proc.stt = SimpleNamespace(language="en")
+    monkeypatch.setattr(proc, "_init_thread_local_parsers", lambda: None)
+    results = iter([False, False, False, True])
+    processed = threading.Event()
+
+    def detect(_language, _frames):
+        if not next(results):
+            raise RuntimeError("unexpected parser failure")
+        processed.set()
+        return None, []
+
+    monkeypatch.setattr(proc, "_detect_references", detect)
+    thread = threading.Thread(target=proc._transcription_loop)
+    thread.start()
+    try:
+        for _ in range(3):
+            proc.vad_queue.put(("en", []))
+        deadline = time.monotonic() + 2
+        while proc._consecutive_utterance_failures < 3 and time.monotonic() < deadline:
+            time.sleep(0.01)
+        issues = proc.health_report()["issues"]
+        assert {
+            "code": "utterance_failed",
+            "params": {"count": 3},
+            "text": "Processing failed on the last 3 utterances; they were skipped",
+        } in issues
+        assert thread.is_alive()
+        proc.vad_queue.put(("en", []))
+        assert processed.wait(2)
+        deadline = time.monotonic() + 2
+        while proc._consecutive_utterance_failures and time.monotonic() < deadline:
+            time.sleep(0.01)
+        assert not any(i["code"] == "utterance_failed" for i in proc.health_report()["issues"])
+        assert thread.is_alive()
+    finally:
+        proc.is_running = False
+        thread.join(timeout=2)
+    assert not thread.is_alive()
+
+
+def test_language_switch_applies_while_capture_is_hung(monkeypatch):
+    monkeypatch.setattr(capture_module, "FRAME_WAIT_S", 0.05)
+    _fake_popen(monkeypatch, [_HungFfmpeg()])
+    capture = AudioCapture()
+    proc = _processor(capture, capture_stall_restart_s=10.0)
+    capture.start_capture()
+    thread = threading.Thread(target=proc._vad_loop)
+    thread.start()
+    try:
+        with proc._pending_language_lock:
+            proc._pending_language = "lt"
+        deadline = time.monotonic() + 2
+        while proc._capture_language != "lt" and time.monotonic() < deadline:
+            time.sleep(0.01)
+        assert proc._capture_language == "lt"
+        assert proc.metrics.capture_restarts == 0
+    finally:
+        proc.is_running = False
+        capture.stop_capture()
+        thread.join(timeout=2)
+    assert not thread.is_alive()
+
+
+def test_old_reader_cannot_publish_after_restart(monkeypatch):
+    class LateReader(_StreamingFfmpeg):
+        """The test releases the old reader after the lifecycle thread restarts capture."""
+
+        def __init__(self):
+            super().__init__()
+            self.release = threading.Event()
+            self.entered = threading.Event()
+
+        def read(self, size):
+            self.entered.set()
+            self.release.wait()
+            return b"x" * size
+
+        def terminate(self):
+            pass
+
+    old = LateReader()
+    new = _StreamingFfmpeg()
+    _fake_popen(monkeypatch, [old, new])
+    capture = AudioCapture()
+    capture.start_capture()
+    assert old.entered.wait(2)
+    old_thread = capture.capture_thread
+    capture.stop_capture()  # reader survives the bounded join
+    assert old_thread.is_alive()
+    capture.start_capture()
+    try:
+        old.release.set()
+        old_thread.join(2)
+        assert not old_thread.is_alive()
+        assert capture.get_audio_frame() == b"\0" * FRAME_BYTES
+        assert not capture.failed
+    finally:
+        old.release.set()
+        capture.stop_capture()
+
+
+def test_vad_persistent_errors_stop_thread_and_report_health(monkeypatch):
+    capture = _FlakyCapture()
+    capture.failed = False
+    capture.get_audio_frame = lambda _duration: b"\0" * FRAME_BYTES
+    capture.audio_queue = Queue()
+    proc = _processor(capture, partial_transcripts=False)
+    proc.sender = SimpleNamespace(delivery_problem=None)
+    proc.stt = SimpleNamespace(language="en")
+    proc.segmenter = SimpleNamespace(
+        push=lambda _frame: (_ for _ in ()).throw(ValueError("bad VAD"))
+    )
+    monkeypatch.setattr(proc, "_wait_while_running", lambda _seconds: True)
+    failures = []
+
+    def run():
+        try:
+            proc._vad_loop()
+        except ValueError as exc:
+            failures.append(str(exc))
+
+    thread = threading.Thread(target=run)
+    proc.vad_thread = thread
+    thread.start()
+    thread.join(2)
+    assert not thread.is_alive()
+    assert failures == ["bad VAD"]
+    assert any(issue["code"] == "thread_stopped" for issue in proc.health_report()["issues"])
+    proc.is_running = False
+
+
+def test_utterance_error_logging_is_guarded_and_not_counted_after_detection(monkeypatch):
+    proc = _processor(_FlakyCapture())
+    events = []
+    proc.session_log = SimpleNamespace(
+        utterance_failed=lambda frames, language: events.append((frames, language))
+    )
+
+    def fail(*args):
+        raise RuntimeError("broken")
+
+    monkeypatch.setattr(proc, "_detect_references", fail)
+    proc._process_utterance("en", [])
+    assert events == [([], "en")]
+    assert proc._consecutive_utterance_failures == 1
+    proc.session_log.utterance_failed = fail
+    proc._process_utterance("en", [])
+    assert proc._consecutive_utterance_failures == 2
+    monkeypatch.setattr(proc, "_detect_references", lambda *_args: (None, []))
+    proc.session_log.utterance = fail
+    proc._process_utterance("en", [])
+    assert proc._consecutive_utterance_failures == 0
+
+
+def test_first_frame_grace_then_normal_stall_and_restart_timer(monkeypatch):
+    monkeypatch.setattr(capture_module, "FRAME_WAIT_S", 0.02)
+    first, second = _HungFfmpeg(), _HungFfmpeg()
+    _fake_popen(monkeypatch, [first, second, _StreamingFfmpeg()])
+    capture = AudioCapture()
+    proc = _processor(
+        capture,
+        capture_restart_base_delay=0.0,
+        capture_stall_restart_s=0.15,
+        capture_first_frame_grace_s=0.7,
+    )
+    capture.start_capture()
+    thread = threading.Thread(target=proc._vad_loop)
+    thread.start()
+    try:
+        time.sleep(0.3)
+        assert proc.metrics.capture_restarts == 0  # first-frame grace exceeds normal timeout
+        capture.audio_queue.put(b"a" * FRAME_BYTES)
+        deadline = time.monotonic() + 3
+        while proc.metrics.capture_restarts < 1 and time.monotonic() < deadline:
+            time.sleep(0.01)
+        assert proc.metrics.capture_restarts == 1  # normal timeout after a frame
+        time.sleep(0.3)
+        assert proc.metrics.capture_restarts == 1  # fresh first-frame grace after restart
+        while proc.metrics.capture_restarts < 2 and time.monotonic() < deadline:
+            time.sleep(0.01)
+        assert proc.metrics.capture_restarts == 2
+    finally:
+        proc.is_running = False
+        with proc._capture_lock:
+            capture.stop_capture()
+        thread.join(2)
+    assert not thread.is_alive()
+
+
+def test_repeated_stall_restart_backoff_grows_and_discards_buffer(monkeypatch):
+    monkeypatch.setattr(capture_module, "FRAME_WAIT_S", 0.02)
+    first, second, third = _HungFfmpeg(), _HungFfmpeg(), _StreamingFfmpeg()
+    _fake_popen(monkeypatch, [first, second, third])
+    capture = AudioCapture()
+    proc = _processor(
+        capture,
+        capture_restart_base_delay=1.0,
+        capture_restart_max_delay=4.0,
+        capture_first_frame_grace_s=0.2,
+    )
+    waits = []
+    monkeypatch.setattr(proc, "_wait_while_running", lambda seconds: waits.append(seconds) or True)
+    capture.start_capture()
+    capture.audio_queue.put(b"x" * 100)
+    frames = []
+    proc.segmenter = Segmenter(lambda frame: frames.append(frame) or False)
+    thread = threading.Thread(target=proc._vad_loop)
+    thread.start()
+    try:
+        deadline = time.monotonic() + 4
+        while proc.metrics.audio_chunks_captured == 0 and time.monotonic() < deadline:
+            time.sleep(0.01)
+        assert proc.metrics.capture_restarts == 2
+        assert waits[:2] == [1.0, 2.0]
+        assert frames and frames[0] == b"\0" * FRAME_BYTES
+        assert b"x" not in capture._frame_buffer
+    finally:
+        proc.is_running = False
+        with proc._capture_lock:
+            capture.stop_capture()
+        thread.join(2)
+    assert not thread.is_alive()
+
+
+def test_failed_utterance_logs_position_and_removes_pending(tmp_path, monkeypatch):
+    log = SessionLog(tmp_path, False, {}, 0.03)
+    frames = [b"\0" * FRAME_BYTES for _ in range(4)]
+    for frame in frames:
+        log.write_frame(frame)
+    log.speech_started(4)
+    log.utterance_queued(frames, 0)
+    proc = _processor(_FlakyCapture())
+    proc.session_log = log
+
+    def fail(_language, _frames):
+        raise RuntimeError("detection failed")
+
+    monkeypatch.setattr(proc, "_detect_references", fail)
+    try:
+        proc._process_utterance("en", frames)
+        assert id(frames) not in log._pending
+    finally:
+        log.close()
+    records = [
+        json.loads(line) for line in log.transcript_path.read_text(encoding="utf-8").splitlines()
+    ]
+    assert records[-1]["type"] == "utterance_failed"
+    assert records[-1]["language"] == "en"
+    assert (records[-1]["start_s"], records[-1]["end_s"]) == (0.0, 0.12)
+
+
+def test_raising_restart_resets_first_frame_grace(monkeypatch):
+    capture = _FlakyCapture()
+    capture.failed = False
+    capture.audio_queue = Queue()
+    frames = iter([b"\0" * FRAME_BYTES])
+    capture.get_audio_frame = lambda _duration: next(frames, None)
+    proc = _processor(
+        capture,
+        partial_transcripts=False,
+        capture_stall_restart_s=0.1,
+        capture_first_frame_grace_s=0.8,
+    )
+    proc.segmenter = Segmenter(lambda _frame: False)
+    restarts = []
+    raised = threading.Event()
+
+    def restart(_cause):
+        restarts.append(time.monotonic())
+        raised.set()
+        raise RuntimeError("restart failed")
+
+    monkeypatch.setattr(proc, "_restart_capture", restart)
+    monkeypatch.setattr(proc, "_wait_while_running", lambda _seconds: True)
+    thread = threading.Thread(target=proc._vad_loop)
+    thread.start()
+    try:
+        assert raised.wait(2)
+        time.sleep(0.3)
+        assert len(restarts) == 1
+        assert thread.is_alive()
+    finally:
+        proc.is_running = False
+        thread.join(2)
+    assert not thread.is_alive()

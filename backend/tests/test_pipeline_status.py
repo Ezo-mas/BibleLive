@@ -36,7 +36,7 @@ def test_status_is_unknown_before_any_report(client):
 
 
 def test_healthy_report_reads_ok(client):
-    assert client.post("/api/pipeline/heartbeat", json=_report(language="lt")).status_code == 204
+    assert client.post("/api/pipeline/heartbeat", json=_report(language="lt")).status_code == 200
 
     body = client.get("/api/pipeline/status").json()
     assert body["status"] == "ok"
@@ -106,7 +106,7 @@ def test_heartbeat_requires_token_when_auth_enabled(client, auth_enabled):
     assert client.post("/api/pipeline/heartbeat", json=_report()).status_code == 401
     assert (
         client.post("/api/pipeline/heartbeat", json=_report(), headers=auth_enabled).status_code
-        == 204
+        == 200
     )
 
 
@@ -135,7 +135,7 @@ def test_issues_are_passed_through_with_their_codes(client):
     ]
     report = _report([issue["text"] for issue in issues])
     report["issues"] = issues
-    assert client.post("/api/pipeline/heartbeat", json=report).status_code == 204
+    assert client.post("/api/pipeline/heartbeat", json=report).status_code == 200
 
     body = client.get("/api/pipeline/status").json()
     assert body["status"] == "degraded"

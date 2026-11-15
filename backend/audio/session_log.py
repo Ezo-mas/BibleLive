@@ -23,6 +23,7 @@ from pathlib import Path
 from typing import Any
 
 from core.verse_parser import Reference
+from core.version import version_string
 
 from .stt import Transcription
 
@@ -69,8 +70,8 @@ class SessionLog:
     """One service's transcript log (and optional audio), safe across pipeline threads.
 
     The VAD thread calls :meth:`write_frame`, :meth:`speech_started` and
-    :meth:`utterance_queued`; the transcription thread calls :meth:`utterance`;
-    any thread may call :meth:`event`.
+    :meth:`utterance_queued`; the transcription thread calls :meth:`utterance`
+    and :meth:`utterance_failed`; any thread may call :meth:`event`.
     """
 
     def __init__(
@@ -106,6 +107,7 @@ class SessionLog:
                 "started": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
                 "audio_file": self.audio_path.name if self.audio_path else None,
                 **header,
+                "version": version_string(),
             }
         )
         logger.info(
@@ -164,6 +166,17 @@ class SessionLog:
             span = self._pending.pop(id(frames), None)
         if span is not None:
             self.event("utterance_dropped", start_s=round(span[0], 2), end_s=round(span[1], 2))
+
+    def utterance_failed(self, frames: list[bytes], language: str) -> None:
+        """Forget and record a failed utterance (transcription thread)."""
+        with self._lock:
+            span = self._pending.pop(id(frames), None)
+        self.event(
+            "utterance_failed",
+            language=language,
+            start_s=round(span[0], 2) if span is not None else None,
+            end_s=round(span[1], 2) if span is not None else None,
+        )
 
     def utterance(
         self,

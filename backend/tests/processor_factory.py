@@ -68,6 +68,7 @@ def make_processor(**overrides: Any) -> BibleLiveAudioProcessor:
         "_last_loud_at": None,
         "_mic_silent_logged": False,
         "_consecutive_transcription_errors": 0,
+        "_consecutive_utterance_failures": 0,
         "_parser_issues": [],
         "session_log": None,
     }

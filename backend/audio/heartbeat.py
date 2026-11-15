@@ -15,13 +15,21 @@ from typing import Any
 
 import requests
 
+from core.bible_versions import _VERSION_ID
+
 from .config import AudioPipelineConfig
 
 logger = logging.getLogger(__name__)
 
 
 class HeartbeatSender:
-    """Post ``get_status()`` to ``/api/pipeline/heartbeat`` on a background thread."""
+    """Post health on the heartbeat thread; lifecycle belongs to the calling thread.
+
+    The heartbeat thread alone writes ``_failing``, ``_invalid_version_logged``
+    and ``_requested_bible_version``.
+    The transcription thread reads the latter under ``_version_lock`` and never
+    clears it. The lifecycle caller owns ``_thread`` and shares the ``_stop`` Event.
+    """
 
     def __init__(
         self,
@@ -36,6 +44,15 @@ class HeartbeatSender:
         self._thread: threading.Thread | None = None
         # Log a failure once per run of failures, not every few seconds.
         self._failing = False
+        self._invalid_version_logged = False
+        self._version_lock = threading.Lock()
+        self._requested_bible_version: str | None = None
+
+    @property
+    def requested_bible_version(self) -> str | None:
+        """Latest non-null translation requested by the server, read under a lock."""
+        with self._version_lock:
+            return self._requested_bible_version
 
     def start(self) -> None:
         self._stop.clear()
@@ -85,6 +102,20 @@ class HeartbeatSender:
         if response.status_code >= 300:
             self._report_failure(f"Server rejected a health report: {response.status_code}")
             return False
+
+        if response.status_code == 200:
+            try:
+                body = response.json()
+            except ValueError:
+                body = None  # Older servers may send an empty or non-JSON reply.
+            if isinstance(body, dict) and isinstance(body.get("bible_version"), str):
+                requested = body["bible_version"]
+                if _VERSION_ID.fullmatch(requested):
+                    with self._version_lock:
+                        self._requested_bible_version = requested
+                elif not self._invalid_version_logged:
+                    logger.warning("Ignoring invalid Bible translation id from heartbeat reply")
+                    self._invalid_version_logged = True
 
         if self._failing:
             logger.info("Health reports are reaching the server again")

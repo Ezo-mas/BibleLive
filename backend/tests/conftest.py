@@ -15,6 +15,7 @@ from core.import_bible import BibleImporter
 from core.server.follow_along import FollowAlong
 from core.server.idle_screen import DEFAULT_IDLE_SCREEN_FIT
 from core.server.models import DisplaySettings
+from core.server.runtime_state import RuntimeStateStore
 from core.server.settings_store import DEFAULT_AUTO_MODE, DEFAULT_FOLLOW_AUTO, SettingsStore
 
 BACKEND_ROOT = Path(__file__).resolve().parent.parent
@@ -23,6 +24,17 @@ REPO_ROOT = BACKEND_ROOT.parent
 # database does not (bible_data/ is gitignored). Fixtures that need a real
 # database build one from this source so a fresh checkout and CI both work.
 KJV_SOURCE = REPO_ROOT / "data" / "kjv2.json"
+
+
+@pytest.fixture(scope="session", autouse=True)
+def disable_service_logging():
+    """Never write to a developer-configured service-log directory during tests."""
+    previous = config.SERVICE_LOG_DIR
+    config.SERVICE_LOG_DIR = ""
+    try:
+        yield
+    finally:
+        config.SERVICE_LOG_DIR = previous
 
 
 @pytest.fixture
@@ -159,6 +171,7 @@ def reset_app_state(app_state, tmp_path: Path):
     # Persisted operator settings get a per-test file, so a mode one test saves
     # cannot leak into another (or onto disk) while tests share one app.
     app_state.settings_store = SettingsStore(tmp_path / "server_settings.json")
+    app_state.runtime_state = RuntimeStateStore(tmp_path / "runtime_state.json")
     app_state.auto_mode = DEFAULT_AUTO_MODE
     app_state.follow_auto = DEFAULT_FOLLOW_AUTO
     app_state.idle_screen_fit = DEFAULT_IDLE_SCREEN_FIT

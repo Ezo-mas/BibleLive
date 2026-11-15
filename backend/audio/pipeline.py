@@ -10,8 +10,10 @@ from queue import Empty, Full, Queue
 from typing import Any
 
 from core.bible_lookup import BibleLookup
+from core.bible_versions import discover_versions
 from core.verse_parser import Reference, StreamingParser
 from core.verse_text import VerseTextIndex
+from core.version import version_string
 
 from .capture import AudioCapture
 from .config import AudioPipelineConfig
@@ -174,7 +176,7 @@ class BibleLiveAudioProcessor:
         self._pending_language_lock = threading.Lock()
         self.control_server: LanguageControlServer | None = None
 
-        # Capture restart after an unrequested ffmpeg exit (VAD thread). The lock
+        # Capture restart after an unrequested ffmpeg exit or stall (VAD thread). The lock
         # keeps stop() and a restart from interleaving, which could otherwise
         # start a new ffmpeg after stop() has already shut capture down.
         self._capture_lock = threading.Lock()
@@ -193,9 +195,15 @@ class BibleLiveAudioProcessor:
         self._last_loud_at: float | None = None
         self._mic_silent_logged = False
         self._consecutive_transcription_errors = 0
+        # Written only by the transcription thread; read by the heartbeat thread.
+        self._consecutive_utterance_failures = 0
         self._parser_issues: list[dict[str, Any]] = []
         self.heartbeat: HeartbeatSender | None = (
-            HeartbeatSender(server_url, self.config, self.health_report)
+            HeartbeatSender(
+                server_url,
+                self.config,
+                lambda: {**self.health_report(), "version": version_string()},
+            )
             if self.config.heartbeat_interval > 0
             else None
         )
@@ -461,6 +469,16 @@ class BibleLiveAudioProcessor:
                     count=errors,
                 )
             )
+        utterance_failures = self._consecutive_utterance_failures
+        if utterance_failures >= 3:
+            issues.append(
+                _health_issue(
+                    "utterance_failed",
+                    f"Processing failed on the last {utterance_failures} "
+                    f"{'utterance; it was' if utterance_failures == 1 else 'utterances; they were'} skipped",
+                    count=utterance_failures,
+                )
+            )
         delivery_problem = self.sender.delivery_problem
         if delivery_problem:
             issues.append(
@@ -509,51 +527,79 @@ class BibleLiveAudioProcessor:
         """VAD processing loop - detects speech segments"""
         frame_duration_ms = self.frame_duration_ms
 
+        last_frame_at = time.monotonic()
+        first_frame = False
+        # This counter is local to and owned by the VAD thread.
+        consecutive_errors = 0
         while self.is_running:
-            # Apply any runtime language switch before capturing more audio.
-            self._consume_pending_language_switch()
+            try:
+                # Apply any runtime language switch before capturing more audio.
+                self._consume_pending_language_switch()
 
-            # Get audio frame
-            frame = self.audio_capture.get_audio_frame(frame_duration_ms)
-            if frame is None:
-                if self.audio_capture.failed and self.is_running:
-                    self._restart_capture()
-                else:
-                    time.sleep(0.01)
-                continue
+                # Get audio frame
+                frame = self.audio_capture.get_audio_frame(frame_duration_ms)
+                if frame is None:
+                    stall_limit = (
+                        self.config.capture_stall_restart_s
+                        if first_frame
+                        else self.config.capture_first_frame_grace_s
+                    )
+                    if self.is_running and (
+                        self.audio_capture.failed or time.monotonic() - last_frame_at >= stall_limit
+                    ):
+                        cause = "ffmpeg exited" if self.audio_capture.failed else "audio stalled"
+                        try:
+                            self._restart_capture(cause)
+                        finally:
+                            last_frame_at = time.monotonic()
+                            first_frame = False
+                    else:
+                        time.sleep(0.01)
+                    consecutive_errors = 0
+                    continue
 
-            self._note_capture_healthy()
-            now = time.monotonic()
-            self._last_frame_at = now
-            self._note_microphone_level(frame, now)
-            self.metrics.audio_chunks_captured += 1
-            session_log = self.session_log
-            if session_log is not None:
-                session_log.write_frame(frame)
+                self._note_capture_healthy()
+                now = time.monotonic()
+                last_frame_at = now
+                first_frame = True
+                self._last_frame_at = now
+                self._capture_down = False
+                self._note_microphone_level(frame, now)
+                self.metrics.audio_chunks_captured += 1
+                session_log = self.session_log
+                if session_log is not None:
+                    session_log.write_frame(frame)
 
-            event = self.segmenter.push(frame)
-            if event is not None:
-                if event.kind == "start":
-                    self._utterance_seq += 1
-                    session_log = self.session_log
-                    if session_log is not None:
-                        session_log.speech_started(event.onset_frames)
-                    logger.info("Voice activity detected, capturing utterance...")
-                else:
-                    # The final covers the utterance from here on: drop its partial.
-                    self._partial_mailbox.discard(self._utterance_seq)
-                    self._queue_speech_segment(event)
-            if self.config.partial_transcripts:
-                self._offer_partial(event)
+                event = self.segmenter.push(frame)
+                if event is not None:
+                    if event.kind == "start":
+                        self._utterance_seq += 1
+                        session_log = self.session_log
+                        if session_log is not None:
+                            session_log.speech_started(event.onset_frames)
+                        logger.info("Voice activity detected, capturing utterance...")
+                    else:
+                        # The final covers the utterance from here on: drop its partial.
+                        self._partial_mailbox.discard(self._utterance_seq)
+                        self._queue_speech_segment(event)
+                if self.config.partial_transcripts:
+                    self._offer_partial(event)
 
-            # Update queue depth metrics
-            self.metrics.audio_queue_depth = self.audio_capture.audio_queue.qsize()
-            self.metrics.vad_queue_depth = self.vad_queue.qsize()
+                # Update queue depth metrics
+                self.metrics.audio_queue_depth = self.audio_capture.audio_queue.qsize()
+                self.metrics.vad_queue_depth = self.vad_queue.qsize()
 
-            # Periodic metrics logging
-            if time.time() - self.last_metrics_log > self.config.metrics_log_interval:
-                self.metrics.log_summary()
-                self.last_metrics_log = time.time()
+                # Periodic metrics logging
+                if time.time() - self.last_metrics_log > self.config.metrics_log_interval:
+                    self.metrics.log_summary()
+                    self.last_metrics_log = time.time()
+                consecutive_errors = 0
+            except Exception:
+                consecutive_errors += 1
+                logger.exception("Unexpected error in VAD loop")
+                if consecutive_errors >= 3:
+                    raise
+                self._wait_while_running(0.5)
 
     def _offer_partial(self, event: SegmentEvent | None) -> None:
         """Hand the transcription thread a snapshot of the open utterance when one is due.
@@ -571,8 +617,8 @@ class BibleLiveAudioProcessor:
             )
             self._partial_mailbox.put(snapshot)
 
-    def _restart_capture(self) -> None:
-        """Restart capture after ffmpeg exited on its own (VAD thread only).
+    def _restart_capture(self, cause: str = "ffmpeg exited") -> None:
+        """Restart capture after ffmpeg exits or stalls (VAD thread only).
 
         Without this, an unplugged microphone or a driver reset ended detection
         for the rest of the service while the process kept running, so neither
@@ -582,7 +628,7 @@ class BibleLiveAudioProcessor:
         The delays carry over between failures until a restarted stream has
         delivered ``capture_healthy_s`` of audio, so a flapping device backs off.
         """
-        self.metrics.capture_failures += 1
+        self.metrics.capture_failures += 1  # Counts stalled streams as well as exits.
         self._capture_down = True
         event = self.segmenter.flush()
         self._partial_mailbox.discard(self._utterance_seq)
@@ -596,7 +642,7 @@ class BibleLiveAudioProcessor:
             )
             self._capture_restart_attempt += 1
             logger.error(
-                f"Audio capture stopped unexpectedly; no references can be detected "
+                f"Audio capture failed ({cause}); no references can be detected "
                 f"until it restarts. Restarting in {delay:.0f}s "
                 f"(attempt {self._capture_restart_attempt})"
             )
@@ -614,7 +660,6 @@ class BibleLiveAudioProcessor:
                     continue
 
             self.metrics.capture_restarts += 1
-            self._capture_down = False
             # The silence clock runs from the new stream, not from before the outage.
             self._last_loud_at = time.monotonic()
             self._mic_silent_logged = False
@@ -699,6 +744,10 @@ class BibleLiveAudioProcessor:
 
         try:
             while self.is_running:
+                try:
+                    self._follow_bible_version()
+                except Exception:
+                    logger.exception("Could not follow the server's Bible translation")
                 # Finals first (each carries the language it was captured in): a queued
                 # utterance waits behind at most the one partial already running.
                 try:
@@ -820,6 +869,93 @@ class BibleLiveAudioProcessor:
             f"{', '.join(parsers) or 'no languages'}"
         )
 
+    def _follow_bible_version(self) -> None:
+        """Swap only validators between utterances (transcription thread only).
+
+        The heartbeat owns the requested id. All new ``_local`` fields (active id
+        and last attempted/warned requests) belong solely to this thread, as do the lookup,
+        parsers and ``_parser_issues``. Failed ids retry on the next heartbeat.
+        """
+        heartbeat = self.heartbeat
+        requested = heartbeat.requested_bible_version if heartbeat is not None else None
+        if requested is None:
+            return
+        lookup = self._local.bible_lookup
+        if not hasattr(self._local, "bible_version"):
+            try:
+                translation = lookup.get_metadata().get("translation") if lookup else None
+                self._local.bible_version = (
+                    str(translation).strip().lower() if translation else None
+                )
+            except Exception:
+                self._local.bible_version = None
+        if requested == self._local.bible_version:
+            self._parser_issues = [
+                issue
+                for issue in self._parser_issues
+                if issue["code"] != "bible_version_unavailable"
+            ]
+            return
+        # Avoid scanning SQLite files on every 100 ms poll while a file is absent.
+        now = time.monotonic()
+        last_id, last_at = getattr(self._local, "bible_version_attempt", (None, 0.0))
+        if requested == last_id and now - last_at < self.config.heartbeat_interval:
+            return
+        self._local.bible_version_attempt = (requested, now)
+        replacement = None
+        try:
+            version = discover_versions(Path(self.bible_db_path).resolve().parent).get(requested)
+            if version is None:
+                raise FileNotFoundError(requested)
+            replacement = BibleLookup(str(version.path), readonly=True)
+            if (
+                replacement.conn is None
+                or replacement.conn.execute(
+                    "SELECT b.name, v.chapter, v.verse FROM verses v "
+                    "JOIN books b ON b.id = v.book_id LIMIT 1"
+                ).fetchone()
+                is None
+            ):
+                raise ValueError(f"Bible translation '{requested}' contains no usable verses")
+            validator = replacement.get_validator_hook()
+        except Exception as e:
+            if replacement is not None:
+                replacement.close()
+            self._parser_issues = [
+                issue
+                for issue in self._parser_issues
+                if issue["code"] != "bible_version_unavailable"
+            ] + [
+                _health_issue(
+                    "bible_version_unavailable",
+                    f"The pipeline cannot open translation {requested}; it keeps checking "
+                    "references against the previous one",
+                    version=requested,
+                )
+            ]
+            warned: set[str] = getattr(self._local, "bible_version_warnings", set())
+            if requested not in warned:
+                logger.warning("Could not switch pipeline Bible to %s: %s", requested, e)
+                warned.add(requested)
+                self._local.bible_version_warnings = warned
+            return
+        previous = self._local.bible_version
+        for parsers in (self._local.streaming_parsers, self._local.alternate_parsers):
+            for parser in parsers.values():
+                parser.parser.validator = validator
+        self._local.bible_lookup = replacement
+        self._local.bible_version = requested
+        self._parser_issues = [
+            issue
+            for issue in self._parser_issues
+            if issue["code"] not in {"bible_version_unavailable", "bible_db_unavailable"}
+        ]
+        if lookup is not None:
+            lookup.close()
+        session_log = self.session_log
+        if session_log is not None:
+            session_log.event("bible_version", **{"from": previous, "to": requested})
+
     @staticmethod
     def _make_parser(
         language: str,
@@ -907,10 +1043,25 @@ class BibleLiveAudioProcessor:
 
     def _process_utterance(self, language: str, speech_frames: list[bytes]):
         """Process a completed utterance captured in ``language``"""
-        result, references = self._detect_references(language, speech_frames)
-        session_log = self.session_log
-        if session_log is not None:
-            session_log.utterance(speech_frames, language, result, references)
+        try:
+            result, references = self._detect_references(language, speech_frames)
+        except Exception:
+            self._consecutive_utterance_failures += 1
+            logger.exception("Utterance dropped after an unexpected error")
+            session_log = self.session_log
+            if session_log is not None:
+                try:
+                    session_log.utterance_failed(speech_frames, language)
+                except Exception:
+                    logger.exception("Could not log dropped utterance")
+        else:
+            self._consecutive_utterance_failures = 0
+            session_log = self.session_log
+            if session_log is not None:
+                try:
+                    session_log.utterance(speech_frames, language, result, references)
+                except Exception:
+                    logger.exception("Could not log processed utterance")
 
     def _detect_references(
         self, language: str, speech_frames: list[bytes]

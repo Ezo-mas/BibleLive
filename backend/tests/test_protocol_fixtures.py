@@ -5,13 +5,12 @@ The JSON text comparisons include key order, nulls and whitespace on the wire.
 """
 
 import json
-import os
 import uuid
 from datetime import UTC, datetime
-from pathlib import Path
 from unittest.mock import AsyncMock
 
 import pytest
+from protocol_golden import FIXTURES, golden
 from pydantic import TypeAdapter
 
 from core.bible_versions import BibleVersion
@@ -20,7 +19,6 @@ from core.server import models
 from core.server.app import _OPERATOR_ACTION_ADAPTER
 from core.server.models import DisplayServerMessage, FollowAlongHint, OperatorServerMessage
 
-FIXTURES = Path(__file__).parent / "fixtures" / "protocol"
 REFERENCE_ID = "00000000-0000-0000-0000-000000000001"
 ACTIONS = {
     "authenticate": {"action": "authenticate", "token": "example-token"},
@@ -39,14 +37,6 @@ ACTIONS = {
         "verse_end": 17,
     },
 }
-
-
-def golden(group, name, wire):
-    path = FIXTURES / group / f"{name}.json"
-    if os.environ.get("BIBLELIVE_UPDATE_PROTOCOL_FIXTURES") == "1":
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(wire + "\n", encoding="utf-8")
-    assert path.read_text(encoding="utf-8") == wire + "\n"
 
 
 def test_action_fixtures():

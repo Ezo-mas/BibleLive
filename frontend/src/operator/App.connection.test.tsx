@@ -42,6 +42,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  vi.useRealTimers()
   vi.unstubAllGlobals()
   vi.restoreAllMocks()
 })
@@ -78,6 +79,43 @@ describe('connection recovery', () => {
     expect(screen.getByText(/not connected to the server/i)).toBeInTheDocument()
     // Every action is paused while the socket is down.
     expect(screen.getByRole('button', { name: 'Show on display' })).toBeDisabled()
+  })
+
+  it('keeps retrying beyond ten attempts with a 30 second cap', () => {
+    vi.useFakeTimers()
+    render(<App />)
+    for (let attempt = 1; attempt <= 12; attempt += 1) {
+      act(() => {
+        latest().onclose?.({ code: 1006 })
+        vi.advanceTimersByTime(Math.min(attempt * 3000, 30_000) - 1)
+      })
+      expect(created).toHaveLength(attempt)
+      act(() => vi.advanceTimersByTime(1))
+      expect(created).toHaveLength(attempt + 1)
+    }
+  })
+
+  it('reconnects immediately on request and resets the backoff', () => {
+    vi.useFakeTimers()
+    render(<App />)
+    for (let attempt = 1; attempt <= 3; attempt += 1) {
+      act(() => {
+        latest().onclose?.({ code: 1006 })
+        vi.advanceTimersByTime(attempt * 3000)
+      })
+    }
+    act(() => latest().onclose?.({ code: 1006 }))
+    act(() => screen.getByRole('button', { name: 'Reconnect' }).click())
+    expect(created).toHaveLength(5)
+    act(() => {
+      latest().onclose?.({ code: 1006 })
+      vi.advanceTimersByTime(2999)
+    })
+    expect(created).toHaveLength(5)
+    act(() => vi.advanceTimersByTime(1))
+    expect(created).toHaveLength(6)
+    act(() => vi.advanceTimersByTime(10_000))
+    expect(created).toHaveLength(6)
   })
 
   it('reconnects on request and ignores the replaced socket', () => {

@@ -11,7 +11,7 @@ from dataclasses import dataclass, replace
 from .i18n import t
 from .monitors import Monitor
 from .network import operator_url_with_token, qr_png
-from .process import MSG_STARTING_AUDIO, MSG_STARTING_SERVER_PREFIX, build_plan
+from .process import MSG_STARTING_AUDIO, MSG_STARTING_SERVER_PREFIX, RestartMessage, build_plan
 from .settings import (
     AUTO_MODES,
     COMPUTE_TYPES,
@@ -257,6 +257,10 @@ def apply_event(state: StatusState, kind: str, message: str, error_code: str | N
             return StatusState(server="starting", audio="stopped")
         if message == MSG_STARTING_AUDIO:
             return replace(state, audio="starting")
+    elif kind == "server_restarting":
+        return replace(state, server="starting")
+    elif kind == "audio_restarting":
+        return replace(state, audio="starting")
     elif kind == "ready":
         return replace(state, server="ready")
     elif kind == "running":
@@ -301,6 +305,10 @@ def describe_event(
         if message == MSG_STARTING_AUDIO:
             return "info", t("log.starting_audio")
         return "info", message
+    if kind in {"server_restarting", "audio_restarting"}:
+        if isinstance(message, RestartMessage):
+            return "warning", t(f"log.{kind}", n=message.attempt, delay=message.delay)
+        return "warning", message
     if kind == "ready":
         return "info", t("log.server_ready", detail=message)
     if kind == "running":
@@ -322,6 +330,8 @@ def describe_error(code: str | None, detail: str, fallback: str = "") -> str:
 
 
 _KNOWN_ERRORS = {
+    "audio_restart_gave_up",
+    "server_restart_gave_up",
     "port_in_use",
     "server_failed",
     "server_exited",

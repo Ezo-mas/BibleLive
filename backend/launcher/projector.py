@@ -176,6 +176,8 @@ class ProjectorBrowser:
             extra: dict[str, int] = {}
             if sys.platform == "win32":
                 extra["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
+            else:
+                extra["start_new_session"] = True
             self._proc = self._popen(
                 build_command(browser, url, monitor, profile),
                 stdin=subprocess.DEVNULL,

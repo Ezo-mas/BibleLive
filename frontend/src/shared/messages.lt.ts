@@ -61,6 +61,13 @@ export const lt: Record<MessageKey, MessageEntry> = {
     few: 'Nepavykę kalbos atpažinimai iš eilės: {count}',
     other: 'Nepavykę kalbos atpažinimai iš eilės: {count}',
   },
+  'pipeline.issue.utterance_failed': {
+    one: 'Kalbos fragmentų apdorojimas nepavyko {count} kartą iš eilės; jie praleisti',
+    few: 'Kalbos fragmentų apdorojimas nepavyko {count} kartus iš eilės; jie praleisti',
+    other: 'Kalbos fragmentų apdorojimas nepavyko {count} kartų iš eilės; jie praleisti',
+  },
+  'pipeline.issue.bible_version_unavailable':
+    'Garso apdorojimas negali atidaryti vertimo {version}; nuorodos toliau tikrinamos pagal ankstesnį vertimą',
   'pipeline.issue.delivery_failed': 'Paskutinė aptikta nuoroda nebuvo perduota: {detail}',
   'pipeline.issue.bible_db_unavailable':
     'Garso apdorojimas negalėjo atidaryti Biblijos duomenų bazės, todėl aptiktos nuorodos su ja netikrinamos',

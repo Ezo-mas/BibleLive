@@ -24,6 +24,7 @@ reads differently from broken production behaviour.
 """
 
 import importlib
+import io
 import json
 import os
 import shutil
@@ -814,6 +815,67 @@ def test_unexpected_ffmpeg_exit_flushes_then_restarts(
         # boundary, so every captured byte (both streams) is framed or waiting.
         books = assert_every_byte_accounted_for(processor)
         assert books["framed"] == vad_input.frame_count * VAD_FRAME_BYTES, books
+
+
+@pytest.mark.slow
+def test_hung_ffmpeg_restarts_and_detects_utterance(
+    kjv_db, tmp_path, live_server, ffmpeg_seam, install_fake_stt, monkeypatch
+):
+    """A hung first capture is replaced and the next stream reaches the operator."""
+    from audio import capture as capture_module
+
+    class HungProcess:
+        """The capture thread reads until the VAD thread terminates the process."""
+
+        def __init__(self):
+            self.stopped = threading.Event()
+            self.stdout = self
+            self.stderr = io.BytesIO()
+
+        def read(self, _size):
+            self.stopped.wait()
+            return b""
+
+        def terminate(self):
+            self.stopped.set()
+
+        def wait(self, timeout=None):
+            return 0
+
+    hung = HungProcess()
+    actual_popen = capture_module.subprocess.Popen
+    launches = []
+
+    def popen(*args, **kwargs):
+        launches.append(1)
+        return hung if len(launches) == 1 else actual_popen(*args, **kwargs)
+
+    monkeypatch.setattr(capture_module.subprocess, "Popen", popen)
+    ffmpeg_seam.audio_path = make_wav(
+        tmp_path / "after_hang.wav", [("silence", 1.0), ("speech", 2.0), ("silence", 30.0)]
+    )
+    stt = install_fake_stt([Transcription(text="John 3:16", duration_ms=1.0)])
+    processor = make_live_processor(
+        kjv_db,
+        live_server.port,
+        capture_restart_base_delay=0.0,
+        capture_stall_restart_s=0.2,
+        capture_first_frame_grace_s=0.2,
+    )
+    with ExitStack() as stack:
+        operator, _display, _snapshot = connect_clients(live_server.port, stack)
+        try:
+            processor.start()
+            message = wait_for_message(
+                operator, lambda m: pending_john_3_16(m) is not None, "John 3:16 after restart"
+            )
+            assert pending_john_3_16(message) is not None
+            assert hung.stopped.is_set()
+            assert processor.metrics.capture_restarts == 1
+            assert stt.utterances
+        finally:
+            processor.stop()
+    assert len(launches) == 2
 
 
 # --------------------------------------------------------------------------- #

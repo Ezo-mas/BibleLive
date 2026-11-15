@@ -76,6 +76,37 @@ describe('translatorFor', () => {
     expect(defaultTranslator('queue.empty')).toBe('No pending references')
   })
 
+  it('renders the new health issues with their parameters in both languages', () => {
+    expect(translatorFor('en')('pipeline.issue.utterance_failed', { count: 1 })).toBe(
+      'Processing failed on the last 1 utterance; it was skipped'
+    )
+    expect(translatorFor('en')('pipeline.issue.utterance_failed', { count: 3 })).toBe(
+      'Processing failed on the last 3 utterances; they were skipped'
+    )
+    expect(translatorFor('lt')('pipeline.issue.utterance_failed', { count: 1 })).toBe(
+      'Kalbos fragmentų apdorojimas nepavyko 1 kartą iš eilės; jie praleisti'
+    )
+    expect(translatorFor('lt')('pipeline.issue.utterance_failed', { count: 21 })).toBe(
+      'Kalbos fragmentų apdorojimas nepavyko 21 kartą iš eilės; jie praleisti'
+    )
+    expect(translatorFor('lt')('pipeline.issue.utterance_failed', { count: 3 })).toBe(
+      'Kalbos fragmentų apdorojimas nepavyko 3 kartus iš eilės; jie praleisti'
+    )
+    expect(translatorFor('lt')('pipeline.issue.utterance_failed', { count: 11 })).toBe(
+      'Kalbos fragmentų apdorojimas nepavyko 11 kartų iš eilės; jie praleisti'
+    )
+    expect(
+      translatorFor('en')('pipeline.issue.bible_version_unavailable', { version: 'KJV' })
+    ).toBe(
+      'The pipeline cannot open translation KJV; it keeps checking references against the previous one'
+    )
+    expect(
+      translatorFor('lt')('pipeline.issue.bible_version_unavailable', { version: 'KJV' })
+    ).toBe(
+      'Garso apdorojimas negali atidaryti vertimo KJV; nuorodos toliau tikrinamos pagal ankstesnį vertimą'
+    )
+  })
+
   it('recognises only real message keys', () => {
     expect(hasMessage('pipeline.issue.mic_silent')).toBe(true)
     expect(hasMessage('pipeline.issue.not_a_code')).toBe(false)

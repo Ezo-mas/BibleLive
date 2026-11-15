@@ -1,9 +1,14 @@
 """Application state management."""
 
 import asyncio
+import contextlib
 import logging
 import sqlite3
+import threading
 import time
+from collections.abc import Awaitable, Callable
+from datetime import UTC, datetime
+from enum import Enum
 from typing import Literal
 
 from fastapi import WebSocket
@@ -55,6 +60,8 @@ from .models import (
     StateResponse,
     VerseText,
 )
+from .runtime_state import RESTORE_DISPLAY_MAX_AGE_S, RuntimeReference, RuntimeStateStore
+from .service_log import ServiceLog
 from .settings_store import SettingsStore, coerce_auto_mode, is_auto_mode
 
 logger = logging.getLogger(__name__)
@@ -90,8 +97,21 @@ FOLLOW_AUTO_MAX_JUMP = 3
 SNAPSHOT_HISTORY = 20
 
 
+NO_TEXT_MESSAGE = "Reference has no text in the active translation"
+
+
+class ApprovalRefusal(Enum):
+    """Immutable approval result, used by the event-loop thread only."""
+
+    NO_TEXT = "no_text"
+
+
 class AppState:
-    """Manage the application state including pending references, current display, and connections."""
+    """Manage server state on the startup/event-loop thread.
+
+    This thread owns the queue, display, history, settings and auto-approval IDs.
+    Disk workers receive detached data through the runtime and service stores.
+    """
 
     def __init__(
         self, bible_lookup: BibleLookup, settings_store: SettingsStore | None = None
@@ -106,7 +126,6 @@ class AppState:
         self.current_display: BibleReference | None = None
         self.pending_references: list[BibleReference] = []
         self.reference_history: list[BibleReference] = []
-        self.display_settings = DisplaySettings()
         self.connection_manager = ConnectionManager()
         self.bible_lookup = bible_lookup
         self.settings_store = (
@@ -114,6 +133,14 @@ class AppState:
             if settings_store is not None
             else SettingsStore(config.resolve_settings_path())
         )
+        self.display_settings = DisplaySettings(
+            verse_limit=self.settings_store.load_verse_limit(),
+            theme=self.settings_store.load_theme(),
+        )
+        self.runtime_state = RuntimeStateStore(self.settings_store.directory / "runtime_state.json")
+        self.service_log = ServiceLog()
+        self._logged_pipeline_status: tuple[str, frozenset[str]] | None = None
+        self._auto_approval_ids: set[str] = set()
         # Precedence: a persisted mode wins over the environment default, and an
         # unknown environment value leaves auto-approval off.
         self.auto_mode: AutoMode = self.settings_store.load_auto_mode(
@@ -151,6 +178,7 @@ class AppState:
         """Keep the audio pipeline's latest health report."""
         self.pipeline_report = report
         self.pipeline_reported_at = time.monotonic() if now is None else now
+        self.pipeline_status(now)
 
     def pipeline_status(self, now: float | None = None) -> PipelineStatusResponse:
         """Summarize the pipeline's health for the operator console.
@@ -161,6 +189,7 @@ class AppState:
         """
         report, reported_at = self.pipeline_report, self.pipeline_reported_at
         if report is None or reported_at is None:
+            self._log_pipeline_status("unknown", [])
             return PipelineStatusResponse(status="unknown")
 
         age = max(0.0, (time.monotonic() if now is None else now) - reported_at)
@@ -171,6 +200,9 @@ class AppState:
             status = "degraded"
         else:
             status = "ok"
+        self._log_pipeline_status(
+            status, [] if status == "offline" else [i.code for i in report.issues]
+        )
         return PipelineStatusResponse(
             status=status,
             language=report.language,
@@ -179,6 +211,80 @@ class AppState:
             issues=[] if status == "offline" else list(report.issues),
             seconds_since_report=round(age, 1),
         )
+
+    def _log_pipeline_status(self, status: str, issue_codes: list[str]) -> None:
+        key = (status, frozenset(issue_codes) if status == "degraded" else frozenset())
+        if key != self._logged_pipeline_status:
+            self._logged_pipeline_status = key
+            self.service_log.emit("pipeline_status", status=status, issue_codes=issue_codes)
+
+    def restore_runtime_state(self) -> None:
+        """Re-resolve recent recovery coordinates before any sockets can connect.
+
+        Startup and the event loop own this state. No send or queue restoration
+        occurs here; connecting clients receive the ordinary state snapshot.
+        """
+        saved = self.runtime_state.load()
+        original = saved.model_dump(mode="json")
+
+        def resolve(record: RuntimeReference) -> BibleReference | None:
+            try:
+                passage = resolve_passage(
+                    self.bible_lookup,
+                    record.book,
+                    record.chapter,
+                    record.verse_start,
+                    record.verse_end,
+                )
+            except (PassageError, OSError, sqlite3.Error) as exc:
+                logger.warning("Dropping runtime passage that no longer resolves: %s", exc)
+                return None
+            return BibleReference(
+                book=passage.book,
+                book_label=self.book_label(passage.book),
+                chapter=passage.chapter,
+                verse_start=passage.verse_start,
+                verse_end=passage.verse_end,
+                source=record.source,
+                confidence=record.confidence,
+                inferred=record.inferred,
+                created_at=datetime.fromtimestamp(record.shown_at, UTC).isoformat(),
+                text=passage.text,
+                verses=[VerseText(verse=v, text=t) for v, t in passage.verses],
+            )
+
+        now = time.time()
+
+        def recent(record: RuntimeReference) -> bool:
+            return 0 <= now - record.shown_at < RESTORE_DISPLAY_MAX_AGE_S
+
+        self.reference_history = []
+        valid_history = []
+        for record in saved.history:
+            if not recent(record):
+                continue
+            ref = resolve(record)
+            if ref is not None:
+                self.reference_history.append(ref)
+                valid_history.append(record)
+        saved.history = valid_history
+        current = saved.current
+        if current is not None:
+            if recent(current) and current.translation != self.active_bible_version():
+                logger.info(
+                    "Not restoring display: saved translation %r differs from active translation %r",
+                    current.translation,
+                    self.active_bible_version(),
+                )
+            elif recent(current):
+                if valid_history and current == valid_history[0]:
+                    self.current_display = self.reference_history[0]
+                else:
+                    self.current_display = resolve(current)
+            if self.current_display is None:
+                saved.current = None
+        if saved.model_dump(mode="json") != original:
+            self.runtime_state.save_snapshot()
 
     async def _send_pending_update(self) -> None:
         """Notify operators of the current pending queue."""
@@ -227,6 +333,7 @@ class AppState:
             update={"verse_limit": verse_limit}
         )
         await self.send_display_settings()
+        self.settings_store.save_verse_limit(self.display_settings.verse_limit)
         logger.info(f"Display verse limit set to {verse_limit}")
         return True
 
@@ -236,6 +343,7 @@ class AppState:
             return False
         self.display_settings = self.display_settings.model_copy(update={"theme": theme})
         await self.send_display_settings()
+        self.settings_store.save_theme(self.display_settings.theme)
         logger.info(f"Display theme set to {theme}")
         return True
 
@@ -489,8 +597,11 @@ class AppState:
             new_lookup.close()
             raise ValueError(f"Bible translation '{version}' contains no verses.")
 
+        previous = self.active_bible_version()
         old_lookup, self.bible_lookup = self.bible_lookup, new_lookup
         old_lookup.close()
+        if previous != version:
+            self.service_log.emit("translation_switched", **{"from": previous, "to": version})
         self.settings_store.save_bible_version(version, str(config.resolve_db_path()))
         logger.info(f"Bible version switched to '{version}' ({target.path.name})")
         return version
@@ -516,6 +627,7 @@ class AppState:
         if self.pending_references and self.active_bible_version() != previous:
             dropped = len(self.pending_references)
             self.pending_references.clear()
+            self.service_log.emit("queue_cleared", count=dropped)
         await self.connection_manager.send_to_operator(
             OperatorBibleVersionConfirmed(
                 data=BibleVersionResponse(
@@ -570,9 +682,35 @@ class AppState:
             logger.warning(f"Not switching Bible version for language {language!r}: {e!r}")
 
     async def shutdown(self) -> None:
-        """Perform cleanup on shutdown: close database connection."""
-        self.bible_lookup.close()
-        logger.info("Closed database connection.")
+        """Best-effort bounded flush and listener shutdown, then close the database."""
+        try:
+            try:
+                await self.runtime_state.flush()
+            except Exception:
+                logger.warning("Could not flush runtime state during shutdown", exc_info=True)
+        finally:
+            try:
+                loop = asyncio.get_running_loop()
+                stopped = asyncio.Event()
+
+                def stop_listener() -> None:
+                    try:
+                        self.service_log.stop()
+                    except Exception:
+                        logger.warning("Could not stop service log", exc_info=True)
+                    finally:
+                        # The loop may have closed after a shutdown timeout.
+                        with contextlib.suppress(RuntimeError):
+                            loop.call_soon_threadsafe(stopped.set)
+
+                threading.Thread(target=stop_listener, daemon=True, name="service-log-stop").start()
+                try:
+                    await asyncio.wait_for(stopped.wait(), timeout=2)
+                except TimeoutError:
+                    logger.warning("Timed out stopping service log")
+            finally:
+                self.bible_lookup.close()
+                logger.info("Closed database connection.")
 
     async def add_reference(self, ref: BibleReference) -> None:
         """Add a new reference to pending queue with bounded size.
@@ -585,6 +723,7 @@ class AppState:
         # Enforce queue limit to prevent unbounded memory growth
         if len(self.pending_references) >= config.MAX_PENDING_REFERENCES:
             dropped = self.pending_references.pop(0)
+            self.service_log.emit("queue_overflowed", count=1)
             logger.warning(
                 f"Pending queue full ({config.MAX_PENDING_REFERENCES}), "
                 f"dropped oldest reference: {dropped.book} {dropped.chapter}:{dropped.verse_start or '?'}"
@@ -609,15 +748,41 @@ class AppState:
                 f"Auto-approving {ref.confidence}-confidence reference "
                 f"(mode '{mode_at_arrival}'): {ref.book} {ref.chapter}:{ref.verse_start or '?'}"
             )
-            await self.approve_and_notify(ref.id)
+            self._auto_approval_ids.add(ref.id)
+            try:
+                await self.approve_and_notify(ref.id)
+            finally:
+                self._auto_approval_ids.discard(ref.id)
 
-    def _record_history(self, ref: BibleReference) -> None:
+    def _record_history(self, ref: BibleReference, *, auto_approved: bool = False) -> None:
         """Put a reference that reached the display at the top of the bounded history."""
         self.reference_history.insert(0, ref)
         if len(self.reference_history) > config.MAX_HISTORY_REFERENCES:
             self.reference_history = self.reference_history[: config.MAX_HISTORY_REFERENCES]
 
-    async def approve_pending(self, reference_id: str) -> BibleReference | None:
+        translation = None
+        try:
+            translation = self.active_bible_version()
+            self.runtime_state.record(ref, translation)
+        except Exception:
+            logger.warning("Could not record runtime display state", exc_info=True)
+        try:
+            self.service_log.emit(
+                "shown",
+                translation=translation,
+                book=ref.book,
+                chapter=ref.chapter,
+                verse_start=ref.verse_start,
+                verse_end=ref.verse_end,
+                source=ref.source,
+                confidence=ref.confidence,
+                inferred=ref.inferred,
+                auto_approved=auto_approved,
+            )
+        except Exception:
+            logger.warning("Could not log displayed passage", exc_info=True)
+
+    async def approve_pending(self, reference_id: str) -> BibleReference | ApprovalRefusal | None:
         """Approve and display a pending reference by ID"""
         # Find the reference by ID
         ref_index = None
@@ -632,11 +797,30 @@ class AppState:
         ref = self.pending_references.pop(ref_index)
 
         self._resolve_verses(ref)
+        if not ref.verses:
+            auto_approved = ref.id in self._auto_approval_ids
+            logger.warning(
+                "Refused approval without text: %s %s:%s", ref.book, ref.chapter, ref.verse_start
+            )
+            try:
+                self.service_log.emit(
+                    "refused_no_text",
+                    translation=self.active_bible_version(),
+                    book=ref.book,
+                    chapter=ref.chapter,
+                    verse_start=ref.verse_start,
+                    verse_end=ref.verse_end,
+                    source=ref.source,
+                    auto_approved=auto_approved,
+                )
+            except Exception:
+                logger.warning("Could not log no-text refusal", exc_info=True)
+            return ApprovalRefusal.NO_TEXT
 
         self.current_display = ref
 
         # Keep history bounded to prevent unbounded growth
-        self._record_history(ref)
+        self._record_history(ref, auto_approved=ref.id in self._auto_approval_ids)
 
         # Notify display to show the reference
         await self._send_display_reference(ref)
@@ -646,15 +830,29 @@ class AppState:
 
         return ref
 
-    async def approve_and_notify(self, reference_id: str) -> BibleReference | None:
+    async def approve_and_notify(
+        self,
+        reference_id: str,
+        *,
+        on_no_text: Callable[[], Awaitable[None]] | None = None,
+    ) -> BibleReference | ApprovalRefusal | None:
         """Approve a pending reference and notify operators.
 
         The WebSocket handler and the HTTP endpoint both approve through here so
         operators always observe the same deterministic order: the confirmation
         first, then the updated pending queue. Returns the approved reference, or
-        ``None`` when no pending reference matched the ID.
+        ``None`` when no pending reference matched the ID. A no-text refusal
+        reports the requesting socket's error before broadcasting the queue.
         """
         ref = await self.approve_pending(reference_id)
+        if ref is ApprovalRefusal.NO_TEXT:
+            # The requesting socket must see its error before the queue broadcast.
+            try:
+                if on_no_text is not None:
+                    await on_no_text()
+            finally:
+                await self._send_pending_update()
+            return ref
         if ref is None:
             return None
 
@@ -837,6 +1035,14 @@ class AppState:
     async def clear_display(self) -> None:
         """Clear the current display"""
         self.current_display = None
+        try:
+            self.runtime_state.clear()
+        except Exception:
+            logger.warning("Could not record cleared display", exc_info=True)
+        try:
+            self.service_log.emit("cleared")
+        except Exception:
+            logger.warning("Could not log cleared display", exc_info=True)
         await self._send_display_clear()
 
     async def clear_and_notify(self) -> None:
@@ -850,7 +1056,10 @@ class AppState:
         Only mutates state; clear_pending_and_notify() broadcasts pending_cleared
         and then pending_update so operators observe a deterministic order.
         """
+        count = len(self.pending_references)
         self.pending_references.clear()
+        if count:
+            self.service_log.emit("queue_cleared", count=count)
 
     async def clear_pending_and_notify(self) -> int:
         """Clear the pending queue and notify operators.

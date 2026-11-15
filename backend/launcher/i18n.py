@@ -65,6 +65,8 @@ EN: dict[str, str] = {
     "log.starting_audio": "Starting the audio pipeline...",
     "log.server_ready": "Server is ready: {detail}",
     "log.audio_running": "Audio pipeline is running.",
+    "log.audio_restarting": "Audio stopped unexpectedly; restarting in {delay} s (attempt {n}).",
+    "log.server_restarting": "Server stopped unexpectedly; restarting in {delay} s (attempt {n}).",
     "log.stopped": "BibleLive stopped.",
     "log.stopping": "Stopping...",
     "log.projector_opened": "Display opened on the projector ({detail}).",
@@ -114,6 +116,12 @@ EN: dict[str, str] = {
     "err.server_exited": "The server stopped unexpectedly. See the log: {detail}",
     "err.audio_exited": (
         "The audio pipeline stopped. Check the microphone and see the log: {detail}"
+    ),
+    "err.audio_restart_gave_up": (
+        "Audio keeps stopping; BibleLive has stopped. Check the microphone and see the log: {detail}"
+    ),
+    "err.server_restart_gave_up": (
+        "The server keeps stopping; BibleLive has stopped. See the log: {detail}"
     ),
     "err.server_spawn": "Could not start the server: {detail}",
     "err.audio_spawn": "Could not start the audio pipeline: {detail}",
@@ -188,6 +196,12 @@ LT: dict[str, str] = {
     "log.starting_audio": "Paleidžiamas garso apdorojimas...",
     "log.server_ready": "Serveris paruoštas: {detail}",
     "log.audio_running": "Garso apdorojimas veikia.",
+    "log.audio_restarting": (
+        "Garso apdorojimas netikėtai sustojo. Po {delay} s paleidžiamas iš naujo (bandymas nr. {n})."
+    ),
+    "log.server_restarting": (
+        "Serveris netikėtai sustojo. Po {delay} s paleidžiamas iš naujo (bandymas nr. {n})."
+    ),
     "log.stopped": "BibleLive sustabdytas.",
     "log.stopping": "Stabdoma...",
     "log.projector_opened": "Vaizdas atidarytas projektoriuje ({detail}).",
@@ -241,6 +255,13 @@ LT: dict[str, str] = {
     "err.server_exited": "Serveris netikėtai sustojo. Žr. žurnalą: {detail}",
     "err.audio_exited": (
         "Garso apdorojimas sustojo. Patikrinkite mikrofoną ir žr. žurnalą: {detail}"
+    ),
+    "err.audio_restart_gave_up": (
+        "Garso apdorojimas vis sustoja, BibleLive sustabdytas. "
+        "Patikrinkite mikrofoną ir žr. žurnalą: {detail}"
+    ),
+    "err.server_restart_gave_up": (
+        "Serveris vis sustoja, BibleLive sustabdytas. Žr. žurnalą: {detail}"
     ),
     "err.server_spawn": "Nepavyko paleisti serverio: {detail}",
     "err.audio_spawn": "Nepavyko paleisti garso apdorojimo: {detail}",

@@ -84,8 +84,8 @@ export default function App() {
 
   // The display must outlive server restarts and network blips: a projector
   // that goes dark mid-service cannot be recovered without manual refresh, so
-  // keep retrying indefinitely (the operator console keeps the finite budget
-  // so auth failures can surface the token prompt).
+  // keep retrying indefinitely. The operator also retries indefinitely; its
+  // token prompt comes from close code 1008, which stops retries.
   useWebSocket<DisplayMessage>('/ws/display', handleMessage, {
     maxReconnectAttempts: Infinity,
   })

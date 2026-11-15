@@ -80,6 +80,19 @@ easy to break by accident.
    approval re-resolves the queued detection with `AppState._resolve_verses`.
    A client therefore cannot inject verse text or pass a manual selection off
    as a detection.
+   A queued detection that resolves to no verses is refused, not shown:
+   `approve_pending` drops it from the queue and leaves the display alone; the
+   approving operator gets an `error` (action `approve`) before everyone's
+   `pending_update`, and an auto-approved one just leaves the queue (logged).
+   **Restore after a restart** is not a door either. `core/server/runtime_state.py`
+   keeps the on-screen passage and the last 20 history entries as coordinates
+   (never text) in `runtime_state.json` beside the settings file, written in the
+   background from `_record_history` and `clear_display` (coalesced, never
+   awaited on the display path, and guarded so it cannot raise between a state
+   change and its send). At startup, `create_app` re-resolves a record younger
+   than `RESTORE_DISPLAY_MAX_AGE_S` (600 s) into `current_display` only when its
+   translation is still the active one; it sends nothing (displays get it from
+   the normal snapshot) and never restores the pending queue.
    **Show Again** (Phase 4: showing a passage from display history) is
    that same action, not a third door: the console stages a history entry
    locally and sends its coordinates, so the server re-validates and
@@ -98,7 +111,10 @@ easy to break by accident.
    over, so the capture frame size does not change. The
    load-bearing part is that no audio is lost: `AudioCapture.get_audio_frame()`
    must return exactly that many bytes and must not drop carry-over bytes
-   between calls (it keeps a `_frame_buffer`). Swapping the VAD (e.g. to
+   between calls (it keeps a `_frame_buffer`). It returns `None` after a
+   bounded wait (`FRAME_WAIT_S`) so the VAD loop can notice a hung ffmpeg and
+   restart capture; the partial frame stays in the buffer across that return,
+   and only `start_capture` clears it. Swapping the VAD (e.g. to
    one with a different chunk size) is allowed, but is a detection-accuracy
    change: benchmark it (see `testing.md`).
 4. **No StrictMode in the frontend entry points** — it double-mounts in

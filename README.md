@@ -397,10 +397,19 @@ in `%APPDATA%\BibleLive\logs\sessions`.
 | GET    | `/api/ui-language`  | Operator page language set by the launcher: `lt`, `en`, or `null` (no token needed, even with auth on) |
 | GET    | `/api/state`        | Current server state snapshot (requires auth if enabled) |
 | POST   | `/api/transcript`   | Audio pipeline transcript line, used only for follow-along suggestions; not stored; the reply's `follow_along_active` says whether to keep sending partial transcripts (token when auth is on) |
-| POST   | `/api/pipeline/heartbeat` | Audio pipeline health report, sent every 5 s (token when auth is on) |
+| POST   | `/api/pipeline/heartbeat` | Audio pipeline health report, sent every 5 s; optional `version` stamp; 200 reply `{"bible_version": "<id>"}` (or `null`), followed by the pipeline when available locally (token when auth is on) |
 | GET    | `/api/pipeline/status` | Pipeline health for the operator console: `unknown`, `ok`, `degraded` (with problems), or `offline` after three missed reports (requires auth if enabled) |
-| GET    | `/healthz`          | Liveness probe                           |
+| GET    | `/healthz`          | Liveness probe: `{"status": "healthy", "version": "<stamp>"}` |
 | GET    | `/readyz`           | Readiness probe (database + frontend built checks) |
+
+Version stamps use the full stamp in `core/build-id.txt` when present, then installed
+`biblelive` package metadata, `backend/pyproject.toml`, or `unknown`. The Windows
+portable build writes `app/backend/core/build-id.txt` with the package version and,
+when git is available, the short hash and a `.dirty` suffix for uncommitted changes.
+Without git it writes the package version. Session-log headers and heartbeats carry
+the same stamp. Older heartbeat servers (204 or empty replies) remain supported.
+A missing local translation keeps the previous validator and reports
+`bible_version_unavailable` until recovery.
 
 ## WebSocket protocol
 
@@ -466,6 +475,7 @@ same file.
 | `BIBLELIVE_LOG_LEVEL`     | `INFO`                      | Server log level         |
 | `BIBLELIVE_DB_READONLY`   | `false`                     | Fail rather than write to the Bible DB |
 | `BIBLELIVE_AUDIO_LOG_LEVEL` | `INFO`                    | Audio pipeline log level |
+| `BIBLELIVE_SERVICE_LOG_DIR` | unset (off)               | Write a JSON-lines service log (what was shown or cleared, queue and translation changes, pipeline status; no transcript or verse text) to this folder. The launcher sets it to `logs/services` in its data folder |
 
 See `.env.example` for the full annotated list. `BIBLELIVE_AUDIO_LOG_LEVEL`,
 `BIBLELIVE_AUDIO_ARGS` (start scripts), and the pipeline's model/device/language

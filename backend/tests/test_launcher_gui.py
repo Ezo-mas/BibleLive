@@ -11,7 +11,7 @@ import pytest
 from launcher import i18n
 from launcher.cli import apply_overrides, build_parser
 from launcher.monitors import Monitor, choose_projector, enumerate_monitors
-from launcher.process import Launcher, build_plan
+from launcher.process import Launcher, RestartMessage, build_plan
 from launcher.projector import (
     Browser,
     ProjectorBrowser,
@@ -45,6 +45,12 @@ from launcher.viewmodel import (
 PRIMARY = Monitor("\\\\.\\DISPLAY1", 0, 0, 1920, 1080, True)
 SECOND = Monitor("\\\\.\\DISPLAY2", 1920, 0, 1280, 720, False)
 THIRD = Monitor("\\\\.\\DISPLAY3", 3200, 0, 1280, 720, False)
+
+
+@pytest.fixture(autouse=True)
+def fake_process_groups(monkeypatch):
+    # Launcher/projector process fakes must never signal a real POSIX process group.
+    monkeypatch.setattr(os, "killpg", lambda *args: None, raising=False)
 
 
 # --- Part A ---------------------------------------------------------------------------
@@ -473,3 +479,136 @@ def test_projector_close_kills_the_browser_it_handed_off_to(tmp_path):
     assert killed == [33]
     pb.close()  # closing again does nothing more
     assert killed == [33]
+
+
+@pytest.mark.parametrize("language", ["en", "lt"])
+def test_restart_events_are_translated_and_keep_other_child_running(language):
+    try:
+        i18n.set_language(language)
+        state = StatusState("ready", "running")
+        assert apply_event(state, "server_restarting", "1 / 1 s", None) == StatusState(
+            "starting", "running"
+        )
+        assert apply_event(state, "audio_restarting", "1 / 1 s", None) == StatusState(
+            "ready", "starting"
+        )
+        if language == "lt":
+            assert "iš naujo" in i18n.t("log.audio_restarting")
+            assert "žurnalą" in describe_error("audio_restart_gave_up", "audio.log")
+        for child in ("server", "audio"):
+            level, text = describe_event(
+                f"{child}_restarting", RestartMessage(child, 1, 1), None, ""
+            )
+            assert level == "warning"
+            assert text == i18n.t(f"log.{child}_restarting", n="1", delay="1")
+            assert describe_error(f"{child}_restart_gave_up", "child.log") == i18n.t(
+                f"err.{child}_restart_gave_up", detail="child.log"
+            )
+        hint = "microphone" if language == "en" else "mikrofoną"
+        assert hint in describe_error("audio_restart_gave_up", "audio.log")
+    finally:
+        i18n.set_language("en")
+
+
+@pytest.mark.parametrize(
+    "code, expected",
+    [
+        ("audio_restart_gave_up", StatusState("ready", "error")),
+        ("server_restart_gave_up", StatusState("error", "stopped")),
+    ],
+)
+def test_give_up_marks_the_failed_child(code, expected):
+    assert apply_event(StatusState("ready", "running"), "error", "", code) == expected
+
+
+@pytest.mark.parametrize(
+    "language, child, expected",
+    [
+        (
+            "en",
+            "audio",
+            "Audio keeps stopping; BibleLive has stopped. "
+            "Check the microphone and see the log: child.log",
+        ),
+        (
+            "en",
+            "server",
+            "The server keeps stopping; BibleLive has stopped. See the log: child.log",
+        ),
+        (
+            "lt",
+            "audio",
+            "Garso apdorojimas vis sustoja, BibleLive sustabdytas. "
+            "Patikrinkite mikrofoną ir žr. žurnalą: child.log",
+        ),
+        ("lt", "server", "Serveris vis sustoja, BibleLive sustabdytas. Žr. žurnalą: child.log"),
+    ],
+)
+def test_give_up_text(language, child, expected):
+    try:
+        i18n.set_language(language)
+        assert describe_error(f"{child}_restart_gave_up", "child.log") == expected
+    finally:
+        i18n.set_language("en")
+
+
+@pytest.mark.parametrize(
+    "language, child, expected",
+    [
+        ("en", "audio", "Audio stopped unexpectedly; restarting in 4 s (attempt 3)."),
+        ("en", "server", "Server stopped unexpectedly; restarting in 4 s (attempt 3)."),
+        (
+            "lt",
+            "audio",
+            "Garso apdorojimas netikėtai sustojo. Po 4 s paleidžiamas iš naujo (bandymas nr. 3).",
+        ),
+        (
+            "lt",
+            "server",
+            "Serveris netikėtai sustojo. Po 4 s paleidžiamas iš naujo (bandymas nr. 3).",
+        ),
+    ],
+)
+def test_restart_message_uses_attempt_and_delay(language, child, expected):
+    try:
+        i18n.set_language(language)
+        message = RestartMessage(child, 3, 4)
+        assert str(message) == f"{child.capitalize()} exited; restarting in 4 s (attempt 3)"
+        assert describe_event(f"{child}_restarting", message, None, "") == ("warning", expected)
+    finally:
+        i18n.set_language("en")
+
+
+@pytest.mark.parametrize(
+    "audio, opens", [("stopped", True), ("running", False), ("starting", False)]
+)
+def test_server_restart_does_not_reopen_browser_windows(audio, opens):
+    from types import SimpleNamespace
+
+    from launcher.gui import App
+
+    opened = []
+    app = SimpleNamespace(
+        status=StatusState("starting", audio),
+        _log=lambda *args: None,
+        _on_server_ready=lambda: opened.append(True),
+        _refresh_status=lambda: None,
+    )
+    App._handle(app, ("event", "ready", "url", None, ""))
+    assert bool(opened) == opens
+    assert app.status.server == "ready"
+
+
+def test_projector_posix_spawn_uses_own_session(tmp_path, monkeypatch):
+    seen = {}
+    monkeypatch.setattr(sys, "platform", "linux")
+    monkeypatch.setattr("launcher.projector.kill_tree", lambda proc: None)
+    pb = ProjectorBrowser(
+        find=lambda: Browser("chrome", "chrome"),
+        popen=lambda *args, **kwargs: seen.update(kwargs) or _FakeProc(),
+        profile_dir=tmp_path,
+        find_stale=lambda _: [],
+    )
+    pb.open(8000, SECOND)
+    pb.close()
+    assert seen["start_new_session"] is True
