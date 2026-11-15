@@ -19,6 +19,16 @@ FRAME_WAIT_S = 0.5
 _DSHOW_AUDIO_DEVICE = re.compile(r'"(?P<name>[^"]+)"\s+\(audio\)')
 
 
+# ffmpeg is a console program. Started from a process with no console (the
+# launcher runs the pipeline and the GUI under pythonw.exe), Windows would give
+# it a new, empty console window; CREATE_NO_WINDOW keeps it headless.
+def _no_window_flags() -> int:
+    """``creationflags`` that keep a console program from opening a window."""
+    if sys.platform == "win32":
+        return getattr(subprocess, "CREATE_NO_WINDOW", 0)
+    return 0
+
+
 def list_input_devices() -> list[str]:
     """Names of the DirectShow audio inputs ffmpeg can open (Windows only).
 
@@ -35,6 +45,7 @@ def list_input_devices() -> list[str]:
             encoding="utf-8",
             errors="replace",
             timeout=10,
+            creationflags=_no_window_flags(),
         )
     except FileNotFoundError:
         raise RuntimeError("ffmpeg not found. Please install ffmpeg and ensure it's in PATH")
@@ -131,7 +142,11 @@ class AudioCapture:
 
         try:
             self.ffmpeg_process = subprocess.Popen(
-                ffmpeg_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, bufsize=0
+                ffmpeg_cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                bufsize=0,
+                creationflags=_no_window_flags(),
             )
         except FileNotFoundError:
             self.is_running = False

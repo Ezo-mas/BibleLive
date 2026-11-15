@@ -97,6 +97,38 @@ def _fake_windows_ffmpeg(monkeypatch, popen_calls):
     monkeypatch.setattr(capture_module.subprocess, "Popen", _popen)
 
 
+def test_ffmpeg_runs_without_a_console_window_on_windows(monkeypatch):
+    """Under pythonw.exe a console program would open an empty console window."""
+    monkeypatch.setattr(capture_module.subprocess, "CREATE_NO_WINDOW", 0x08000000, raising=False)
+    _fake_windows_ffmpeg(monkeypatch, [])
+    flags: list[int] = []
+    real_popen = capture_module.subprocess.Popen
+
+    def _recording_popen(cmd, **kwargs):
+        flags.append(kwargs.get("creationflags", 0))
+        return real_popen(cmd, **kwargs)
+
+    def _recording_run(*args, **kwargs):
+        flags.append(kwargs.get("creationflags", 0))
+        return SimpleNamespace(returncode=1, stdout="", stderr=_DSHOW_LISTING)
+
+    monkeypatch.setattr(capture_module.subprocess, "Popen", _recording_popen)
+    monkeypatch.setattr(capture_module.subprocess, "run", _recording_run)
+
+    list_input_devices()
+    capture = AudioCapture()
+    capture.start_capture("Microphone (Realtek(R) Audio)")
+    capture.capture_thread.join(timeout=2)
+    capture.stop_capture()
+
+    assert flags == [0x08000000, 0x08000000]
+
+
+def test_ffmpeg_gets_no_creation_flags_off_windows(monkeypatch):
+    monkeypatch.setattr(capture_module.sys, "platform", "linux")
+    assert capture_module._no_window_flags() == 0
+
+
 def test_list_input_devices_parses_dshow_names(monkeypatch):
     _fake_windows_ffmpeg(monkeypatch, [])
 
