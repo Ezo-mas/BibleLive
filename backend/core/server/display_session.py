@@ -371,8 +371,8 @@ class DisplaySession:
 
         await self._owner._send_display_reference(ref)
 
-        # Confirm to operators (including this one) only after the display has the
-        # passage, so the console never claims a passage is live before it is.
+        # Confirm to operators (including this one) after the passage has been
+        # queued for the display.
         await self._owner.connection_manager.send_to_operator(
             OperatorDisplayConfirmed(data=ReferenceConfirmedData(reference=ref)).model_dump()
         )

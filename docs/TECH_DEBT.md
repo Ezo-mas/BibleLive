@@ -12,6 +12,23 @@ Entry format:
 
 ## Open
 
+### Pruned WebSockets can keep receiving when their close stalls
+- **Where:** `backend/core/server/connections.py` (`ConnectionManager._prune`,
+  `_close_socket`) and `backend/core/server/ws.py` (`websocket_endpoint`).
+- **Problem:** When a peer stops reading, a send times out and the manager prunes
+  it, but uvicorn's close send can also time out on the paused transport. The
+  endpoint's receive loop continues until the TCP connection ends.
+- **Impact:** Operators are not notified of a display count change at prune time,
+  so the displayed count can remain stale. A pruned operator socket can still
+  process actions while its replies are silently dropped.
+- **Evidence:** Reported real-uvicorn reproduction during M3-D review: both send
+  and close time out for a peer that has stopped reading; pruning alone does not
+  stop the receive loop. The earlier implementation also did not close the peer.
+  A possible fix (pass the endpoint task to `connect()` and cancel it when close
+  fails, with `ws.py` treating that as a disconnect) changes the WebSocket endpoint
+  flow and needs an owner decision.
+- **Logged:** 2026-11-15
+
 ### The action row is back at the end of the list in the stacked layout
 - **Where:** `frontend/src/operator/operator.css` (`.operator-pending`,
   `.operator-main-column`) with the media queries at 1024px and 1280px.

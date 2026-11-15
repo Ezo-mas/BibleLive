@@ -16,6 +16,7 @@ from core.bible_lookup import BibleLookup
 from core.bible_versions import BibleVersion
 from core.config import config
 from core.server import app as server_app
+from core.server import state as server_state
 from core.server.models import BibleReference
 from core.server.runtime_state import RESTORE_DISPLAY_MAX_AGE_S, RuntimeReference, RuntimeStateStore
 from core.server.settings_store import SettingsStore
@@ -319,6 +320,45 @@ async def test_shutdown_closes_database_if_flush_raises(tmp_path, bible_db, monk
     monkeypatch.setattr(state.service_log, "stop", stop)
     monkeypatch.setattr(state.bible_lookup, "close", close)
     await state.shutdown()
+    stop.assert_called_once()
+    close.assert_called_once()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("outcome", ["cancel", "timeout", "error"])
+async def test_shutdown_flushes_before_connection_cleanup_and_always_closes_resources(
+    tmp_path, bible_db, monkeypatch, caplog, outcome
+):
+    state = AppState(BibleLookup(str(bible_db)), SettingsStore(tmp_path / "settings.json"))
+    flush = AsyncMock()
+    monkeypatch.setattr(state.runtime_state, "flush", flush)
+    monkeypatch.setattr(server_state, "SEND_TIMEOUT", 0.05)
+    started = asyncio.Event()
+
+    async def close_connections():
+        flush.assert_awaited_once()
+        started.set()
+        if outcome == "error":
+            raise RuntimeError("connection cleanup failed")
+        await asyncio.Event().wait()
+
+    monkeypatch.setattr(state.connection_manager, "close", close_connections)
+    stop = Mock(wraps=state.service_log.stop)
+    close = Mock(wraps=state.bible_lookup.close)
+    monkeypatch.setattr(state.service_log, "stop", stop)
+    monkeypatch.setattr(state.bible_lookup, "close", close)
+    task = asyncio.create_task(state.shutdown())
+    await asyncio.wait_for(started.wait(), 1)
+    if outcome == "cancel":
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+    elif outcome == "error":
+        with pytest.raises(RuntimeError, match="connection cleanup failed"):
+            await task
+    else:
+        await asyncio.wait_for(task, 1)
+        assert "Timed out closing WebSocket connections" in caplog.text
     stop.assert_called_once()
     close.assert_called_once()
 

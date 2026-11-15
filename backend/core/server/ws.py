@@ -39,17 +39,16 @@ def _validation_message(error: ValidationError) -> str:
     )
 
 
-async def _ws_error(websocket: WebSocket, action: str, message: str) -> None:
+async def _ws_error(websocket: WebSocket, app_state: AppState, action: str, message: str) -> None:
     """Send a structured error to an operator client.
 
     Every operator-side error shares this ``{type, data: {message, action}}``
     envelope; building it in one place keeps the wire shape identical across the
     WebSocket handler's branches.
     """
-    await websocket.send_text(
-        json.dumps(
-            OperatorError(data=WebSocketErrorData(message=message, action=action)).model_dump()
-        )
+    await app_state.connection_manager._safe_send(
+        websocket,
+        OperatorError(data=WebSocketErrorData(message=message, action=action)).model_dump(),
     )
 
 
@@ -59,13 +58,13 @@ async def _handle_approve(
     """Approve a pending reference (operator action ``approve``)."""
     reference_id = message.get("reference_id")
     if not reference_id:
-        await _ws_error(websocket, "approve", "Missing reference_id")
+        await _ws_error(websocket, app_state, "approve", "Missing reference_id")
         return
 
     try:
         ref = await app_state.approve_and_notify(
             reference_id,
-            on_no_text=lambda: _ws_error(websocket, "approve", NO_TEXT_MESSAGE),
+            on_no_text=lambda: _ws_error(websocket, app_state, "approve", NO_TEXT_MESSAGE),
         )
         if ref is ApprovalRefusal.NO_TEXT:
             return
@@ -74,10 +73,12 @@ async def _handle_approve(
                 f"Reference approved via WebSocket: {ref.book} {ref.chapter}:{ref.verse_start or '?'}"
             )
         else:
-            await _ws_error(websocket, "approve", "Reference not found or already processed")
+            await _ws_error(
+                websocket, app_state, "approve", "Reference not found or already processed"
+            )
     except Exception as e:
         logger.error(f"Error approving reference: {e}", exc_info=True)
-        await _ws_error(websocket, "approve", "Internal error processing approval")
+        await _ws_error(websocket, app_state, "approve", "Internal error processing approval")
 
 
 async def _handle_clear(
@@ -89,7 +90,7 @@ async def _handle_clear(
         logger.info("Display cleared via WebSocket")
     except Exception as e:
         logger.error(f"Error clearing display: {e}", exc_info=True)
-        await _ws_error(websocket, "clear", "Internal error clearing display")
+        await _ws_error(websocket, app_state, "clear", "Internal error clearing display")
 
 
 async def _handle_clear_pending(
@@ -101,7 +102,9 @@ async def _handle_clear_pending(
         logger.info(f"Cleared {count} pending references via WebSocket")
     except Exception as e:
         logger.error(f"Error clearing pending: {e}", exc_info=True)
-        await _ws_error(websocket, "clear_pending", "Internal error clearing pending queue")
+        await _ws_error(
+            websocket, app_state, "clear_pending", "Internal error clearing pending queue"
+        )
 
 
 async def _handle_set_verse_limit(
@@ -112,6 +115,7 @@ async def _handle_set_verse_limit(
     if verse_limit is None or not await app_state.set_verse_limit(verse_limit):
         await _ws_error(
             websocket,
+            app_state,
             "set_verse_limit",
             "Invalid verse_limit; expected one of 3, 5, 10, 'all'",
         )
@@ -130,7 +134,9 @@ async def _handle_set_display_theme(
     """Change the display theme (operator action ``set_display_theme``)."""
     theme = message.get("theme")
     if theme is None or not await app_state.set_display_theme(theme):
-        await _ws_error(websocket, "set_display_theme", "Invalid theme; expected 'dark' or 'light'")
+        await _ws_error(
+            websocket, app_state, "set_display_theme", "Invalid theme; expected 'dark' or 'light'"
+        )
         return
 
     # Confirm to operators (including this one) so their controls reflect the
@@ -150,7 +156,7 @@ async def _handle_display_reference(
     and verses are re-resolved here against the canonical canon and the server's
     own Bible text — so a client cannot inject verse text, forge a confidence, or
     pass anything off as a detection. Success is confirmed to operators only
-    after the display update has been sent.
+    after the display update has been queued.
     """
     try:
         passage = resolve_passage(
@@ -162,18 +168,20 @@ async def _handle_display_reference(
         )
     except PassageError as e:
         logger.warning(f"Rejected manual display request: {e.message}")
-        await _ws_error(websocket, "display_reference", e.message)
+        await _ws_error(websocket, app_state, "display_reference", e.message)
         return
     except Exception as e:
         logger.error(f"Error resolving manual passage: {e}", exc_info=True)
-        await _ws_error(websocket, "display_reference", "Could not look up that passage")
+        await _ws_error(websocket, app_state, "display_reference", "Could not look up that passage")
         return
 
     try:
         ref = await app_state.display_manual_passage(passage)
     except Exception as e:
         logger.error(f"Error displaying manual passage: {e}", exc_info=True)
-        await _ws_error(websocket, "display_reference", "Internal error displaying passage")
+        await _ws_error(
+            websocket, app_state, "display_reference", "Internal error displaying passage"
+        )
         return
 
     logger.info(
@@ -194,7 +202,7 @@ async def _handle_set_auto_mode(
     if auto_mode is None or not await app_state.set_auto_mode(auto_mode):
         expected = ", ".join(f"'{mode}'" for mode in ALLOWED_AUTO_MODES)
         await _ws_error(
-            websocket, "set_auto_mode", f"Invalid auto_mode; expected one of {expected}"
+            websocket, app_state, "set_auto_mode", f"Invalid auto_mode; expected one of {expected}"
         )
         return
 
@@ -219,10 +227,14 @@ async def _handle_set_follow_auto(
     """
     follow_auto = message.get("follow_auto")
     if follow_auto is True and not config.FOLLOW_ALONG:
-        await _ws_error(websocket, "set_follow_auto", "Follow-along is turned off on this server")
+        await _ws_error(
+            websocket, app_state, "set_follow_auto", "Follow-along is turned off on this server"
+        )
         return
     if follow_auto is None or not await app_state.set_follow_auto(follow_auto):
-        await _ws_error(websocket, "set_follow_auto", "Invalid follow_auto; expected true or false")
+        await _ws_error(
+            websocket, app_state, "set_follow_auto", "Invalid follow_auto; expected true or false"
+        )
         return
 
     # Confirm to operators (including this one) so the toggle reflects the setting the
@@ -357,21 +369,21 @@ def build_router(app_state: AppState) -> APIRouter:
                 except json.JSONDecodeError as e:
                     logger.warning(f"Invalid JSON from {client_type} client: {e}")
                     if client_type == "operator":
-                        await _ws_error(websocket, "unknown", "Invalid JSON format")
+                        await _ws_error(websocket, app_state, "unknown", "Invalid JSON format")
                     continue
 
                 # Handle messages from operator
                 if client_type == "operator":
                     action = message.get("action") if isinstance(message, dict) else None
                     if not action:
-                        await _ws_error(websocket, "unknown", "Missing 'action' field")
+                        await _ws_error(websocket, app_state, "unknown", "Missing 'action' field")
                         continue
 
                     # Unknown actions must keep their explicit "Unknown action"
                     # error, so the action name is checked before validation.
                     handler = _OPERATOR_ACTIONS.get(action) if isinstance(action, str) else None
                     if handler is None:
-                        await _ws_error(websocket, action, f"Unknown action: {action}")
+                        await _ws_error(websocket, app_state, action, f"Unknown action: {action}")
                         continue
 
                     # Validate the payload against its Operator*Action model so a
@@ -381,7 +393,7 @@ def build_router(app_state: AppState) -> APIRouter:
                     try:
                         _OPERATOR_ACTION_ADAPTER.validate_python(message)
                     except ValidationError as e:
-                        await _ws_error(websocket, action, _validation_message(e))
+                        await _ws_error(websocket, app_state, action, _validation_message(e))
                         continue
 
                     await handler(websocket, app_state, message)

@@ -18,7 +18,7 @@ from ..book_names import BookNames
 from ..config import config
 from ..passage import PassageError, ResolvedPassage, resolve_passage
 from .bible_version_service import BibleVersions
-from .connections import ConnectionManager
+from .connections import SEND_TIMEOUT, ConnectionManager
 from .display_session import ApprovalRefusal as ApprovalRefusal
 from .display_session import DisplaySession
 from .follow_along import FollowAlong, VerseIndexes
@@ -556,27 +556,35 @@ class AppState:
                 logger.warning("Could not flush runtime state during shutdown", exc_info=True)
         finally:
             try:
-                loop = asyncio.get_running_loop()
-                stopped = asyncio.Event()
-
-                def stop_listener() -> None:
-                    try:
-                        self.service_log.stop()
-                    except Exception:
-                        logger.warning("Could not stop service log", exc_info=True)
-                    finally:
-                        # The loop may have closed after a shutdown timeout.
-                        with contextlib.suppress(RuntimeError):
-                            loop.call_soon_threadsafe(stopped.set)
-
-                threading.Thread(target=stop_listener, daemon=True, name="service-log-stop").start()
                 try:
-                    await asyncio.wait_for(stopped.wait(), timeout=2)
+                    await asyncio.wait_for(self.connection_manager.close(), timeout=SEND_TIMEOUT)
                 except TimeoutError:
-                    logger.warning("Timed out stopping service log")
+                    logger.warning("Timed out closing WebSocket connections")
             finally:
-                self.bible_lookup.close()
-                logger.info("Closed database connection.")
+                try:
+                    loop = asyncio.get_running_loop()
+                    stopped = asyncio.Event()
+
+                    def stop_listener() -> None:
+                        try:
+                            self.service_log.stop()
+                        except Exception:
+                            logger.warning("Could not stop service log", exc_info=True)
+                        finally:
+                            # The loop may have closed after a shutdown timeout.
+                            with contextlib.suppress(RuntimeError):
+                                loop.call_soon_threadsafe(stopped.set)
+
+                    threading.Thread(
+                        target=stop_listener, daemon=True, name="service-log-stop"
+                    ).start()
+                    try:
+                        await asyncio.wait_for(stopped.wait(), timeout=2)
+                    except TimeoutError:
+                        logger.warning("Timed out stopping service log")
+                finally:
+                    self.bible_lookup.close()
+                    logger.info("Closed database connection.")
 
     async def add_reference(self, ref: BibleReference) -> None:
         return await self._display_session.add_reference(ref)

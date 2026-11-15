@@ -8,18 +8,33 @@ from fastapi import WebSocket
 
 logger = logging.getLogger(__name__)
 
-# Bound each WebSocket send so one stalled client (projector asleep, half-open
-# TCP) cannot block the caller -- and therefore every other client -- forever.
+# Bound sends and best-effort closes in each socket's background writer/cleanup.
 SEND_TIMEOUT = 5.0
+# The largest normal synchronous burst is a translation change (3 operator
+# messages); approval sends 2, snapshots at most 2 (including a follow-along hint).
+# Leave a wide margin because put_nowait cannot drain until the caller yields.
+SEND_QUEUE_MAX = 256
 
 
 class ConnectionManager:
-    """Manage WebSocket connections for display and operator clients."""
+    """Manage ordered outbound queues for display and operator clients.
+
+    All sends to registered sockets, including private single-socket sends, are
+    queued without waiting for delivery. Unregistered sockets (before connect
+    or after disconnect/prune) silently drop sends; authentication sends nothing
+    before registration. Broadcast results list only synchronous queue overflows,
+    not failures discovered later by writers. A best-effort close may also
+    time out if the peer has stopped reading; its receive loop then continues
+    until the TCP connection ends.
+    """
 
     def __init__(self):
         """Initialize the connection manager with empty connection sets."""
         self.display_connections: set[WebSocket] = set()
         self.operator_connections: set[WebSocket] = set()
+        self._queues: dict[WebSocket, asyncio.Queue[str]] = {}
+        self._writers: dict[WebSocket, asyncio.Task[None]] = {}
+        self._tasks: set[asyncio.Task[None]] = set()
 
     async def connect(
         self, websocket: WebSocket, client_type: str = "display", accepted: bool = False
@@ -34,28 +49,89 @@ class ConnectionManager:
         """
         if not accepted:
             await websocket.accept()
+        queue: asyncio.Queue[str] = asyncio.Queue(maxsize=SEND_QUEUE_MAX)
+        self._queues[websocket] = queue
+        writer = asyncio.create_task(self._write(websocket, queue))
+        self._writers[websocket] = writer
+        self._track(writer)
         if client_type == "display":
             self.display_connections.add(websocket)
         elif client_type == "operator":
             self.operator_connections.add(websocket)
 
     def disconnect(self, websocket: WebSocket):
-        """Remove a websocket from all connection sets.
+        """Remove a websocket, drop queued messages and stop its writer.
 
         Args:
             websocket: The WebSocket connection to remove.
         """
         self.display_connections.discard(websocket)
         self.operator_connections.discard(websocket)
+        queue = self._queues.pop(websocket, None)
+        if queue is not None:
+            while not queue.empty():
+                queue.get_nowait()
+                queue.task_done()
+        writer = self._writers.pop(websocket, None)
+        if writer is not None and writer is not asyncio.current_task():
+            writer.cancel()
+
+    def _track(self, task: asyncio.Task[None]) -> None:
+        self._tasks.add(task)
+        task.add_done_callback(self._tasks.discard)
+
+    async def close(self) -> None:
+        """Stop all writers and await any bounded prune/close cleanup."""
+        for websocket in list(self._queues):
+            self.disconnect(websocket)
+        if self._tasks:
+            tasks = list(self._tasks)
+            await asyncio.gather(*tasks, return_exceptions=True)
+            self._tasks.difference_update(tasks)
+
+    def _prune(self, websocket: WebSocket) -> None:
+        writer = self._writers.get(websocket)
+        self.disconnect(websocket)
+        self._track(asyncio.create_task(self._close_socket(websocket, writer)))
+
+    async def _close_socket(self, websocket: WebSocket, writer: asyncio.Task[None] | None) -> None:
+        # Never close concurrently with an in-flight send, including a writer
+        # cancelled before it first ran (whose finally block would not execute).
+        if writer is not None:
+            await asyncio.gather(writer, return_exceptions=True)
+        try:
+            await asyncio.wait_for(websocket.close(), timeout=SEND_TIMEOUT)
+        except Exception as e:
+            logger.warning(f"Failed to close pruned WebSocket: {e!r}")
+
+    async def _write(self, websocket: WebSocket, queue: asyncio.Queue[str]) -> None:
+        try:
+            while True:
+                payload = await queue.get()
+                try:
+                    await asyncio.wait_for(websocket.send_text(payload), timeout=SEND_TIMEOUT)
+                finally:
+                    queue.task_done()
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            logger.warning(f"Failed to send WebSocket message; pruning connection: {e!r}")
+            self._prune(websocket)
+
+    def _enqueue(self, websocket: WebSocket, payload: str) -> bool:
+        queue = self._queues.get(websocket)
+        if queue is None:
+            return False
+        try:
+            queue.put_nowait(payload)
+        except asyncio.QueueFull:
+            logger.warning("WebSocket send queue full; pruning connection")
+            self._prune(websocket)
+            return True
+        return False
 
     async def _send_to_connections(self, message: dict, connections) -> list[WebSocket]:
-        """Send a message to a set/list of connections.
-
-        Each send is bounded by ``SEND_TIMEOUT`` and inspected: a socket whose
-        send times out or raises is logged and pruned from the connection sets
-        so a dead client cannot block future broadcasts or inflate connection
-        counts. Returns the list of sockets that failed.
-        """
+        """Enqueue a broadcast; return sockets pruned now because their queue is full."""
         # Copy before iterating: pruning a failed socket mutates the sets below,
         # which is not safe while iterating them.
         connections = list(connections)
@@ -63,38 +139,17 @@ class ConnectionManager:
             return []
 
         payload = json.dumps(message)
-        results = await asyncio.gather(
-            *[
-                asyncio.wait_for(connection.send_text(payload), timeout=SEND_TIMEOUT)
-                for connection in connections
-            ],
-            return_exceptions=True,
-        )
-
-        failed: list[WebSocket] = []
-        for connection, result in zip(connections, results, strict=True):
-            if isinstance(result, BaseException):
-                if isinstance(result, asyncio.TimeoutError):
-                    logger.warning(
-                        f"WebSocket send timed out after {SEND_TIMEOUT}s; pruning dead connection"
-                    )
-                else:
-                    logger.warning(f"Failed to send WebSocket message: {result}")
-                failed.append(connection)
-                self.disconnect(connection)
-        return failed
+        return [connection for connection in connections if self._enqueue(connection, payload)]
 
     async def _safe_send(self, websocket: WebSocket, message: dict):
-        """Safely send a message to a single websocket, logging errors."""
-        try:
-            await websocket.send_text(json.dumps(message))
-        except Exception as e:
-            logger.warning(f"Failed to send WebSocket message: {e}")
+        """Enqueue for one registered socket; silently drop after disconnect/prune."""
+        if websocket in self._queues:
+            self._enqueue(websocket, json.dumps(message))
 
     async def send_to_display(self, message: dict) -> list[WebSocket]:
-        """Send message to all display connections; returns failed sockets."""
+        """Enqueue for displays; return only sockets pruned now on queue overflow."""
         return await self._send_to_connections(message, self.display_connections)
 
     async def send_to_operator(self, message: dict) -> list[WebSocket]:
-        """Send message to all operator connections; returns failed sockets."""
+        """Enqueue for operators; return only sockets pruned now on queue overflow."""
         return await self._send_to_connections(message, self.operator_connections)

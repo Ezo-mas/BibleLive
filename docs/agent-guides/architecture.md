@@ -105,6 +105,18 @@ easy to break by accident.
    that has aged out of the server's 20-entry snapshot window can still
    be shown again, because the canon and the Bible database — not the
    history list — are the authority.
+
+   `ConnectionManager` enqueues sends without yielding: each registered socket
+   has a bounded FIFO (256 messages) and one writer, including connect-time
+   state and `_ws_error` messages via private `_safe_send`. Confirmation means
+   queued for the display, not delivered (Q5). Queue overflow prunes immediately;
+   a writer send failure or `SEND_TIMEOUT` (5 s) also prunes, then attempts a
+   best-effort close with the same timeout. A peer that has stopped reading can
+   prevent the close from completing; its receive loop then continues until the
+   TCP connection ends. Unregistered/pruned sockets drop sends. Disconnect drops
+   queued messages and cancels the writer; shutdown waits up to `SEND_TIMEOUT` for writers and outstanding
+   close cleanup. Keep two-socket integration tests inside `with TestClient(app)`
+   so both sockets share one event loop.
 3. **VAD frame discipline**: frames must be exactly the size the active
    VAD requires at 16 kHz — WebRTC VAD (the default): 10/20/30 ms. The
    optional Silero VAD (`--vad silero`) takes the same 30 ms frames and
