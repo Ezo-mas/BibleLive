@@ -162,6 +162,26 @@ async def _handle_set_display_theme(
     )
 
 
+async def _handle_set_clear_mode(
+    websocket: WebSocket, app_state: AppState, message: dict[str, Any]
+) -> None:
+    """Change the clear mode (operator action ``set_clear_mode``)."""
+    clear_mode = message.get("clear_mode")
+    if clear_mode is None or not await app_state.set_clear_mode(clear_mode):
+        await _ws_error(
+            websocket,
+            app_state,
+            "set_clear_mode",
+            "Invalid clear mode; expected 'idle' or 'blank'",
+        )
+        return
+
+    # Confirm to every operator, just like the display theme.
+    await app_state.connection_manager.send_to_operator(
+        OperatorDisplaySettingsConfirmed(data=app_state.display_settings).model_dump()
+    )
+
+
 async def _handle_display_reference(
     websocket: WebSocket, app_state: AppState, message: dict[str, Any]
 ) -> None:
@@ -335,6 +355,7 @@ _OPERATOR_ACTIONS: dict[str, Any] = {
     "clear_pending": _handle_clear_pending,
     "set_verse_limit": _handle_set_verse_limit,
     "set_display_theme": _handle_set_display_theme,
+    "set_clear_mode": _handle_set_clear_mode,
     "set_auto_mode": _handle_set_auto_mode,
     "set_follow_auto": _handle_set_follow_auto,
     "display_reference": _handle_display_reference,

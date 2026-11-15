@@ -147,6 +147,10 @@ class DisplaySettings(BaseModel):
         default="dark",
         description="Projector background theme; dark avoids washing out the panel",
     )
+    clear_mode: Literal["idle", "blank"] = Field(
+        default="idle",
+        description="After a passage is cleared, show the idle picture or a blank screen",
+    )
     idle_image: IdleScreenPicture | None = Field(
         default=None,
         description="Picture shown while nothing is on screen; null means a blank screen",
@@ -424,6 +428,13 @@ class OperatorSetDisplayThemeAction(BaseModel):
     theme: Literal["dark", "light"]
 
 
+class OperatorSetClearModeAction(BaseModel):
+    """Action to choose what the display shows after clearing a passage."""
+
+    action: Literal["set_clear_mode"]
+    clear_mode: Literal["idle", "blank"]
+
+
 class OperatorSetAutoModeAction(BaseModel):
     """Action to choose which new detections are shown without operator approval."""
 
@@ -481,6 +492,7 @@ OperatorAction = Annotated[
     | OperatorClearPendingAction
     | OperatorSetVerseLimitAction
     | OperatorSetDisplayThemeAction
+    | OperatorSetClearModeAction
     | OperatorSetAutoModeAction
     | OperatorSetFollowAutoAction
     | OperatorDisplayReferenceAction,

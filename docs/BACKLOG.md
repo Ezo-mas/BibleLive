@@ -35,13 +35,6 @@ size at 10 and All verses (9 px and 7 px on a 1440x900 window, 7.4 px and 5.4 px
 layout below 1100 px (not re-checked after the last CSS edit), and the light theme's
 selected segmented fill (1.85:1 against its track; the bold label is the second cue).
 
-### Clear the display to blank, not to the idle picture
-When an idle picture is set, Clear display brings it back. The user wants a setting
-("When the display is cleared": idle screen or fully blank) so the picture can be
-skipped. It needs a protocol change (for example an optional flag on the `clear`
-message and a persisted setting in `settings_store.py`), so ask before building it.
-The mock of the Settings row is in the design thread, not in the repo.
-
 ### Small console follow-ups
 - The source label (detected, manual, history) on Up Next is now screen-reader-only, so a
   sighted operator cannot see whether Show approves a queued detection or re-shows

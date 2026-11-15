@@ -38,8 +38,10 @@ easy to break by accident.
    auto-show, so nothing can auto-approve it). The supported operator actions are
    `authenticate` (the token, as the socket's first message; it carries no
    operation and is ignored once the socket is let in), `approve`, `discard_pending`, `clear`, `clear_pending`, `set_verse_limit`,
-   `set_display_theme`, `set_auto_mode`, `set_follow_auto`, `display_reference` — there is no
+   `set_display_theme`, `set_clear_mode`, `set_auto_mode`, `set_follow_auto`, `display_reference` — there is no
    `reject` action; `discard_pending` removes one pending row and broadcasts only `pending_update`.
+   Display settings include verse limit, theme, idle picture and persisted
+   `clear_mode` (`idle` by default, or `blank` after a passage has been cleared).
    `bible_version_confirmed` (server → operators only) announces a
    translation change; it never reaches display sockets, and
    `follow_along` (server → operators only, never display sockets) is a

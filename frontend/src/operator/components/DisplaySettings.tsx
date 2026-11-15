@@ -5,16 +5,21 @@ import {
   VERSE_LIMIT_OPTIONS,
 } from '../../shared/verseText'
 import type { DisplayTheme, VerseLimit } from '../../shared/verseText'
+import type { ClearMode } from '../../shared/types'
 import { SegmentedOption } from '../../components'
 import { useI18n } from '../../shared/i18nContext'
+
+const CLEAR_MODE_OPTIONS = ['idle', 'blank'] as const
 
 export interface DisplaySettingsProps {
   verseLimit: VerseLimit
   displayTheme: DisplayTheme
+  clearMode: ClearMode
   /** Settings are server-owned, so they are read-only while disconnected. */
   disabled: boolean
   onVerseLimitChange: (next: VerseLimit) => void
   onThemeChange: (next: DisplayTheme) => void
+  onClearModeChange: (next: ClearMode) => void
   /** Controls that share this panel's styling, e.g. auto-approve. */
   children?: ReactNode
 }
@@ -32,9 +37,11 @@ export interface DisplaySettingsProps {
 export function DisplaySettings({
   verseLimit,
   displayTheme,
+  clearMode,
   disabled,
   onVerseLimitChange,
   onThemeChange,
+  onClearModeChange,
   children,
 }: DisplaySettingsProps) {
   const { t } = useI18n()
@@ -82,6 +89,25 @@ export function DisplaySettings({
               onClick={() => onThemeChange(option)}
             >
               {option === 'dark' ? t('settings.bgDark') : t('settings.bgLight')}
+            </SegmentedOption>
+          ))}
+        </div>
+      </div>
+
+      <div className="operator-setting">
+        <div className="operator-setting-text">
+          <span className="operator-setting-label">{t('settings.clearMode')}</span>
+          <p className="operator-setting-hint">{t('settings.clearHint')}</p>
+        </div>
+        <div className="segmented" role="group" aria-label={t('settings.clearMode')}>
+          {CLEAR_MODE_OPTIONS.map(option => (
+            <SegmentedOption
+              key={option}
+              aria-pressed={clearMode === option}
+              disabled={disabled}
+              onClick={() => onClearModeChange(option)}
+            >
+              {option === 'idle' ? t('settings.clearIdle') : t('settings.clearBlank')}
             </SegmentedOption>
           ))}
         </div>

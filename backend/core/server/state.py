@@ -59,6 +59,7 @@ ALLOWED_VERSE_LIMITS: tuple[int | str, ...] = (3, 5, 10, "all")
 # Background themes a display may use. Kept in step with the operator console's
 # options; anything else is rejected so a bad value cannot blank the projector.
 ALLOWED_DISPLAY_THEMES: tuple[str, ...] = ("dark", "light")
+ALLOWED_CLEAR_MODES: tuple[str, ...] = ("idle", "blank")
 
 # Confidence levels each auto-approve mode accepts. Confidence order is
 # low < medium < high, so "medium_and_up" ("Med+" in the console) covers high as
@@ -110,6 +111,7 @@ class AppState:
         self.display_settings = DisplaySettings(
             verse_limit=self.settings_store.load_verse_limit(),
             theme=self.settings_store.load_theme(),
+            clear_mode=self.settings_store.load_clear_mode(),
         )
         self.runtime_state = RuntimeStateStore(self.settings_store.directory / "runtime_state.json")
         self.service_log = ServiceLog()
@@ -344,6 +346,16 @@ class AppState:
         await self.send_display_settings()
         self.settings_store.save_theme(self.display_settings.theme)
         logger.info(f"Display theme set to {theme}")
+        return True
+
+    async def set_clear_mode(self, clear_mode: str) -> bool:
+        """Set what displays show after clearing a passage. Returns False if invalid."""
+        if clear_mode not in ALLOWED_CLEAR_MODES:
+            return False
+        self.display_settings = self.display_settings.model_copy(update={"clear_mode": clear_mode})
+        await self.send_display_settings()
+        self.settings_store.save_clear_mode(self.display_settings.clear_mode)
+        logger.info(f"Display clear mode set to {clear_mode}")
         return True
 
     async def set_auto_mode(self, auto_mode: object) -> bool:

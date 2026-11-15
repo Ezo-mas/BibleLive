@@ -133,6 +133,7 @@ async def test_settings_round_trip_and_shutdown_flush(tmp_path, bible_db, monkey
     state = AppState(BibleLookup(str(bible_db)), settings)
     assert await state.set_verse_limit("all")
     assert await state.set_display_theme("light")
+    assert await state.set_clear_mode("blank")
     ref = reference()
     state._resolve_verses(ref)
     state.current_display = ref
@@ -141,6 +142,7 @@ async def test_settings_round_trip_and_shutdown_flush(tmp_path, bible_db, monkey
     restored = AppState(BibleLookup(str(bible_db)), settings)
     assert restored.display_settings.verse_limit == "all"
     assert restored.display_settings.theme == "light"
+    assert restored.display_settings.clear_mode == "blank"
     restored.restore_runtime_state()
     assert restored.current_display.verse_start == 16
     assert "text" not in restored.runtime_state.path.read_text()
@@ -287,9 +289,11 @@ async def test_settings_broadcast_starts_before_persistence(tmp_path, bible_db, 
     monkeypatch.setattr(state, "send_display_settings", send)
     monkeypatch.setattr(state.settings_store, "save_verse_limit", lambda _: calls.append("save"))
     monkeypatch.setattr(state.settings_store, "save_theme", lambda _: calls.append("save"))
+    monkeypatch.setattr(state.settings_store, "save_clear_mode", lambda _: calls.append("save"))
     await state.set_verse_limit(5)
     await state.set_display_theme("light")
-    assert calls == ["send", "save", "send", "save"]
+    await state.set_clear_mode("blank")
+    assert calls == ["send", "save", "send", "save", "send", "save"]
     await state.shutdown()
 
 
@@ -387,7 +391,7 @@ async def test_shutdown_timeboxes_flush_and_stalled_service_log(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("kind", ["verse_limit", "theme"])
+@pytest.mark.parametrize("kind", ["verse_limit", "theme", "clear_mode"])
 async def test_concurrent_settings_saves_keep_latest_value(tmp_path, bible_db, monkeypatch, kind):
     state = AppState(BibleLookup(str(bible_db)), SettingsStore(tmp_path / "settings.json"))
     started, release = asyncio.Event(), asyncio.Event()
@@ -401,8 +405,16 @@ async def test_concurrent_settings_saves_keep_latest_value(tmp_path, bible_db, m
             await release.wait()
 
     monkeypatch.setattr(state, "send_display_settings", send)
-    setter = state.set_verse_limit if kind == "verse_limit" else state.set_display_theme
-    first, second = (5, 10) if kind == "verse_limit" else ("light", "dark")
+    setter = {
+        "verse_limit": state.set_verse_limit,
+        "theme": state.set_display_theme,
+        "clear_mode": state.set_clear_mode,
+    }[kind]
+    first, second = {
+        "verse_limit": (5, 10),
+        "theme": ("light", "dark"),
+        "clear_mode": ("blank", "idle"),
+    }[kind]
     first_task = asyncio.create_task(setter(first))
     await started.wait()
     await setter(second)

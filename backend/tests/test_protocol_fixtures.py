@@ -28,6 +28,7 @@ ACTIONS = {
     "clear_pending": {"action": "clear_pending"},
     "set_verse_limit": {"action": "set_verse_limit", "verse_limit": 5},
     "set_display_theme": {"action": "set_display_theme", "theme": "light"},
+    "set_clear_mode": {"action": "set_clear_mode", "clear_mode": "blank"},
     "set_auto_mode": {"action": "set_auto_mode", "auto_mode": "high"},
     "set_follow_auto": {"action": "set_follow_auto", "follow_auto": True},
     "display_reference": {

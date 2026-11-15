@@ -12,12 +12,14 @@ import {
 } from '../../shared/verseText'
 import type { DisplayTheme, VerseLimit } from '../../shared/verseText'
 import { readIdleImage } from '../../shared/idleScreen'
+import { coerceClearMode } from '../../shared/clearMode'
 import type { IdleImage } from '../../shared/idleScreen'
 import { formatReference } from '../../shared/reference'
 import type {
   AuthenticateAction,
   AutoMode,
   BibleReference,
+  ClearMode,
   FollowAlongHint,
   OperatorAction,
   OperatorMessage,
@@ -94,6 +96,7 @@ const ERROR_PREFIX_KEYS: Record<string, MessageKey> = {
   discard_pending: 'notice.errDiscardPending',
   set_verse_limit: 'notice.errVerseLimit',
   set_display_theme: 'notice.errTheme',
+  set_clear_mode: 'notice.errClearMode',
   set_auto_mode: 'notice.errAutoMode',
   set_follow_auto: 'notice.errFollowAuto',
 }
@@ -107,6 +110,7 @@ const ERROR_PREFIX_KEYS: Record<string, MessageKey> = {
 const OPTIMISTIC_ACTIONS = [
   'set_verse_limit',
   'set_display_theme',
+  'set_clear_mode',
   'set_auto_mode',
   'set_follow_auto',
 ] as const
@@ -181,6 +185,7 @@ export interface OperatorState {
   historyCount: number
   /** Scripture currently on the display, as reported by the server. */
   currentDisplay: BibleReference | null
+  seenPassage: boolean
   hasDisplayContent: boolean
   displayConnected: boolean
   /** Audio pipeline health; null while disconnected or before the first answer. */
@@ -277,10 +282,12 @@ export interface OperatorState {
 
   verseLimit: VerseLimit
   displayTheme: DisplayTheme
+  clearMode: ClearMode
   /** The picture the display shows while idle, so the preview can show it too; null for blank. */
   idleImage: IdleImage | null
   setDisplayVerseLimit: (next: VerseLimit) => void
   setDisplayBackground: (next: DisplayTheme) => void
+  setDisplayClearMode: (next: ClearMode) => void
 
   /** Which new detections the server displays without waiting for approval. */
   autoMode: AutoMode
@@ -316,6 +323,9 @@ export function useOperatorState(): OperatorState {
   const [pendingCount, setPendingCount] = useState(0)
   const [historyCount, setHistoryCount] = useState(0)
   const [currentDisplay, setCurrentDisplay] = useState<BibleReference | null>(null)
+  // Page-local: after a console reload on a cleared display, the preview shows the
+  // picture until the next passage, because the protocol does not track this history.
+  const [seenPassage, setSeenPassage] = useState(false)
   // What Up Next holds. One piece of state, so a queued selection and a manual
   // passage can never both look staged.
   const [staged, setStaged] = useState<StagedReference | null>(null)
@@ -369,6 +379,7 @@ export function useOperatorState(): OperatorState {
   const [displayTheme, setDisplayTheme] = useState<DisplayTheme>(() =>
     coerceDisplayTheme(readStoredDisplayTheme(window.localStorage))
   )
+  const [clearMode, setClearMode] = useState<ClearMode>('idle')
   // The display's idle picture, from the snapshot, settings echoes and this console's
   // own idle-screen requests. The server tells only displays when another console
   // changes it, so that change shows here after the next snapshot or echo.
@@ -388,7 +399,13 @@ export function useOperatorState(): OperatorState {
   const noticeTimerRef = useRef<number | undefined>(undefined)
   // The last values the server confirmed. Optimistic control changes fall back
   // to these when the server rejects them.
-  const confirmedRef = useRef({ verseLimit, theme: displayTheme, autoMode, followAuto: false })
+  const confirmedRef = useRef({
+    verseLimit,
+    theme: displayTheme,
+    clearMode,
+    autoMode,
+    followAuto: false,
+  })
 
   // Brief "pressed" pulse on a button once the server confirms its action.
   const pulse = useCallback((target: FlashTarget) => {
@@ -443,8 +460,8 @@ export function useOperatorState(): OperatorState {
   const applyBibleVersionRef = useRef<(data: unknown) => void>(() => {})
 
   // How each optimistic control goes back to its last confirmed value when the server
-  // rejects it. The four are not alike: verse limit and theme are also kept in
-  // localStorage, auto mode and follow-along are not, so each entry is written out.
+  // rejects it. Only verse limit and theme are also kept in localStorage, so
+  // each entry is written out.
   // Keyed by OptimisticAction, so leaving one out does not type-check; it is only
   // read after isOptimisticAction, so an inherited property can never match.
   const revertOptimistic: Record<OptimisticAction, { apply: () => void; persist?: () => void }> = {
@@ -456,6 +473,7 @@ export function useOperatorState(): OperatorState {
       apply: () => setDisplayTheme(confirmedRef.current.theme),
       persist: () => writeStoredDisplayTheme(confirmedRef.current.theme, window.localStorage),
     },
+    set_clear_mode: { apply: () => setClearMode(confirmedRef.current.clearMode) },
     set_auto_mode: { apply: () => setAutoMode(confirmedRef.current.autoMode) },
     set_follow_auto: { apply: () => setFollowAuto(confirmedRef.current.followAuto) },
   }
@@ -468,17 +486,21 @@ export function useOperatorState(): OperatorState {
         setPendingCount(message.data.pending_count)
         setHistoryCount(message.data.history_count)
         setCurrentDisplay(message.data.current_display)
+        if (message.data.current_display) setSeenPassage(true)
         // Hints are not part of a snapshot; one from before a reconnect is stale.
         setFollowAlongHint(null)
         setDisplayConnected(message.data.display_connections > 0)
         if (message.data.display_settings) {
           const verseLimit = coerceVerseLimit(message.data.display_settings.verse_limit)
           const theme = coerceDisplayTheme(message.data.display_settings.theme)
+          const clearMode = coerceClearMode(message.data.display_settings.clear_mode)
           setVerseLimit(verseLimit)
           setDisplayTheme(theme)
+          setClearMode(clearMode)
           setIdleImage(readIdleImage(message.data.display_settings))
           confirmedRef.current.verseLimit = verseLimit
           confirmedRef.current.theme = theme
+          confirmedRef.current.clearMode = clearMode
         }
         // Absent when talking to an older server, which leaves the mode off.
         if (message.data.auto_mode) {
@@ -515,6 +537,7 @@ export function useOperatorState(): OperatorState {
         setHistory(prev => dedupeHistory([shown, ...prev]).slice(0, HISTORY_WINDOW))
         setHistoryCount(count => count + 1)
         setCurrentDisplay(shown)
+        setSeenPassage(true)
         setShowInFlight(false)
         pulse('approve')
         showNotice('success', t('notice.shown', { ref: formatReference(shown) }))
@@ -528,6 +551,7 @@ export function useOperatorState(): OperatorState {
         setHistory(prev => dedupeHistory([shown, ...prev]).slice(0, HISTORY_WINDOW))
         setHistoryCount(count => count + 1)
         setCurrentDisplay(shown)
+        setSeenPassage(true)
         // A passage follow-along showed by itself answers no Show of this console:
         // the operator's own request stays in flight and Up Next stays as it is.
         const followed = shown.source === 'follow'
@@ -564,6 +588,7 @@ export function useOperatorState(): OperatorState {
       case 'display_settings_confirmed': {
         const verseLimit = coerceVerseLimit(message.data.verse_limit)
         const theme = coerceDisplayTheme(message.data.theme)
+        const clearMode = coerceClearMode(message.data.clear_mode)
         // The server echoes the whole settings block, so announce only what
         // actually moved; an unrelated echo stays quiet.
         const changes: string[] = []
@@ -581,11 +606,20 @@ export function useOperatorState(): OperatorState {
             })
           )
         }
+        if (clearMode !== confirmedRef.current.clearMode) {
+          changes.push(
+            t('notice.changeClearMode', {
+              value: clearMode === 'idle' ? t('settings.clearIdle') : t('settings.clearBlank'),
+            })
+          )
+        }
         setVerseLimit(verseLimit)
         setDisplayTheme(theme)
+        setClearMode(clearMode)
         setIdleImage(readIdleImage(message.data))
         confirmedRef.current.verseLimit = verseLimit
         confirmedRef.current.theme = theme
+        confirmedRef.current.clearMode = clearMode
         if (changes.length > 0)
           showNotice('info', t('notice.saved', { changes: changes.join(', ') }))
         break
@@ -747,6 +781,14 @@ export function useOperatorState(): OperatorState {
       setDisplayTheme(next)
       writeStoredDisplayTheme(next, window.localStorage)
       sendAction({ action: 'set_display_theme', theme: next })
+    },
+    [sendAction]
+  )
+
+  const setDisplayClearMode = useCallback(
+    (next: ClearMode) => {
+      setClearMode(next)
+      sendAction({ action: 'set_clear_mode', clear_mode: next })
     },
     [sendAction]
   )
@@ -1063,6 +1105,7 @@ export function useOperatorState(): OperatorState {
     pendingCount,
     historyCount,
     currentDisplay,
+    seenPassage,
     hasDisplayContent: currentDisplay !== null,
     displayConnected,
     pipeline,
@@ -1109,9 +1152,11 @@ export function useOperatorState(): OperatorState {
 
     verseLimit,
     displayTheme,
+    clearMode,
     idleImage,
     setDisplayVerseLimit,
     setDisplayBackground,
+    setDisplayClearMode,
 
     autoMode,
     setAutoApproveMode,

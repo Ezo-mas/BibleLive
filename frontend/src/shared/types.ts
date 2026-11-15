@@ -88,6 +88,9 @@ export type VerseLimit = number | 'all'
 /** Background theme for the audience display. Projectors default to 'dark'. */
 export type DisplayTheme = 'dark' | 'light'
 
+/** What the audience sees after a passage is cleared. */
+export type ClearMode = 'idle' | 'blank'
+
 /** The idle-screen picture; `version` only busts the cache of GET /api/idle-screen/image. */
 export interface IdleScreenPicture {
   version: string
@@ -98,6 +101,8 @@ export interface IdleScreenPicture {
 export interface DisplaySettings {
   verse_limit: VerseLimit
   theme: DisplayTheme
+  /** An older server omits it, which keeps the idle picture after clearing. */
+  clear_mode?: ClearMode
   /** Optional and additive: an older server omits it, which means a blank screen. */
   idle_image?: IdleScreenPicture | null
 }
@@ -185,6 +190,11 @@ export interface SetAutoModeAction {
   auto_mode: AutoMode
 }
 
+export interface SetClearModeAction {
+  action: 'set_clear_mode'
+  clear_mode: ClearMode
+}
+
 /**
  * Turn follow-along auto-show on or off. Server-held, like the auto-approve mode: the
  * server shows the verses a speaker reads on to, and every console hears the result.
@@ -228,6 +238,7 @@ export type OperatorAction =
   | ClearPendingAction
   | SetVerseLimitAction
   | SetDisplayThemeAction
+  | SetClearModeAction
   | SetAutoModeAction
   | SetFollowAutoAction
   | DisplayReferenceAction

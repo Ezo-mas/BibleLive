@@ -214,6 +214,15 @@ class SettingsStore:
             logger.warning("Ignoring invalid display theme %r; using dark", value)
         return "dark"
 
+    def load_clear_mode(self) -> Literal["idle", "blank"]:
+        """Return a valid saved clear mode, or idle."""
+        value = self._read().get("clear_mode")
+        if value == "blank":
+            return "blank"
+        if value != "idle" and value is not None:
+            logger.warning("Ignoring invalid clear mode %r; using idle", value)
+        return "idle"
+
     def save_verse_limit(self, value: int | str) -> bool:
         """Persist a limit accepted by the operator handlers."""
         if not (type(value) is int and value in (3, 5, 10)) and value != "all":
@@ -225,6 +234,12 @@ class SettingsStore:
         if value not in ("dark", "light"):
             return False
         return self._update({"theme": value}, log=f"Persisted display theme to {self.path}")
+
+    def save_clear_mode(self, value: str) -> bool:
+        """Persist a clear mode accepted by the operator handlers."""
+        if value not in ("idle", "blank"):
+            return False
+        return self._update({"clear_mode": value}, log=f"Persisted clear mode to {self.path}")
 
     def load_bible_version(self, db_path: str) -> str | None:
         """Return the persisted Bible translation id, or None if none applies.
