@@ -502,8 +502,9 @@ Uses decisions Q5 to Q7.
 3. **Per-socket writers (Q5).** In `connections.py`, each connection gets a
    bounded `asyncio.Queue` and one writer task. `send_to_display` and
    `send_to_operator` enqueue and return. A full queue or a send that exceeds
-   `SEND_TIMEOUT` closes and prunes that socket. The single-socket send used
-   on connect goes through the same queue, which also gives it a timeout.
+   `SEND_TIMEOUT` prunes that socket and attempts a bounded, best-effort close.
+   The single-socket send used on connect goes through the same queue, which also
+   gives it a timeout.
 4. **Event loop.** Cache `discover_versions` results keyed by the folder's
    file names and modification times. Run the open-and-count in
    `switch_bible_version` through `asyncio.to_thread`, keeping the swap and

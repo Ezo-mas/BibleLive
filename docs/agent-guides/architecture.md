@@ -26,8 +26,9 @@ easy to break by accident.
    them and pushes to the operator over
    WebSocket; `_send_display_reference` (the only path that pushes a
    reference to display sockets) is called from exactly two
-   operator-authorized places: `AppState.approve_pending()`, and
-   `AppState.display_manual_passage()` — the `display_reference` action,
+   operator-authorized places: `DisplaySession.approve_pending()`, and
+   `DisplaySession.display_manual_passage()` in `display_session.py` (via the
+   one-line `AppState` forwarders, which the door guard allows) — the `display_reference` action,
    which shows a passage the operator picked by hand, and a third caller:
    follow-along auto-show (`offer_follow_along`), which shows the next verses
    by itself only while the operator's `follow_auto` switch is on (see
@@ -36,10 +37,11 @@ easy to break by accident.
    a confidence (it is `source="manual"`, or `source="follow"` for an
    auto-show, so nothing can auto-approve it). The supported operator actions are
    `authenticate` (the token, as the socket's first message; it carries no
-   operation and is ignored once the socket is let in), `approve`, `clear`, `clear_pending`, `set_verse_limit`,
-   `set_display_theme`, `set_auto_mode`, `set_follow_auto`, `display_reference` — there is no
-   `reject` action; discarding a wrong detection is done implicitly by
-   approving the next one or via `clear_pending`.
+   operation and is ignored once the socket is let in), `approve`, `discard_pending`, `clear`, `clear_pending`, `set_verse_limit`,
+   `set_display_theme`, `set_clear_mode`, `set_auto_mode`, `set_follow_auto`, `display_reference` — there is no
+   `reject` action; `discard_pending` removes one pending row and broadcasts only `pending_update`.
+   Display settings include verse limit, theme, idle picture and persisted
+   `clear_mode` (`idle` by default, or `blank` after a passage has been cleared).
    `bible_version_confirmed` (server → operators only) announces a
    translation change; it never reaches display sockets, and
    `follow_along` (server → operators only, never display sockets) is a
@@ -64,6 +66,11 @@ easy to break by accident.
    `AppState.bible_lookup` is the one live lookup — read it through
    `app_state`, never a reference captured at startup, or a switch will not
    reach you.
+   Runtime translation changes open and count the candidate in a worker thread.
+   After that await, installation reads the previous translation, swaps/closes
+   the lookup and clears the pending queue without yielding. Concurrent switches
+   install atomically: last install wins, comparing against the immediately
+   preceding translation. Startup switches remain synchronous.
    Covered by `backend/tests/test_websocket_approval.py`,
    `backend/tests/test_manual_reference.py` and (follow-along)
    `backend/tests/test_follow_along.py` (including the auto-show class) and
@@ -104,6 +111,18 @@ easy to break by accident.
    that has aged out of the server's 20-entry snapshot window can still
    be shown again, because the canon and the Bible database — not the
    history list — are the authority.
+
+   `ConnectionManager` enqueues sends without yielding: each registered socket
+   has a bounded FIFO (256 messages) and one writer, including connect-time
+   state and `_ws_error` messages via private `_safe_send`. Confirmation means
+   queued for the display, not delivered (Q5). Queue overflow prunes immediately;
+   a writer send failure or `SEND_TIMEOUT` (5 s) also prunes, then attempts a
+   best-effort close with the same timeout. A peer that has stopped reading can
+   prevent the close from completing; its receive loop then continues until the
+   TCP connection ends. Unregistered/pruned sockets drop sends. Disconnect drops
+   queued messages and cancels the writer; shutdown waits up to `SEND_TIMEOUT` for writers and outstanding
+   close cleanup. Keep two-socket integration tests inside `with TestClient(app)`
+   so both sockets share one event loop.
 3. **VAD frame discipline**: frames must be exactly the size the active
    VAD requires at 16 kHz — WebRTC VAD (the default): 10/20/30 ms. The
    optional Silero VAD (`--vad silero`) takes the same 30 ms frames and

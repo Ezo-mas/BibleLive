@@ -1,7 +1,7 @@
 # BibleLive Security Guide
 
 BibleLive supports optional token-based authentication for operator endpoints.
-When enabled, all operator actions (approve, clear, clear queue, settings,
+When enabled, all operator actions (approve, discard pending, clear, clear queue, settings,
 manual display) and reference ingestion from the audio pipeline require
 authentication via:
 
@@ -53,6 +53,11 @@ BIBLELIVE_OPERATOR_TOKEN=your-generated-token-here
 ### Public endpoints (no authentication required)
 
 - `GET /` — root (redirects to the display page)
+- `GET /docs` — interactive API docs; these pages describe the API but grant no access,
+  and protected endpoints still need the token when authentication is enabled
+- `GET /docs/oauth2-redirect` — OAuth2 redirect helper for the docs page
+- `GET /redoc` — alternative API docs
+- `GET /openapi.json` — machine-readable API schema listing the HTTP API endpoints
 - `GET /display` — display page
 - `GET /healthz` — health check returning the version stamp (unauthenticated)
 - `GET /readyz` — readiness check
@@ -80,9 +85,12 @@ BIBLELIVE_OPERATOR_TOKEN=your-generated-token-here
 - `GET /api/lookup` — verse text lookup by coordinates for the operator's passage search
 - `GET /api/language` — current spoken language
 - `POST /api/language` — switch spoken language
+- `GET /api/bible-version` — active Bible translation and available translations
+- `POST /api/bible-version` — switch the Bible translation used for verse text
 - `GET /api/idle-screen` — idle-screen fit mode and whether a picture is set
 - `POST /api/idle-screen` — upload the idle-screen picture (raw image body, at most 8 MB;
-  format from its magic bytes, never SVG)
+  Content-Type application/octet-stream required, so a browser must preflight a
+  cross-site upload even with authentication off; format from its magic bytes, never SVG)
 - `PUT /api/idle-screen/fit` — choose how the idle picture fills the screen
 - `DELETE /api/idle-screen` — remove the idle picture (the display goes blank)
 - `GET /ws/operator` — operator WebSocket (token in the first message)
@@ -255,11 +263,11 @@ server {
 A change to any of these needs a security review before it is called done:
 
 - **Authentication and tokens:** `backend/core/server/auth.py`, the WebSocket
-  `authenticate` handshake (`core/server/app.py`, `connections.py`), and token
+  `authenticate` handshake (`core/server/ws.py`, `connections.py`), and token
   handling in the clients (`frontend/src/shared/operatorToken.ts`,
   `useWebSocket.ts`, the `#token=` link, `audio/sender.py`).
 - **Which endpoints are public or protected:** the lists under "Security
-  Architecture" above, and any new route in `core/server/app.py`.
+  Architecture" above, and any new route in `core/server/routes/` or `core/server/ws.py`.
 - **Who can reach the server:** `HOST`, `REQUIRE_AUTH` and `CORS_ORIGINS` in
   `core/config.py`; the launcher's network mode, bind address, firewall rule
   and token (`backend/launcher/network.py`, `process.py`, `settings.py`); the

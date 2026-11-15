@@ -16,6 +16,7 @@ from core.bible_lookup import BibleLookup
 from core.bible_versions import BibleVersion
 from core.config import config
 from core.server import app as server_app
+from core.server import state as server_state
 from core.server.models import BibleReference
 from core.server.runtime_state import RESTORE_DISPLAY_MAX_AGE_S, RuntimeReference, RuntimeStateStore
 from core.server.settings_store import SettingsStore
@@ -132,6 +133,7 @@ async def test_settings_round_trip_and_shutdown_flush(tmp_path, bible_db, monkey
     state = AppState(BibleLookup(str(bible_db)), settings)
     assert await state.set_verse_limit("all")
     assert await state.set_display_theme("light")
+    assert await state.set_clear_mode("blank")
     ref = reference()
     state._resolve_verses(ref)
     state.current_display = ref
@@ -140,6 +142,7 @@ async def test_settings_round_trip_and_shutdown_flush(tmp_path, bible_db, monkey
     restored = AppState(BibleLookup(str(bible_db)), settings)
     assert restored.display_settings.verse_limit == "all"
     assert restored.display_settings.theme == "light"
+    assert restored.display_settings.clear_mode == "blank"
     restored.restore_runtime_state()
     assert restored.current_display.verse_start == 16
     assert "text" not in restored.runtime_state.path.read_text()
@@ -286,9 +289,11 @@ async def test_settings_broadcast_starts_before_persistence(tmp_path, bible_db, 
     monkeypatch.setattr(state, "send_display_settings", send)
     monkeypatch.setattr(state.settings_store, "save_verse_limit", lambda _: calls.append("save"))
     monkeypatch.setattr(state.settings_store, "save_theme", lambda _: calls.append("save"))
+    monkeypatch.setattr(state.settings_store, "save_clear_mode", lambda _: calls.append("save"))
     await state.set_verse_limit(5)
     await state.set_display_theme("light")
-    assert calls == ["send", "save", "send", "save"]
+    await state.set_clear_mode("blank")
+    assert calls == ["send", "save", "send", "save", "send", "save"]
     await state.shutdown()
 
 
@@ -324,6 +329,45 @@ async def test_shutdown_closes_database_if_flush_raises(tmp_path, bible_db, monk
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("outcome", ["cancel", "timeout", "error"])
+async def test_shutdown_flushes_before_connection_cleanup_and_always_closes_resources(
+    tmp_path, bible_db, monkeypatch, caplog, outcome
+):
+    state = AppState(BibleLookup(str(bible_db)), SettingsStore(tmp_path / "settings.json"))
+    flush = AsyncMock()
+    monkeypatch.setattr(state.runtime_state, "flush", flush)
+    monkeypatch.setattr(server_state, "SEND_TIMEOUT", 0.05)
+    started = asyncio.Event()
+
+    async def close_connections():
+        flush.assert_awaited_once()
+        started.set()
+        if outcome == "error":
+            raise RuntimeError("connection cleanup failed")
+        await asyncio.Event().wait()
+
+    monkeypatch.setattr(state.connection_manager, "close", close_connections)
+    stop = Mock(wraps=state.service_log.stop)
+    close = Mock(wraps=state.bible_lookup.close)
+    monkeypatch.setattr(state.service_log, "stop", stop)
+    monkeypatch.setattr(state.bible_lookup, "close", close)
+    task = asyncio.create_task(state.shutdown())
+    await asyncio.wait_for(started.wait(), 1)
+    if outcome == "cancel":
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+    elif outcome == "error":
+        with pytest.raises(RuntimeError, match="connection cleanup failed"):
+            await task
+    else:
+        await asyncio.wait_for(task, 1)
+        assert "Timed out closing WebSocket connections" in caplog.text
+    stop.assert_called_once()
+    close.assert_called_once()
+
+
+@pytest.mark.asyncio
 async def test_shutdown_timeboxes_flush_and_stalled_service_log(
     tmp_path, bible_db, monkeypatch, caplog
 ):
@@ -347,7 +391,7 @@ async def test_shutdown_timeboxes_flush_and_stalled_service_log(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("kind", ["verse_limit", "theme"])
+@pytest.mark.parametrize("kind", ["verse_limit", "theme", "clear_mode"])
 async def test_concurrent_settings_saves_keep_latest_value(tmp_path, bible_db, monkeypatch, kind):
     state = AppState(BibleLookup(str(bible_db)), SettingsStore(tmp_path / "settings.json"))
     started, release = asyncio.Event(), asyncio.Event()
@@ -361,8 +405,16 @@ async def test_concurrent_settings_saves_keep_latest_value(tmp_path, bible_db, m
             await release.wait()
 
     monkeypatch.setattr(state, "send_display_settings", send)
-    setter = state.set_verse_limit if kind == "verse_limit" else state.set_display_theme
-    first, second = (5, 10) if kind == "verse_limit" else ("light", "dark")
+    setter = {
+        "verse_limit": state.set_verse_limit,
+        "theme": state.set_display_theme,
+        "clear_mode": state.set_clear_mode,
+    }[kind]
+    first, second = {
+        "verse_limit": (5, 10),
+        "theme": ("light", "dark"),
+        "clear_mode": ("blank", "idle"),
+    }[kind]
     first_task = asyncio.create_task(setter(first))
     await started.wait()
     await setter(second)

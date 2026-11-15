@@ -36,6 +36,8 @@ frontend/
   `architecture.md`) and served by the backend — don't hand-edit it, and
   don't rebuild it unless asked (rebuild diffs are big and generated;
   after `frontend/src` changes the UI only updates once rebuilt).
+- Display settings include verse limit, theme, idle picture and clear mode
+  (`set_clear_mode`: idle picture or blank after clearing; server-confirmed).
 
 ## Where to look (frontend tasks)
 

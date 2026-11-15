@@ -147,6 +147,10 @@ class DisplaySettings(BaseModel):
         default="dark",
         description="Projector background theme; dark avoids washing out the panel",
     )
+    clear_mode: Literal["idle", "blank"] = Field(
+        default="idle",
+        description="After a passage is cleared, show the idle picture or a blank screen",
+    )
     idle_image: IdleScreenPicture | None = Field(
         default=None,
         description="Picture shown while nothing is on screen; null means a blank screen",
@@ -391,6 +395,13 @@ class OperatorApproveAction(BaseModel):
     reference_id: str
 
 
+class OperatorDiscardPendingAction(BaseModel):
+    """Action to discard a pending reference by ID."""
+
+    action: Literal["discard_pending"]
+    reference_id: str
+
+
 class OperatorClearDisplayAction(BaseModel):
     """Action to clear the current display."""
 
@@ -415,6 +426,13 @@ class OperatorSetDisplayThemeAction(BaseModel):
 
     action: Literal["set_display_theme"]
     theme: Literal["dark", "light"]
+
+
+class OperatorSetClearModeAction(BaseModel):
+    """Action to choose what the display shows after clearing a passage."""
+
+    action: Literal["set_clear_mode"]
+    clear_mode: Literal["idle", "blank"]
 
 
 class OperatorSetAutoModeAction(BaseModel):
@@ -469,10 +487,12 @@ class OperatorAuthenticateAction(BaseModel):
 OperatorAction = Annotated[
     OperatorAuthenticateAction
     | OperatorApproveAction
+    | OperatorDiscardPendingAction
     | OperatorClearDisplayAction
     | OperatorClearPendingAction
     | OperatorSetVerseLimitAction
     | OperatorSetDisplayThemeAction
+    | OperatorSetClearModeAction
     | OperatorSetAutoModeAction
     | OperatorSetFollowAutoAction
     | OperatorDisplayReferenceAction,

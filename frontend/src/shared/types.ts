@@ -88,6 +88,9 @@ export type VerseLimit = number | 'all'
 /** Background theme for the audience display. Projectors default to 'dark'. */
 export type DisplayTheme = 'dark' | 'light'
 
+/** What the audience sees after a passage is cleared. */
+export type ClearMode = 'idle' | 'blank'
+
 /** The idle-screen picture; `version` only busts the cache of GET /api/idle-screen/image. */
 export interface IdleScreenPicture {
   version: string
@@ -98,6 +101,8 @@ export interface IdleScreenPicture {
 export interface DisplaySettings {
   verse_limit: VerseLimit
   theme: DisplayTheme
+  /** An older server omits it, which keeps the idle picture after clearing. */
+  clear_mode?: ClearMode
   /** Optional and additive: an older server omits it, which means a blank screen. */
   idle_image?: IdleScreenPicture | null
 }
@@ -149,7 +154,8 @@ export type OperatorMessage =
   | { type: 'display_confirmed'; data: { reference: BibleReference } }
   /** Transient suggestion to show the verses after the current display (operators only). */
   | { type: 'follow_along'; data: FollowAlongHint }
-  | { type: 'error'; data: { message: string; action: string } }
+  /** `action` is echoed verbatim, so an unknown action can come back as any JSON value. */
+  | { type: 'error'; data: { message: string; action: unknown } }
 
 /** Messages the operator client sends to the server. */
 export interface ApproveAction {
@@ -159,6 +165,11 @@ export interface ApproveAction {
 
 export interface ClearAction {
   action: 'clear'
+}
+
+export interface DiscardPendingAction {
+  action: 'discard_pending'
+  reference_id: string
 }
 
 export interface ClearPendingAction {
@@ -178,6 +189,11 @@ export interface SetDisplayThemeAction {
 export interface SetAutoModeAction {
   action: 'set_auto_mode'
   auto_mode: AutoMode
+}
+
+export interface SetClearModeAction {
+  action: 'set_clear_mode'
+  clear_mode: ClearMode
 }
 
 /**
@@ -218,10 +234,12 @@ export interface AuthenticateAction {
 export type OperatorAction =
   | AuthenticateAction
   | ApproveAction
+  | DiscardPendingAction
   | ClearAction
   | ClearPendingAction
   | SetVerseLimitAction
   | SetDisplayThemeAction
+  | SetClearModeAction
   | SetAutoModeAction
   | SetFollowAutoAction
   | DisplayReferenceAction

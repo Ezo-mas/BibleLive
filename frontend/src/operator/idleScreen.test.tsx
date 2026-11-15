@@ -90,7 +90,7 @@ describe('useIdleScreen', () => {
 
   it('sends the picture file itself as the body, and shows the new version', async () => {
     const fetchMock = stubFetch()
-    const { result } = await loadedHook()
+    const { result } = await loadedHook('tok')
     const file = pictureFile()
 
     act(() => result.current.upload(file))
@@ -99,6 +99,10 @@ describe('useIdleScreen', () => {
     const [url, init] = fetchMock.mock.calls[1] as unknown as [string, RequestInit]
     expect(url).toBe('/api/idle-screen')
     expect(init.method).toBe('POST')
+    expect(init.headers).toEqual({
+      Authorization: 'Bearer tok',
+      'Content-Type': 'application/octet-stream',
+    })
     expect(init.body).toBe(file)
   })
 

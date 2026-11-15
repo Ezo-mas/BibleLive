@@ -5,8 +5,8 @@ import json
 
 import pytest
 
-from core.server.app import _handle_display_reference
 from core.server.models import BibleReference
+from core.server.ws import _handle_display_reference
 
 
 class SlowDisplay:
@@ -21,7 +21,7 @@ class SlowDisplay:
 
     async def send_text(self, data):
         self.count += 1
-        if self.count == 2:
+        if self.count == 1:
             self.started.set()
         await self.release.wait()
         self.sent.append(json.loads(data))
@@ -48,6 +48,9 @@ def test_approval_and_clear_leave_display_consistent(app_state, approval_first, 
         await asyncio.wait_for(socket.started.wait(), timeout=1)
         socket.release.set()
         await tasks
+        await asyncio.wait_for(app_state.connection_manager._queues[socket].join(), timeout=1)
+        app_state.connection_manager.disconnect(socket)
+        await app_state.connection_manager.close()
         assert [message["type"] for message in socket.sent] == (
             ["reference", "clear"] if approval_first else ["clear", "reference"]
         )

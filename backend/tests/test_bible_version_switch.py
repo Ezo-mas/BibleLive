@@ -1,17 +1,25 @@
 """Runtime switching of the Bible translation (``/api/bible-version``)."""
 
+import asyncio
 import json
+import os
 import shutil
 import sqlite3
+import threading
 from pathlib import Path
+from unittest.mock import Mock
 
 import pytest
 from fastapi.testclient import TestClient
 
+from core import bible_versions
+from core.bible_lookup import BibleLookup
 from core.bible_versions import discover_versions
 from core.config import config
 from core.server import language_control
 from core.server.app import create_app
+from core.server.models import BibleReference
+from core.server.state import AppState
 
 
 def _make_bible(path: Path, translation: str | None, text: str) -> None:
@@ -60,6 +68,370 @@ def client(bible_dir: Path):
 
 def test_discovery_offers_only_labelled_bible_databases(bible_dir: Path):
     assert sorted(discover_versions(bible_dir)) == ["kjv", "ltb"]
+
+
+@pytest.mark.parametrize("change", ["touch", "add", "remove", "size"])
+def test_discovery_cache_invalidates_on_file_changes(bible_dir: Path, monkeypatch, change):
+    read = Mock(wraps=bible_versions._read_translation)
+    monkeypatch.setattr(bible_versions, "_read_translation", read)
+    first = discover_versions(bible_dir)
+    assert read.call_count == 3
+    first.clear()
+    assert sorted(discover_versions(bible_dir)) == ["kjv", "ltb"]
+    assert read.call_count == 3
+
+    path = bible_dir / "bible_ltb.sqlite"
+    stat = path.stat()
+    if change == "touch":
+        os.utime(path, ns=(stat.st_atime_ns, stat.st_mtime_ns + 1_000_000))
+    elif change == "add":
+        _make_bible(bible_dir / "bible_web.sqlite", "web", "x")
+    elif change == "remove":
+        path.unlink()
+    else:
+        with path.open("ab") as file:
+            file.write(b"\0")
+        os.utime(path, ns=(stat.st_atime_ns, stat.st_mtime_ns))
+
+    expected = ["kjv"] if change == "remove" else ["kjv", "ltb"]
+    if change == "add":
+        expected.append("web")
+    assert sorted(discover_versions(bible_dir)) == expected
+    scans = {"touch": 3, "add": 4, "remove": 2, "size": 3}
+    assert read.call_count == 3 + scans[change]
+    discover_versions(bible_dir)
+    assert read.call_count == 3 + scans[change]
+
+
+def test_discovery_cache_is_per_directory_and_warns_only_on_scan(bible_dir, tmp_path, caplog):
+    _make_bible(bible_dir / "duplicate.sqlite", "kjv", "x")
+    first = discover_versions(bible_dir)
+    assert first["kjv"].path.name == "biblelive.sqlite"
+    assert caplog.text.count("translation 'kjv' is already provided") == 1
+    assert discover_versions(bible_dir) == first
+    assert caplog.text.count("translation 'kjv' is already provided") == 1
+    _make_bible(tmp_path / "other.sqlite", "web", "x")
+    assert sorted(discover_versions(tmp_path)) == ["web"]
+
+
+@pytest.mark.parametrize("phase", ["connect", "query"])
+def test_discovery_retries_sqlite_errors_without_a_file_change(bible_dir, monkeypatch, phase):
+    path = bible_dir / "bible_ltb.sqlite"
+    before = path.stat()
+    connect = sqlite3.connect
+    read = Mock(wraps=bible_versions._read_translation)
+    locked = Mock()
+    locked.execute.side_effect = sqlite3.OperationalError("database is locked")
+    failed = False
+
+    def connect_with_transient_lock(database, *args, **kwargs):
+        nonlocal failed
+        if "bible_ltb.sqlite" in str(database) and not failed:
+            failed = True
+            if phase == "connect":
+                raise sqlite3.OperationalError("database is locked")
+            return locked
+        return connect(database, *args, **kwargs)
+
+    monkeypatch.setattr(bible_versions.sqlite3, "connect", connect_with_transient_lock)
+    monkeypatch.setattr(bible_versions, "_read_translation", read)
+    assert sorted(discover_versions(bible_dir)) == ["kjv"]
+    assert read.call_count == 3
+    if phase == "query":
+        locked.close.assert_called_once_with()
+    assert sorted(discover_versions(bible_dir)) == ["kjv", "ltb"]
+    assert read.call_count == 6
+    assert sorted(discover_versions(bible_dir)) == ["kjv", "ltb"]
+    assert read.call_count == 6  # The unlabelled, non-Bible file is cacheable.
+    after = path.stat()
+    assert (after.st_mtime_ns, after.st_size) == (before.st_mtime_ns, before.st_size)
+
+
+@pytest.fixture
+def version_state(bible_dir):
+    state = AppState(BibleLookup(str(bible_dir / "biblelive.sqlite"), readonly=True))
+    try:
+        yield state
+    finally:
+        state.bible_lookup.close()
+        state.service_log.stop()
+
+
+@pytest.mark.asyncio
+async def test_runtime_open_is_off_loop_and_install_clears_queue_atomically(
+    version_state, monkeypatch
+):
+    state = version_state
+    first = BibleReference(book="John", chapter=3, verse_start=16)
+    second = BibleReference(book="John", chapter=3, verse_start=16)
+    state.pending_references = [first, second]
+    old_lookup = state.bible_lookup
+    started = asyncio.Event()
+    release = threading.Event()
+    loop = asyncio.get_running_loop()
+    loop_thread = threading.get_ident()
+    open_version = state._open_bible_version
+    install_version = state._install_bible_version
+    count = BibleLookup.verse_count
+    counts = []
+    probed = []
+
+    def install_with_probe(version, lookup):
+        previous = install_version(version, lookup)
+        loop.call_soon(
+            lambda: probed.append((state.active_bible_version(), list(state.pending_references)))
+        )
+        return previous
+
+    def count_in_worker(lookup):
+        counts.append(threading.get_ident())
+        return count(lookup)
+
+    def blocked_open(version):
+        assert threading.get_ident() != loop_thread
+        loop.call_soon_threadsafe(started.set)
+        assert release.wait(5)
+        return open_version(version)
+
+    monkeypatch.setattr(BibleLookup, "verse_count", count_in_worker)
+    monkeypatch.setattr(state, "_open_bible_version", blocked_open)
+    monkeypatch.setattr(state, "_install_bible_version", install_with_probe)
+    send = state.connection_manager.send_to_operator
+    seen = []
+
+    async def approve_after_install(message):
+        if message["type"] == "bible_version_confirmed":
+            seen.append((state.active_bible_version(), list(state.pending_references)))
+            assert await state.approve_pending(second.id) is None
+        return await send(message)
+
+    monkeypatch.setattr(state.connection_manager, "send_to_operator", approve_after_install)
+    switching = asyncio.create_task(state.change_bible_version("ltb"))
+    try:
+        await asyncio.wait_for(started.wait(), 5)
+        assert state.bible_lookup is old_lookup
+        assert state.pending_references == [first, second]
+        approved = await state.approve_pending(first.id)
+        assert approved.text == "For God so loved the world"
+        assert state.pending_references == [second]
+    finally:
+        release.set()
+        await switching
+    await asyncio.sleep(0)
+    assert seen == [("ltb", [])]
+    assert probed == [("ltb", [])]
+    assert counts and all(thread != loop_thread for thread in counts)
+    assert not old_lookup.ping()
+    assert state.bible_lookup.ping()  # Worker-created connection works on the loop.
+    await state.runtime_state.flush()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("version", ["missing", "empty"])
+async def test_failed_runtime_open_keeps_lookup_and_queue(
+    version_state, bible_dir, monkeypatch, version
+):
+    state = version_state
+    if version == "empty":
+        path = bible_dir / "empty.sqlite"
+        _make_bible(path, "empty", "x")
+        conn = sqlite3.connect(path)
+        try:
+            conn.execute("DELETE FROM verses")
+            conn.commit()
+        finally:
+            conn.close()
+    old_lookup = state.bible_lookup
+    ref = BibleReference(book="John", chapter=3, verse_start=16)
+    state.pending_references = [ref]
+    close = Mock(wraps=BibleLookup.close)
+
+    def record_close(lookup):
+        close(lookup)
+
+    monkeypatch.setattr(BibleLookup, "close", record_close)
+    error = KeyError if version == "missing" else ValueError
+    with pytest.raises(error) as caught:
+        await state.change_bible_version(version)
+    assert caught.value.args == (
+        version if version == "missing" else "Bible translation 'empty' contains no verses.",
+    )
+    assert state.bible_lookup is old_lookup
+    assert state.active_bible_version() == "kjv"
+    assert state.pending_references == [ref]
+    if version == "missing":
+        close.assert_not_called()
+    else:
+        close.assert_called_once()
+        rejected = close.call_args.args[0]
+        assert rejected is not old_lookup and not rejected.ping()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("error_type", [RuntimeError, BaseException])
+async def test_failed_runtime_install_closes_candidate(version_state, monkeypatch, error_type):
+    state = version_state
+    old_lookup = state.bible_lookup
+    ref = BibleReference(book="John", chapter=3, verse_start=16)
+    state.pending_references = [ref]
+    failure = error_type("install failed")
+    candidates = []
+
+    def fail_install(version, lookup):
+        candidates.append(lookup)
+        raise failure
+
+    monkeypatch.setattr(state, "_install_bible_version", fail_install)
+    with pytest.raises(error_type) as caught:
+        await state.change_bible_version("ltb")
+    assert caught.value is failure
+    assert len(candidates) == 1 and not candidates[0].ping()
+    assert state.bible_lookup is old_lookup and old_lookup.ping()
+    assert state.pending_references == [ref]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("second_version", ["web", "kjv", "ltb"])
+async def test_concurrent_runtime_switches_install_in_completion_order(
+    version_state, bible_dir, monkeypatch, second_version
+):
+    state = version_state
+    _make_bible(bible_dir / "web.sqlite", "web", "x")
+    loop = asyncio.get_running_loop()
+    started = [asyncio.Event(), asyncio.Event()]
+    release = [threading.Event(), threading.Event()]
+    open_version = state._open_bible_version
+    opened = []
+    calls = 0
+
+    def blocked_open(version):
+        nonlocal calls
+        index = calls
+        calls += 1
+        lookup = open_version(version)
+        opened.append(lookup)
+        loop.call_soon_threadsafe(started[index].set)
+        assert release[index].wait(5)
+        return lookup
+
+    monkeypatch.setattr(state, "_open_bible_version", blocked_open)
+    emit = Mock()
+    monkeypatch.setattr(state.service_log, "emit", emit)
+    messages = []
+
+    async def record_message(message):
+        messages.append(message)
+        if message["type"] == "bible_version_confirmed":
+            assert message["data"]["version"] == state.active_bible_version()
+        return []
+
+    monkeypatch.setattr(state.connection_manager, "send_to_operator", record_message)
+    old_lookup = state.bible_lookup
+    first = asyncio.create_task(state.change_bible_version("ltb"))
+    second = None
+    try:
+        await asyncio.wait_for(started[0].wait(), 5)
+        second = asyncio.create_task(state.change_bible_version(second_version))
+        await asyncio.wait_for(started[1].wait(), 5)
+        # The second request installs first, regardless of request order.
+        release[1].set()
+        assert await second == second_version
+        ref = BibleReference(book="John", chapter=3, verse_start=16)
+        state.pending_references = [ref]
+        release[0].set()
+        assert await first == "ltb"
+        assert state.active_bible_version() == "ltb"
+        assert state.pending_references == ([ref] if second_version == "ltb" else [])
+        assert state.bible_lookup is opened[0]
+        assert opened[0].ping()
+        assert not opened[1].ping() and not old_lookup.ping()
+        confirmed = [
+            m["data"]["version"] for m in messages if m["type"] == "bible_version_confirmed"
+        ]
+        assert confirmed == [second_version, "ltb"]
+        transitions = [
+            call.kwargs for call in emit.call_args_list if call.args[0] == "translation_switched"
+        ]
+        expected = [] if second_version == "kjv" else [{"from": "kjv", "to": second_version}]
+        if second_version != "ltb":
+            expected.append({"from": second_version, "to": "ltb"})
+        assert transitions == expected
+    finally:
+        for event in release:
+            event.set()
+        await asyncio.gather(first, *([second] if second is not None else []))
+
+
+@pytest.mark.asyncio
+async def test_cancelled_runtime_open_closes_uninstalled_lookup(version_state, monkeypatch):
+    state = version_state
+    loop = asyncio.get_running_loop()
+    started = asyncio.Event()
+    closed = asyncio.Event()
+    release = threading.Event()
+    open_version = state._open_bible_version
+    old_lookup = state.bible_lookup
+    opened = []
+
+    def blocked_open(version):
+        lookup = open_version(version)
+        opened.append(lookup)
+        close = lookup.close
+
+        def record_close():
+            close()
+            loop.call_soon_threadsafe(closed.set)
+
+        lookup.close = record_close
+        loop.call_soon_threadsafe(started.set)
+        assert release.wait(5)
+        return lookup
+
+    monkeypatch.setattr(state, "_open_bible_version", blocked_open)
+    switching = asyncio.create_task(state.change_bible_version("ltb"))
+    try:
+        await asyncio.wait_for(started.wait(), 5)
+        switching.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await switching
+    finally:
+        release.set()
+    await asyncio.wait_for(closed.wait(), 5)
+    assert not opened[0].ping()
+    assert state.bible_lookup is old_lookup and old_lookup.ping()
+
+
+def test_loop_shutdown_closes_lookup_from_unfinished_runtime_open(version_state, monkeypatch):
+    state = version_state
+    started = asyncio.Event()
+    release = threading.Event()
+    opened = []
+    open_version = state._open_bible_version
+    old_lookup = state.bible_lookup
+
+    async def start_switch():
+        loop = asyncio.get_running_loop()
+
+        def blocked_open(version):
+            lookup = open_version(version)
+            opened.append(lookup)
+            loop.call_soon_threadsafe(started.set)
+            assert release.wait(5)
+            return lookup
+
+        monkeypatch.setattr(state, "_open_bible_version", blocked_open)
+        switching = asyncio.create_task(state.change_bible_version("ltb"))
+        switching.add_done_callback(lambda _task: release.set())
+        await asyncio.wait_for(started.wait(), 5)
+        # Returning leaves the switch pending: asyncio.run cancels it and joins
+        # the executor, whose worker must close the result without a task callback.
+
+    try:
+        asyncio.run(start_switch())
+    finally:
+        release.set()
+    assert len(opened) == 1 and not opened[0].ping()
+    assert state.bible_lookup is old_lookup and old_lookup.ping()
 
 
 def test_get_reports_active_and_available(client: TestClient):

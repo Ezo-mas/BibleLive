@@ -424,6 +424,7 @@ A missing local translation keeps the previous validator and reports
   - `{action: 'authenticate', token}` — first, when authentication is enabled
     (ignored otherwise)
   - `{action: 'approve', reference_id: 'uuid'}`
+  - `{action: 'discard_pending', reference_id: 'uuid'}`
   - `{action: 'clear'}`
   - `{action: 'clear_pending'}`
   - `{action: 'set_verse_limit', verse_limit: 3 | 5 | 10 | 'all'}`
@@ -504,11 +505,17 @@ BibleLive/                        # Monorepo root: tooling + shared assets
 │   ├── core/                     # FastAPI server, verse parser, Bible lookup
 │   │   ├── server/               # Server package (models, auth, state, app factory)
 │   │   │   ├── app.py            # create_app() factory + main() entry point
+│   │   │   ├── routes/           # HTTP routes
+│   │   │   ├── ws.py             # WebSocket route and handlers
 │   │   │   ├── models.py         # Pydantic request/response models
 │   │   │   ├── auth.py           # Operator token verification
 │   │   │   ├── connections.py    # WebSocket connection management
 │   │   │   ├── settings_store.py # Persisted operator settings (auto-approve mode)
-│   │   │   └── state.py          # AppState (pending queue, display, history)
+│   │   │   ├── display_session.py # Pending queue, on-screen passage, history, the display door
+│   │   │   ├── bible_version_service.py # Live Bible lookup and translation switching
+│   │   │   ├── idle_service.py   # Idle-screen picture and fit
+│   │   │   ├── pipeline_health.py # Audio pipeline health reports
+│   │   │   └── state.py          # AppState: owns the parts above and forwards to them
 │   │   ├── config.py             # Env-driven configuration
 │   │   ├── verse_parser.py       # Reference parsing (English)
 │   │   ├── verse_parser_lt.py    # Lithuanian language data for the parser

@@ -12,8 +12,9 @@ import {
 } from '../shared/verseText'
 import type { DisplayTheme, VerseLimit } from '../shared/verseText'
 import { idleImageUrl, readIdleImage } from '../shared/idleScreen'
+import { coerceClearMode } from '../shared/clearMode'
 import type { IdleImage } from '../shared/idleScreen'
-import type { BibleReference, DisplayMessage } from '../shared/types'
+import type { BibleReference, ClearMode, DisplayMessage } from '../shared/types'
 import { computeFitFontSize, fitFontSizeByMeasurement, MAX_FONT_SIZE } from './fitText'
 import '../styles/tokens.css'
 import '../styles/global.css'
@@ -43,6 +44,10 @@ export default function App() {
   const [fontSize, setFontSize] = useState(MAX_FONT_SIZE)
   // The operator's idle picture. Shown only while nothing is on screen.
   const [idleImage, setIdleImage] = useState<IdleImage | null>(null)
+  const [clearMode, setClearMode] = useState<ClearMode>('idle')
+  // Page-local by design: a display reloaded mid-service shows the picture again
+  // until the next passage; the protocol has no server-side "has shown" field.
+  const [hasShownPassage, setHasShownPassage] = useState(false)
   // The version of a picture the browser could not load (its file is gone, say), so the
   // audience sees a blank screen rather than a broken-image icon. A new upload is a new
   // version and gets a fresh try.
@@ -55,6 +60,7 @@ export default function App() {
     if (message.type === 'display_settings') {
       setVerseLimit(coerceVerseLimit(message.data.verse_limit))
       setTheme(coerceDisplayTheme(message.data.theme))
+      setClearMode(coerceClearMode(message.data.clear_mode))
       setIdleImage(readIdleImage(message.data))
       return
     }
@@ -67,6 +73,7 @@ export default function App() {
       setVisible(false)
       swapTimerRef.current = window.setTimeout(() => {
         setReference(next)
+        setHasShownPassage(true)
         setVisible(true)
       }, FADE_MS)
     } else if (message.type === 'clear') {
@@ -197,15 +204,17 @@ export default function App() {
         ) : (
           // Nothing on screen: the themed background, plus the operator's picture if one is set.
           <div className="display-idle">
-            {idleImage && idleImage.version !== brokenIdleVersion && (
-              <img
-                className={`display-idle-image display-idle-image--${idleImage.fit}`}
-                src={idleImageUrl(idleImage)}
-                alt={t('idle.imageAlt')}
-                data-testid="display-idle-image"
-                onError={() => setBrokenIdleVersion(idleImage.version)}
-              />
-            )}
+            {idleImage &&
+              (clearMode === 'idle' || !hasShownPassage) &&
+              idleImage.version !== brokenIdleVersion && (
+                <img
+                  className={`display-idle-image display-idle-image--${idleImage.fit}`}
+                  src={idleImageUrl(idleImage)}
+                  alt={t('idle.imageAlt')}
+                  data-testid="display-idle-image"
+                  onError={() => setBrokenIdleVersion(idleImage.version)}
+                />
+              )}
           </div>
         )}
       </div>

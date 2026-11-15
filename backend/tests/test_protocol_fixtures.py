@@ -16,17 +16,19 @@ from pydantic import TypeAdapter
 from core.bible_versions import BibleVersion
 from core.config import config
 from core.server import models
-from core.server.app import _OPERATOR_ACTION_ADAPTER
 from core.server.models import DisplayServerMessage, FollowAlongHint, OperatorServerMessage
+from core.server.ws import _OPERATOR_ACTION_ADAPTER
 
 REFERENCE_ID = "00000000-0000-0000-0000-000000000001"
 ACTIONS = {
     "authenticate": {"action": "authenticate", "token": "example-token"},
     "approve": {"action": "approve", "reference_id": REFERENCE_ID},
+    "discard_pending": {"action": "discard_pending", "reference_id": REFERENCE_ID},
     "clear": {"action": "clear"},
     "clear_pending": {"action": "clear_pending"},
     "set_verse_limit": {"action": "set_verse_limit", "verse_limit": 5},
     "set_display_theme": {"action": "set_display_theme", "theme": "light"},
+    "set_clear_mode": {"action": "set_clear_mode", "clear_mode": "blank"},
     "set_auto_mode": {"action": "set_auto_mode", "auto_mode": "high"},
     "set_follow_auto": {"action": "set_follow_auto", "follow_auto": True},
     "display_reference": {
@@ -96,6 +98,15 @@ def test_real_server_protocol_fixtures(client, app_state, kjv_db, monkeypatch):
             receive(operator, "operator", "approval_confirmed")
             receive(operator, "operator", "pending_update", save=False)
             receive(display, "display", "reference")
+
+            response = client.post(
+                "/api/reference",
+                json={"book": "John", "chapter": 3, "verse_start": 17, "confidence": "high"},
+            )
+            assert response.status_code == 201
+            receive(operator, "operator", "pending_update", save=False)
+            send(operator, "discard_pending")
+            receive(operator, "operator", "pending_update", save=False)
 
             send(operator, "display_reference")
             receive(operator, "operator", "display_confirmed")

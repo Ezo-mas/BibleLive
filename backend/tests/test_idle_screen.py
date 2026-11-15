@@ -9,8 +9,10 @@ import json
 import logging
 
 import pytest
+from fastapi.testclient import TestClient
 
 from core.config import config
+from core.server.app import create_app
 from core.server.idle_screen import (
     MAX_IDLE_IMAGE_BYTES,
     IdleImage,
@@ -47,9 +49,72 @@ def _upload(client, data: bytes, headers: dict | None = None, params: dict | Non
     return client.post(
         "/api/idle-screen",
         content=data,
-        headers=AUTH if headers is None else headers,
+        headers={
+            "Content-Type": "application/octet-stream",
+            **(AUTH if headers is None else headers),
+        },
         params=params or {},
     )
+
+
+@pytest.mark.parametrize(
+    "method,path,request_headers",
+    [
+        ("PUT", "/api/idle-screen/fit", None),
+        ("DELETE", "/api/idle-screen", None),
+        # The upload's octet-stream type is what forces this preflight.
+        ("POST", "/api/idle-screen", "content-type"),
+    ],
+)
+def test_cors_preflight(monkeypatch, app_state, method, path, request_headers):
+    monkeypatch.setattr(config, "CORS_ORIGINS", "https://allowed.example")
+    client = TestClient(create_app(bible_lookup=app_state.bible_lookup))
+    headers = {"Origin": "https://allowed.example", "Access-Control-Request-Method": method}
+    if request_headers:
+        headers["Access-Control-Request-Headers"] = request_headers
+    allowed = client.options(path, headers=headers)
+    assert allowed.status_code == 200
+    assert allowed.headers["access-control-allow-origin"] == headers["Origin"]
+    assert method in allowed.headers["access-control-allow-methods"].split(", ")
+    headers["Origin"] = "https://other.example"
+    refused = client.options(path, headers=headers)
+    assert refused.status_code == 400
+    assert "access-control-allow-origin" not in refused.headers
+
+    monkeypatch.setattr(config, "CORS_ORIGINS", "")
+    no_cors = TestClient(create_app(bible_lookup=app_state.bible_lookup))
+    response = no_cors.options(path, headers=headers)
+    assert not any(name.startswith("access-control-") for name in response.headers)
+
+
+@pytest.mark.parametrize("content_type", [None, "image/png", "text/plain", "multipart/form-data"])
+def test_upload_rejects_transport_type_without_changing_picture(
+    client, app_state, auth_enabled, content_type
+):
+    assert _upload(client, PNG).status_code == 200
+    before = app_state.idle_image
+    record = app_state.settings_store.path.read_bytes()
+    headers = dict(AUTH)
+    if content_type is not None:
+        headers["Content-Type"] = content_type
+    response = client.post("/api/idle-screen?fit=fill", content=JPEG, headers=headers)
+    assert response.status_code == 415
+    assert response.json()["detail"] == "Upload the picture as application/octet-stream."
+    assert app_state.idle_image == before
+    assert app_state.settings_store.path.read_bytes() == record
+    assert client.get("/api/idle-screen/image").content == PNG
+    assert _stored_files(app_state) == {"idle_screen.png", "server_settings.json"}
+
+
+@pytest.mark.parametrize(
+    "content_type", ["application/octet-stream; charset=binary", "Application/Octet-Stream"]
+)
+def test_upload_accepts_transport_type_parameters_and_case(client, auth_enabled, content_type):
+    assert _upload(client, PNG, headers={**AUTH, "Content-Type": content_type}).status_code == 200
+
+
+def test_upload_missing_type_and_token_returns_401(client, auth_enabled):
+    assert client.post("/api/idle-screen", content=PNG).status_code == 401
 
 
 class _StreamingRequest:
@@ -85,17 +150,17 @@ def test_format_is_read_from_the_magic_bytes(data, kind):
 
 
 @pytest.mark.parametrize(
-    ("data", "content_type", "served_as"),
+    ("data", "served_as"),
     [
-        (PNG, "image/png", "image/png"),
-        (JPEG, "image/jpeg", "image/jpeg"),
-        (WEBP, "image/webp", "image/webp"),
+        (PNG, "image/png"),
+        (JPEG, "image/jpeg"),
+        (WEBP, "image/webp"),
     ],
 )
 def test_each_accepted_format_is_stored_and_served_with_its_own_type(
-    client, auth_enabled, data, content_type, served_as
+    client, auth_enabled, data, served_as
 ):
-    response = _upload(client, data, headers={**AUTH, "Content-Type": content_type})
+    response = _upload(client, data)
 
     assert response.status_code == 200
     assert response.json()["image"]["content_type"] == served_as
@@ -124,26 +189,15 @@ def test_upload_needs_the_operator_token(client, app_state, auth_enabled, header
 
 
 def test_svg_is_refused(client, app_state, auth_enabled):
-    response = _upload(client, SVG, headers={**AUTH, "Content-Type": "image/svg+xml"})
+    response = _upload(client, SVG)
 
     assert response.status_code == 415
     assert app_state.idle_image is None
     assert not any(name.startswith("idle_screen") for name in _stored_files(app_state))
 
 
-def test_svg_claimed_as_png_is_refused(client, app_state, auth_enabled):
-    response = _upload(client, SVG, headers={**AUTH, "Content-Type": "image/png"})
-
-    assert response.status_code == 415
-    assert app_state.idle_image is None
-
-
-def test_wrong_magic_bytes_are_refused_even_with_an_image_content_type(
-    client, app_state, auth_enabled
-):
-    response = _upload(
-        client, b"GIF89a" + b"\x00" * 40, headers={**AUTH, "Content-Type": "image/png"}
-    )
+def test_wrong_magic_bytes_are_refused_with_octet_stream(client, app_state, auth_enabled):
+    response = _upload(client, b"GIF89a" + b"\x00" * 40)
 
     assert response.status_code == 415
     assert app_state.idle_image is None
@@ -156,8 +210,8 @@ def test_empty_body_is_refused(client, app_state, auth_enabled):
     assert app_state.idle_image is None
 
 
-def test_client_content_type_does_not_change_what_is_served(client, auth_enabled):
-    response = _upload(client, PNG, headers={**AUTH, "Content-Type": "image/svg+xml"})
+def test_transport_content_type_does_not_change_what_is_served(client, auth_enabled):
+    response = _upload(client, PNG)
 
     assert response.status_code == 200
     served = client.get("/api/idle-screen/image")
@@ -279,7 +333,7 @@ def test_failed_move_into_place_restores_the_previous_record(
         staged.unlink()
         raise OSError("disk full")
 
-    monkeypatch.setattr("core.server.state.commit_image_file", fail)
+    monkeypatch.setattr("core.server.idle_service.commit_image_file", fail)
 
     assert _upload(client, JPEG).status_code == 500
 

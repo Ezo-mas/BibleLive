@@ -154,7 +154,9 @@ export default function App() {
             reference={operator.currentDisplay}
             verseLimit={operator.verseLimit}
             displayTheme={operator.displayTheme}
-            idleImage={operator.idleImage}
+            idleImage={
+              operator.clearMode === 'blank' && operator.seenPassage ? null : operator.idleImage
+            }
             overlay={
               <FollowAlongHint
                 hint={operator.followAlong}
@@ -198,6 +200,8 @@ export default function App() {
               selectedId={operator.selectedId}
               onSelect={operator.selectPending}
               onShow={operator.approvePending}
+              onRemove={operator.discardPending}
+              discardInFlight={operator.discardInFlight}
               canShow={operator.isConnected}
             >
               <QueueFooter
@@ -241,6 +245,8 @@ export default function App() {
         disabled={!operator.isConnected}
         onVerseLimitChange={operator.setDisplayVerseLimit}
         onThemeChange={operator.setDisplayBackground}
+        clearMode={operator.clearMode}
+        onClearModeChange={operator.setDisplayClearMode}
         spokenLanguage={operator.spokenLanguage}
         bibleVersion={operator.bibleVersion}
         idleScreen={operator.idleScreen}

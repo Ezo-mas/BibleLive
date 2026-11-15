@@ -11,6 +11,8 @@ export interface PendingQueueProps {
   onSelect: (id: string) => void
   /** Double-click, or the row's Show button: approve this detection without staging it first. */
   onShow: (id: string) => void
+  onRemove: (id: string) => void
+  discardInFlight?: boolean
   /** False while the socket is closed: Show then has nowhere to go. */
   canShow?: boolean
   /** The queue's footer (Clear Queue), pinned under the list. */
@@ -34,6 +36,8 @@ export function PendingQueue({
   selectedId,
   onSelect,
   onShow,
+  onRemove,
+  discardInFlight = false,
   canShow = true,
   children,
 }: PendingQueueProps) {
@@ -71,6 +75,15 @@ export function PendingQueue({
                       onClick={() => onSelect(reference.id)}
                     >
                       {t('row.stage')}
+                    </Button>
+                    <Button
+                      variant="danger"
+                      size="sm"
+                      aria-describedby={titleId}
+                      disabled={!canShow || discardInFlight}
+                      onClick={() => onRemove(reference.id)}
+                    >
+                      {t('row.remove')}
                     </Button>
                   </>
                 )}
