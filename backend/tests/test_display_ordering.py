@@ -5,8 +5,8 @@ import json
 
 import pytest
 
-from core.server.app import _handle_display_reference
 from core.server.models import BibleReference
+from core.server.ws import _handle_display_reference
 
 
 class SlowDisplay:

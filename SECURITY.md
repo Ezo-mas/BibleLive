@@ -262,11 +262,11 @@ server {
 A change to any of these needs a security review before it is called done:
 
 - **Authentication and tokens:** `backend/core/server/auth.py`, the WebSocket
-  `authenticate` handshake (`core/server/app.py`, `connections.py`), and token
+  `authenticate` handshake (`core/server/ws.py`, `connections.py`), and token
   handling in the clients (`frontend/src/shared/operatorToken.ts`,
   `useWebSocket.ts`, the `#token=` link, `audio/sender.py`).
 - **Which endpoints are public or protected:** the lists under "Security
-  Architecture" above, and any new route in `core/server/app.py`.
+  Architecture" above, and any new route in `core/server/routes/` or `core/server/ws.py`.
 - **Who can reach the server:** `HOST`, `REQUIRE_AUTH` and `CORS_ORIGINS` in
   `core/config.py`; the launcher's network mode, bind address, firewall rule
   and token (`backend/launcher/network.py`, `process.py`, `settings.py`); the

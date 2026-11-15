@@ -504,6 +504,8 @@ BibleLive/                        # Monorepo root: tooling + shared assets
 │   ├── core/                     # FastAPI server, verse parser, Bible lookup
 │   │   ├── server/               # Server package (models, auth, state, app factory)
 │   │   │   ├── app.py            # create_app() factory + main() entry point
+│   │   │   ├── routes/           # HTTP routes
+│   │   │   ├── ws.py             # WebSocket route and handlers
 │   │   │   ├── models.py         # Pydantic request/response models
 │   │   │   ├── auth.py           # Operator token verification
 │   │   │   ├── connections.py    # WebSocket connection management

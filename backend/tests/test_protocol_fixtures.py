@@ -16,8 +16,8 @@ from pydantic import TypeAdapter
 from core.bible_versions import BibleVersion
 from core.config import config
 from core.server import models
-from core.server.app import _OPERATOR_ACTION_ADAPTER
 from core.server.models import DisplayServerMessage, FollowAlongHint, OperatorServerMessage
+from core.server.ws import _OPERATOR_ACTION_ADAPTER
 
 REFERENCE_ID = "00000000-0000-0000-0000-000000000001"
 ACTIONS = {

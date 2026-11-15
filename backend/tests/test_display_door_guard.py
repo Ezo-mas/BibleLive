@@ -13,7 +13,7 @@ ALLOWED = {
         ("state.py", "AppState.display_manual_passage"),
     },
     "display_manual_passage": {
-        ("app.py", "_handle_display_reference"),
+        ("ws.py", "_handle_display_reference"),
         ("state.py", "AppState.offer_follow_along"),
     },
     "approve_pending": {("state.py", "AppState.approve_and_notify")},
@@ -39,7 +39,11 @@ def _violations(source: str, path: Path, *, server: bool) -> list[str]:
 
         def check(self, node, name):
             enclosing = ".".join(self.scope) or "<module>"
-            if not server or (path.name, enclosing) not in ALLOWED[name]:
+            # Keyed by the path under core/server/, so routes/ws.py is not mistaken for ws.py.
+            where = (
+                path.relative_to(SERVER).as_posix() if path.is_relative_to(SERVER) else path.name
+            )
+            if not server or (where, enclosing) not in ALLOWED[name]:
                 violations.append(f"{path}:{node.lineno}: {enclosing} references {name}")
 
         def visit_FunctionDef(self, node):
@@ -168,6 +172,13 @@ def test_guard_distinguishes_enclosing_classes_and_functions():
         "state.py:3: Other.approve_pending references _send_display_reference"
     ]
     source = "def outer():\n    def _handle_display_reference():\n        state.display_manual_passage(ref)\n"
-    assert _violations(source, Path("app.py"), server=True) == [
-        "app.py:3: outer._handle_display_reference references display_manual_passage"
+    assert _violations(source, Path("ws.py"), server=True) == [
+        "ws.py:3: outer._handle_display_reference references display_manual_passage"
     ]
+    # Same name and file name in a subpackage: only core/server/ws.py is allowed.
+    nested = SERVER / "routes" / "ws.py"
+    source = "def _handle_display_reference():\n    state.display_manual_passage(ref)\n"
+    assert _violations(source, nested, server=True) == [
+        f"{nested}:2: _handle_display_reference references display_manual_passage"
+    ]
+    assert _violations(source, SERVER / "ws.py", server=True) == []

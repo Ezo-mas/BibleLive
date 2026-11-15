@@ -112,7 +112,7 @@ the code. Three points:
 - **Blueprint D6 ("no new dependency")** applies to BibleLive core only, by
   the owner's answer to Q8.
 - **A promise in the code limits reuse.** `POST /api/transcript` states that
-  sermon text is "not stored, logged, or forwarded" (`app.py:666`) (code).
+  sermon text is "not stored, logged, or forwarded" (`routes/pipeline.py`) (code).
   Translate forwards sermon text to phones by design, so it must not hang off
   that endpoint. The tap is a separate, opt-in output, and BibleLive's promise
   stays true.
