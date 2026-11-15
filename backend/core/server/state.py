@@ -20,19 +20,8 @@ from ..config import config
 from ..passage import PassageError, ResolvedPassage, resolve_passage
 from .connections import ConnectionManager
 from .follow_along import FollowAlong, VerseIndexes
-from .idle_screen import (
-    IdleImage,
-    IdleScreenError,
-    IdleScreenFit,
-    IdleScreenImageInfo,
-    IdleScreenState,
-    ImageKind,
-    commit_image_file,
-    discard_staged_file,
-    new_image_version,
-    remove_image_files,
-    stage_image_file,
-)
+from .idle_screen import IdleImage, IdleScreenFit, IdleScreenState, ImageKind
+from .idle_service import IdleScreenService
 from .models import (
     AutoMode,
     BibleReference,
@@ -43,7 +32,6 @@ from .models import (
     DisplaySettings,
     DisplaySettingsMessage,
     FollowAlongHint,
-    IdleScreenPicture,
     OperatorApprovalConfirmed,
     OperatorBibleVersionConfirmed,
     OperatorClearConfirmed,
@@ -60,6 +48,8 @@ from .models import (
     StateResponse,
     VerseText,
 )
+from .pipeline_health import PIPELINE_MISSED_REPORTS_OFFLINE as PIPELINE_MISSED_REPORTS_OFFLINE
+from .pipeline_health import PipelineHealth
 from .runtime_state import RESTORE_DISPLAY_MAX_AGE_S, RuntimeReference, RuntimeStateStore
 from .service_log import ServiceLog
 from .settings_store import SettingsStore, coerce_auto_mode, is_auto_mode
@@ -83,10 +73,6 @@ AUTO_APPROVE_CONFIDENCES: dict[AutoMode, frozenset[str]] = {
     "medium_and_up": frozenset({"high", "medium"}),
     "all": frozenset({"high", "medium", "low"}),
 }
-
-# How many report intervals the audio pipeline may miss before the operator is
-# told it is offline. One late report (a slow request, a GC pause) is not news.
-PIPELINE_MISSED_REPORTS_OFFLINE = 3
 
 # Follow-along auto-show (``set_follow_auto``) shows a hint by itself only when it starts
 # at most this many verses after the passage on screen ends. A bigger jump stays a hint.
@@ -139,7 +125,7 @@ class AppState:
         )
         self.runtime_state = RuntimeStateStore(self.settings_store.directory / "runtime_state.json")
         self.service_log = ServiceLog()
-        self._logged_pipeline_status: tuple[str, frozenset[str]] | None = None
+        self._pipeline_health = PipelineHealth(self)
         self._auto_approval_ids: set[str] = set()
         # Precedence: a persisted mode wins over the environment default, and an
         # unknown environment value leaves auto-approval off.
@@ -149,22 +135,61 @@ class AppState:
         # Follow-along auto-show: the server shows a qualifying hint itself. Persisted
         # with the auto-approve mode, and off until an operator turns it on.
         self.follow_auto: bool = self.settings_store.load_follow_auto()
-        # The idle screen: its fit mode and picture, persisted beside the settings file.
-        self.idle_screen_fit: IdleScreenFit = self.settings_store.load_idle_screen_fit()
-        self.idle_image: IdleImage | None = self._load_idle_image()
-        self._sync_display_idle_image()
-        # Serializes idle-screen uploads and clears, which touch the picture file and its record.
-        self._idle_lock = asyncio.Lock()
-        # The audio pipeline's latest health report and when it arrived
-        # (time.monotonic()), or None until the first one.
-        self.pipeline_report: PipelineHeartbeat | None = None
-        self.pipeline_reported_at: float | None = None
+        self._idle_service = IdleScreenService(self)
         # Follow-along: verse text per spoken language, and the hint policy with its
         # armed state (which hints were offered, and whether partials are wanted).
         self.verse_indexes = VerseIndexes(self.available_bible_versions)
         self.follow_along = FollowAlong()
         # Book labels (``local_name``) of whichever translation is loaded.
         self.book_names = BookNames()
+
+    @property
+    def pipeline_report(self) -> PipelineHeartbeat | None:
+        return self._pipeline_health.pipeline_report
+
+    @pipeline_report.setter
+    def pipeline_report(self, value: PipelineHeartbeat | None) -> None:
+        self._pipeline_health.pipeline_report = value
+
+    @property
+    def pipeline_reported_at(self) -> float | None:
+        return self._pipeline_health.pipeline_reported_at
+
+    @pipeline_reported_at.setter
+    def pipeline_reported_at(self, value: float | None) -> None:
+        self._pipeline_health.pipeline_reported_at = value
+
+    @property
+    def _logged_pipeline_status(self) -> tuple[str, frozenset[str]] | None:
+        return self._pipeline_health._logged_pipeline_status
+
+    @_logged_pipeline_status.setter
+    def _logged_pipeline_status(self, value: tuple[str, frozenset[str]] | None) -> None:
+        self._pipeline_health._logged_pipeline_status = value
+
+    @property
+    def idle_image(self) -> IdleImage | None:
+        return self._idle_service.idle_image
+
+    @idle_image.setter
+    def idle_image(self, value: IdleImage | None) -> None:
+        self._idle_service.idle_image = value
+
+    @property
+    def idle_screen_fit(self) -> IdleScreenFit:
+        return self._idle_service.idle_screen_fit
+
+    @idle_screen_fit.setter
+    def idle_screen_fit(self, value: IdleScreenFit) -> None:
+        self._idle_service.idle_screen_fit = value
+
+    @property
+    def _idle_lock(self) -> asyncio.Lock:
+        return self._idle_service._idle_lock
+
+    @_idle_lock.setter
+    def _idle_lock(self, value: asyncio.Lock) -> None:
+        self._idle_service._idle_lock = value
 
     def book_label(self, book: str) -> str | None:
         """``book`` named as the loaded translation names it, or None for the canonical name.
@@ -175,48 +200,13 @@ class AppState:
         return self.book_names.label(book, self.bible_lookup.db_path)
 
     def record_pipeline_report(self, report: PipelineHeartbeat, now: float | None = None) -> None:
-        """Keep the audio pipeline's latest health report."""
-        self.pipeline_report = report
-        self.pipeline_reported_at = time.monotonic() if now is None else now
-        self.pipeline_status(now)
+        return self._pipeline_health.record_pipeline_report(report, now)
 
     def pipeline_status(self, now: float | None = None) -> PipelineStatusResponse:
-        """Summarize the pipeline's health for the operator console.
-
-        The pipeline cannot report that it has died, so silence is the signal:
-        once more than ``PIPELINE_MISSED_REPORTS_OFFLINE`` of its own report
-        intervals pass without a report, it is offline, whatever it said last.
-        """
-        report, reported_at = self.pipeline_report, self.pipeline_reported_at
-        if report is None or reported_at is None:
-            self._log_pipeline_status("unknown", [])
-            return PipelineStatusResponse(status="unknown")
-
-        age = max(0.0, (time.monotonic() if now is None else now) - reported_at)
-        status: Literal["ok", "degraded", "offline"]
-        if age > report.interval_s * PIPELINE_MISSED_REPORTS_OFFLINE:
-            status = "offline"
-        elif report.problems:
-            status = "degraded"
-        else:
-            status = "ok"
-        self._log_pipeline_status(
-            status, [] if status == "offline" else [i.code for i in report.issues]
-        )
-        return PipelineStatusResponse(
-            status=status,
-            language=report.language,
-            # Problems from a pipeline that has gone quiet are history, not state.
-            problems=[] if status == "offline" else list(report.problems),
-            issues=[] if status == "offline" else list(report.issues),
-            seconds_since_report=round(age, 1),
-        )
+        return self._pipeline_health.pipeline_status(now)
 
     def _log_pipeline_status(self, status: str, issue_codes: list[str]) -> None:
-        key = (status, frozenset(issue_codes) if status == "degraded" else frozenset())
-        if key != self._logged_pipeline_status:
-            self._logged_pipeline_status = key
-            self.service_log.emit("pipeline_status", status=status, issue_codes=issue_codes)
+        return self._pipeline_health._log_pipeline_status(status, issue_codes)
 
     def restore_runtime_state(self) -> None:
         """Re-resolve recent recovery coordinates before any sockets can connect.
@@ -378,108 +368,25 @@ class AppState:
         return True
 
     def _load_idle_image(self) -> IdleImage | None:
-        """The persisted idle-screen picture, or None when none is saved or its file is gone.
-
-        A saved record without its file is ignored rather than served as a broken image.
-        """
-        image = self.settings_store.load_idle_screen_image()
-        if image is not None and not image.path_in(self.settings_store.directory).is_file():
-            logger.warning(f"Ignoring the saved idle-screen picture: {image.filename} is missing")
-            return None
-        return image
+        return self._idle_service._load_idle_image()
 
     def _sync_display_idle_image(self) -> None:
-        """Mirror the idle picture and its fit into ``display_settings`` for the displays."""
-        picture = (
-            None
-            if self.idle_image is None
-            else IdleScreenPicture(version=self.idle_image.version, fit=self.idle_screen_fit)
-        )
-        self.display_settings = self.display_settings.model_copy(update={"idle_image": picture})
+        return self._idle_service._sync_display_idle_image()
 
     def idle_screen_state(self) -> IdleScreenState:
-        """The idle screen as the console reads it: the fit mode and a version tag, not a path."""
-        image = self.idle_image
-        return IdleScreenState(
-            fit=self.idle_screen_fit,
-            image=None
-            if image is None
-            else IdleScreenImageInfo(version=image.version, content_type=image.content_type),
-        )
+        return self._idle_service.idle_screen_state()
 
     async def set_idle_image(self, kind: ImageKind, data: bytes) -> None:
-        """Store ``data`` as the idle-screen picture.
-
-        The bytes are staged in a temporary file, the record is saved, and only then is
-        the file moved into place, so a failure at any step raises ``IdleScreenError``
-        and leaves the picture on show (file, record and memory) as it was. Writes run
-        off the event loop, since a large picture takes a moment to flush to disk. The
-        lock keeps two uploads (two consoles) from interleaving: one must not delete the
-        file the other has just recorded.
-        """
-        directory = self.settings_store.directory
-        async with self._idle_lock:
-            try:
-                staged = await asyncio.to_thread(stage_image_file, directory, data)
-            except OSError as e:
-                logger.error(f"Could not store the idle-screen picture in {directory}: {e}")
-                raise IdleScreenError(500, "The idle-screen picture could not be stored.") from e
-            previous = self.idle_image
-            image = IdleImage(kind=kind, version=new_image_version())
-            if not self.settings_store.save_idle_screen_image(image):
-                discard_staged_file(staged)
-                raise IdleScreenError(500, "The idle-screen picture could not be saved.")
-            try:
-                commit_image_file(staged, directory, kind)
-            except OSError as e:
-                logger.error(f"Could not put the idle-screen picture in place in {directory}: {e}")
-                self._restore_idle_record(previous)
-                raise IdleScreenError(500, "The idle-screen picture could not be stored.") from e
-            self.idle_image = image
-            # Files of the other formats are stale now. Best effort: the record points at this one.
-            remove_image_files(directory, keep=kind)
-            self._sync_display_idle_image()
-        logger.info(f"Idle-screen picture set ({kind}, {len(data)} bytes)")
-        await self.send_display_settings()
+        return await self._idle_service.set_idle_image(kind, data)
 
     def _restore_idle_record(self, previous: IdleImage | None) -> None:
-        """Put back the record of the picture on show after a new one could not be placed."""
-        restored = (
-            self.settings_store.clear_idle_screen_image()
-            if previous is None
-            else self.settings_store.save_idle_screen_image(previous)
-        )
-        if not restored:
-            logger.error("Could not restore the previous idle-screen picture record")
+        return self._idle_service._restore_idle_record(previous)
 
     async def clear_idle_image(self) -> None:
-        """Remove the idle-screen picture, so the display is blank while idle again.
-
-        The record is removed first; if that cannot be saved, the picture stays as it was.
-        """
-        async with self._idle_lock:
-            if not self.settings_store.clear_idle_screen_image():
-                raise IdleScreenError(500, "The idle screen could not be cleared.")
-            self.idle_image = None
-            remove_image_files(self.settings_store.directory)
-            self._sync_display_idle_image()
-        logger.info("Idle-screen picture removed")
-        await self.send_display_settings()
+        return await self._idle_service.clear_idle_image()
 
     async def set_idle_fit(self, fit: IdleScreenFit, broadcast: bool = True) -> None:
-        """Choose how the idle-screen picture fills the screen (``logo`` or ``fill``).
-
-        Raises ``IdleScreenError`` when the choice cannot be saved; the mode in memory is
-        then unchanged. Displays are told right away unless ``broadcast`` is False, for a
-        caller that is about to send the settings itself (an upload that names its fit).
-        """
-        if not self.settings_store.save_idle_screen_fit(fit):
-            raise IdleScreenError(500, "The idle-screen fit could not be saved.")
-        self.idle_screen_fit = fit
-        self._sync_display_idle_image()
-        logger.info(f"Idle-screen fit set to '{fit}'")
-        if broadcast:
-            await self.send_display_settings()
+        return await self._idle_service.set_idle_fit(fit, broadcast)
 
     @property
     def follow_auto_in_effect(self) -> bool:

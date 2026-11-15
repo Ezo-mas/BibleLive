@@ -279,7 +279,7 @@ def test_failed_move_into_place_restores_the_previous_record(
         staged.unlink()
         raise OSError("disk full")
 
-    monkeypatch.setattr("core.server.state.commit_image_file", fail)
+    monkeypatch.setattr("core.server.idle_service.commit_image_file", fail)
 
     assert _upload(client, JPEG).status_code == 500
 
