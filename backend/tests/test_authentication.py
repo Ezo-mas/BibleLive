@@ -44,6 +44,10 @@ def _closed_with(client, path: str, first_message: dict | None = None) -> int:
     return closed.value.code
 
 
+def test_websocket_unknown_client_type_is_refused(client):
+    assert _closed_with(client, "/ws/bogus") == 4000
+
+
 def test_websocket_operator_rejected_without_token(client, auth_enabled):
     """An operator socket whose first message is not the token is closed with 1008."""
     assert _closed_with(client, "/ws/operator", {"action": "clear"}) == 1008

@@ -53,6 +53,11 @@ BIBLELIVE_OPERATOR_TOKEN=your-generated-token-here
 ### Public endpoints (no authentication required)
 
 - `GET /` — root (redirects to the display page)
+- `GET /docs` — interactive API docs; these pages describe the API but grant no access,
+  and protected endpoints still need the token when authentication is enabled
+- `GET /docs/oauth2-redirect` — OAuth2 redirect helper for the docs page
+- `GET /redoc` — alternative API docs
+- `GET /openapi.json` — machine-readable API schema listing the HTTP API endpoints
 - `GET /display` — display page
 - `GET /healthz` — health check returning the version stamp (unauthenticated)
 - `GET /readyz` — readiness check
@@ -80,6 +85,8 @@ BIBLELIVE_OPERATOR_TOKEN=your-generated-token-here
 - `GET /api/lookup` — verse text lookup by coordinates for the operator's passage search
 - `GET /api/language` — current spoken language
 - `POST /api/language` — switch spoken language
+- `GET /api/bible-version` — active Bible translation and available translations
+- `POST /api/bible-version` — switch the Bible translation used for verse text
 - `GET /api/idle-screen` — idle-screen fit mode and whether a picture is set
 - `POST /api/idle-screen` — upload the idle-screen picture (raw image body, at most 8 MB;
   format from its magic bytes, never SVG)
