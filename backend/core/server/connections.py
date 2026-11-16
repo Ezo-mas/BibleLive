@@ -3,6 +3,7 @@
 import asyncio
 import json
 import logging
+from typing import Any
 
 from fastapi import WebSocket
 
@@ -24,8 +25,9 @@ class ConnectionManager:
     or after disconnect/prune) silently drop sends; authentication sends nothing
     before registration. Broadcast results list only synchronous queue overflows,
     not failures discovered later by writers. A best-effort close may also
-    time out if the peer has stopped reading; its receive loop then continues
-    until the TCP connection ends.
+    time out if the peer has stopped reading; the socket's endpoint task (when
+    one was registered) is then cancelled so its receive loop stops, and
+    ``take_abandoned`` tells the endpoint that cancellation was this one.
     """
 
     def __init__(self):
@@ -34,10 +36,17 @@ class ConnectionManager:
         self.operator_connections: set[WebSocket] = set()
         self._queues: dict[WebSocket, asyncio.Queue[str]] = {}
         self._writers: dict[WebSocket, asyncio.Task[None]] = {}
+        self._endpoints: dict[WebSocket, asyncio.Task[Any]] = {}
+        self._pruned_endpoints: dict[WebSocket, asyncio.Task[Any]] = {}
+        self._abandoned: set[WebSocket] = set()
         self._tasks: set[asyncio.Task[None]] = set()
 
     async def connect(
-        self, websocket: WebSocket, client_type: str = "display", accepted: bool = False
+        self,
+        websocket: WebSocket,
+        client_type: str = "display",
+        accepted: bool = False,
+        endpoint: asyncio.Task[Any] | None = None,
     ):
         """Accept a websocket connection and register it based on client type.
 
@@ -46,6 +55,8 @@ class ConnectionManager:
             client_type: Either "display" or "operator". Defaults to "display".
             accepted: True when the caller already accepted the socket (an
                 operator socket is accepted before its token is checked).
+            endpoint: The task running this socket's receive loop. If the socket
+                is pruned and its close fails, this task is cancelled.
         """
         if not accepted:
             await websocket.accept()
@@ -54,6 +65,8 @@ class ConnectionManager:
         writer = asyncio.create_task(self._write(websocket, queue))
         self._writers[websocket] = writer
         self._track(writer)
+        if endpoint is not None:
+            self._endpoints[websocket] = endpoint
         if client_type == "display":
             self.display_connections.add(websocket)
         elif client_type == "operator":
@@ -67,6 +80,9 @@ class ConnectionManager:
         """
         self.display_connections.discard(websocket)
         self.operator_connections.discard(websocket)
+        self._endpoints.pop(websocket, None)
+        self._pruned_endpoints.pop(websocket, None)
+        self._abandoned.discard(websocket)
         queue = self._queues.pop(websocket, None)
         if queue is not None:
             while not queue.empty():
@@ -89,9 +105,27 @@ class ConnectionManager:
             await asyncio.gather(*tasks, return_exceptions=True)
             self._tasks.difference_update(tasks)
 
+    def take_abandoned(self, websocket: WebSocket) -> bool:
+        """Return True once if this manager cancelled the socket's endpoint task.
+
+        The endpoint calls this when it sees ``CancelledError``: True means the
+        socket was pruned and could not be closed, so the endpoint should end as
+        if the client had disconnected; False means some other cancellation
+        (such as server shutdown) that must propagate.
+        """
+        if websocket in self._abandoned:
+            self._abandoned.discard(websocket)
+            return True
+        return False
+
     def _prune(self, websocket: WebSocket) -> None:
         writer = self._writers.get(websocket)
+        endpoint = self._endpoints.get(websocket)
         self.disconnect(websocket)
+        if endpoint is not None:
+            # Kept until the endpoint's own disconnect (its receive loop ended),
+            # so a failed close never cancels an endpoint that is already ending.
+            self._pruned_endpoints[websocket] = endpoint
         self._track(asyncio.create_task(self._close_socket(websocket, writer)))
 
     async def _close_socket(self, websocket: WebSocket, writer: asyncio.Task[None] | None) -> None:
@@ -103,6 +137,12 @@ class ConnectionManager:
             await asyncio.wait_for(websocket.close(), timeout=SEND_TIMEOUT)
         except Exception as e:
             logger.warning(f"Failed to close pruned WebSocket: {e!r}")
+            # The peer is not reading, so its receive loop would otherwise run
+            # until the TCP connection ends: stop it as a disconnect.
+            endpoint = self._pruned_endpoints.pop(websocket, None)
+            if endpoint is not None and not endpoint.done():
+                self._abandoned.add(websocket)
+                endpoint.cancel()
 
     async def _write(self, websocket: WebSocket, queue: asyncio.Queue[str]) -> None:
         try:
