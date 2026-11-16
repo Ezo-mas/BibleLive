@@ -249,10 +249,8 @@ export default function App() {
         open={settingsOpen}
         section={settingsSection}
         onClose={() => setSettingsOpen(false)}
-        verseLimit={operator.verseLimit}
         displayTheme={operator.displayTheme}
         disabled={!operator.isConnected}
-        onVerseLimitChange={operator.setDisplayVerseLimit}
         onThemeChange={operator.setDisplayBackground}
         clearMode={operator.clearMode}
         onClearModeChange={operator.setDisplayClearMode}

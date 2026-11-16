@@ -13,7 +13,9 @@ const SNIPPET_CHARS = 200
  * planned, but an older saved plan or a failed lookup can leave one empty. This
  * asks the existing read-only lookup (the one behind the search verse-start
  * preview) while the console is connected, and returns the results by item id.
- * Failed lookups retry once; a confirmed translation change starts fresh.
+ * Failed lookups retry once. A confirmed translation change starts fresh and
+ * looks up every item again, including those saved with text, so no row keeps
+ * the old translation; the looked-up text then wins over the saved one.
  */
 export function usePlanSnippets(
   items: readonly PlanItem[],
@@ -26,12 +28,15 @@ export function usePlanSnippets(
   const asked = useRef(new Set<string>())
   const versionRef = useRef(version)
   const generation = useRef(0)
+  // Set once the translation has changed: saved text is in the old one from then on.
+  const refetchSaved = useRef(false)
 
   useEffect(() => {
     if (version === null) return
     if (versionRef.current !== null && versionRef.current !== version) {
       generation.current += 1
       asked.current.clear()
+      refetchSaved.current = true
       setSnippets({})
     }
     versionRef.current = version
@@ -47,7 +52,7 @@ export function usePlanSnippets(
   useEffect(() => {
     if (!enabled) return
     for (const item of items) {
-      if (item.snippet || asked.current.has(item.id)) continue
+      if ((item.snippet && !refetchSaved.current) || asked.current.has(item.id)) continue
       asked.current.add(item.id)
       const currentGeneration = generation.current
       const lookup = () =>

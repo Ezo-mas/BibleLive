@@ -50,7 +50,7 @@ Entry format:
 - **Logged:** 2026-11-16
 
 ### The action row is back at the end of the list in the stacked layout (resolved)
-- **Where:** `frontend/src/operator/operator.css` (`.operator-pending`,
+- **Where:** `frontend/src/operator/operator.css`, since split into `styles/*.css` (`.operator-pending`,
   `.operator-main-column`) with the media queries at 1024px and 1280px.
 - **Problem:** The pending section is bounded — the queue scrolls inside it and
 "Approve and Show" stays at the section's foot — only while the working column is

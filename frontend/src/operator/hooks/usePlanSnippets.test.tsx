@@ -47,7 +47,7 @@ describe('usePlanSnippets', () => {
     expect(result.current).toEqual({})
   })
 
-  it('drops looked-up snippets and refetches only unsaved text on a version change', async () => {
+  it('drops looked-up snippets and refetches every item on a version change', async () => {
     lookup.mockResolvedValueOnce(passage('English'))
     let resolveNew!: (value: Passage) => void
     lookup.mockImplementationOnce(
@@ -56,6 +56,7 @@ describe('usePlanSnippets', () => {
           resolveNew = resolve
         })
     )
+    lookup.mockResolvedValueOnce(passage('Išsaugota'))
     const { result, rerender } = renderHook(
       ({ version }) => usePlanSnippets(items, null, true, version),
       { initialProps: { version: 'kjv' } }
@@ -64,11 +65,12 @@ describe('usePlanSnippets', () => {
 
     rerender({ version: 'ltb' })
     expect(result.current).toEqual({})
-    expect(lookup).toHaveBeenCalledTimes(2)
+    // The saved item is looked up too: its saved text is in the old translation.
+    expect(lookup).toHaveBeenCalledTimes(3)
     await act(async () => resolveNew(passage('Lietuviškai')))
-    expect(result.current).toEqual({ 'plan-1': 'Lietuviškai' })
+    expect(result.current).toEqual({ 'plan-1': 'Lietuviškai', saved: 'Išsaugota' })
     rerender({ version: 'ltb' })
-    expect(lookup).toHaveBeenCalledTimes(2)
+    expect(lookup).toHaveBeenCalledTimes(3)
   })
 
   it('ignores an old response arriving after the new translation', async () => {
@@ -79,17 +81,19 @@ describe('usePlanSnippets', () => {
           resolveOld = resolve
         })
     )
-    lookup.mockResolvedValueOnce(passage('Lietuviškai'))
+    lookup.mockResolvedValue(passage('Lietuviškai'))
     const { result, rerender } = renderHook(
       ({ version }) => usePlanSnippets(items, null, true, version),
       { initialProps: { version: 'kjv' } }
     )
 
     rerender({ version: 'ltb' })
-    await waitFor(() => expect(result.current).toEqual({ 'plan-1': 'Lietuviškai' }))
+    await waitFor(() =>
+      expect(result.current).toEqual({ 'plan-1': 'Lietuviškai', saved: 'Lietuviškai' })
+    )
     await act(async () => resolveOld(passage('English')))
-    expect(result.current).toEqual({ 'plan-1': 'Lietuviškai' })
-    expect(lookup).toHaveBeenCalledTimes(2)
+    expect(result.current).toEqual({ 'plan-1': 'Lietuviškai', saved: 'Lietuviškai' })
+    expect(lookup).toHaveBeenCalledTimes(3)
   })
 
   it('does not refetch on the first version confirmation', async () => {

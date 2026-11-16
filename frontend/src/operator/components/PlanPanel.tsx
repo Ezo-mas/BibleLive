@@ -61,8 +61,8 @@ export function PlanPanel({
             {items.map((item, index) => {
               const label = itemLabel(item)
               const titleId = `${item.id}-title`
-              // The remembered start of the passage, or one looked up since.
-              const preview = item.snippet || snippets[item.id] || ''
+              // Text looked up since (in the current translation), else the remembered start.
+              const preview = snippets[item.id] || item.snippet || ''
               return (
                 <li key={item.id} className="ref-item plan-item">
                   <div className="plan-item-head">

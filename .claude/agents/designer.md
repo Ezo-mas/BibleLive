@@ -17,7 +17,7 @@ Know the two audiences:
 
 Design rules:
 - Use the existing design tokens in frontend/src/styles/tokens.css and global.css. Extend tokens instead of hard-coding colors or sizes. Keep light and dark themes working (useTheme).
-- Page CSS lives beside each App (operator.css, display.css). Follow the existing component structure and naming.
+- Page CSS lives beside each App (operator `styles/*.css`, display.css). Follow the existing component structure and naming.
 - Accessibility: WCAG AA contrast, visible focus states, semantic elements, aria labels on icon-only controls, respect prefers-reduced-motion.
 - Do not add dependencies (no UI kits, icon packs, or CSS frameworks) without asking. The stack is React 18 + Vite + plain CSS on purpose.
 - Prettier style: no semicolons, single quotes, width 100.
