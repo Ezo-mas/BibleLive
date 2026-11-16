@@ -25,7 +25,16 @@ import { useI18n } from '../shared/i18nContext'
 import '../styles/tokens.css'
 import '../styles/global.css'
 import '../styles/controls.css'
-import './operator.css'
+import './styles/base.css'
+import './styles/header.css'
+import './styles/layout.css'
+import './styles/live-panel.css'
+import './styles/next-panel.css'
+import './styles/side-panel.css'
+import './styles/settings.css'
+import './styles/scripture-search.css'
+import './styles/settings-dialog.css'
+import './styles/responsive.css'
 
 /**
  * Operator console.
@@ -240,10 +249,8 @@ export default function App() {
         open={settingsOpen}
         section={settingsSection}
         onClose={() => setSettingsOpen(false)}
-        verseLimit={operator.verseLimit}
         displayTheme={operator.displayTheme}
         disabled={!operator.isConnected}
-        onVerseLimitChange={operator.setDisplayVerseLimit}
         onThemeChange={operator.setDisplayBackground}
         clearMode={operator.clearMode}
         onClearModeChange={operator.setDisplayClearMode}

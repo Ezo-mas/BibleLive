@@ -1,0 +1,105 @@
+/* UP NEXT reads as a different job from the live preview: recessed fill, a dashed
+   edge ("queued, not live") and more air above it. Its anatomy is the cards' own. */
+/* Up Next differs from the other cards in its text only: larger, up to four lines.
+   Padding is the cards' own. */
+.operator-next .operator-card-verse {
+  -webkit-line-clamp: 4;
+  font-size: var(--font-size-base);
+}
+
+/* The body is always four of those lines tall, staged or empty, so Up Next is one
+   fixed height: its buttons never move and the preview above never resizes as
+   passages are staged and shown. */
+.operator-next .operator-card-body {
+  box-sizing: border-box;
+  height: calc(
+    4 * var(--font-size-base) * var(--leading-normal) + var(--card-gap) + var(--card-pad)
+  );
+  overflow: hidden;
+}
+
+.operator-next {
+  display: flex;
+  flex-direction: column;
+  flex: none;
+  min-width: 0;
+  background: var(--panel-bg);
+  border: calc(var(--border-width) * 1.5) dashed var(--color-border-strong);
+  border-radius: var(--radius-card);
+}
+
+.operator-next-note {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+}
+
+/* Follow-along: a suggestion that the speaker has read on. One slim strip laid over
+   the top of the preview frame, so it takes no space of its own and nothing in the
+   page moves when it appears or goes. A neutral raised surface with only a trace of
+   the accent (about 10% fill, 35% edge); the verse keeps the normal colours and only
+   the label takes the accent text colour. It takes no keyboard shortcut. The Show
+   button is a control tall (36px), so the strip is 36px plus 6px of padding each side. */
+.operator-follow {
+  position: absolute;
+  z-index: 2;
+  top: var(--card-gap);
+  right: var(--card-gap);
+  left: var(--card-gap);
+  display: flex;
+  align-items: center;
+  gap: var(--card-pad);
+  min-width: 0;
+  padding: calc(var(--card-gap) * 0.75) calc(var(--card-gap) * 0.75) calc(var(--card-gap) * 0.75)
+    var(--card-pad);
+  background: color-mix(in srgb, var(--color-primary) 10%, var(--color-surface-raised));
+  border: var(--border-width) solid
+    color-mix(in srgb, var(--color-primary) 35%, var(--color-border));
+  border-radius: var(--radius-control);
+  box-shadow: var(--shadow-md);
+}
+
+.operator-follow .operator-card-title {
+  flex: none;
+}
+
+.operator-follow .operator-stage-title {
+  color: var(--accent-text);
+}
+
+/* Follow-along always points at a single verse, so its text is one line, ellipsized;
+   it gives way before the label, the reference or the button do. */
+.operator-follow-verse {
+  flex: 1 1 0;
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  font-family: var(--font-serif);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.operator-follow .btn {
+  flex: none;
+}
+
+.btn-flash {
+  animation: flash var(--transition-fast) ease-out;
+}
+
+@keyframes flash {
+  0% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(0.95);
+  }
+  100% {
+    transform: scale(1);
+  }
+}

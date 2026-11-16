@@ -49,8 +49,8 @@ Entry format:
   both the old and the fixed code until the client disconnected.
 - **Logged:** 2026-11-16
 
-### The action row is back at the end of the list in the stacked layout
-- **Where:** `frontend/src/operator/operator.css` (`.operator-pending`,
+### The action row is back at the end of the list in the stacked layout (resolved)
+- **Where:** `frontend/src/operator/operator.css`, since split into `styles/*.css` (`.operator-pending`,
   `.operator-main-column`) with the media queries at 1024px and 1280px.
 - **Problem:** The pending section is bounded — the queue scrolls inside it and
 "Approve and Show" stays at the section's foot — only while the working column is
@@ -70,6 +70,19 @@ y=2896 in the 544px main area at 1280x600, y=3028 in 644px at 1024x700, and
 y=3045 in 787px at 390x844. Nothing was clipped or overlapped — the row is simply
 below the fold.
 - **Logged:** 2026-10-10
+- **Resolved:** 2026-11-17 (M6 change 4) — part of it went with the console redesign of
+  2026-10-13 (4ba74f3): search moved into the header, the stack moved to 1100px and the
+  stacked panel was capped at 520px, but the queue still sat wholly below the fold at
+  1024x700 (footer y=1420 in a 648px main area, Up Next's Show at y=776) and on a short
+  window the fixed 520px panel ran past the screen (844x390: tabs at y=-146 with the
+  footer in view). Now (`frontend/src/operator/styles/layout.css`, `responsive.css`) the
+  two columns hold down to 1024px (side panel floor 368px, so the Lithuanian tab and its
+  count fit), and below that the tabbed panel is `min(520px, 100cqh)` tall with a 280px
+  floor: scrolled to, its tabs, list and footer are on screen together. Layout is not
+  testable in jsdom; covered by Playwright measurements with 21 queued references
+  (footer y, unchanged at 1440x900: 839 and 1280x720: 659; 1024x700: 639 in view without
+  scrolling; 390x844: 787 at the end of the page, Up Next's Show still in view at 147;
+  844x390: 329 with the tabs at 68) and by the stacked layout in `DESIGN.md`.
 
 ### Language control server port-conflict detection is best-effort on Windows
 - **Where:** `backend/audio/control.py`

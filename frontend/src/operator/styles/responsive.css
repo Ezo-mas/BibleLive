@@ -1,0 +1,103 @@
+/* Responsive */
+/* The two columns hold down to 1024px, where the working column is still 608px wide
+   (the control row's one-line floor is 560px) beside the panel's 368px floor: on a
+   laptop or a tablet held landscape the queue, its footer, Up Next and the preview
+   are all in view at once, as on a desktop. */
+@media (max-width: 1023px) {
+  /* One column and a page that scrolls. The frame is the full width and takes its
+     height from the 16:9 ratio, so here the miniature is exactly the projector's shape. Flex rather than grid, so
+     each part keeps the height its content needs.
+
+     The column is a size container (`cqh` is the height of its visible part), so the
+     tabbed panel is never taller than what the window shows: scrolled down to, its
+     tabs, its list and its footer are all in view and the list scrolls inside it, as
+     it does beside the workspace on a wide window. */
+  .operator-main {
+    /* About three queued rows: on a tall window the end of Up Next, with Show on
+       display, stays in view above the panel when the page is scrolled to the end. */
+    --operator-queue-max: 520px;
+    /* The tabs, the footer and one queued row. A window shorter than that scrolls the
+       page past the panel instead of squeezing the list to nothing. */
+    --operator-queue-min: 280px;
+    /* Positioned, so the visually hidden labels inside scroll with the column instead
+       of lengthening the document behind it (a second scrollbar). */
+    position: relative;
+    flex-direction: column;
+    overflow-y: auto;
+    container-type: size;
+  }
+
+  .operator-workspace {
+    flex: none;
+    overflow: visible;
+  }
+
+  .operator-live {
+    flex: none;
+  }
+
+  .operator-monitor-wrap {
+    flex: none;
+    aspect-ratio: 16 / 9;
+    min-height: 0;
+  }
+
+  /* One fixed height whatever the tab holds, so the footer never moves as
+     detections arrive and the page never changes length under the operator. */
+  .operator-pending {
+    width: auto;
+    height: min(var(--operator-queue-max), 100cqh);
+    min-height: var(--operator-queue-min);
+  }
+}
+
+@media (max-width: 800px) {
+  /* The command bar takes a row of its own under the brand and the controls. */
+  .operator-header {
+    grid-template-columns: minmax(0, 1fr) auto;
+    height: auto;
+    row-gap: var(--space-2);
+    padding: var(--space-2) var(--space-4);
+  }
+
+  .operator-header-left {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .operator-header-right {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .operator-search {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+
+  /* Card headers wrap rather than push the actions out of the card. */
+  .operator-card-head {
+    flex-wrap: wrap;
+  }
+}
+
+@media (max-width: 640px) {
+  .operator-display-label,
+  .operator-language-chip-label {
+    display: none;
+  }
+
+  .operator-connection-banner,
+  .operator-pipeline-banner {
+    padding: var(--space-3) var(--space-4);
+  }
+
+  .operator-main {
+    padding: var(--space-3);
+    gap: var(--space-3);
+  }
+
+  .operator-quick-auto {
+    margin-left: 0;
+  }
+}

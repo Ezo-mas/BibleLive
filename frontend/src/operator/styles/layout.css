@@ -1,0 +1,129 @@
+/* Main content: two columns inside the page gutter (16px, the only side space on
+   any window). The tabbed panel (Pending, Plan, History) is pinned to the right edge
+   at a width in proportion to the window (`--operator-side-w`); the workspace takes
+   every pixel it does not, so there is never empty space beside either column.
+
+   The workspace is a flex column of the full height. ON DISPLAY takes all the height
+   UP NEXT leaves (`flex: 1`); UP NEXT is one fixed height whatever it holds, and
+   follow-along lies over the preview. So the column's last card always ends where the
+   panel ends, and the miniature changes size only when the window does. */
+.operator-main {
+  /* The floor (reached below 1082px) keeps each of the three tabs about 122px wide,
+     room for the Lithuanian "Laukiančios" and its count with a little air. */
+  --operator-side-w: clamp(368px, 34vw, 560px);
+  /* The least height the monitor frame keeps; a window shorter than that scrolls the
+     column instead of squeezing the preview to nothing. */
+  --operator-frame-min: 160px;
+  display: flex;
+  gap: var(--space-4);
+  flex: 1;
+  min-height: 0;
+  padding: var(--space-4);
+  overflow: hidden;
+}
+
+.operator-workspace {
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/* ON DISPLAY: a card with a slim label row, the monitor frame, and the control
+   row. It takes every pixel of height the column has left. No `overflow`, so its
+   minimum height is its content's (the frame's floor plus the rows) and it never
+   shrinks over the control row. */
+.operator-live {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 0;
+  background: var(--card-bg);
+  border: var(--border-width) solid var(--color-border);
+  border-radius: var(--radius-card);
+}
+
+/* One anatomy for the three cards in the workspace (ON DISPLAY, UP NEXT and
+   follow-along): a header row (the uppercase label, the reference as plain bold
+   text, free space, then the card's actions at the right), optional text below,
+   all on the same 12px side padding with 36px controls. */
+.operator-card-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+  /* The header row is one control tall (36px) under the card's top padding; a
+     header with only a label is the same height. */
+  min-height: calc(var(--control-h-md) + var(--card-pad));
+  padding: var(--card-pad) var(--card-pad) 0;
+}
+
+/* Label and reference are one group on the text baseline (label 12px uppercase,
+   reference 14px bold), centred as a group against the buttons at the right. */
+.operator-card-title {
+  display: flex;
+  flex: 0 1 auto;
+  align-items: baseline;
+  gap: var(--space-3);
+  min-width: 0;
+  overflow: hidden;
+}
+
+.operator-card-ref {
+  flex-shrink: 0;
+  margin: 0;
+  overflow: hidden;
+  font-size: var(--font-size-sm);
+  font-weight: var(--weight-bold);
+  line-height: var(--leading-tight);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--color-text);
+}
+
+.operator-card-grow {
+  flex: 1 1 0;
+}
+
+/* Body text (or the monitor) sits one gap under the header, with the card's padding
+   under it. */
+.operator-card-body {
+  min-width: 0;
+  padding: var(--card-gap) var(--card-pad) var(--card-pad);
+}
+
+/* The start of the passage, in the same muted serif on every card. */
+.operator-card-verse {
+  display: -webkit-box;
+  margin: 0;
+  overflow: hidden;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  font-family: var(--font-serif);
+  font-size: var(--font-size-sm);
+  line-height: var(--leading-normal);
+  color: var(--color-text-secondary);
+}
+
+.operator-card-verse-number {
+  margin-right: var(--space-0-5);
+  font-family: var(--font-sans);
+  font-size: var(--font-size-xs);
+  font-weight: var(--weight-semibold);
+  color: var(--color-text-muted);
+}
+
+/* The overline style: small, uppercase, tracked, muted. Stage and control-row
+   labels use it, and nothing else in the console is uppercase. */
+.operator-stage-title,
+.operator-quick-label {
+  margin: 0;
+  white-space: nowrap;
+  font-size: var(--font-size-xs);
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}

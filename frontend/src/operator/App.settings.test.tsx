@@ -75,7 +75,7 @@ function autoOptions() {
 
 /** The verse-limit options, scoped so 'All' cannot collide with auto-approve. */
 function verseOptions() {
-  return within(within(dialog()).getByRole('group', { name: 'Verses shown on display' }))
+  return within(screen.getByRole('group', { name: 'Verses shown on the display' }))
 }
 
 beforeEach(() => {
@@ -112,8 +112,8 @@ describe('settings dialog', () => {
 
     expect(dialog()).toHaveAccessibleName('Settings')
     expect(
-      within(dialog()).getByRole('group', { name: 'Verses shown on display' })
-    ).toBeInTheDocument()
+      within(dialog()).queryByRole('group', { name: 'Verses shown on display' })
+    ).not.toBeInTheDocument()
     expect(within(dialog()).getByRole('group', { name: 'Auto-approve mode' })).toBeInTheDocument()
 
     act(() => {

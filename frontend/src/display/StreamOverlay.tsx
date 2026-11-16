@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useWebSocket } from '../shared/useWebSocket'
 import { formatReference } from '../shared/reference'
+import { useI18n } from '../shared/i18nContext'
 import {
   coerceVerseLimit,
   hiddenVerseCount,
@@ -31,6 +32,7 @@ const VERSE_LINE_HEIGHT = 1.3
  * shows (same messages, same verse limit) on a transparent page.
  */
 export default function StreamOverlay() {
+  const { t } = useI18n()
   const [options] = useState(() => parseStreamOverlayOptions(window.location.search))
   const [reference, setReference] = useState<BibleReference | null>(null)
   const [visible, setVisible] = useState(false)
@@ -149,10 +151,7 @@ export default function StreamOverlay() {
           <div className="stream-reference">
             {formatReference(reference)}
             {droppedCount > 0 && (
-              <span className="stream-more">
-                {' '}
-                +{droppedCount} more verse{droppedCount === 1 ? '' : 's'}
-              </span>
+              <span className="stream-more"> {t('stage.moreVerses', { count: droppedCount })}</span>
             )}
           </div>
           <div className="stream-verses" ref={versesRef} data-testid="stream-verses">

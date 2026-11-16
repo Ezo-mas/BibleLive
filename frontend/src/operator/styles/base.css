@@ -1,0 +1,62 @@
+/* Sign-in card. The field and the button are the shared `.input` and `.btn`
+   (styles/controls.css, components/Button.css); only the layout is here. */
+.operator-auth-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  padding: var(--space-4);
+  background: var(--app-bg);
+}
+
+.operator-auth-card {
+  width: 100%;
+  max-width: 400px;
+  padding: var(--space-6);
+  background: var(--panel-bg);
+  border: var(--border-width) solid var(--color-border);
+  border-radius: var(--radius-dialog);
+  box-shadow: var(--shadow-lg);
+}
+
+.operator-auth-title {
+  margin: 0 0 var(--space-4) 0;
+  font-size: var(--font-size-xl);
+  font-weight: var(--weight-semibold);
+  text-align: center;
+  color: var(--color-text);
+}
+
+.operator-auth-error {
+  margin-bottom: var(--space-4);
+  padding: var(--space-3);
+  background: var(--color-danger-bg);
+  color: var(--color-danger-text);
+  border-radius: var(--radius-card);
+  font-size: var(--font-size-sm);
+  text-align: center;
+}
+
+.operator-auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.operator-auth-label {
+  font-size: var(--font-size-sm);
+  font-weight: var(--weight-semibold);
+  color: var(--color-text);
+}
+
+.operator-app {
+  display: flex;
+  flex-direction: column;
+  /* Dynamic viewport height with the classic unit as the fallback: on a phone
+     100vh includes the space behind the browser's own bars, which pushes the
+     bottom of the console out of reach. */
+  height: 100vh;
+  height: 100dvh;
+  background: var(--app-bg);
+  color: var(--color-text);
+}

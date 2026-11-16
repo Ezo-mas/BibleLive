@@ -13,7 +13,7 @@ import type { BibleVersionState } from '../hooks/useBibleVersion'
 import { IdleScreenSettings } from './IdleScreenSettings'
 import type { IdleScreenState } from '../hooks/useIdleScreen'
 import type { Theme } from '../../hooks/useTheme'
-import type { DisplayTheme, VerseLimit } from '../../shared/verseText'
+import type { DisplayTheme } from '../../shared/verseText'
 import type { AutoMode, ClearMode } from '../../shared/types'
 
 /** Which part of the dialog to open on: the display, or the spoken language. */
@@ -24,12 +24,10 @@ export interface SettingsDialogProps {
   /** The section the dialog opens onto. */
   section: SettingsSection
   onClose: () => void
-  verseLimit: VerseLimit
   displayTheme: DisplayTheme
   clearMode: ClearMode
   /** Settings are server-owned, so they are read-only while disconnected. */
   disabled: boolean
-  onVerseLimitChange: (next: VerseLimit) => void
   onThemeChange: (next: DisplayTheme) => void
   onClearModeChange: (next: ClearMode) => void
   /** The audio pipeline's spoken language: read and switched through the server. */
@@ -83,11 +81,9 @@ export function SettingsDialog({
   open,
   section,
   onClose,
-  verseLimit,
   displayTheme,
   clearMode,
   disabled,
-  onVerseLimitChange,
   onThemeChange,
   onClearModeChange,
   spokenLanguage,
@@ -191,11 +187,9 @@ export function SettingsDialog({
               {t('settings.sectionDisplay')}
             </h3>
             <DisplaySettings
-              verseLimit={verseLimit}
               displayTheme={displayTheme}
               clearMode={clearMode}
               disabled={disabled}
-              onVerseLimitChange={onVerseLimitChange}
               onThemeChange={onThemeChange}
               onClearModeChange={onClearModeChange}
             />

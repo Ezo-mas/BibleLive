@@ -427,9 +427,10 @@ describe('display settings', () => {
   it('switches the verse limit and background optimistically', async () => {
     openWith()
     openSettings()
-    // The display's quick controls repeat the verse limit, so scope to the dialog.
     const dialog = within(screen.getByRole('dialog'))
-    const five = dialog.getByRole('button', { name: '5' })
+    const five = within(
+      screen.getByRole('group', { name: 'Verses shown on the display' })
+    ).getByRole('button', { name: '5' })
     act(() => {
       five.click()
     })
@@ -448,7 +449,7 @@ describe('display settings', () => {
     render(<App />)
     openSettings()
     // 'All' also labels an auto-approve option, so scope to the verse-limit group.
-    const verseLimits = within(screen.getByRole('group', { name: 'Verses shown on display' }))
+    const verseLimits = within(screen.getByRole('group', { name: 'Verses shown on the display' }))
     expect(verseLimits.getByRole('button', { name: '5' })).toBeDisabled()
     expect(verseLimits.getByRole('button', { name: 'All' })).toBeDisabled()
 
