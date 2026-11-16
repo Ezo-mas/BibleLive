@@ -1121,6 +1121,10 @@ class LanguageProfile(Protocol):
 
     def trim_carry(self, carry: list[Token], new: list[Token], /) -> list[Token]: ...
 
+    def join_cut_number(
+        self, carry: list[Token], new: list[Token], /
+    ) -> tuple[list[Token], list[Token], int] | None: ...
+
     def cut_off_verse(
         self,
         ref: Reference,
@@ -1146,6 +1150,11 @@ class EnglishProfile:
 
     def trim_carry(self, carry: list[Token], _new: list[Token], /) -> list[Token]:
         return carry
+
+    def join_cut_number(
+        self, _carry: list[Token], _new: list[Token], /
+    ) -> tuple[list[Token], list[Token], int] | None:
+        return None
 
     def cut_off_verse(
         self,
@@ -1244,6 +1253,12 @@ class StreamingParser:
             self.parser._chapter_words,
             self.parser._verse_words,
         )
+        joined = self._profile.join_cut_number(self.carry, new)
+        if joined is not None:
+            # One spoken chapter number cut in two ("dvidešim" | "antrą
+            # skyriaus"): the held "Book <tens>" was only its first half.
+            self.carry, new, cut = joined
+            self._held = [r for r in self._held if r.verse_start is not None or r.chapter != cut]
         carry = self._profile.trim_carry(self.carry, new)
         toks = carry + new
         refs = self.parser._scan(toks, self.ctx)

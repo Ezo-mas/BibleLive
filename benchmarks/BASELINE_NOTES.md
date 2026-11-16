@@ -115,6 +115,18 @@ a 20 s tolerance unless noted. Check here before re-running one of these.
   shorter hop.
 - **Longer utterance cap (15 s soft / 25 s hard).** No recall gain over
   8/12 s, twice the false positives, ~6 s more latency (4/7/21).
+- **At the 12 s cap, cut at the quietest point of the last 1.5 s** (2026-11-16;
+  per-frame level summed over 3 frames; the audio after the cut leads the next
+  utterance). 44% of the 11-15 service's utterances reach the cap. Fresh
+  transcription, 15 services, against the cap at exactly 12 s with
+  `join_cut_number`: `kmynas` 165 TP / 12 FN / 5 low / 3 medium+high FP vs
+  167 / 10 / 3 / 4; `kmynas+canary` 172 / 5 / 17 / 1 vs 173 / 4 / 15 / 1. The
+  quietest point is often inside a citation too, so splits move rather than
+  vanish: gained Ephesians 2:5-6 and Isaiah 45:18 (CPU), lost 2 Corinthians
+  1:8 and 1:10 (a new cut gave "Ir Maskyrius" for "pirmas skyrius") and
+  1 Corinthians 12:7-11 (cut inside the range). Isaiah 58:11 (06-21) was
+  still found but scored as a repeat: its transcript-audit gold time is about
+  10 s early. Code dropped (branch not kept).
 - **Demucs vocal isolation of 09-13** (`htdemucs --two-stems=vocals`, an
   upper bound for a clean pulpit feed). The VAD found more real pauses
   (77% vs 85% of frames voiced), but detection did not improve
@@ -637,6 +649,31 @@ eilutė") and other books are unchanged. Cached replay, 15 services:
 
 Only 11-15 changed on both tiers (whole result JSON compared): Kmynas finds
 2 Timothy 4:3, and with two models it goes from low (Canary alone) to high.
+
+## A chapter number cut in two by the 12 s cap (2026-11-16)
+
+"...Pirmo karalių dvidešim" | "Antrą skyriaus pirmą eilutę" (11-15, Kmynas):
+the hard cap fell inside "dvidešimt antrą". `LithuanianProfile.join_cut_number`
+joins them when one segment ends on a book and a tens number (20–90) and the
+next starts with the chapter word and a units number (1–9); the held
+"Book <tens>" is dropped. Cached replay, 15 services:
+
+| Tier | Run | TP | FN | FP low | FP medium+high |
+| --- | --- | --- | --- | --- | --- |
+| `kmynas` | before | 166 | 11 | 3 | 6 |
+| `kmynas` | after | 167 | 10 | 3 | 4 |
+| `kmynas+canary` | before | 172 | 5 | 17 | 1 |
+| `kmynas+canary` | after | 173 | 4 | 15 | 1 |
+
+Only 11-15 changed. With Kmynas alone 1 Kings 22:1 is high and the two medium
+FPs (1 Kings 20, 1 Kings 2:1) are gone. With two models it is low: Canary heard
+"Antras kiriaus", so its side does not join and still gives 20:2 and 20:1 (low).
+
+Misses left after this, by cause (Kmynas alone, 10): split by an utterance cut
+2 (05-31 Ephesians 2:5-6, 10-18 John 12:20-22; 07-12 Jude 1:20-21 partly);
+speech-model mishearings 4 ("Ameno" for Mato, "sijono" for Jono, 65 for 45,
+"rutinai" for eilutei); parser 4 (chapter lists, a verse from context, a
+chapter with no book). Two models miss 4, none of them clearly from a cut.
 
 ## Re-check on new recordings
 

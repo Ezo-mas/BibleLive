@@ -273,6 +273,27 @@ class TestContextTTL:
         sp = StreamingParser(language="lt", hold_chapter_only=True)
         assert [str(r) for r in sp.feed("Filipiečiams keturi devyni.", 0.0)] == ["Philippians 4:9"]
 
+    def test_cut_inside_a_spoken_chapter_number(self):
+        # Live service 2026-11-15 (12 s cap, Kmynas): "dvidešimt antrą" split
+        # into "dvidešim" | "Antrą skyriaus": 1 Kings 22:1, not 20 and 2:1.
+        first = "ir aš perskaičiau šitą Pirmo karalių dvidešim"  # cut here
+        second = (
+            "Antrą skyriaus pirmą eilutę ir ir ir nusišypsojau, o čia pasakyta: "
+            "trejus metus nebuvo karo tarp Sirijos ir Izraelio."
+        )
+        sp = StreamingParser(language="lt", hold_chapter_only=True)
+        assert sp.feed(first, 0.0) == []
+        assert [str(r) for r in sp.feed(second, 8.0)] == ["1 Kings 22:1"]
+        assert sp.flush() == []
+        # Untouched: a tens chapter followed by a new sentence keeps its own
+        # number, and a units verse after a tens chapter is still a verse.
+        sp = StreamingParser(language="lt", hold_chapter_only=True)
+        assert sp.feed("Pirmo karalių dvidešim", 0.0) == []
+        assert [str(r) for r in sp.feed("Tai labai svarbi vieta", 8.0)] == ["1 Kings 20"]
+        sp = StreamingParser(language="lt", hold_chapter_only=True)
+        assert sp.feed("Pirmo karalių dvidešimtas skyrius", 0.0) == []
+        assert [str(r) for r in sp.feed("Antra eilutė sako", 8.0)] == ["1 Kings 20:2"]
+
     def test_cut_between_verse_word_and_its_numbers(self):
         # Live service 2026-10-18 (12 s cut, interpreted sermon): misheard
         # English after the verse word, the verses open the next utterance.
