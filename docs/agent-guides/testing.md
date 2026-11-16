@@ -116,7 +116,7 @@ socket (one, or a list). `src/test/setup.ts` stubs `fetch` and cleans up.
 
 - **Skips are not passes.** Locally, tests skip when ffmpeg is not on
   PATH (`test_live_path.py`; CI fails instead), there is no display (the
-  launcher window tests; CI has none, so they never run there), the KJV
+  launcher window tests), the KJV
   source is missing, or no Whisper tokenizer is cached. Off Windows, the
   launcher's 1366x768 window-height test and the Windows creation-flags test
   always skip (Windows-only behaviour and font metrics). Run with `-rs` and
@@ -124,6 +124,9 @@ socket (one, or a list). `src/test/setup.ts` stubs `fetch` and cleans up.
   the optional extras (`faster-whisper`, `webrtcvad`, installed by
   `make install-dev`); without them they fail with import errors rather
   than skip.
+- CI runs the backend suite on Linux and Windows with Python 3.13, audio
+  extras and ffmpeg. Linux runs pytest under Xvfb for the Tk window tests;
+  Windows runs them on the Windows runner's display.
 - Test markers: `integration`, `audio`, `slow` (pytest config in the root
   `pyproject.toml`, with `--strict-markers`). `slow` marks the three
   real-ffmpeg end-to-end tests in `test_live_path.py` (~6 s each); a quick
