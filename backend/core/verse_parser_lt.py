@@ -1226,6 +1226,31 @@ class LithuanianProfile:
             return drop_dangling_tail(carry)
         return carry
 
+    def join_cut_number(
+        self, carry: list[Token], new: list[Token], /
+    ) -> tuple[list[Token], list[Token], int] | None:
+        """A chapter number cut in two by an utterance break.
+
+        "...Pirmo karalių dvidešim" | "Antrą skyriaus pirmą eilutę" (11-15
+        service, 1 Kings 22:1): the first segment ends on a book and a tens
+        number, the next starts with its chapter word and a units number
+        (postprocess has already moved "skyrius" in front). Returns the carry
+        without the tens, the segment with the joined chapter, and the tens.
+        """
+        tens = carry[-1] if carry else None
+        if not (
+            isinstance(tens, int)
+            and tens in (20, 30, 40, 50, 60, 70, 80, 90)
+            and isinstance(carry[-2] if len(carry) >= 2 else None, str)
+            and _citation_slot(carry[:-1])
+            and len(new) >= 2
+            and new[0] in CHAPTER_WORDS
+            and isinstance(new[1], int)
+            and 1 <= new[1] <= 9
+        ):
+            return None
+        return carry[:-1], [new[0], tens + new[1], *new[2:]], tens
+
     def cut_off_verse(
         self,
         ref: Reference,
