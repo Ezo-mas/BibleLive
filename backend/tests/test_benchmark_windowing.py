@@ -472,7 +472,7 @@ class TestSpokenSpanMatching:
     def test_whisper_parsers_have_no_map_or_second_parser(self):
         parser, alternate = make_parsers(AudioPipelineConfig(), "lt", None)
         assert alternate is None
-        assert type(parser) is StreamingParser
+        assert type(parser.streaming_parsers["lt"]) is StreamingParser
 
 
 class TestVerifiedAudioSha:

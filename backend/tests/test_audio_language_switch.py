@@ -132,8 +132,8 @@ def _install_parsers(proc: BibleLiveAudioProcessor) -> dict[str, StreamingParser
         language: StreamingParser(ReferenceParser(language=language), language=language)
         for language in SUPPORTED_LANGUAGES
     }
-    proc._local.streaming_parsers = parsers
-    proc._local.last_parser_language = None
+    proc._local.detector.streaming_parsers = parsers
+    proc._local.detector.last_parser_language = None
     return parsers
 
 
@@ -585,8 +585,8 @@ def _install_holding_parsers(proc: BibleLiveAudioProcessor) -> dict[str, Streami
         )
         for language in SUPPORTED_LANGUAGES
     }
-    proc._local.streaming_parsers = parsers
-    proc._local.last_parser_language = None
+    proc._local.detector.streaming_parsers = parsers
+    proc._local.detector.last_parser_language = None
     return parsers
 
 

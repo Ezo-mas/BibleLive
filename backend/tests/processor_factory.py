@@ -12,7 +12,9 @@ import time
 from queue import Queue
 from typing import Any
 
+from audio.capture_supervisor import CaptureSupervisor
 from audio.config import AudioPipelineConfig
+from audio.detector import UtteranceDetector
 from audio.metrics import PipelineMetrics
 from audio.partials import PartialMailbox, PartialScheduler, PartialTranscript
 from audio.pipeline import BibleLiveAudioProcessor
@@ -24,6 +26,8 @@ def make_processor(**overrides: Any) -> BibleLiveAudioProcessor:
     """A processor as ``__init__`` leaves it, with ``overrides`` (attribute names) applied.
 
     An unknown attribute name raises TypeError, so a misspelt one cannot pass silently.
+    A test reassigning ``proc.config`` or ``proc.metrics`` after ``make_processor``
+    must rebuild ``proc.capture_supervisor`` to use the new objects.
     """
     config = overrides.get("config") or AudioPipelineConfig()
     partials_on = config.partial_transcripts
@@ -60,13 +64,7 @@ def make_processor(**overrides: Any) -> BibleLiveAudioProcessor:
         "_capture_language": config.language,
         "_pending_language": None,
         "_pending_language_lock": threading.Lock(),
-        "_capture_lock": threading.Lock(),
-        "_capture_restart_attempt": 0,
-        "_capture_restarted_at_s": None,
-        "_capture_down": False,
-        "_last_frame_at": None,
-        "_last_loud_at": None,
-        "_mic_silent_logged": False,
+        "capture_supervisor": None,  # Wired below, after overrides.
         "_consecutive_transcription_errors": 0,
         "_consecutive_utterance_failures": 0,
         "_parser_issues": [],
@@ -78,4 +76,16 @@ def make_processor(**overrides: Any) -> BibleLiveAudioProcessor:
     proc = BibleLiveAudioProcessor.__new__(BibleLiveAudioProcessor)
     for name, value in {**defaults, **overrides}.items():
         setattr(proc, name, value)
+    if proc.capture_supervisor is None:
+        proc.capture_supervisor = CaptureSupervisor(
+            proc.config,
+            proc.metrics,
+            lambda: proc.audio_capture,
+            lambda: proc.is_running,
+            lambda: proc.session_log,
+        )
+    # An empty detector lets tests inject parsers without opening a database.
+    # The transcription thread replaces it with the fully initialized detector.
+    if not hasattr(proc._local, "detector"):
+        proc._local.detector = UtteranceDetector([], languages=(), metrics=proc.metrics)
     return proc

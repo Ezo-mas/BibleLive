@@ -91,7 +91,7 @@ below the fold.
   2026-10-13 (logged 2026-10-11).
 - **Logged:** 2026-10-11
 
-### Lithuanian 1 and 2 Timothy are missed when spelled "Timotiej-"
+### Lithuanian 1 and 2 Timothy are missed when spelled "Timotiej-" (resolved)
 - **Where:** `backend/core/verse_parser_lt.py` (`BOOK_STEMS`, `BOOKS` entries for
   `1 Timothy` / `2 Timothy`).
 - **Problem:** The stem table and book variants use `timotej`. The spelling
@@ -108,6 +108,12 @@ below the fold.
   3:16) and "2 Timotėjaus 4 skyrius 2 eilutė" (2 Timothy 4:2). Found by an
   independent review of PR #7, reproduced 2026-10-12.
 - **Logged:** 2026-10-12
+- **Resolved:** 2026-10-16 (commit 06beee8, "Lithuanian parser fixes from more recordings";
+  confirmed 2026-11-16 for M4 item E6) — `BOOK_STEMS` and the `1 Timothy` / `2 Timothy` `BOOKS`
+  entries carry the `timotiej` stem beside `timotej`. "1 Timotiejui 3 16" and "2 Timotiejaus 4
+  skyrius 2 eilutė" now parse; a bare "Timotiejui" with no 1/2 still returns nothing, exactly like
+  "Timotėjui" (the letter is ambiguous). Covered in `backend/tests/test_verse_parser_lt.py`
+  ("Antras Timotiejui, laiškas, ...", "Timotiejaus antram laiške ...").
 
 ### Approving a reference can display with no verse text (resolved)
 - **Where:** `backend/core/server/state.py` (`AppState.approve_pending` via

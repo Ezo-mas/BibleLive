@@ -464,15 +464,15 @@ def _two_model_result(primary: str | None, alternate: str | None) -> Transcripti
 
 def test_two_model_parsers_apply_each_models_map(tmp_path):
     proc = _two_model_processor(_two_model_result(None, None), tmp_path)
-    primary = proc._local.streaming_parsers["lt"]
-    alternate = proc._local.alternate_parsers["lt"]
+    primary = proc._local.detector.streaming_parsers["lt"]
+    alternate = proc._local.detector.alternate_parsers["lt"]
     assert isinstance(primary, MappedStreamingParser)
     assert isinstance(alternate, MappedStreamingParser)
     assert primary.spelling_map("Psmė") == "Psalmė"
     assert alternate.spelling_map("Salme") == "psalme"
     # English stays on Whisper: no map, no second parser.
-    assert type(proc._local.streaming_parsers["en"]) is StreamingParser
-    assert "en" not in proc._local.alternate_parsers
+    assert type(proc._local.detector.streaming_parsers["en"]) is StreamingParser
+    assert "en" not in proc._local.detector.alternate_parsers
 
 
 def test_reference_both_models_find_keeps_its_confidence(tmp_path):
@@ -555,7 +555,7 @@ def test_primary_parser_error_still_sends_the_second_models_references(tmp_path)
     def boom(*_args, **_kwargs):
         raise RuntimeError("parser bug")
 
-    proc._local.streaming_parsers["lt"].feed = boom
+    proc._local.detector.streaming_parsers["lt"].feed = boom
     proc._process_utterance("lt", [ONE_SECOND])
     assert [(str(r), r.confidence) for r in proc.sender.sent] == [("Psalms 23:1", "low")]
 

@@ -8,18 +8,18 @@ on the same input and compare what comes out.
 
 from __future__ import annotations
 
-import threading
 from types import SimpleNamespace
 
 import numpy as np
 import pytest
+from processor_factory import make_processor
 
 import benchmarks.run_benchmark as bench
 from audio import pipeline as pipeline_module
 from audio.config import AudioPipelineConfig
+from audio.detector import UtteranceDetector
 from audio.metrics import PipelineMetrics
-from audio.pipeline import BibleLiveAudioProcessor
-from audio.stt import SpeechToText, _language_state
+from audio.stt import SpeechToText, Transcription, _language_state
 from benchmarks.session_replay import Replayer
 from core.verse_parser import Reference
 from core.verse_text import VerseTextIndex
@@ -36,18 +36,13 @@ FEEDS = {
 VERSE_TEXT = VerseTextIndex([("Romans", 5, v, "teisinami tikėjimu turime ramybę") for v in (1, 2)])
 
 
-def _live_parsers(engine: str, monkeypatch) -> dict:
-    """The parsers the live transcription thread builds for ``engine``."""
-    processor = BibleLiveAudioProcessor.__new__(BibleLiveAudioProcessor)
-    processor._stt_models = bench.engine_models(engine)
-    processor._local = threading.local()
+def _live_parsers(engine: str, monkeypatch) -> UtteranceDetector:
+    """The detector the live transcription thread builds for ``engine``."""
+    processor = make_processor(config=AudioPipelineConfig(stt_engine=engine))
     processor._local.bible_lookup = None  # no validator, as in the benchmark below
-    monkeypatch.setattr(processor, "_load_verse_text", lambda: VERSE_TEXT)
+    monkeypatch.setattr(UtteranceDetector, "load_verse_text", staticmethod(lambda path: VERSE_TEXT))
     processor._init_thread_local_parsers()
-    return {
-        "primary": processor._local.streaming_parsers,
-        "alternate": processor._local.alternate_parsers,
-    }
+    return processor._local.detector
 
 
 def _spelled(parser) -> str:
@@ -72,12 +67,14 @@ def test_benchmark_builds_the_live_parsers(engine, language, monkeypatch):
     live = _live_parsers(engine, monkeypatch)
     config = AudioPipelineConfig(stt_engine=engine, language=language)
     # The benchmark skill runs with --context-ttl-s 600, live's default.
-    primary, alternate = bench.make_parsers(config, language, 600.0)
-
-    pairs = [(live["primary"][language], primary)]
-    assert (language in live["alternate"]) == (alternate is not None)
+    benchmark, alternate = bench.make_parsers(config, language, 600.0)
+    assert isinstance(live, UtteranceDetector)
+    assert isinstance(benchmark, UtteranceDetector)
+    primary = benchmark.streaming_parsers[language]
+    pairs = [(live.streaming_parsers[language], primary)]
+    assert (language in live.alternate_parsers) == (alternate is not None)
     if alternate is not None:
-        pairs.append((live["alternate"][language], alternate))
+        pairs.append((live.alternate_parsers[language], alternate))
     for live_parser, bench_parser in pairs:
         assert type(bench_parser) is type(live_parser)
         assert bench_parser.hold_chapter_only == live_parser.hold_chapter_only
@@ -104,19 +101,69 @@ class _RepeatingParser:
 
 @pytest.mark.parametrize("low_reason", [None, "avg_logprob -1.20 < -1.0"])
 def test_duplicates_and_low_confidence_match_live(low_reason):
-    stand_in = SimpleNamespace(metrics=PipelineMetrics())
-    result = SimpleNamespace(text="Jono trys šešiolika", low_confidence_reason=low_reason)
-    live = BibleLiveAudioProcessor._parse_transcription(stand_in, _RepeatingParser(), result, 0.0)
-    # Benchmark feeds record "no reason" as an empty string.
-    benchmark = bench._model_refs(_RepeatingParser(), result.text, 0.0, low_reason or "")
+    result = Transcription("Jono trys šešiolika", 0.0, low_confidence_reason=low_reason)
+    submitted = []
+    live = make_processor(
+        stt=SimpleNamespace(transcribe_utterance=lambda *args: result),
+        sender=SimpleNamespace(submit=submitted.append),
+        transcript_sender=SimpleNamespace(submit=lambda *args: None),
+    )
+    live._local.bible_lookup = None
+    live._init_thread_local_parsers()
+    live._local.detector.streaming_parsers["en"].feed = _RepeatingParser().feed
+    benchmark, _ = bench.make_parsers(live.config, "en", 600.0)
+    benchmark.streaming_parsers["en"].feed = _RepeatingParser().feed
+    benchmark.metrics = PipelineMetrics()
+    detections = []
+    for now in (0.0, 20.0):
+        live._process_utterance("en", [b""])
+        bench.register_feeds(
+            benchmark, None, [(now, result.text, now, low_reason or "")], detections
+        )
 
     def coords(refs):
         return [(r.book, r.chapter, r.verse_start, r.verse_end, r.confidence) for r in refs]
 
-    assert coords(benchmark) == coords(live)
-    assert len(live) == 3
-    assert stand_in.metrics.references_deduplicated == 2
-    assert stand_in.metrics.references_low_confidence == (3 if low_reason else 0)
+    expected = [
+        ("John", 3, 16, None, "low" if low_reason else "high"),
+        ("Romans", 8, 28, None, "low" if low_reason else "medium"),
+        ("John", 3, 16, 17, "low" if low_reason else "high"),
+    ] * 2
+    assert coords(submitted) == coords(detections) == expected
+    assert live.metrics.references_detected == 6
+    # Group-level dedupe cannot hide a missing per-utterance collapse here:
+    # live submissions are captured before sender dedupe, and benchmark's
+    # per-model counters are checked before its group-level filter.
+    for metrics in (live.metrics, benchmark.metrics):
+        assert metrics.references_deduplicated == 4
+        assert metrics.references_low_confidence == (6 if low_reason else 0)
+
+
+@pytest.mark.parametrize("two_models", [False, True])
+def test_benchmark_detector_controls_its_alternate(two_models, monkeypatch):
+    config = AudioPipelineConfig(stt_engine="kmynas+canary" if two_models else "whisper")
+    detector, alternate = bench.make_parsers(config, "lt", 600.0)
+    foreign = UtteranceDetector([]).streaming_parsers["lt"]
+
+    def must_not_feed(*args):
+        raise AssertionError("the separate alternate must not override the detector")
+
+    foreign.feed = must_not_feed
+    detections = []
+    feed = (20.0, "Romiečiams 5 skyrius", 12.0, "", "Romiečiams 5 skyrius", "")
+    bench.register_feeds(detector, None, [feed], detections, alternate_parser=foreign)
+    assert detections == []
+    register = bench.register_feeds
+
+    def check_release(parser, sender, feeds, detections, spans, alternate_parser):
+        assert alternate_parser is alternate
+        assert len(feeds[0]) == (6 if two_models else 2)
+        return register(parser, sender, feeds, detections, spans, alternate_parser)
+
+    monkeypatch.setattr(bench, "register_feeds", check_release)
+    bench.release_held(detector, None, [[feed]], detections, alternate_parser=foreign)
+    assert [(r.book, r.chapter, r.verse_start) for r in detections] == [("Romans", 5, None)]
+    assert detections[0].confidence != "low"
 
 
 class _RecordingModel:
@@ -160,9 +207,7 @@ def test_benchmark_starts_whisper_like_live(engine, language, monkeypatch):
         monkeypatch.setattr(module, "create_gguf_speech_to_text", fake_gguf)
 
     config = AudioPipelineConfig(stt_engine=engine, language=language, beam_size=3)
-    processor = BibleLiveAudioProcessor.__new__(BibleLiveAudioProcessor)
-    processor.config = config
-    processor._stt_models = bench.engine_models(engine)
+    processor = make_processor(config=config)
     processor._create_whisper()
     bench.make_stt(config, language)
 
@@ -176,16 +221,9 @@ def test_benchmark_starts_whisper_like_live(engine, language, monkeypatch):
 def test_session_replay_flushes_on_a_language_switch_like_live():
     held_lt, then_en = FEEDS["lt"][0][1], FEEDS["en"][1][1]
 
-    processor = BibleLiveAudioProcessor.__new__(BibleLiveAudioProcessor)
-    processor._local = threading.local()
-    processor._local.streaming_parsers = {
-        lang: BibleLiveAudioProcessor._make_parser(lang, None, None, "whisper")
-        for lang in LANGUAGES
-    }
-    processor._local.alternate_parsers = {}
-    processor._local.last_parser_language = None
     submitted: list = []
-    processor.sender = SimpleNamespace(submit=submitted.append)
+    processor = make_processor(sender=SimpleNamespace(submit=submitted.append))
+    processor._local.detector = UtteranceDetector([])
     assert processor._select_parser("lt").feed(held_lt, 0.0) == []  # held
     processor._select_parser("en").feed(then_en, 20.0)
 

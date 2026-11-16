@@ -32,7 +32,7 @@ import difflib
 import re
 from collections.abc import Callable
 from dataclasses import dataclass, field, replace
-from typing import cast
+from typing import Protocol, cast
 
 if __package__:
     from . import verse_parser_lt as _lt
@@ -667,12 +667,10 @@ class ReferenceParser:
             return None
         return Reference(canon, chapter, v1, v2, "medium", end=end)
 
-    def _parse_tail(
-        self, toks: list[Token], j: int, canon: str, book_start: int = 0
-    ) -> Reference | None:
-        """Parse what follows a book name, starting at toks[j]."""
-        n = len(toks)
-        nch = self._chapters[canon]
+    def _bridge_book_tail(
+        self, toks: list[Token], j: int, canon: str, n: int
+    ) -> tuple[int, bool, bool]:
+        """Bridge words after a book; return (landing index, bridged_label, label_break)."""
         k = j
         # A few ordinary words may intervene between the book name and its
         # chapter ("metraščių knygoje, apie jį, ketvirtame skyriuje"): skip
@@ -711,13 +709,18 @@ class ReferenceParser:
             ):
                 break
             k += 1
-        # Ordinary words between the book and the number ("Jonas ir du jo
-        # mokiniai", "Jona buvo žuvies pilve tris dienas"): book names are
-        # people too, so a bare number reached that way with more words after
-        # it is only a chapter when a chapter word says so; a verse after it
-        # still counts.
-        skipped_words = k > j and not bridged_label
-        if (
+        return k, bridged_label, label_break
+
+    def _is_narrative_numbers_tail(
+        self, toks: list[Token], k: int, canon: str, book_start: int
+    ) -> bool:
+        """Veto a narrative use of Numbers: True means this is not a citation."""
+        # "uždėjau skaičius 91" / "tie skaičiai ... padaryti 19": the
+        # ordinary noun "skaičius" (a number) folds onto the Numbers
+        # stem, and a bare count reached with no chapter/verse/label
+        # word anywhere near is not a citation ("Skaičiai 14 skyrius"
+        # and "Skaičių knyga 33 ..." still parse: the words follow).
+        return (
             self.language == "lt"
             and canon == "Numbers"
             and self._is_num(toks, k)
@@ -728,13 +731,20 @@ class ReferenceParser:
                 # match counts) through five tokens past the landing number.
                 for t in toks[book_start : k + 6]
             )
-        ):
-            # "uždėjau skaičius 91" / "tie skaičiai ... padaryti 19": the
-            # ordinary noun "skaičius" (a number) folds onto the Numbers
-            # stem, and a bare count reached with no chapter/verse/label
-            # word anywhere near is not a citation ("Skaičiai 14 skyrius"
-            # and "Skaičių knyga 33 ..." still parse: the words follow).
-            return None
+        )
+
+    def _parse_tail_leading_forms(
+        self,
+        toks: list[Token],
+        k: int,
+        canon: str,
+        n: int,
+        nch: int,
+        bridged_label: bool,
+    ) -> tuple[int, bool, Reference | None]:
+        """Handle a chapter word, a merged verse after a bridged label, or a single-chapter book.
+        Return (k after an optional chapter word, chapter_kw, a finished Reference or None).
+        """
         chapter_kw = False
         if k < n and toks[k] in self._chapter_words:
             chapter_kw = True
@@ -764,13 +774,13 @@ class ReferenceParser:
                     glued = _split_glued_verse(v, canon, ch, self.validator)
                     if glued is not None:
                         v, v2 = glued
-                return Reference(canon, ch, v, v2, "low", end=k + 2)
+                return k, chapter_kw, Reference(canon, ch, v, v2, "low", end=k + 2)
 
         # single-chapter books: "Jude verse 3", "Jude 3"
         if nch == 1 and not chapter_kw:
             if k < n and toks[k] in self._verse_words and self._is_num(toks, k + 1):
                 v1, v2, end = self._verse_and_range(toks, k + 1)
-                return Reference(canon, 1, v1, v2, "high", end=end)
+                return k, chapter_kw, Reference(canon, 1, v1, v2, "high", end=end)
             if self._is_num(toks, k):
                 following_is_more = k + 1 < n and (
                     toks[k + 1] == ":"
@@ -778,7 +788,30 @@ class ReferenceParser:
                 )
                 if not following_is_more:
                     v1, v2, end = self._verse_and_range(toks, k)
-                    return Reference(canon, 1, v1, v2, "medium", end=end)
+                    return k, chapter_kw, Reference(canon, 1, v1, v2, "medium", end=end)
+
+        return k, chapter_kw, None
+
+    def _parse_tail(
+        self, toks: list[Token], j: int, canon: str, book_start: int = 0
+    ) -> Reference | None:
+        """Parse what follows a book name, starting at toks[j]."""
+        n = len(toks)
+        nch = self._chapters[canon]
+        k, bridged_label, label_break = self._bridge_book_tail(toks, j, canon, n)
+        # Ordinary words between the book and the number ("Jonas ir du jo
+        # mokiniai", "Jona buvo žuvies pilve tris dienas"): book names are
+        # people too, so a bare number reached that way with more words after
+        # it is only a chapter when a chapter word says so; a verse after it
+        # still counts.
+        skipped_words = k > j and not bridged_label
+        if self._is_narrative_numbers_tail(toks, k, canon, book_start):
+            return None
+        k, chapter_kw, book_form = self._parse_tail_leading_forms(
+            toks, k, canon, n, nch, bridged_label
+        )
+        if book_form is not None:
+            return book_form
 
         if not self._is_num(toks, k):
             if label_break:
@@ -1073,6 +1106,63 @@ class ReferenceParser:
 # --------------------------------------------------------------------------
 # Streaming (feed transcript segments as they arrive)
 # --------------------------------------------------------------------------
+class LanguageProfile(Protocol):
+    """Language-specific rules at transcript segment boundaries."""
+
+    def adjust_segment(
+        self,
+        new: list[Token],
+        carry: list[Token],
+        verse_intro_words: frozenset[str] | set[str],
+        chapter_words: frozenset[str] | set[str],
+        verse_words: frozenset[str] | set[str],
+        /,
+    ) -> list[Token]: ...
+
+    def trim_carry(self, carry: list[Token], new: list[Token], /) -> list[Token]: ...
+
+    def cut_off_verse(
+        self,
+        ref: Reference,
+        toks: list[Token],
+        chapter_words: frozenset[str] | set[str],
+        /,
+    ) -> bool: ...
+
+
+class EnglishProfile:
+    """English needs no segment-boundary adjustments or verse holds."""
+
+    def adjust_segment(
+        self,
+        new: list[Token],
+        _carry: list[Token],
+        _verse_intro_words: frozenset[str] | set[str],
+        _chapter_words: frozenset[str] | set[str],
+        _verse_words: frozenset[str] | set[str],
+        /,
+    ) -> list[Token]:
+        return new
+
+    def trim_carry(self, carry: list[Token], _new: list[Token], /) -> list[Token]:
+        return carry
+
+    def cut_off_verse(
+        self,
+        _ref: Reference,
+        _toks: list[Token],
+        _chapter_words: frozenset[str] | set[str],
+        /,
+    ) -> bool:
+        return False
+
+
+_LANGUAGE_PROFILES: dict[str, LanguageProfile] = {
+    "en": EnglishProfile(),
+    "lt": _lt.LithuanianProfile(),
+}
+
+
 class StreamingParser:
     """Keeps context between segments and a short tail of the previous one,
     so "turn to Romans" + "chapter eight verse twenty-eight" still works.
@@ -1103,6 +1193,7 @@ class StreamingParser:
         verse_text_min_score: float = 0.6,
     ):
         self.parser = parser or ReferenceParser(language=language)
+        self._profile = _LANGUAGE_PROFILES[self.parser.language]
         self.ctx = Context()
         self.carry: list[Token] = []
         self.carry_tokens = carry_tokens
@@ -1146,26 +1237,14 @@ class StreamingParser:
         # already postprocessed when it arrived, so re-running it could
         # reshuffle already-ordered tokens.
         new = self.parser._prepare(segment)
-        if (
-            self.parser.language == "lt"
-            and new
-            and new[0] in ("viena", "vienas")
-            and _lt._citation_slot(self.carry)
-            and any(
-                isinstance(t, int)
-                or t in self.parser._verse_intro_words
-                or t in self.parser._chapter_words
-                or t in self.parser._verse_words
-                for t in new[1:4]
-            )
-        ):
-            # "...Jobo" | "Vienas nuo dvidešimtos": the number 1 split from its
-            # book by an utterance break, which tokenize alone cannot see. A
-            # citation word or number must follow ("Viena moteris" stays text).
-            new = [1, *new[1:]]
-        carry = self.carry
-        if self.parser.language == "lt" and new and isinstance(new[0], int):
-            carry = _lt.drop_dangling_tail(carry)
+        new = self._profile.adjust_segment(
+            new,
+            self.carry,
+            self.parser._verse_intro_words,
+            self.parser._chapter_words,
+            self.parser._verse_words,
+        )
+        carry = self._profile.trim_carry(self.carry, new)
         toks = carry + new
         refs = self.parser._scan(toks, self.ctx)
         fresh = [r for r in refs if r.end > len(carry)]  # skip already-reported ones
@@ -1194,25 +1273,7 @@ class StreamingParser:
         return released + [r for r in fresh if not any(r is h for h in hold)]
 
     def _cut_off_verse(self, ref: Reference, toks: list[Token]) -> bool:
-        """A bare digit verse ending the segment right after "skyrius N".
-
-        An utterance cut inside a spoken number leaves its first syllables as a
-        digit ("...vienuoliktame skyriuje trys" | "Trisdešim šeštoje eilutė" for
-        Romans 11:36): reported at once it is a wrong verse. Held one segment
-        like a chapter-only reference, it gives way to the verse that follows.
-        The short form "Kolosiečiams trys du." has no chapter word and is a
-        whole citation: it is never held.
-        """
-        return (
-            self.parser.language == "lt"
-            and ref.verse_start is not None
-            and ref.verse_end is None
-            and 2 <= ref.verse_start <= 9
-            and ref.end == len(toks) >= 3
-            and isinstance(toks[-1], int)
-            and isinstance(toks[-2], int)
-            and toks[-3] in self.parser._chapter_words
-        )
+        return self._profile.cut_off_verse(ref, toks, self.parser._chapter_words)
 
     def _verse_from_text(self, ref: Reference, text: str) -> Reference:
         """``ref`` with the verse being read aloud filled in, if one matches."""

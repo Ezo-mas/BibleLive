@@ -24,6 +24,9 @@ backend/
     server/ws.py   WebSocket route and handlers
   audio/           Capture/VAD/STT/sender pipeline (imported as audio.*)
     segmenter.py   VAD frames → utterances; shared by pipeline.py and the benchmark
+    capture_supervisor.py  Capture recovery, watchdog and microphone health (VAD thread)
+    health.py      Heartbeat report construction from pipeline and capture state
+    detector.py    Transcription → references; shared by pipeline.py, benchmark and session replay
     partials.py    partial transcripts for follow-along (schedule, mailbox, grow/chunk); shared with the benchmark
   scripts/         DB import / maintenance scripts
   tests/           pytest suite
@@ -64,7 +67,7 @@ On Windows there is no `make`: use `.venv\Scripts\python.exe -m ...` with
 | Change display history source / Show Again state | `backend/core/server/display_session.py` (`DisplaySession.reference_history`, newest first, `MAX_HISTORY_REFERENCES`; both paths that put something on screen record it through `_record_history`), forwarded by `AppState` in `state.py` |
 | Change what an operator gets on connect or from `GET /api/state` | `AppState.state_snapshot()` in `backend/core/server/state.py` builds the `StateResponse` (`models.py`) both send; its history window is `SNAPSHOT_HISTORY` (20). The console's `HISTORY_WINDOW` in `useOperatorState.ts` matches it by hand. Changing the shape is a protocol change: ask first |
 | Change audio capture/VAD/STT/sending | the matching module in `backend/audio/`; if it can change what gets detected, benchmark before/after (`testing.md`) |
-| Change the Lithuanian speech models (`--stt`) | `backend/audio/stt_gguf.py` (Kmynas / Canary GGUF via transcribe.cpp; English falls back to Whisper), per-model spelling maps in `audio/spelling_maps.py`, two-model agreement in `audio/ensemble.py`; the rules live and the benchmark share (parser construction, duplicate collapse and low marking, language-switch flush, Whisper's start language) in `audio/detection.py`, kept equal by `tests/test_detection_parity.py`; pipeline wiring in `_process_utterance` / `_init_thread_local_parsers` (`pipeline.py`), benchmark wiring in `make_stt` / `make_parsers` (`benchmarks/run_benchmark.py`); benchmark before/after |
+| Change the Lithuanian speech models (`--stt`) | `backend/audio/stt_gguf.py` (Kmynas / Canary GGUF via transcribe.cpp; English falls back to Whisper), per-model spelling maps in `audio/spelling_maps.py`, two-model agreement in `audio/ensemble.py`; the rules live and the benchmark share (parser construction, duplicate collapse and low marking, language-switch flush, Whisper's start language) in `audio/detector.py` (`UtteranceDetector`, with helpers in `audio/detection.py`), kept equal by `tests/test_detection_parity.py`; pipeline wiring in `_process_utterance` / `_init_thread_local_parsers` (`pipeline.py`), benchmark wiring in `make_stt` / `make_parsers` (`benchmarks/run_benchmark.py`); benchmark before/after |
 | Change runtime language switching | the pipeline side is `backend/audio/control.py` (loopback API) + `pipeline.py`/`stt.py`; the server's proxy for the console is `backend/core/server/language_control.py` and `/api/language` in `routes/language.py` (config: `AUDIO_CONTROL_*`); the console side is `frontend/src/operator/languageApi.ts`, `hooks/useSpokenLanguage.ts`, `components/LanguageSettings.tsx` |
 | Change book names shown on the display / in search (Lithuanian etc.) | names are the `local_name` column of the loaded translation's `books` table, read read-only by `backend/core/book_names.py` (canonical English names stay the only lookup key); `AppState.book_label` in `state.py` stamps the optional `book_label` on references and follow-along hints; `/api/books` serves `local_name`/`local_variants` for the loaded translation. Keyed to the loaded Bible, not the spoken language |
 | Change follow-along (next-verse suggestions) | matching in `backend/core/server/follow_along.py` over `backend/core/verse_text.py`; `AppState.offer_follow_along` in `state.py` (auto-show by the operator's `set_follow_auto` switch: `_follow_auto_passage`, `FOLLOW_AUTO_MAX_JUMP`, persisted by `settings_store.py`); `/api/transcript` in `routes/pipeline.py` (config: `FOLLOW_ALONG`); pipeline side `backend/audio/transcript_sender.py` (incl. the armed flag from the reply); partial transcripts `backend/audio/partials.py`, handed over in `pipeline.py` (`_vad_loop`, `_process_partial`) and transcribed by `stt.py` / `stt_gguf.py` (`transcribe_partial`); console side `frontend/src/operator/components/FollowAlongHint.tsx` |
@@ -77,6 +80,8 @@ On Windows there is no `make`: use `.venv\Scripts\python.exe -m ...` with
 ## Lithuanian parser: lessons from past fixes
 
 How the parser works is in the module docstring of `core/verse_parser_lt.py`.
+Its `LithuanianProfile` owns the three segment-boundary rules used by
+`StreamingParser` through the `LanguageProfile` protocol in `core/verse_parser.py`.
 These are the mistakes that keep coming back; each was found on a real
 recording or service.
 
