@@ -12,8 +12,12 @@ launcher and written to every service log) and attaches it to a GitHub release.
 
 ## Unreleased
 
-Everything up to now; no installer has been tagged yet. Highlights from the
-improvement plan (`docs/IMPROVEMENT_PLAN.md`, M1 to M7):
+Nothing yet.
+
+## 0.1.0 (2026-11-17)
+
+The first tagged installer. Highlights from the improvement plan
+(`docs/IMPROVEMENT_PLAN.md`, M1 to M7):
 
 ### Operator console
 - Remove one detection from the queue without clearing the rest, and choose
