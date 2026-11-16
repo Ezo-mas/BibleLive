@@ -24,6 +24,8 @@ backend/
     server/ws.py   WebSocket route and handlers
   audio/           Capture/VAD/STT/sender pipeline (imported as audio.*)
     segmenter.py   VAD frames → utterances; shared by pipeline.py and the benchmark
+    capture_supervisor.py  Capture recovery, watchdog and microphone health (VAD thread)
+    health.py      Heartbeat report construction from pipeline and capture state
     detector.py    Transcription → references; shared by pipeline.py, benchmark and session replay
     partials.py    partial transcripts for follow-along (schedule, mailbox, grow/chunk); shared with the benchmark
   scripts/         DB import / maintenance scripts

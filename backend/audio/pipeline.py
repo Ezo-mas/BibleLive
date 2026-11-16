@@ -4,7 +4,6 @@ import logging
 import os
 import threading
 import time
-from operator import mul
 from pathlib import Path
 from queue import Empty, Full, Queue
 from typing import Any
@@ -15,10 +14,17 @@ from core.verse_parser import Reference, StreamingParser
 from core.version import version_string
 
 from .capture import AudioCapture
+from .capture_supervisor import SILENT_MIC_S as SILENT_MIC_S
+from .capture_supervisor import SOUND_LEVEL_DBFS as SOUND_LEVEL_DBFS
+from .capture_supervisor import CaptureSupervisor
+from .capture_supervisor import frame_is_loud as frame_is_loud
 from .config import AudioPipelineConfig
 from .control import LanguageControlServer
 from .detection import whisper_start_language
 from .detector import UtteranceDetector
+from .health import AUDIO_STALL_S as AUDIO_STALL_S
+from .health import _health_issue as _health_issue
+from .health import build_health_report
 from .heartbeat import HeartbeatSender
 from .metrics import PipelineMetrics
 from .partials import PartialMailbox, PartialScheduler, PartialSnapshot, PartialTranscript
@@ -36,44 +42,11 @@ from .vad import create_vad
 
 logger = logging.getLogger(__name__)
 
-# Seconds without a single audio frame before the operator is told capture has
-# stalled. Frames arrive every 30 ms, so this is far beyond any normal hiccup.
-AUDIO_STALL_S = 5.0
-
 # 16 kHz, 16-bit mono PCM: the bytes of one second of audio (the VAD frames are this format).
 PCM_BYTES_PER_SECOND = 2 * 16000
 # Seconds the transcription thread waits for a final utterance before it checks for a
 # partial transcript to run. Short, so a snapshot posted while it waits is picked up promptly.
 PARTIAL_POLL_S = 0.1
-
-# Seconds with no sound from the microphone before the operator is told it is
-# silent. A dead input keeps delivering frames, so the stall check never fires
-# for it. Incident (Windows, 2026-10): the launcher auto-picked "Microphone
-# (Realtek(R) Audio)", which delivered about -80 dBFS RMS for 100 s; nothing
-# warned and no references were detected.
-SILENT_MIC_S = 30.0
-# A frame counts as sound when its RMS is above this level (dBFS, 16-bit full
-# scale). Room noise sits at -60 to -45 dBFS and the dead input was at -80, so
-# -70 is the midpoint of that gap: 10 dB clear of both, and a quiet room between
-# speech does not trip the warning.
-SOUND_LEVEL_DBFS = -70.0
-_SOUND_MEAN_SQUARE = (32768 * 10 ** (SOUND_LEVEL_DBFS / 20)) ** 2
-
-
-def frame_is_loud(frame: bytes) -> bool:
-    """Whether a 16-bit mono PCM frame's RMS is above SOUND_LEVEL_DBFS.
-
-    Compares mean squares, so there is no square root or logarithm per frame.
-    Native byte order, which is little-endian on every platform this runs on.
-    """
-    samples = memoryview(frame).cast("h")
-    energy: int = sum(map(mul, samples, samples))
-    return energy > _SOUND_MEAN_SQUARE * len(samples)
-
-
-def _health_issue(code: str, text: str, **params: str | int | float) -> dict[str, Any]:
-    """One health-report problem: a stable ``code``, its ``params``, and the English ``text``."""
-    return {"code": code, "params": params, "text": text}
 
 
 class BibleLiveAudioProcessor:
@@ -168,24 +141,15 @@ class BibleLiveAudioProcessor:
         self._pending_language_lock = threading.Lock()
         self.control_server: LanguageControlServer | None = None
 
-        # Capture restart after an unrequested ffmpeg exit or stall (VAD thread). The lock
-        # keeps stop() and a restart from interleaving, which could otherwise
-        # start a new ffmpeg after stop() has already shut capture down.
-        self._capture_lock = threading.Lock()
-        self._capture_restart_attempt = 0
-        self._capture_restarted_at_s: float | None = None
-
-        # Health the operator should see (reported by the heartbeat thread).
-        # Each field has one writer: capture state the VAD thread, the rest the
-        # transcription thread; the heartbeat thread only reads them.
-        self._capture_down = False
-        # time.monotonic() of the last audio frame; a stalled ffmpeg delivers
-        # nothing without exiting, so silence from capture is reported too.
-        self._last_frame_at: float | None = None
-        # time.monotonic() of the last frame that was sound, and whether the
-        # silent-microphone warning is up (VAD thread, see _note_microphone_level).
-        self._last_loud_at: float | None = None
-        self._mic_silent_logged = False
+        # Capture state belongs to the VAD thread; heartbeat only reads it.
+        self.capture = CaptureSupervisor(
+            self.config,
+            self.metrics,
+            lambda: self.audio_capture,
+            lambda: self.is_running,
+            lambda: self.session_log,
+        )
+        # Transcription health has one writer: the transcription thread.
         self._consecutive_transcription_errors = 0
         # Written only by the transcription thread; read by the heartbeat thread.
         self._consecutive_utterance_failures = 0
@@ -245,9 +209,7 @@ class BibleLiveAudioProcessor:
                 self.control_server.start()
 
             self.is_running = True
-            self._last_frame_at = time.monotonic()
-            self._last_loud_at = time.monotonic()
-            self._mic_silent_logged = False
+            self.capture.initialize_health()
 
             if self.config.session_log_dir:
                 self.session_log = self._open_session_log(self.config.session_log_dir)
@@ -342,7 +304,7 @@ class BibleLiveAudioProcessor:
 
         # Stop audio capture (after any restart in progress has finished, so it
         # cannot start ffmpeg again behind our back)
-        with self._capture_lock:
+        with self.capture.lock:
             self.audio_capture.stop_capture()
 
         # Stop the runtime language-control server
@@ -404,89 +366,18 @@ class BibleLiveAudioProcessor:
         can word it in its own language. An empty list means the pipeline is
         detecting normally (a quiet room is not a problem).
         """
-        issues: list[dict[str, Any]] = []
-        # An uncaught exception ends a worker thread silently; this thread
-        # would otherwise go on reporting a pipeline that detects nothing.
-        for thread, role in (
-            (self.vad_thread, "listening"),
-            (self.transcription_thread, "transcription"),
-        ):
-            if self.is_running and thread is not None and not thread.is_alive():
-                issues.append(
-                    _health_issue(
-                        "thread_stopped",
-                        f"The pipeline's {role} thread has stopped; restart the pipeline",
-                        role=role,
-                    )
-                )
-        if self._capture_down:
-            issues.append(
-                _health_issue(
-                    "capture_stopped",
-                    "Audio capture stopped; the pipeline is trying to restart it",
-                )
-            )
-        elif self.is_running and self._last_frame_at is not None:
-            # Capture streams continuously (silence included), so a gap means
-            # ffmpeg is stuck, not that the room is quiet.
-            now = time.monotonic()
-            silent_s = now - self._last_frame_at
-            if silent_s > AUDIO_STALL_S:
-                seconds = round(silent_s)
-                issues.append(
-                    _health_issue(
-                        "audio_stalled",
-                        f"No audio has arrived from the microphone for {seconds} s",
-                        seconds=seconds,
-                    )
-                )
-            elif self._last_loud_at is not None and now - self._last_loud_at > SILENT_MIC_S:
-                # Frames arrive but none has any sound in it: a dead or muted input.
-                seconds = round(now - self._last_loud_at)
-                issues.append(
-                    _health_issue(
-                        "mic_silent",
-                        f"The microphone is silent: no sound for {seconds} s. "
-                        "Check that the right microphone is selected and not muted.",
-                        seconds=seconds,
-                    )
-                )
-        errors = self._consecutive_transcription_errors
-        if errors:
-            issues.append(
-                _health_issue(
-                    "stt_failed",
-                    f"Speech recognition failed on the last {errors} "
-                    f"utterance{'s' if errors != 1 else ''}",
-                    count=errors,
-                )
-            )
-        utterance_failures = self._consecutive_utterance_failures
-        if utterance_failures >= 3:
-            issues.append(
-                _health_issue(
-                    "utterance_failed",
-                    f"Processing failed on the last {utterance_failures} "
-                    f"{'utterance; it was' if utterance_failures == 1 else 'utterances; they were'} skipped",
-                    count=utterance_failures,
-                )
-            )
-        delivery_problem = self.sender.delivery_problem
-        if delivery_problem:
-            issues.append(
-                _health_issue(
-                    "delivery_failed",
-                    f"The last detected reference was not delivered: {delivery_problem}",
-                    detail=delivery_problem,
-                )
-            )
-        issues.extend(self._parser_issues)
-        return {
-            "language": self.current_language,
-            "interval_s": self.config.heartbeat_interval,
-            "problems": [issue["text"] for issue in issues],
-            "issues": issues,
-        }
+        return build_health_report(
+            self.capture,
+            language=self.current_language,
+            interval_s=self.config.heartbeat_interval,
+            is_running=self.is_running,
+            vad_thread=self.vad_thread,
+            transcription_thread=self.transcription_thread,
+            consecutive_transcription_errors=self._consecutive_transcription_errors,
+            consecutive_utterance_failures=self._consecutive_utterance_failures,
+            delivery_problem=self.sender.delivery_problem,
+            parser_issues=self._parser_issues,
+        )
 
     def _consume_pending_language_switch(self) -> None:
         """Apply a pending language switch (VAD thread only).
@@ -519,8 +410,7 @@ class BibleLiveAudioProcessor:
         """VAD processing loop - detects speech segments"""
         frame_duration_ms = self.frame_duration_ms
 
-        last_frame_at = time.monotonic()
-        first_frame = False
+        self.capture.begin_watchdog()
         # This counter is local to and owned by the VAD thread.
         consecutive_errors = 0
         while self.is_running:
@@ -531,32 +421,11 @@ class BibleLiveAudioProcessor:
                 # Get audio frame
                 frame = self.audio_capture.get_audio_frame(frame_duration_ms)
                 if frame is None:
-                    stall_limit = (
-                        self.config.capture_stall_restart_s
-                        if first_frame
-                        else self.config.capture_first_frame_grace_s
-                    )
-                    if self.is_running and (
-                        self.audio_capture.failed or time.monotonic() - last_frame_at >= stall_limit
-                    ):
-                        cause = "ffmpeg exited" if self.audio_capture.failed else "audio stalled"
-                        try:
-                            self._restart_capture(cause)
-                        finally:
-                            last_frame_at = time.monotonic()
-                            first_frame = False
-                    else:
-                        time.sleep(0.01)
+                    self.capture.note_missing_frame(self._restart_capture)
                     consecutive_errors = 0
                     continue
 
-                self._note_capture_healthy()
-                now = time.monotonic()
-                last_frame_at = now
-                first_frame = True
-                self._last_frame_at = now
-                self._capture_down = False
-                self._note_microphone_level(frame, now)
+                self.capture.note_frame(frame)
                 self.metrics.audio_chunks_captured += 1
                 session_log = self.session_log
                 if session_log is not None:
@@ -591,7 +460,7 @@ class BibleLiveAudioProcessor:
                 logger.exception("Unexpected error in VAD loop")
                 if consecutive_errors >= 3:
                     raise
-                self._wait_while_running(0.5)
+                self.capture.wait_while_running(0.5)
 
     def _offer_partial(self, event: SegmentEvent | None) -> None:
         """Hand the transcription thread a snapshot of the open utterance when one is due.
@@ -610,96 +479,15 @@ class BibleLiveAudioProcessor:
             self._partial_mailbox.put(snapshot)
 
     def _restart_capture(self, cause: str = "ffmpeg exited") -> None:
-        """Restart capture after ffmpeg exits or stalls (VAD thread only).
+        """Flush the open utterance before the supervisor waits to restart capture."""
+        self.capture.restart(cause, self._flush_capture_utterance)
 
-        Without this, an unplugged microphone or a driver reset ended detection
-        for the rest of the service while the process kept running, so neither
-        the operator nor a supervisor could tell. The utterance in progress is
-        closed and queued (it is real speech up to the failure), then ffmpeg is
-        restarted with doubling delays until it starts or the pipeline stops.
-        The delays carry over between failures until a restarted stream has
-        delivered ``capture_healthy_s`` of audio, so a flapping device backs off.
-        """
-        self.metrics.capture_failures += 1  # Counts stalled streams as well as exits.
-        self._capture_down = True
+    def _flush_capture_utterance(self) -> None:
+        """Keep utterance and partial ownership on the pipeline's VAD thread."""
         event = self.segmenter.flush()
         self._partial_mailbox.discard(self._utterance_seq)
         if event is not None:
             self._queue_speech_segment(event)
-
-        while self.is_running:
-            delay = min(
-                self.config.capture_restart_base_delay * 2**self._capture_restart_attempt,
-                self.config.capture_restart_max_delay,
-            )
-            self._capture_restart_attempt += 1
-            logger.error(
-                f"Audio capture failed ({cause}); no references can be detected "
-                f"until it restarts. Restarting in {delay:.0f}s "
-                f"(attempt {self._capture_restart_attempt})"
-            )
-            if not self._wait_while_running(delay):
-                return
-
-            with self._capture_lock:
-                if not self.is_running:
-                    return
-                self.audio_capture.stop_capture()
-                try:
-                    self.audio_capture.start_capture(self.config.input_device)
-                except Exception as e:
-                    logger.error(f"Audio capture restart failed: {e}")
-                    continue
-
-            self.metrics.capture_restarts += 1
-            # The silence clock runs from the new stream, not from before the outage.
-            self._last_loud_at = time.monotonic()
-            self._mic_silent_logged = False
-            session_log = self.session_log
-            if session_log is not None:
-                session_log.event("capture_restarted")
-            self._capture_restarted_at_s = self.audio_capture.captured_seconds
-            logger.warning("Audio capture restarted; listening for Bible references again")
-            return
-
-    def _note_capture_healthy(self) -> None:
-        """Reset the restart backoff once a restarted stream has proven stable."""
-        if self._capture_restarted_at_s is None:
-            return
-        streamed = self.audio_capture.captured_seconds - self._capture_restarted_at_s
-        if streamed >= self.config.capture_healthy_s:
-            self._capture_restart_attempt = 0
-            self._capture_restarted_at_s = None
-
-    def _note_microphone_level(self, frame: bytes, now: float) -> None:
-        """Track whether the microphone is picking up sound (VAD thread only).
-
-        Only the transitions are logged, never every frame: the warning once
-        when the silence passes SILENT_MIC_S, and the all-clear when sound returns.
-        """
-        if frame_is_loud(frame):
-            self._last_loud_at = now
-            if self._mic_silent_logged:
-                self._mic_silent_logged = False
-                logger.info("The microphone is picking up sound again")
-        elif (
-            not self._mic_silent_logged
-            and self._last_loud_at is not None
-            and now - self._last_loud_at > SILENT_MIC_S
-        ):
-            self._mic_silent_logged = True
-            logger.warning(
-                f"The microphone is silent: no sound above {SOUND_LEVEL_DBFS:.0f} dBFS for "
-                f"{SILENT_MIC_S:.0f} s. Check that the right microphone is selected "
-                f"(--input-device) and not muted."
-            )
-
-    def _wait_while_running(self, seconds: float) -> bool:
-        """Sleep up to ``seconds``, waking early on stop; return whether still running."""
-        deadline = time.monotonic() + seconds
-        while self.is_running and time.monotonic() < deadline:
-            time.sleep(min(0.1, max(0.0, deadline - time.monotonic())))
-        return self.is_running
 
     def _queue_speech_segment(self, event: SegmentEvent) -> None:
         """Queue a closed utterance tagged with the capture language."""

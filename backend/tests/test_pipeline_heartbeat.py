@@ -38,16 +38,17 @@ class _FakeSTT:
 
 def _processor(stt=None, **config) -> BibleLiveAudioProcessor:
     """A processor with just enough wiring to report its health."""
-    return make_processor(
+    proc = make_processor(
         config=AudioPipelineConfig(**config),
         is_running=True,
         stt=stt or _FakeSTT(),
         sender=SimpleNamespace(delivery_problem=None),
         transcript_sender=SimpleNamespace(submit=lambda text, language: None),
         _partial_schedule=None,  # partial transcripts are not under test here
-        _last_frame_at=time.monotonic(),
-        _last_loud_at=time.monotonic(),
     )
+    proc.capture.last_frame_at = time.monotonic()
+    proc.capture.last_loud_at = time.monotonic()
+    return proc
 
 
 # ---------------------------------------------------------------------------
@@ -61,7 +62,7 @@ def test_healthy_pipeline_reports_no_problems():
 
 def test_capture_outage_is_reported():
     proc = _processor()
-    proc._capture_down = True
+    proc.capture.down = True
 
     assert proc.health_report()["problems"] == [
         "Audio capture stopped; the pipeline is trying to restart it"
@@ -70,7 +71,7 @@ def test_capture_outage_is_reported():
 
 def test_capture_outage_issue_has_its_code():
     proc = _processor()
-    proc._capture_down = True
+    proc.capture.down = True
 
     assert proc.health_report()["issues"] == [
         {
@@ -84,7 +85,7 @@ def test_capture_outage_issue_has_its_code():
 def test_stalled_capture_is_reported():
     """ffmpeg can hang without exiting; then frames just stop arriving."""
     proc = _processor()
-    proc._last_frame_at = time.monotonic() - (AUDIO_STALL_S + 2)
+    proc.capture.last_frame_at = time.monotonic() - (AUDIO_STALL_S + 2)
 
     [problem] = proc.health_report()["problems"]
     assert problem.startswith("No audio has arrived from the microphone for")
@@ -92,7 +93,7 @@ def test_stalled_capture_is_reported():
 
 def test_stalled_capture_issue_gives_whole_seconds():
     proc = _processor()
-    proc._last_frame_at = time.monotonic() - (AUDIO_STALL_S + 2)
+    proc.capture.last_frame_at = time.monotonic() - (AUDIO_STALL_S + 2)
 
     [issue] = proc.health_report()["issues"]
     seconds = issue["params"]["seconds"]
@@ -103,8 +104,8 @@ def test_stalled_capture_issue_gives_whole_seconds():
 
 def test_a_restart_in_progress_is_not_also_reported_as_a_stall():
     proc = _processor()
-    proc._capture_down = True
-    proc._last_frame_at = time.monotonic() - (AUDIO_STALL_S + 2)
+    proc.capture.down = True
+    proc.capture.last_frame_at = time.monotonic() - (AUDIO_STALL_S + 2)
 
     assert proc.health_report()["problems"] == [
         "Audio capture stopped; the pipeline is trying to restart it"
@@ -113,7 +114,7 @@ def test_a_restart_in_progress_is_not_also_reported_as_a_stall():
 
 def test_frames_arriving_clear_a_stall():
     proc = _processor()
-    proc._last_frame_at = time.monotonic() - (AUDIO_STALL_S + 2)
+    proc.capture.last_frame_at = time.monotonic() - (AUDIO_STALL_S + 2)
     capture = SimpleNamespace(
         failed=False,
         captured_seconds=0.0,
@@ -121,7 +122,7 @@ def test_frames_arriving_clear_a_stall():
         get_audio_frame=lambda ms: b"\0" * 960,  # noqa: ARG005 - signature parity
     )
     proc.audio_capture = capture
-    proc._capture_restarted_at_s = None
+    proc.capture.restarted_at_s = None
     proc._pending_language = None
     proc._pending_language_lock = threading.Lock()
     proc._capture_language = "en"
@@ -281,23 +282,23 @@ def test_sound_threshold_is_minus_70_dbfs():
 
 def test_sound_restarts_the_silence_clock_and_silence_does_not():
     proc = _processor()
-    proc._last_loud_at = 100.0
+    proc.capture.last_loud_at = 100.0
 
-    proc._note_microphone_level(_tone(-80.0), 110.0)
-    assert proc._last_loud_at == 100.0
+    proc.capture.note_microphone_level(_tone(-80.0), 110.0)
+    assert proc.capture.last_loud_at == 100.0
 
-    proc._note_microphone_level(_tone(-60.0), 111.0)
-    assert proc._last_loud_at == 111.0
+    proc.capture.note_microphone_level(_tone(-60.0), 111.0)
+    assert proc.capture.last_loud_at == 111.0
 
 
 def test_dead_microphone_is_reported_after_30_seconds_and_clears_with_sound(caplog):
     proc = _processor()
     start = time.monotonic() - 40  # 40 s of silent frames, ending now
-    proc._last_loud_at = start
+    proc.capture.last_loud_at = start
 
     with caplog.at_level(logging.INFO, logger="audio.pipeline"):
         for frame_no in range(int(40 / 0.03)):
-            proc._note_microphone_level(_tone(-80.0), start + frame_no * 0.03)
+            proc.capture.note_microphone_level(_tone(-80.0), start + frame_no * 0.03)
 
         [problem] = proc.health_report()["problems"]
         assert problem.startswith("The microphone is silent: no sound for ")
@@ -307,7 +308,7 @@ def test_dead_microphone_is_reported_after_30_seconds_and_clears_with_sound(capl
         warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
         assert len(warnings) == 1
 
-        proc._note_microphone_level(_tone(-45.0), time.monotonic())
+        proc.capture.note_microphone_level(_tone(-45.0), time.monotonic())
 
         assert proc.health_report()["problems"] == []
         infos = [r.getMessage() for r in caplog.records if r.levelno == logging.INFO]
@@ -318,12 +319,12 @@ def test_a_quiet_room_between_speech_is_not_reported(caplog):
     """Room noise at -60 dBFS is sound, so a minute of it never trips the warning."""
     proc = _processor()
     start = time.monotonic() - 60
-    proc._last_loud_at = start
+    proc.capture.last_loud_at = start
     room = _tone(-60.0)
 
     with caplog.at_level(logging.WARNING, logger="audio.pipeline"):
         for frame_no in range(int(60 / 0.03)):
-            proc._note_microphone_level(room, start + frame_no * 0.03)
+            proc.capture.note_microphone_level(room, start + frame_no * 0.03)
 
     assert proc.health_report()["problems"] == []
     assert not caplog.records
@@ -331,8 +332,8 @@ def test_a_quiet_room_between_speech_is_not_reported(caplog):
 
 def test_a_stalled_capture_is_not_also_reported_as_a_silent_microphone():
     proc = _processor()
-    proc._last_loud_at = time.monotonic() - (SILENT_MIC_S + 2)
-    proc._last_frame_at = time.monotonic() - (AUDIO_STALL_S + 2)
+    proc.capture.last_loud_at = time.monotonic() - (SILENT_MIC_S + 2)
+    proc.capture.last_frame_at = time.monotonic() - (AUDIO_STALL_S + 2)
 
     [problem] = proc.health_report()["problems"]
     assert problem.startswith("No audio has arrived from the microphone for")
@@ -340,7 +341,7 @@ def test_a_stalled_capture_is_not_also_reported_as_a_silent_microphone():
 
 def test_silent_microphone_issue_gives_whole_seconds():
     proc = _processor()
-    proc._last_loud_at = time.monotonic() - (SILENT_MIC_S + 2)
+    proc.capture.last_loud_at = time.monotonic() - (SILENT_MIC_S + 2)
 
     [issue] = proc.health_report()["issues"]
     seconds = issue["params"]["seconds"]
@@ -390,7 +391,7 @@ def test_beat_sends_no_auth_header_without_a_token(monkeypatch):
 
 def test_beat_sends_the_issues_of_the_health_report(monkeypatch):
     proc = _processor()
-    proc._capture_down = True
+    proc.capture.down = True
     calls = []
     monkeypatch.setattr(
         "audio.heartbeat.requests.post",
