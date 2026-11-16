@@ -754,11 +754,13 @@ def tokenize(text: str) -> list[Token]:
         else:
             words.append(_NORMALIZE.get(t, t))
     out: list[Token] = []
+    spoken_numbers: set[int] = set()  # positions in out of numbers said as words
     i = 0
     while i < len(words):
         t = words[i]
         r = read_number(words, i) if isinstance(t, str) and t.isalpha() else None
         if r:
+            spoken_numbers.add(len(out))
             out.append(r[0])
             i = r[1]
         else:
@@ -773,10 +775,19 @@ def tokenize(text: str) -> list[Token]:
                 out.append(book_stem(t) if isinstance(t, str) else t)
             i += 1
     # "34 ir iki 37": an "ir" right before a range word adds nothing.
+    # "Antras – Timotiejui" (11-15 service, Kmynas): a dash between a spoken
+    # ordinal and a numbered book's name is punctuation, not a range.
     return [
         t
         for k, t in enumerate(out)
         if not (t in AND_WORDS and k + 1 < len(out) and out[k + 1] in RANGE_WORDS)
+        and not (
+            t == "-"
+            and k - 1 in spoken_numbers
+            and out[k - 1] in PREFIXES
+            and k + 1 < len(out)
+            and out[k + 1] in _numbered_book_words()
+        )
     ]
 
 
@@ -818,6 +829,24 @@ def drop_dangling_tail(carry: list[Token]) -> list[Token]:
                 return carry[: k + 1]
             return carry
     return carry
+
+
+_NUMBERED_BOOK_WORDS: frozenset[str] | None = None
+
+
+def _numbered_book_words() -> frozenset[str]:
+    """Name stems of the books that come numbered ("1 Kings": "karali")."""
+    global _NUMBERED_BOOK_WORDS
+    if _NUMBERED_BOOK_WORDS is None:
+        _NUMBERED_BOOK_WORDS = frozenset(
+            word
+            for canon, _chapters, names in BOOKS
+            if canon[0].isdigit()
+            for name in names
+            for word in name.split()
+            if word not in _LEAD_WORDS and word not in _TRAIL_WORDS
+        )
+    return _NUMBERED_BOOK_WORDS
 
 
 def _book_words() -> frozenset[str]:
