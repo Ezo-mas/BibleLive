@@ -590,6 +590,35 @@ lost TP (Ephesians 2:5-6, split across two utterances). Low references never
 auto-show, and split citations are common, so a missed reference costs more
 than a glance at a wrong low one.
 
+## Held-out services (2026-11-16)
+
+Services in `corpus/lt-heldout.txt` were never used for tuning; their totals
+are reported apart from the 14 fitted services. First entry: `11-15-live-lt`
+(live service, Lithuanian speaker, 6 gold from the user listening to the whole
+recording, `--t-range 300:5781` to skip worship). Fresh transcription on `main`
+at 4a74244, `--mode offline --context-ttl-s 600`:
+
+| Tier | TP high / medium / low | FN | FP low | FP medium+high | rtf |
+| --- | --- | --- | --- | --- | --- |
+| `kmynas` (CPU, 6 threads) | 3 / 0 / 1 | 2 | 0 | 2 | 0.069 |
+| `kmynas+canary` (CUDA) | 3 / 0 / 2 | 1 | 4 | 0 | 0.029 |
+
+- **1 Kings 22:1, missed on both tiers.** The 12 s utterance cut fell inside
+  the number: "Pirmo karalių dvidešim | Antrą skyriaus pirmą eilutę". The parser
+  reads chapter 20 and then chapter 2, verse 1. On the CPU tier these are the
+  two medium FPs (1 Kings 20, and 1 Kings 2:1 inferred); with two models they
+  disagree on the verse and stay low. "Aštuoniolikto eilų | tė" (Revelation
+  3:18) was split the same way but still found, from the verse text.
+- **2 Timothy 4:3, missed by Kmynas.** Kmynas wrote "Antras – Timotiejui", and
+  the parser finds nothing when a dash (en dash or hyphen) separates the ordinal
+  from the book. Canary has no dash and finds it. With two models it is
+  therefore single-model, and so low. Fixing this means moving the service to
+  `lt-sermons.txt` first (rule in `lt-heldout.txt`).
+- Re-check items below on this service: no inferred reference became medium
+  through two-model agreement, and no FP follows a bare book mention; the
+  "Ievutė" spelling did not occur; there were no repeats to credit. One service
+  is too few to settle any of them.
+
 ## Re-check on new recordings
 
 These were fitted and measured on the same 14 services, so their gains are

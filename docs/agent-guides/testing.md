@@ -53,7 +53,9 @@ in its place.
   the runs listed in `benchmarks/corpus/lt-sermons.txt` (manifest, record,
   and the `--t-range` of the sermon part where a recording has one), with
   `--mode offline --context-ttl-s 600`. Results so far are in
-  `benchmarks/BASELINE_NOTES.md`. There is no English gold corpus yet: say
+  `benchmarks/BASELINE_NOTES.md`. Services never used for tuning are in
+  `benchmarks/corpus/lt-heldout.txt` (same format); report their totals
+  separately from the fitted set's. There is no English gold corpus yet: say
   so when an English-only change is unmeasured instead of implying it was.
 - `--stt kmynas|canary|kmynas+canary` (with `--kmynas-model` /
   `--canary-model` .gguf paths and `--device cpu|cuda`) runs the Lithuanian
