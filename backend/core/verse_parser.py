@@ -667,12 +667,9 @@ class ReferenceParser:
             return None
         return Reference(canon, chapter, v1, v2, "medium", end=end)
 
-    def _parse_tail(
-        self, toks: list[Token], j: int, canon: str, book_start: int = 0
-    ) -> Reference | None:
-        """Parse what follows a book name, starting at toks[j]."""
-        n = len(toks)
-        nch = self._chapters[canon]
+    def _bridge_book_tail(
+        self, toks: list[Token], j: int, canon: str, n: int
+    ) -> tuple[int, bool, bool]:
         k = j
         # A few ordinary words may intervene between the book name and its
         # chapter ("metraščių knygoje, apie jį, ketvirtame skyriuje"): skip
@@ -711,13 +708,17 @@ class ReferenceParser:
             ):
                 break
             k += 1
-        # Ordinary words between the book and the number ("Jonas ir du jo
-        # mokiniai", "Jona buvo žuvies pilve tris dienas"): book names are
-        # people too, so a bare number reached that way with more words after
-        # it is only a chapter when a chapter word says so; a verse after it
-        # still counts.
-        skipped_words = k > j and not bridged_label
-        if (
+        return k, bridged_label, label_break
+
+    def _is_narrative_numbers_tail(
+        self, toks: list[Token], k: int, canon: str, book_start: int
+    ) -> bool:
+        # "uždėjau skaičius 91" / "tie skaičiai ... padaryti 19": the
+        # ordinary noun "skaičius" (a number) folds onto the Numbers
+        # stem, and a bare count reached with no chapter/verse/label
+        # word anywhere near is not a citation ("Skaičiai 14 skyrius"
+        # and "Skaičių knyga 33 ..." still parse: the words follow).
+        return (
             self.language == "lt"
             and canon == "Numbers"
             and self._is_num(toks, k)
@@ -728,13 +729,17 @@ class ReferenceParser:
                 # match counts) through five tokens past the landing number.
                 for t in toks[book_start : k + 6]
             )
-        ):
-            # "uždėjau skaičius 91" / "tie skaičiai ... padaryti 19": the
-            # ordinary noun "skaičius" (a number) folds onto the Numbers
-            # stem, and a bare count reached with no chapter/verse/label
-            # word anywhere near is not a citation ("Skaičiai 14 skyrius"
-            # and "Skaičių knyga 33 ..." still parse: the words follow).
-            return None
+        )
+
+    def _parse_tail_book_forms(
+        self,
+        toks: list[Token],
+        k: int,
+        canon: str,
+        n: int,
+        nch: int,
+        bridged_label: bool,
+    ) -> tuple[int, bool, Reference | None]:
         chapter_kw = False
         if k < n and toks[k] in self._chapter_words:
             chapter_kw = True
@@ -764,13 +769,13 @@ class ReferenceParser:
                     glued = _split_glued_verse(v, canon, ch, self.validator)
                     if glued is not None:
                         v, v2 = glued
-                return Reference(canon, ch, v, v2, "low", end=k + 2)
+                return k, chapter_kw, Reference(canon, ch, v, v2, "low", end=k + 2)
 
         # single-chapter books: "Jude verse 3", "Jude 3"
         if nch == 1 and not chapter_kw:
             if k < n and toks[k] in self._verse_words and self._is_num(toks, k + 1):
                 v1, v2, end = self._verse_and_range(toks, k + 1)
-                return Reference(canon, 1, v1, v2, "high", end=end)
+                return k, chapter_kw, Reference(canon, 1, v1, v2, "high", end=end)
             if self._is_num(toks, k):
                 following_is_more = k + 1 < n and (
                     toks[k + 1] == ":"
@@ -778,7 +783,30 @@ class ReferenceParser:
                 )
                 if not following_is_more:
                     v1, v2, end = self._verse_and_range(toks, k)
-                    return Reference(canon, 1, v1, v2, "medium", end=end)
+                    return k, chapter_kw, Reference(canon, 1, v1, v2, "medium", end=end)
+
+        return k, chapter_kw, None
+
+    def _parse_tail(
+        self, toks: list[Token], j: int, canon: str, book_start: int = 0
+    ) -> Reference | None:
+        """Parse what follows a book name, starting at toks[j]."""
+        n = len(toks)
+        nch = self._chapters[canon]
+        k, bridged_label, label_break = self._bridge_book_tail(toks, j, canon, n)
+        # Ordinary words between the book and the number ("Jonas ir du jo
+        # mokiniai", "Jona buvo žuvies pilve tris dienas"): book names are
+        # people too, so a bare number reached that way with more words after
+        # it is only a chapter when a chapter word says so; a verse after it
+        # still counts.
+        skipped_words = k > j and not bridged_label
+        if self._is_narrative_numbers_tail(toks, k, canon, book_start):
+            return None
+        k, chapter_kw, book_form = self._parse_tail_book_forms(
+            toks, k, canon, n, nch, bridged_label
+        )
+        if book_form is not None:
+            return book_form
 
         if not self._is_num(toks, k):
             if label_break:

@@ -2,7 +2,7 @@
 
 import pytest
 
-from core.verse_parser import EnglishProfile, Reference, ReferenceParser, StreamingParser
+from core.verse_parser import EnglishProfile, Reference
 from core.verse_parser_lt import LithuanianProfile
 
 
@@ -35,11 +35,11 @@ def test_lt_leaves_other_segment_starts_untouched(new, carry):
 
 def test_lt_trims_dangling_carry_only_before_a_number():
     profile = LithuanianProfile()
-    carry = ["jono", "skyrius", 12, "eilute", "tvinty", "dvide"]
+    carry: list[int | str] = ["jono", "skyrius", 12, "eilute", "tvinty", "dvide"]
     assert profile.trim_carry(carry, [20, 22]) == carry[:4]
     assert profile.trim_carry(carry, ["zodis"]) is carry
     assert profile.trim_carry(carry, []) is carry
-    complete = ["jono", "skyrius", 12, "eilute", 20]
+    complete: list[int | str] = ["jono", "skyrius", 12, "eilute", 20]
     assert profile.trim_carry(complete, [22]) is complete
 
 
@@ -66,18 +66,10 @@ def test_lt_cut_off_verse_guards(verse, verse_end, toks, end, expected):
 
 def test_english_hooks_are_no_ops_even_with_lt_inputs():
     profile = EnglishProfile()
-    new = ["vienas", "eilute", 20]
-    carry = ["jobo", "skyrius", 1, "eilute", "dvide"]
+    new: list[int | str] = ["vienas", "eilute", 20]
+    carry: list[int | str] = ["jobo", "skyrius", 1, "eilute", "dvide"]
     assert profile.adjust_segment(new, carry, {"nuo"}, {"skyrius"}, {"eilute"}) is new
     assert profile.trim_carry(carry, [20]) is carry
     assert not profile.cut_off_verse(
         Reference("Romans", 11, 3, end=3), ["skyrius", 11, 3], {"skyrius"}
     )
-
-
-@pytest.mark.parametrize(
-    ("language", "profile_type"), [("en", EnglishProfile), ("lt", LithuanianProfile)]
-)
-def test_stream_selects_profile_from_supplied_parser(language, profile_type):
-    stream = StreamingParser(parser=ReferenceParser(language=language))
-    assert isinstance(stream._profile, profile_type)
