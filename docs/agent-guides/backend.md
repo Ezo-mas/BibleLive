@@ -75,6 +75,7 @@ On Windows there is no `make`: use `.venv\Scripts\python.exe -m ...` with
 | Measure detection accuracy | `benchmarks/run_benchmark.py`, manifests + gold in `benchmarks/corpus/`, method in `benchmarks/README.md` |
 | Change the idle-screen picture (upload, fit, serving) | `backend/core/server/idle_screen.py` (formats by magic bytes, size cap, fixed file names, atomic write); the `/api/idle-screen*` routes in `routes/idle_screen.py`; `IdleScreenService` in `idle_service.py`, with `AppState` forwarding in `state.py`; the record and fit in `settings_store.py` (`idle_screen_image`, `idle_screen_fit`); the public picture route is listed in `SECURITY.md` |
 | Change authentication or WS connection management | `backend/core/server/auth.py`, `connections.py` (bounded per-socket FIFO writers, send/close timeout and cleanup; single-socket sends stay private via `_safe_send`) |
+| Change launcher platform operations | `backend/launcher/platform/__init__.py` (`Platform`, `current`); `windows.py` (browser, monitors, process trees/flags, firewall, data/model/log folders), `fallback.py` (existing non-Windows behavior); compatibility wrappers in `projector.py`, `monitors.py`, `network.py`, `process.py`, `settings.py` |
 | Change WS message protocol or approval flow | **stop — ask the user first** (Behavior rules) |
 
 ## Lithuanian parser: lessons from past fixes

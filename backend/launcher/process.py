@@ -7,7 +7,7 @@ so a CLI (or a later GUI) can sit on top.
 import contextlib
 import logging
 import os
-import signal
+import signal as signal
 import socket
 import subprocess
 import sys
@@ -20,6 +20,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import IO
 
+from . import platform
 from .gpu import SupportedProbe, cuda_supported_compute_types, resolve_compute_type, resolve_device
 from .i18n import resolve_ui_language
 from .settings import LauncherSettings, app_data_dir
@@ -129,7 +130,7 @@ def build_plan(
         env["BIBLELIVE_REQUIRE_AUTH"] = "true"
         env["BIBLELIVE_OPERATOR_TOKEN"] = network_token
     env["BIBLELIVE_SETTINGS_PATH"] = str(data_dir / "server_settings.json")
-    env["BIBLELIVE_SERVICE_LOG_DIR"] = str(data_dir / "logs" / "services")
+    env["BIBLELIVE_SERVICE_LOG_DIR"] = str(platform.current().log_dir(data_dir) / "services")
     env["BIBLELIVE_AUTO_MODE"] = settings.auto_mode
     # "auto" is not a language the server knows: resolve it here to the Windows UI language.
     env["BIBLELIVE_UI_LANGUAGE"] = resolve_ui_language(settings.ui_language)
@@ -174,7 +175,7 @@ def build_plan(
         "--cpu-threads",
         str(speech_threads()),
         "--session-log-dir",
-        str(data_dir / "logs" / "sessions"),
+        str(platform.current().log_dir(data_dir) / "sessions"),
         "--session-audio",
         "on" if settings.session_audio else "off",
     ]
@@ -189,7 +190,7 @@ def build_plan(
         audio_cmd=audio_cmd,
         env=env,
         cwd=app_root,
-        log_dir=data_dir / "logs",
+        log_dir=platform.current().log_dir(data_dir),
         port=settings.port,
         device=device,
         compute_type=compute_type,
@@ -238,36 +239,7 @@ def wait_for_ready(
 
 def kill_tree(proc: subprocess.Popen[bytes], *, grace: float = 5.0) -> None:
     """Stop a child tree; POSIX also signals the group after its leader has exited."""
-    if sys.platform == "win32":
-        if proc.poll() is not None:
-            return
-        subprocess.run(
-            ["taskkill.exe", "/PID", str(proc.pid), "/T", "/F"],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            check=False,
-        )
-        try:
-            proc.wait(timeout=grace)
-        except subprocess.TimeoutExpired:
-            proc.kill()
-            proc.wait(timeout=grace)
-    else:
-        try:
-            os.killpg(proc.pid, signal.SIGTERM)
-        except (ProcessLookupError, PermissionError):
-            if proc.poll() is None:
-                proc.terminate()
-        with contextlib.suppress(subprocess.TimeoutExpired):
-            proc.wait(timeout=grace)
-        # The leader may have exited while ffmpeg ignored TERM. Always finish the group
-        # before a replacement can take the microphone/GPU.
-        try:
-            os.killpg(proc.pid, signal.SIGKILL)
-        except (ProcessLookupError, PermissionError):
-            if proc.poll() is None:
-                proc.kill()
-        proc.wait(timeout=grace)
+    platform.current().kill_tree(proc, grace=grace)
 
 
 class Launcher:
@@ -328,15 +300,7 @@ class Launcher:
             self._logs.append(log)
         log.write(f"\n=== {time.strftime('%Y-%m-%d %H:%M:%S')} {' '.join(cmd)}\n".encode())
         log.flush()
-        extra: dict[str, int] = {}
-        if sys.platform == "win32":
-            # Console Ctrl+C must reach only the launcher (which kills the trees), and no
-            # console window may flash when started from pythonw.
-            extra["creationflags"] = (
-                subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW
-            )
-        else:
-            extra["start_new_session"] = True
+        extra = platform.current().child_process_options()
         return self._popen(
             cmd,
             cwd=str(self.plan.cwd),

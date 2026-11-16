@@ -5,7 +5,7 @@ import sys
 from types import SimpleNamespace
 
 import pytest
-from launcher import monitors, platform, projector
+from launcher import monitors, network, platform, process, projector, settings
 from launcher.platform import fallback, windows
 
 
@@ -109,3 +109,92 @@ def test_windows_pid_tree_uses_existing_taskkill_command(monkeypatch):
             {"stdout": subprocess.DEVNULL, "stderr": subprocess.DEVNULL, "check": False},
         )
     ]
+
+
+@pytest.mark.parametrize("name", ["win32", "linux", "darwin"])
+def test_platform_folder_locations(monkeypatch, tmp_path, name):
+    monkeypatch.setattr(sys, "platform", name)
+    monkeypatch.setenv("APPDATA", str(tmp_path / "roaming"))
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "local"))
+    monkeypatch.setattr(settings.Path, "home", lambda: tmp_path / "home")
+    data = (
+        tmp_path / "roaming" / "BibleLive" if name == "win32" else tmp_path / "home" / ".biblelive"
+    )
+    models = tmp_path / "local" / "BibleLive" / "models" if name == "win32" else data / "models"
+    assert settings.app_data_dir() == data
+    assert settings.default_settings_path() == data / "launcher.json"
+    assert settings.models_dir() == models
+    assert platform.current().log_dir(tmp_path / "custom") == tmp_path / "custom" / "logs"
+    if name == "win32":
+        monkeypatch.delenv("APPDATA")
+        monkeypatch.delenv("LOCALAPPDATA")
+        assert settings.app_data_dir() == tmp_path / "home" / ".biblelive"
+        assert settings.models_dir() == tmp_path / "home" / ".biblelive" / "models"
+
+
+def test_process_wrappers_dispatch_to_current_platform(monkeypatch, tmp_path):
+    calls = []
+    log_dir = tmp_path / "platform-logs"
+    implementation = SimpleNamespace(
+        kill_tree=lambda proc, **kw: calls.append((proc, kw)),
+        log_dir=lambda data: log_dir if data == tmp_path else None,
+    )
+    monkeypatch.setattr(platform, "current", lambda: implementation)
+    child = object()
+    process.kill_tree(child, grace=0.25)
+    assert calls == [(child, {"grace": 0.25})]
+    plan = process.build_plan(
+        settings.LauncherSettings(speech_engine="whisper"),
+        app_root=tmp_path,
+        data_dir=tmp_path,
+        models_dir=tmp_path / "models",
+        base_env={},
+        probe=lambda: [],
+    )
+    assert plan.log_dir == log_dir
+    assert plan.env["BIBLELIVE_SERVICE_LOG_DIR"] == str(log_dir / "services")
+    assert plan.audio_cmd[plan.audio_cmd.index("--session-log-dir") + 1] == str(
+        log_dir / "sessions"
+    )
+
+
+@pytest.mark.parametrize("name", ["win32", "linux", "darwin"])
+def test_platform_firewall_and_child_process_options(monkeypatch, name):
+    monkeypatch.setattr(sys, "platform", name)
+    monkeypatch.setattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 512, raising=False)
+    monkeypatch.setattr(subprocess, "CREATE_NO_WINDOW", 0x08000000, raising=False)
+    assert platform.current().firewall_applies() is (name == "win32")
+    assert network.firewall_applies(name) is (name == "win32")
+    expected = (
+        {"creationflags": 512 | 0x08000000} if name == "win32" else {"start_new_session": True}
+    )
+    assert platform.current().child_process_options() == expected
+
+
+def test_network_wrappers_dispatch_without_changing_injected_calls(monkeypatch):
+    programs = ["python.exe", "pythonw.exe"]
+    run = object()
+    shell_execute = object()
+    implementation = SimpleNamespace(
+        firewall_programs=lambda executable: programs if executable == "py" else [],
+        firewall_add_script=lambda progs, system32: (
+            "script" if progs is programs and system32 == "system" else ""
+        ),
+        firewall_rule_exists=lambda runner, system32: runner is run and system32 == "system",
+        add_firewall_rule=lambda progs, shell, system32: (
+            progs is programs and shell is shell_execute and system32 == "system"
+        ),
+    )
+    monkeypatch.setattr(platform, "current", lambda: implementation)
+    assert network.firewall_programs("py") is programs
+    assert network.firewall_add_script(programs, "system") == "script"
+    assert network.firewall_rule_exists(run, "system") is True
+    assert network.add_firewall_rule(programs, shell_execute, "system") is True
+
+
+def test_windows_runas_keeps_shell_execute_arguments(monkeypatch):
+    calls = []
+    shell32 = SimpleNamespace(ShellExecuteW=lambda *args: calls.append(args) or 42)
+    monkeypatch.setattr(windows.ctypes, "windll", SimpleNamespace(shell32=shell32), raising=False)
+    assert network._shell_execute_runas("cmd.exe", "/c script") == 42
+    assert calls == [(None, "runas", "cmd.exe", "/c script", None, 0)]

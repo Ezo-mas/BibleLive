@@ -2,10 +2,13 @@
 
 import subprocess
 import sys
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
+
+RunFn = Callable[..., "subprocess.CompletedProcess[bytes]"]
+ShellExecuteFn = Callable[[str, str], int]
 
 
 @dataclass(frozen=True)
@@ -52,10 +55,32 @@ class Platform(Protocol):
 
     def enumerate_monitors(self) -> list[Monitor]: ...
 
+    def kill_tree(self, proc: subprocess.Popen[bytes], *, grace: float = 5.0) -> None: ...
 
-def current() -> Platform:
+    def child_process_options(self) -> dict[str, int]: ...
+
+    def app_data_dir(self) -> Path: ...
+
+    def models_dir(self) -> Path: ...
+
+    def log_dir(self, data_dir: Path) -> Path: ...
+
+    def firewall_applies(self) -> bool: ...
+
+    def firewall_programs(self, executable: str) -> list[str]: ...
+
+    def firewall_add_script(self, programs: Sequence[str], system32: str) -> str: ...
+
+    def firewall_rule_exists(self, run: RunFn, system32: str) -> bool: ...
+
+    def add_firewall_rule(
+        self, programs: Sequence[str], shell_execute: ShellExecuteFn, system32: str
+    ) -> bool: ...
+
+
+def current(name: str | None = None) -> Platform:
     """Select Windows or the existing fallback; future platforms fit beside them."""
-    if sys.platform == "win32":
+    if (sys.platform if name is None else name) == "win32":
         from . import windows
 
         return windows
