@@ -141,7 +141,11 @@ class UtteranceDetector:
         return flush_held(self.streaming_parsers, self.alternate_parsers, language)
 
     def select_parser(self, language: str, *, commit: bool = True) -> ParserSelection:
-        """Select a language; live commits it only after delivering the releases."""
+        """Select a language; live commits it only after delivering the releases.
+
+        With ``commit=False`` the caller must set ``last_parser_language`` itself
+        once the releases are delivered, or every utterance resets the context.
+        """
         parser = self.streaming_parsers.get(language)
         if parser is None:
             logger.warning("No streaming parser available for language '%s'", language)

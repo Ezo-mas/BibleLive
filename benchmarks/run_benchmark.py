@@ -690,6 +690,14 @@ def feeds_from_cache(unit: list[list[Any]]) -> list[Feed]:
     return out
 
 
+def _only_language(detector: UtteranceDetector) -> str:
+    """The one language a benchmark detector parses; a recording has one language."""
+    languages = list(detector.streaming_parsers)
+    if len(languages) != 1:
+        raise ValueError(f"benchmark detector must parse exactly one language, got {languages}")
+    return languages[0]
+
+
 def register_feeds(
     parser: UtteranceDetector | StreamingParser,
     sender: BenchmarkingSender | None,
@@ -718,7 +726,7 @@ def register_feeds(
         if isinstance(parser, UtteranceDetector)
         else _detector_for_parser(parser, alternate_parser)
     )
-    language = next(iter(detector.streaming_parsers))
+    language = _only_language(detector)
     primary = detector.streaming_parsers[language]
     seen: set[tuple] = set()
     for feed in feeds:
@@ -794,7 +802,7 @@ def release_held(
     """
     last_t = float(units[-1][-1][0]) if units and units[-1] else 0.0
     if isinstance(parser, UtteranceDetector):
-        language = next(iter(parser.streaming_parsers))
+        language = _only_language(parser)
         alternate_parser = parser.alternate_parsers.get(language)
     release: Feed = (last_t, "", None, "", "", "") if alternate_parser else (last_t, "")
     register_feeds(parser, sender, [release], detections, spans, alternate_parser)
