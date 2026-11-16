@@ -708,8 +708,8 @@ def register_feeds(
     was said in; without it detections carry no span. A feed whose Whisper
     decode was low-confidence marks every reference it reports "low", as
     the live pipeline does before auto-approve sees them. With
-    ``alternate_parser`` (two-model mode) the second model's text goes through
-    it, and only references both models report keep their confidence.
+    a detector, its own alternate parser controls two-model mode; the separate
+    ``alternate_parser`` argument is only for the StreamingParser compatibility path.
     """
     # Keep accepting an already-built parser for callers inspecting custom
     # streaming settings; production paths pass the detector from make_parsers.
@@ -793,6 +793,9 @@ def release_held(
     last feed. Live and cache-replay paths both call this, so they stay equal.
     """
     last_t = float(units[-1][-1][0]) if units and units[-1] else 0.0
+    if isinstance(parser, UtteranceDetector):
+        language = next(iter(parser.streaming_parsers))
+        alternate_parser = parser.alternate_parsers.get(language)
     release: Feed = (last_t, "", None, "", "", "") if alternate_parser else (last_t, "")
     register_feeds(parser, sender, [release], detections, spans, alternate_parser)
 

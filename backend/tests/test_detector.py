@@ -35,11 +35,9 @@ def test_verse_text_is_only_given_to_lithuanian():
     assert detector.streaming_parsers["en"].verse_text is None
 
 
-def test_receives_lookup_and_uses_its_validator():
+def test_uses_supplied_validator():
     validator = lambda ref: False  # noqa: E731
-    lookup = SimpleNamespace(conn=True, get_validator_hook=lambda: validator)
-    detector = UtteranceDetector([], bible_lookup=lookup)
-    assert detector.bible_lookup is lookup
+    detector = UtteranceDetector([], validator=validator)
     assert detector.validator is validator
     assert detector.issues == []
     assert detector.detect(Transcription("John 3:16", 0.0), "en", 0.0).references == []
@@ -167,7 +165,7 @@ def test_validator_swap_keeps_all_parser_state():
     assert detector.detect(Transcription("John 3:16", 0.0), "en", 1.0).references == []
 
 
-def test_live_transcript_switch_delivery_logs_and_parse_order(caplog):
+def test_live_transcript_switch_delivery_logs_and_parse_order(caplog, monkeypatch):
     events = []
     proc = make_processor(
         stt=SimpleNamespace(transcribe_utterance=lambda *args: Transcription("Jono 3:16", 0.0)),
@@ -177,6 +175,14 @@ def test_live_transcript_switch_delivery_logs_and_parse_order(caplog):
     detector = UtteranceDetector([], metrics=proc.metrics)
     proc._local.detector = detector
     detector.detect(Transcription("Romans chapter five", 0.0), "en", 0.0)
+    selected = []
+    select_parser = detector.select_parser
+
+    def recording_select(language, **kwargs):
+        selected.append(language)
+        return select_parser(language, **kwargs)
+
+    monkeypatch.setattr(detector, "select_parser", recording_select)
     parse = detector.streaming_parsers["lt"].feed
 
     def recording_feed(*args):
@@ -187,6 +193,8 @@ def test_live_transcript_switch_delivery_logs_and_parse_order(caplog):
     with caplog.at_level("INFO", logger="audio.pipeline"):
         proc._detect_references("lt", [b""])
     assert events == ["transcript", "Romans 5", "parse", "John 3:16"]
+    assert selected == ["lt"]
+    assert all(record.name == "audio.pipeline" for record in caplog.records)
     assert caplog.messages[-4:] == [
         "Flushing held reference on language switch: Romans 5",
         "Selected 'lt' parser (context reset)",
@@ -197,6 +205,7 @@ def test_live_transcript_switch_delivery_logs_and_parse_order(caplog):
 
 def test_failed_switch_delivery_does_not_record_new_language():
     def fail(ref):
+        assert detector.last_parser_language == "en"
         raise RuntimeError("sender bug")
 
     proc = make_processor(sender=SimpleNamespace(submit=fail))
@@ -206,3 +215,20 @@ def test_failed_switch_delivery_does_not_record_new_language():
     with pytest.raises(RuntimeError, match="sender bug"):
         proc._select_parser("lt")
     assert detector.last_parser_language == "en"
+
+
+@pytest.mark.parametrize("missing_detector", [False, True])
+def test_live_missing_parser_warnings(missing_detector, caplog):
+    proc = make_processor(
+        stt=SimpleNamespace(transcribe_utterance=lambda *args: Transcription("John 3:16", 0.0)),
+        transcript_sender=SimpleNamespace(submit=lambda *args: None),
+    )
+    if missing_detector:
+        del proc._local.detector
+    with caplog.at_level("WARNING", logger="audio.pipeline"):
+        assert proc._detect_references("en", [b""])[1] == []
+    assert caplog.messages == [
+        "No streaming parser available for language 'en'",
+        "Streaming parser not initialized, cannot detect references",
+    ]
+    assert all(record.name == "audio.pipeline" for record in caplog.records)

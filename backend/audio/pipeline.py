@@ -791,8 +791,6 @@ class BibleLiveAudioProcessor:
                     except Exception as e:
                         logger.warning(f"Error closing Bible lookup: {e}")
                     self._local.bible_lookup = None
-                    if detector is not None:
-                        detector.bible_lookup = None
 
     def _init_thread_local_parsers(self):
         """Initialize the thread-local Bible lookup and one parser per language.
@@ -818,7 +816,6 @@ class BibleLiveAudioProcessor:
             validator,
             UtteranceDetector.load_verse_text(self.verse_text_db_path),
             metrics=self.metrics,
-            bible_lookup=lookup,
         )
         self._local.detector = detector
         self._parser_issues = list(detector.issues)
@@ -898,7 +895,7 @@ class BibleLiveAudioProcessor:
                 self._local.bible_version_warnings = warned
             return
         previous = self._local.bible_version
-        self._local.detector.set_validator(validator, replacement)
+        self._local.detector.set_validator(validator)
         self._local.bible_lookup = replacement
         self._local.bible_version = requested
         self._parser_issues = [
@@ -923,17 +920,12 @@ class BibleLiveAudioProcessor:
         if detector is None:
             logger.warning("No streaming parser available for language '%s'", language)
             return None
-        previous = detector.last_parser_language
-        selection = detector.select_parser(language)
-        try:
-            for ref in selection.released:
-                logger.info("Flushing held reference on language switch: %s", ref)
-                self.sender.submit(ref)
-        except BaseException:
-            # Selection used to be recorded only after all releases were submitted.
-            detector.last_parser_language = previous
-            raise
+        selection = detector.select_parser(language, commit=False)
+        for ref in selection.released:
+            logger.info("Flushing held reference on language switch: %s", ref)
+            self.sender.submit(ref)
         if selection.changed:
+            detector.last_parser_language = language
             logger.info("Selected '%s' parser (context reset)", language)
         return selection.parser
 
@@ -1048,7 +1040,7 @@ class BibleLiveAudioProcessor:
         # Wallclock-stamped so a book/chapter context older than the
         # TTL is dropped instead of attaching to stray numbers.
         now = time.time()
-        references = self._local.detector.detect(result, language, now).references
+        references = self._local.detector.detect_selected(result, language, now, parser)
         if references is None:
             return result, []
 

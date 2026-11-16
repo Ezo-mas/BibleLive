@@ -13,7 +13,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from core.bible_lookup import BibleLookup
 from core.verse_parser import Reference, StreamingParser
 from core.verse_text import VerseTextIndex
 
@@ -50,10 +49,9 @@ class DetectionResult:
 class UtteranceDetector:
     """Per-language, per-model detection state, without transcription or delivery.
 
-    The caller supplies a thread-owned ``bible_lookup`` or a ``validator``, and
-    the optional ``verse_text`` index. ``select_parser`` lets live deliver switch releases before
-    parsing, preserving its side-effect order; ``detect`` also selects on its
-    own for callers that do not need that separate delivery step.
+    The caller supplies a ``validator`` and the optional ``verse_text`` index.
+    Live selects once, delivers switch releases, then calls ``detect_selected``;
+    ``detect`` also selects for callers that do not need separate delivery.
     """
 
     def __init__(
@@ -66,11 +64,7 @@ class UtteranceDetector:
         context_ttl_s: float | None = CONTEXT_TTL_S,
         metrics: PipelineMetrics | None = None,
         catch_parser_errors: bool = True,
-        bible_lookup: BibleLookup | None = None,
     ):
-        self.bible_lookup = bible_lookup
-        if bible_lookup is not None and validator is None:
-            validator = bible_lookup.get_validator_hook() if bible_lookup.conn else None
         self.validator = validator
         self.verse_text = verse_text
         self.metrics = metrics
@@ -136,13 +130,9 @@ class UtteranceDetector:
             logger.warning(f"Failed to load verse text from {path}: {e}")
             return None
 
-    def set_validator(
-        self, validator: Callable[[Reference], bool], bible_lookup: BibleLookup | None = None
-    ) -> None:
+    def set_validator(self, validator: Callable[[Reference], bool]) -> None:
         """Swap validation without changing held references or parser context."""
         self.validator = validator
-        self.bible_lookup = bible_lookup
-        self.issues = [issue for issue in self.issues if issue["code"] != "bible_db_unavailable"]
         for parsers in (self.streaming_parsers, self.alternate_parsers):
             for parser in parsers.values():
                 parser.parser.validator = validator
@@ -150,8 +140,8 @@ class UtteranceDetector:
     def flush_held(self, language: str) -> list[Reference]:
         return flush_held(self.streaming_parsers, self.alternate_parsers, language)
 
-    def select_parser(self, language: str) -> ParserSelection:
-        """Select a language and return releases for the caller to deliver first."""
+    def select_parser(self, language: str, *, commit: bool = True) -> ParserSelection:
+        """Select a language; live commits it only after delivering the releases."""
         parser = self.streaming_parsers.get(language)
         if parser is None:
             logger.warning("No streaming parser available for language '%s'", language)
@@ -161,7 +151,8 @@ class UtteranceDetector:
         released = switch_language(
             self.streaming_parsers, self.alternate_parsers, self.last_parser_language, language
         )
-        self.last_parser_language = language
+        if commit:
+            self.last_parser_language = language
         return ParserSelection(parser, released, changed=True)
 
     def detect(self, result: Transcription, language: str, now: float | None) -> DetectionResult:
@@ -169,7 +160,14 @@ class UtteranceDetector:
         selection = self.select_parser(language)
         if selection.parser is None:
             return DetectionResult(selection.released, None)
-        references = self._parse_transcription(selection.parser, result, now)
+        references = self.detect_selected(result, language, now, selection.parser)
+        return DetectionResult(selection.released, references)
+
+    def detect_selected(
+        self, result: Transcription, language: str, now: float | None, parser: StreamingParser
+    ) -> list[Reference] | None:
+        """Parse after selection and switch delivery, without selecting or releasing again."""
+        references = self._parse_transcription(parser, result, now)
         alternate = result.alternate
         if alternate is not None:
             alternate_parser = self.alternate_parsers.get(language)
@@ -179,12 +177,12 @@ class UtteranceDetector:
                 else None
             )
             if references is None and alternate_refs is None:
-                return DetectionResult(selection.released, None)
+                return None
             shaky = bool(result.low_confidence_reason or alternate.low_confidence_reason)
             references = merge_agreement(
                 references or [], alternate_refs or [], promote_inferred=not shaky
             )
-        return DetectionResult(selection.released, references)
+        return references
 
     def _parse_transcription(
         self, parser: StreamingParser, result: Transcription, now: float | None
