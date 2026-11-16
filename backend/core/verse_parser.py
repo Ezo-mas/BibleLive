@@ -670,6 +670,7 @@ class ReferenceParser:
     def _bridge_book_tail(
         self, toks: list[Token], j: int, canon: str, n: int
     ) -> tuple[int, bool, bool]:
+        """Bridge words after a book; return (landing index, bridged_label, label_break)."""
         k = j
         # A few ordinary words may intervene between the book name and its
         # chapter ("metraščių knygoje, apie jį, ketvirtame skyriuje"): skip
@@ -713,6 +714,7 @@ class ReferenceParser:
     def _is_narrative_numbers_tail(
         self, toks: list[Token], k: int, canon: str, book_start: int
     ) -> bool:
+        """Veto a narrative use of Numbers: True means this is not a citation."""
         # "uždėjau skaičius 91" / "tie skaičiai ... padaryti 19": the
         # ordinary noun "skaičius" (a number) folds onto the Numbers
         # stem, and a bare count reached with no chapter/verse/label
@@ -731,7 +733,7 @@ class ReferenceParser:
             )
         )
 
-    def _parse_tail_book_forms(
+    def _parse_tail_leading_forms(
         self,
         toks: list[Token],
         k: int,
@@ -740,6 +742,9 @@ class ReferenceParser:
         nch: int,
         bridged_label: bool,
     ) -> tuple[int, bool, Reference | None]:
+        """Handle a chapter word, a merged verse after a bridged label, or a single-chapter book.
+        Return (k after an optional chapter word, chapter_kw, a finished Reference or None).
+        """
         chapter_kw = False
         if k < n and toks[k] in self._chapter_words:
             chapter_kw = True
@@ -802,7 +807,7 @@ class ReferenceParser:
         skipped_words = k > j and not bridged_label
         if self._is_narrative_numbers_tail(toks, k, canon, book_start):
             return None
-        k, chapter_kw, book_form = self._parse_tail_book_forms(
+        k, chapter_kw, book_form = self._parse_tail_leading_forms(
             toks, k, canon, n, nch, bridged_label
         )
         if book_form is not None:
