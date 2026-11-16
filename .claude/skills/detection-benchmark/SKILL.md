@@ -35,7 +35,12 @@ Prompt, hotwords, models and segmentation *settings* are in the cache key;
 ## 2. Inputs
 
 - **Corpus:** `benchmarks/corpus/lt-sermons.txt`, 14 services and 171 gold
-  references. Each line is `<manifest> <record id> [START:END]`.
+  references (the fitted set). Each line is `<manifest> <record id> [START:END]`.
+- **Held-out set:** `benchmarks/corpus/lt-heldout.txt`, services never used for
+  tuning. Run it the same way, with its own tag suffix (e.g. `<change>-before-heldout`), and
+  report its totals on their own line, never added into the fitted totals. Never
+  change a rule to fix a held-out miss without first moving that service to
+  `lt-sermons.txt` and saying so.
 - **The main checkout supplies the untracked inputs:** `bench_audio/` (the
   user's recordings, read-only), `bible_data/biblelive.sqlite` and
   `bible_ltb.sqlite`, and `results/.bench-cache`. From a worktree, pass the

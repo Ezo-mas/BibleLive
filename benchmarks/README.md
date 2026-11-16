@@ -12,7 +12,8 @@ benchmarks/
 ├── corpus/
 │   ├── manifest.example.json   # schema; copy for your own manifest
 │   ├── manifest-*-lt.json      # the Lithuanian services (audio not committed)
-│   ├── lt-sermons.txt          # the 13-service run (record + sermon --t-range)
+│   ├── lt-sermons.txt          # the fitted services (record + sermon --t-range)
+│   ├── lt-heldout.txt          # held-out services, never used for tuning; report separately
 │   └── gold/
 │       └── example-schema-only.gold.jsonl  # gold annotation schema example
 ├── hash_audio.py               # fill in manifest sha256 fields

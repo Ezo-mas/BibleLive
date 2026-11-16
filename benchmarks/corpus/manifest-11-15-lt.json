@@ -1,0 +1,23 @@
+{
+  "language": "lt",
+  "schema_version": 1,
+  "recordings": [
+    {
+      "id": "11-15-live-lt",
+      "source": "BibleLive session log 2026-11-15_110512.wav sha256 e77a7e20ae0bcfb927e90279cf4e7db0beaadf1f02727c70b7004f25d0673bbf (live service, as the pipeline heard it)",
+      "file": "2026-11-15_110512.wav",
+      "duration_s": 5781.33,
+      "sha256": "e77a7e20ae0bcfb927e90279cf4e7db0beaadf1f02727c70b7004f25d0673bbf",
+      "sample_rate_hz": 16000,
+      "channels": 1,
+      "speakers": [
+        "speaker-lt"
+      ],
+      "audio_quality": "live-event desk feed, 16 kHz mono as captured live (not loudness-normalized)",
+      "language": "lt",
+      "annotation_provenance": "verified",
+      "gold_file": "gold/11-15-live-lt.gold.jsonl",
+      "notes": "Held-out service (first entry of lt-heldout.txt): Lithuanian speaker, run live with Kmynas+Canary on a GTX 1650 Ti. Gold from the user listening to the whole recording (2026-11-16); spans are the live utterance spans, widened to the previous utterance where the citation began there (Matthew, 1 Kings, Revelation). 1 Kings 22:1 and Revelation 3:18 were split by the 12 s utterance cut. Psalm 34:2 at 96 s was cited during worship and is never shown, so it is not gold and the run starts at 300 s; one more reference was cited before the recording started. Times are positions in this WAV: an OBS recording of the same service drifted about 2 min late by the end (x264 CPU encoding)."
+    }
+  ]
+}
