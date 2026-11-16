@@ -14,7 +14,7 @@ shared class instead of writing a one-off. Display page styling is separate
 | Buttons (`.btn` + variant + size) | `frontend/src/components/Button.css`, `Button.tsx` |
 | Segmented control (`.segmented`), text field (`.input`), tag (`.tag`) | `frontend/src/styles/controls.css` |
 | Badges, connection dot, empty state | `frontend/src/components/*.css` |
-| Layout and the console's own parts (header, the three cards, panels, rows, dialog, search, settings rows) | `frontend/src/operator/operator.css` |
+| Layout and the console's own parts (header, the three cards, panels, rows, dialog, search, settings rows) | `frontend/src/operator/styles/*.css` (base, header, layout, live-panel, next-panel, side-panel, settings, scripture-search, settings-dialog, responsive) |
 
 ## Token-only rule
 
@@ -23,7 +23,7 @@ shared class instead of writing a one-off. Display page styling is separate
   `--panel-bg`, `--card-bg`, `--accent-text`. Tints are
   `color-mix()` of a token with a surface token, never a second hex.
 - No raw radius, height, weight or letter-spacing either: use the tokens below.
-  The only literal sizes left in `operator.css` are layout dimensions (column
+  The only literal sizes left across `frontend/src/operator/styles/*.css` are layout dimensions (column
   widths, card min-heights, breakpoints).
 - A new palette is a swap of the values in `tokens.css`: the light and dark theme
   blocks plus the two console blocks (`.operator-app`, dark variant) at the end.
@@ -177,7 +177,9 @@ outline; Low is a muted fill, muted text and a dashed border.
 
 ## Settings dialog
 
-One design for the whole dialog (`SettingsDialog.tsx`, styles in `operator.css`).
+One design for the whole dialog (`SettingsDialog.tsx`, styles in
+`frontend/src/operator/styles/settings-dialog.css` and
+`frontend/src/operator/styles/settings.css`).
 
 - **Header row:** the title at the left, Close (a ghost icon button, 36px) at the right,
   one control tall under `--card-pad`, with a hairline under it.

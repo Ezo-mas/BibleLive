@@ -1,0 +1,351 @@
+/* Panels: the pending queue and the history list. */
+.operator-section {
+  display: flex;
+  flex-direction: column;
+  background: var(--panel-bg);
+  border-radius: var(--radius-card);
+  border: var(--border-width) solid var(--color-border);
+  overflow: hidden;
+}
+
+.operator-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  height: var(--control-h-lg);
+  flex-shrink: 0;
+  padding: 0 var(--space-4);
+  border-bottom: var(--border-width) solid var(--color-border);
+}
+
+.operator-section-title {
+  margin: 0;
+  font-size: var(--font-size-base);
+  font-weight: var(--weight-semibold);
+  color: var(--color-text);
+}
+
+.operator-section-count {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: var(--space-5);
+  height: var(--space-5);
+  padding: 0 var(--space-2);
+  background: var(--card-bg);
+  border-radius: var(--radius-full);
+  font-size: var(--font-size-xs);
+  font-weight: var(--weight-bold);
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-secondary);
+}
+
+.operator-section-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--card-pad);
+}
+
+/* The tabbed panel is the working column: full height, the list scrolling inside
+   it, and its one footer control pinned at the bottom. It is the answer to "what
+   do I do next", so it gets a column of its own beside the display. */
+.operator-pending {
+  flex: none;
+  width: var(--operator-side-w);
+  min-height: 0;
+}
+
+.operator-queue-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  height: var(--control-h-lg);
+  flex-shrink: 0;
+  padding: 0 var(--space-3);
+  border-top: var(--border-width) solid var(--color-border);
+}
+
+.operator-queue-hint {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+}
+
+/* The sidebar's tabs: Pending, Plan and History share one panel. */
+/* The tabs share the whole bar equally, with no outer padding or gaps, and the bar is
+   as tall as a card's header row (control height plus the card padding) so the two
+   columns' headers line up. */
+.operator-tabs {
+  --tab-underline: 3px;
+  display: flex;
+  align-items: stretch;
+  height: calc(var(--control-h-md) + var(--card-pad));
+  flex-shrink: 0;
+  border-bottom: var(--border-width) solid var(--color-border);
+}
+
+.operator-tab {
+  white-space: nowrap;
+  display: inline-flex;
+  flex: 1 1 0;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  gap: var(--space-2);
+  padding: 0;
+  font-family: var(--font-sans);
+  font-size: var(--font-size-sm);
+  font-weight: var(--weight-semibold);
+  color: var(--color-text-muted);
+  background: none;
+  border: none;
+  border-bottom: var(--tab-underline) solid transparent;
+  margin-bottom: calc(-1 * var(--border-width));
+  cursor: pointer;
+  transition: color var(--transition-fast);
+}
+
+.operator-tab:hover {
+  color: var(--color-text);
+}
+
+/* The active tab is bold and underlined in the accent text colour, which holds 3:1
+   against the panel in both themes (the fill colour does not on a light panel). */
+.operator-tab.is-active {
+  color: var(--color-text);
+  font-weight: var(--weight-bold);
+  border-bottom-color: var(--accent-text);
+}
+
+.operator-tab:focus-visible {
+  outline: var(--focus-ring-width) solid var(--color-border-focus);
+  outline-offset: calc(-1 * var(--focus-ring-width));
+  border-radius: var(--radius-tag);
+}
+
+/* Detections are waiting while another tab is open. */
+.operator-tab[data-alert='true'] .operator-section-count {
+  background: var(--color-primary);
+  color: var(--color-text-inverse);
+}
+
+.operator-tabpanel {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+/* Rows in Pending, Plan and History share one look: a boxed item holding the
+   reference, the start of its text, and (Pending, Plan) the row's buttons. Nothing
+   marks an edge with a coloured stripe: the staged row takes the accent border
+   and fill all round. */
+.ref-card-list,
+.plan-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--card-pad);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ref-item {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: var(--card-gap);
+  min-width: 0;
+  padding: var(--card-pad);
+  background: var(--card-bg);
+  border: var(--border-width) solid var(--color-border);
+  border-radius: var(--radius-control);
+  transition: border-color var(--transition-fast);
+}
+
+.ref-item:hover {
+  border-color: var(--color-border-strong);
+}
+
+.ref-item.is-selected {
+  background: var(--color-primary-subtle);
+  border-color: var(--color-primary);
+}
+
+.ref-item-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--card-gap);
+}
+
+/* History is a place to look back, so its rows drop the confidence chip: it is a
+   property of a detection, not of something that was shown. */
+.operator-history .ref-card-confidence {
+  display: none;
+}
+
+.ref-card {
+  position: relative;
+  display: flex;
+  box-sizing: border-box;
+  min-width: 0;
+  cursor: pointer;
+  border-radius: var(--radius-tag);
+}
+
+.ref-card:focus-visible {
+  border-radius: var(--radius-tag);
+}
+
+.ref-card-content {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  gap: var(--card-gap);
+  min-width: 0;
+}
+
+.ref-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.ref-card-title {
+  margin: 0;
+  font-size: var(--font-size-base);
+  font-weight: var(--weight-semibold);
+  overflow-wrap: anywhere;
+  color: var(--color-text);
+}
+
+.ref-card-badges {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-shrink: 0;
+}
+
+/* Detection confidence: one amber-and-grey ramp told apart by fill weight, with
+   the word and nothing else. High is the accent fill and edge, Medium an outline,
+   Low a muted fill with a dashed edge. */
+.ref-card-confidence {
+  display: inline-flex;
+  align-items: center;
+  height: var(--space-5);
+  padding: 0 var(--space-3);
+  font-size: var(--font-size-xs);
+  font-weight: var(--weight-bold);
+  white-space: nowrap;
+  border: var(--border-width) solid transparent;
+  border-radius: var(--radius-full);
+}
+
+.ref-card-confidence[data-confidence='high'] {
+  color: var(--accent-text);
+  background: var(--color-primary-subtle);
+  border-color: color-mix(in srgb, var(--color-primary) 55%, transparent);
+}
+
+.ref-card-confidence[data-confidence='medium'] {
+  color: var(--color-text-secondary);
+  background: transparent;
+  border-color: var(--color-border-strong);
+}
+
+.ref-card-confidence[data-confidence='low'] {
+  font-weight: var(--weight-semibold);
+  color: var(--color-text-muted);
+  background: var(--color-surface-muted);
+  border-style: dashed;
+  border-color: var(--color-border-strong);
+}
+
+/* The start of the passage, in a muted quote: enough to recognise it, two lines at
+   most. The full text is in Up Next once the row is staged. */
+.ref-card-text {
+  display: -webkit-box;
+  margin: 0;
+  overflow: hidden;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  font-size: var(--font-size-sm);
+  line-height: var(--leading-snug);
+  color: var(--color-text-secondary);
+}
+
+.ref-card-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0 var(--space-3);
+  font-size: var(--font-size-xs);
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-muted);
+}
+
+/* Which pending row is the one staged in Up Next — the queue and the staging
+   panel must never be mistaken for each other. */
+.ref-card-staged {
+  margin-left: auto;
+  font-weight: var(--weight-semibold);
+  color: var(--accent-text);
+}
+
+/* The plan: a numbered title (a button that stages it; double-click shows it), the
+   reorder arrows, then the row's own buttons. */
+.plan-item-head {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+
+.plan-row-main {
+  display: flex;
+  align-items: flex-start;
+  flex: 1;
+  gap: var(--space-3);
+  min-width: 0;
+  padding: 0;
+  font-family: var(--font-sans);
+  text-align: left;
+  color: var(--color-text);
+  background: none;
+  border: none;
+  border-radius: var(--radius-tag);
+  cursor: pointer;
+}
+
+.plan-row-main:focus-visible {
+  border-radius: var(--radius-tag);
+}
+
+.plan-row-number {
+  flex-shrink: 0;
+  min-width: 1.5em;
+  font-size: var(--font-size-xs);
+  font-weight: var(--weight-bold);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.6;
+  color: var(--color-text-muted);
+}
+
+.plan-row-body {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: var(--card-gap);
+}
+
+.plan-row-title {
+  font-size: var(--font-size-base);
+  font-weight: var(--weight-semibold);
+}
+
+.plan-row-reorder {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+}

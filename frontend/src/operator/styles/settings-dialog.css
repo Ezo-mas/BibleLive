@@ -1,0 +1,162 @@
+/* Settings dialog. Modal, because every control inside it changes what the
+   audience or the console itself is using: it takes the page and the keyboard
+   until it is closed, then hands both back. */
+.operator-dialog-overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-4);
+  background: var(--color-scrim);
+  z-index: var(--z-modal);
+  overflow-y: auto;
+}
+
+.operator-dialog {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 520px;
+  max-height: calc(100dvh - 2 * var(--space-4));
+  background: var(--panel-bg);
+  border: var(--border-width) solid var(--color-border);
+  border-radius: var(--radius-dialog);
+  box-shadow: var(--shadow-xl);
+  overflow: hidden;
+}
+
+/* The header row: the title at the left, Close at the right, one control tall under
+   the card padding, like a card's header. */
+.operator-dialog-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  min-height: calc(var(--control-h-md) + 2 * var(--card-pad));
+  padding: var(--card-pad);
+  border-bottom: var(--border-width) solid var(--color-border);
+}
+
+.operator-dialog-title {
+  margin: 0;
+  font-size: var(--font-size-lg);
+  font-weight: var(--weight-semibold);
+  color: var(--color-text);
+}
+
+.operator-dialog-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--card-pad);
+  padding: 0 var(--card-pad) var(--card-pad);
+  overflow-y: auto;
+}
+
+.operator-dialog-section {
+  display: flex;
+  flex-direction: column;
+}
+
+/* A section heading is the overline style of the card labels, with room above it. */
+.operator-dialog-section-title {
+  margin: var(--card-pad) 0 0;
+  font-size: var(--font-size-xs);
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+
+/* Action feedback. One slot only: a new message replaces the previous one, so a
+   busy queue cannot stack notifications. The placement lives in the header (see
+   `.operator-header .operator-feedback`); this block is the message itself. */
+.operator-feedback {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-surface-overlay);
+  border: var(--border-width) solid var(--color-border);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-lg);
+  font-size: var(--font-size-sm);
+  color: var(--color-text);
+  z-index: var(--z-tooltip);
+}
+
+.operator-feedback-success {
+  border-color: var(--color-success);
+}
+
+.operator-feedback-error {
+  border-color: var(--color-danger);
+}
+
+.operator-feedback-icon {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.operator-feedback-icon svg {
+  width: var(--icon-md);
+  height: var(--icon-md);
+}
+
+.operator-feedback-success .operator-feedback-icon {
+  color: var(--color-success-text);
+}
+
+.operator-feedback-info .operator-feedback-icon {
+  color: var(--color-info-text);
+}
+
+.operator-feedback-error .operator-feedback-icon {
+  color: var(--color-danger-text);
+}
+
+.operator-feedback-text {
+  min-width: 0;
+  /* The header slot can be narrow on a tablet; a long confirmation wraps rather
+     than pushing the message out of its pill. */
+  overflow-wrap: anywhere;
+}
+
+/* Keyboard shortcuts, listed in the settings dialog. Compact by design: one
+   line per shortcut, wrapping gracefully in the dialog's narrow column. */
+.operator-dialog-shortcuts {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  padding: var(--card-gap) 0 0;
+  list-style: none;
+}
+
+.operator-dialog-shortcuts li {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+}
+
+.operator-dialog-shortcut-keys {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--space-1);
+  flex-shrink: 0;
+}
+
+.operator-dialog-shortcuts kbd {
+  padding: var(--space-1) var(--space-2);
+  background: var(--color-surface-raised);
+  border: var(--border-width) solid var(--color-border-strong);
+  border-radius: var(--radius-tag);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  font-weight: var(--weight-medium);
+  color: var(--color-text);
+  white-space: nowrap;
+}

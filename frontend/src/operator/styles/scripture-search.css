@@ -1,0 +1,203 @@
+/* Find Scripture - a command bar in the header. Typing a name filters the canon
+   and typing a reference resolves it, so the panel is a single field; its hint
+   and results open as a popover under the bar while the field (or anything in
+   the popover) has focus. Every lookup is a server request, so the box is inert
+   while the socket is down.
+
+   The component is still a labelled section with a heading: the heading is
+   visually hidden, since the field names itself, and the "Looking up…" note sits
+   inside the field's right edge. */
+.operator-search {
+  position: relative;
+  min-width: 0;
+  background: none;
+  border: none;
+  border-radius: 0;
+  overflow: visible;
+}
+
+.operator-search .operator-section-header {
+  position: absolute;
+  top: 0;
+  right: var(--space-3);
+  height: var(--control-h-md);
+  padding: 0;
+  border: none;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.operator-search .operator-section-title {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+}
+
+.operator-search .operator-section-content {
+  flex: none;
+  overflow: visible;
+  padding: 0;
+}
+
+.operator-search-field {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.operator-search-icon {
+  position: absolute;
+  left: var(--space-3);
+  display: flex;
+  color: var(--color-text-muted);
+  pointer-events: none;
+}
+
+.operator-search-icon svg {
+  width: var(--icon-sm);
+  height: var(--icon-sm);
+}
+
+/* The field is the shared `.input`; this only makes room for the icon. */
+.operator-search-input {
+  padding-left: var(--space-6);
+}
+
+.operator-search-busy {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+}
+
+/* The popover: hint, results and errors, shown only while the search has focus. */
+.operator-search-drop {
+  position: absolute;
+  top: calc(100% + var(--space-2));
+  left: 0;
+  right: 0;
+  z-index: var(--z-dropdown);
+  display: none;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  background: var(--color-surface-overlay);
+  border: var(--border-width) solid var(--color-border);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-xl);
+}
+
+.operator-search:focus-within .operator-search-drop {
+  display: flex;
+}
+
+.operator-search-drop .operator-setting-hint {
+  padding: var(--space-1) var(--space-2);
+}
+
+/* Results: one row per book or passage, each a real button so the whole list is
+   reachable by tab and Enter is never the only way through it. */
+.operator-search-results {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+/* A result is a secondary button (and the resolved passage is `is-on`), laid out
+   as a left-aligned block that can wrap onto a preview line. */
+.btn.operator-search-result {
+  align-items: baseline;
+  justify-content: flex-start;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  text-align: left;
+  white-space: normal;
+}
+
+.operator-search-result.is-reference {
+  font-weight: var(--weight-semibold);
+}
+
+.operator-search-result-label {
+  min-width: 0;
+}
+
+.operator-search-item {
+  display: flex;
+  align-items: stretch;
+  gap: var(--space-1);
+}
+
+.operator-search-item .operator-search-result {
+  flex: 1;
+  min-width: 0;
+  width: auto;
+}
+
+/* How the verse begins, so a wrong passage is seen before it is staged. */
+.operator-search-result-preview {
+  flex-basis: 100%;
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  font-family: var(--font-serif);
+  font-size: var(--font-size-sm);
+  font-style: italic;
+  font-weight: var(--weight-regular);
+  line-height: var(--leading-snug);
+  color: var(--color-text-secondary);
+}
+
+.operator-search-item .operator-search-plan {
+  flex-shrink: 0;
+  height: auto;
+}
+
+.operator-search-result-detail {
+  margin-left: auto;
+  font-size: var(--font-size-xs);
+  font-weight: var(--weight-regular);
+  color: var(--color-text-muted);
+}
+
+/* The typed text inside a book's name, so "ge" visibly lands on Genesis. */
+.operator-search-mark {
+  background: var(--color-warning-bg);
+  color: var(--color-warning-text);
+  border-radius: var(--radius-tag);
+}
+
+/* Lookup failures and the form's own validation, in one shape so the message
+   always appears where the operator just typed. */
+.operator-scripture-error {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  margin: 0;
+  font-size: var(--font-size-xs);
+  line-height: var(--leading-snug);
+  color: var(--color-danger-text);
+}
+
+.operator-scripture-error svg {
+  flex-shrink: 0;
+  width: var(--icon-sm);
+  height: var(--icon-sm);
+}
+
+.operator-scripture-unavailable {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-3);
+}

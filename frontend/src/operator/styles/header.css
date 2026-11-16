@@ -1,0 +1,196 @@
+/* Header - one slim bar in three parts: identity, the Find Scripture command bar,
+   and connection health with the way into settings. The bar is a positioning
+   context for two things that hang off it: the action feedback and the search
+   results. `z-index` stays `auto` on purpose: the bar is a flex item, so any
+   z-index here would make it a stacking context, and the feedback inside it has
+   to keep painting above the settings dialog's overlay (1070 against 1050). */
+.operator-header {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 520px) minmax(max-content, 1fr);
+  align-items: center;
+  gap: var(--space-5);
+  /* A medium control plus a little air above and below it. */
+  height: calc(var(--control-h-md) + 2 * var(--space-2));
+  flex-shrink: 0;
+  padding: 0 var(--space-5);
+  background: var(--panel-bg);
+  border-bottom: var(--border-width) solid var(--color-border);
+  z-index: auto;
+}
+
+.operator-header-left {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+/* The brand mark: the product's own book glyph on an accent tile, so the bar
+   reads as a product and not a page title. */
+.operator-brand-mark {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--space-6);
+  height: var(--space-6);
+  flex-shrink: 0;
+  color: var(--color-text-inverse);
+  background: var(--color-primary);
+  border-radius: var(--radius-control);
+}
+
+.operator-brand-mark svg {
+  width: var(--icon-md);
+  height: var(--icon-md);
+}
+
+.operator-title {
+  font-size: var(--font-size-lg);
+  font-weight: var(--weight-bold);
+  margin: 0;
+  color: var(--color-text);
+  white-space: nowrap;
+}
+
+.operator-header-right {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-4);
+}
+
+/* Connection and display health are two plain readings, not two pills: a dot and
+   a word. The dot is neutral while things are fine, so the only coloured dot on
+   the bar is the one that means something is wrong. */
+.operator-status-group {
+  display: flex;
+  white-space: nowrap;
+  align-items: center;
+  gap: var(--space-4);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+}
+
+.operator-header .connection-indicator {
+  padding: 0;
+  background: none;
+  border: none;
+  font-weight: var(--weight-regular);
+}
+
+.operator-header .connection-dot-connected {
+  background-color: var(--color-text-secondary);
+}
+
+.operator-header .connection-indicator-connected .connection-label {
+  color: var(--color-text-secondary);
+}
+
+.operator-display-status {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.operator-display-dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: var(--radius-full);
+  background: var(--color-text-secondary);
+}
+
+.operator-display-label {
+  color: var(--color-text-secondary);
+}
+
+/* The spoken language beside the connection health is a secondary button (it opens
+   Settings) holding a word and a `.tag` with the code; nothing else is specific to it. */
+
+/* The pipeline stopped reporting: the language is only what it was last set to,
+   so it reads as a remembered value rather than a live one. */
+.operator-language-chip--stale {
+  opacity: 0.5;
+}
+
+/* Action feedback hangs from the bottom of the header, under the gear, instead of
+   sitting in it. Fixed to the bottom of the page it covered the actions on a
+   laptop; here it covers only the labels above the stages and the queue's
+   heading, which is not where the operator's next click goes, and nothing below
+   it moves when it appears. It is right-aligned and capped in width so it stays
+   clear of the settings dialog, which is centred: a change made in the dialog is
+   confirmed beside it, not over its title. */
+.operator-header .operator-feedback {
+  position: absolute;
+  top: calc(100% + var(--space-2));
+  right: var(--space-5);
+  width: max-content;
+  max-width: min(440px, calc(100vw - 2 * var(--space-4)));
+  box-shadow: var(--shadow-lg);
+}
+
+/* Disconnected banner: a closed socket disables every control below it, so the
+   reason and a manual way back are stated rather than implied by a red dot. */
+.operator-connection-banner {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-6);
+  background: var(--color-danger-bg);
+  color: var(--color-danger-text);
+  border-bottom: var(--border-width) solid var(--color-border);
+  font-size: var(--font-size-sm);
+}
+
+.operator-connection-banner-icon {
+  display: flex;
+  flex-shrink: 0;
+}
+
+.operator-connection-banner-icon svg {
+  width: var(--icon-md);
+  height: var(--icon-md);
+}
+
+.operator-connection-banner-text {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+}
+
+/* Speech detection warning: the console still works (manual search, approvals
+   of what is queued), so this is a warning rather than the danger red above. */
+.operator-pipeline-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-6);
+  background: var(--color-warning-bg);
+  color: var(--color-warning-text);
+  border-bottom: var(--border-width) solid var(--color-border);
+  font-size: var(--font-size-sm);
+}
+
+.operator-pipeline-banner-icon {
+  display: flex;
+  flex-shrink: 0;
+}
+
+.operator-pipeline-banner-icon svg {
+  width: var(--icon-md);
+  height: var(--icon-md);
+}
+
+.operator-pipeline-banner-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.operator-pipeline-banner-text p,
+.operator-pipeline-banner-text ul {
+  margin: 0;
+}
+
+.operator-pipeline-banner-text ul {
+  padding-left: var(--space-5);
+}

@@ -1,0 +1,81 @@
+/* Responsive */
+@media (max-width: 1100px) {
+  /* One column and a page that scrolls. The frame is the full width and takes its
+     height from the 16:9 ratio, so here the miniature is exactly the projector's shape. Flex rather than grid, so
+     each part keeps the height its content needs. */
+  .operator-main {
+    flex-direction: column;
+    overflow-y: auto;
+  }
+
+  .operator-workspace {
+    flex: none;
+    overflow: visible;
+  }
+
+  .operator-live {
+    flex: none;
+  }
+
+  .operator-monitor-wrap {
+    flex: none;
+    aspect-ratio: 16 / 9;
+    min-height: 0;
+  }
+
+  .operator-pending {
+    width: auto;
+    max-height: 520px;
+  }
+}
+
+@media (max-width: 800px) {
+  /* The command bar takes a row of its own under the brand and the controls. */
+  .operator-header {
+    grid-template-columns: minmax(0, 1fr) auto;
+    height: auto;
+    row-gap: var(--space-2);
+    padding: var(--space-2) var(--space-4);
+  }
+
+  .operator-header-left {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .operator-header-right {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .operator-search {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+
+  /* Card headers wrap rather than push the actions out of the card. */
+  .operator-card-head {
+    flex-wrap: wrap;
+  }
+}
+
+@media (max-width: 640px) {
+  .operator-display-label,
+  .operator-language-chip-label {
+    display: none;
+  }
+
+  .operator-connection-banner,
+  .operator-pipeline-banner {
+    padding: var(--space-3) var(--space-4);
+  }
+
+  .operator-main {
+    padding: var(--space-3);
+    gap: var(--space-3);
+  }
+
+  .operator-quick-auto {
+    margin-left: 0;
+  }
+}

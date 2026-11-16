@@ -1,0 +1,132 @@
+/* Settings, rendered inside the settings dialog. The audience display is
+   presentation-only, so the controls live there — and they are configuration, not
+   per-action controls, so the dialog can be closed and the console left with
+   everything the operator touches during a service.
+
+   One row anatomy for every setting: the label (semibold) with a muted hint under
+   it on the left, the control on the right, a 1px divider between rows, 12px
+   (`--card-pad`) padding. The control keeps its own width and is centred against the
+   label and hint. Anything else in a row (an error, a picture) takes the full width
+   under them. In a narrow dialog the control drops under the hint. */
+.operator-setting {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--card-gap) var(--card-pad);
+  padding: var(--card-pad) 0;
+  border-bottom: var(--border-width) solid var(--color-border);
+}
+
+.operator-dialog-section > .operator-setting:last-child {
+  border-bottom: 0;
+}
+
+/* The label and its hint are one block that never gets narrower than 14rem (224px):
+   it takes the room the control leaves, and a control too wide for what is left
+   (a long label, another language) wraps under the text instead of squeezing it
+   into one word per line. */
+.operator-setting-text {
+  display: flex;
+  flex: 1 1 14rem;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.operator-setting > .segmented,
+.operator-setting > .operator-setting-control {
+  flex: 0 0 auto;
+  max-width: 100%;
+}
+
+/* Rows with a long error, or a picture, put it across the whole row. */
+.operator-setting > .operator-scripture-error,
+.operator-setting > .operator-scripture-unavailable,
+.operator-setting > .idle-screen-preview {
+  flex: 1 1 100%;
+}
+
+.operator-setting-header {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+}
+
+.operator-setting-label {
+  font-size: var(--font-size-sm);
+  font-weight: var(--weight-semibold);
+  color: var(--color-text);
+}
+
+/* The active value spelled out, so the mode is legible without reading which
+   option is highlighted. */
+.operator-setting-value {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+}
+
+/* Auto-approve changes what reaches the projectors without the operator, so
+   its active value is called out rather than blending into the label. */
+.operator-setting-value.is-on {
+  font-weight: var(--weight-semibold);
+  color: var(--color-warning-text);
+}
+
+.operator-setting-hint {
+  margin: 0;
+  font-size: var(--font-size-xs);
+  line-height: var(--leading-snug);
+  color: var(--color-text-muted);
+}
+
+/* Buttons that sit where a row's control does (the idle picture's upload and remove). */
+.operator-setting-control {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--card-gap);
+}
+
+/* The idle picture's preview, in its own row: a 16:9 box with the monitor's border
+   and corners, and the current state under it. */
+.operator-setting-preview {
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+.operator-setting-preview > .idle-screen-preview {
+  flex: 0 1 auto;
+}
+
+.idle-screen-preview {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 20rem;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  background: var(--color-surface-canvas);
+  border: var(--border-width) solid var(--color-border-strong);
+  border-radius: var(--radius-control);
+}
+
+/* Logo mode: contained in the display's box (half the width, 40% of the height). */
+.idle-screen-preview img {
+  width: 50%;
+  height: 40%;
+  object-fit: contain;
+}
+
+/* Fill mode: the picture covers the preview, as it covers the display. */
+.idle-screen-preview--fill img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.idle-screen-preview-blank {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+}

@@ -43,7 +43,7 @@ frontend/
 
 | Task | Files |
 | --- | --- |
-| Change operator UI | `frontend/src/operator/` (+ `operator.css`) |
+| Change operator UI | `frontend/src/operator/` (+ `styles/*.css`, split by page section) |
 | Change display UI / text fitting | `frontend/src/display/` (+ `display.css`, `fitText.ts`) |
 | Stream overlay for OBS (`/display?mode=obs`) | `frontend/src/display/StreamOverlay.tsx`, `streamOverlayOptions.ts` (URL options, fit-or-drop-verses), `streamOverlay.css`; picked in `display/main.tsx` |
 | Change shared WS hook / message types | `frontend/src/shared/useWebSocket.ts`, `types.ts` (mirror of `backend/core/server/models.py`) |
