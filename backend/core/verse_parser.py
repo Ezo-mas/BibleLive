@@ -32,7 +32,7 @@ import difflib
 import re
 from collections.abc import Callable
 from dataclasses import dataclass, field, replace
-from typing import cast
+from typing import Protocol, cast
 
 if __package__:
     from . import verse_parser_lt as _lt
@@ -1073,6 +1073,63 @@ class ReferenceParser:
 # --------------------------------------------------------------------------
 # Streaming (feed transcript segments as they arrive)
 # --------------------------------------------------------------------------
+class LanguageProfile(Protocol):
+    """Language-specific rules at transcript segment boundaries."""
+
+    def adjust_segment(
+        self,
+        new: list[Token],
+        carry: list[Token],
+        verse_intro_words: frozenset[str] | set[str],
+        chapter_words: frozenset[str] | set[str],
+        verse_words: frozenset[str] | set[str],
+        /,
+    ) -> list[Token]: ...
+
+    def trim_carry(self, carry: list[Token], new: list[Token], /) -> list[Token]: ...
+
+    def cut_off_verse(
+        self,
+        ref: Reference,
+        toks: list[Token],
+        chapter_words: frozenset[str] | set[str],
+        /,
+    ) -> bool: ...
+
+
+class EnglishProfile:
+    """English needs no segment-boundary adjustments or verse holds."""
+
+    def adjust_segment(
+        self,
+        new: list[Token],
+        _carry: list[Token],
+        _verse_intro_words: frozenset[str] | set[str],
+        _chapter_words: frozenset[str] | set[str],
+        _verse_words: frozenset[str] | set[str],
+        /,
+    ) -> list[Token]:
+        return new
+
+    def trim_carry(self, carry: list[Token], _new: list[Token], /) -> list[Token]:
+        return carry
+
+    def cut_off_verse(
+        self,
+        _ref: Reference,
+        _toks: list[Token],
+        _chapter_words: frozenset[str] | set[str],
+        /,
+    ) -> bool:
+        return False
+
+
+_LANGUAGE_PROFILES: dict[str, LanguageProfile] = {
+    "en": EnglishProfile(),
+    "lt": _lt.LithuanianProfile(),
+}
+
+
 class StreamingParser:
     """Keeps context between segments and a short tail of the previous one,
     so "turn to Romans" + "chapter eight verse twenty-eight" still works.
@@ -1103,6 +1160,7 @@ class StreamingParser:
         verse_text_min_score: float = 0.6,
     ):
         self.parser = parser or ReferenceParser(language=language)
+        self._profile = _LANGUAGE_PROFILES[self.parser.language]
         self.ctx = Context()
         self.carry: list[Token] = []
         self.carry_tokens = carry_tokens
@@ -1146,26 +1204,14 @@ class StreamingParser:
         # already postprocessed when it arrived, so re-running it could
         # reshuffle already-ordered tokens.
         new = self.parser._prepare(segment)
-        if (
-            self.parser.language == "lt"
-            and new
-            and new[0] in ("viena", "vienas")
-            and _lt._citation_slot(self.carry)
-            and any(
-                isinstance(t, int)
-                or t in self.parser._verse_intro_words
-                or t in self.parser._chapter_words
-                or t in self.parser._verse_words
-                for t in new[1:4]
-            )
-        ):
-            # "...Jobo" | "Vienas nuo dvidešimtos": the number 1 split from its
-            # book by an utterance break, which tokenize alone cannot see. A
-            # citation word or number must follow ("Viena moteris" stays text).
-            new = [1, *new[1:]]
-        carry = self.carry
-        if self.parser.language == "lt" and new and isinstance(new[0], int):
-            carry = _lt.drop_dangling_tail(carry)
+        new = self._profile.adjust_segment(
+            new,
+            self.carry,
+            self.parser._verse_intro_words,
+            self.parser._chapter_words,
+            self.parser._verse_words,
+        )
+        carry = self._profile.trim_carry(self.carry, new)
         toks = carry + new
         refs = self.parser._scan(toks, self.ctx)
         fresh = [r for r in refs if r.end > len(carry)]  # skip already-reported ones
@@ -1194,25 +1240,7 @@ class StreamingParser:
         return released + [r for r in fresh if not any(r is h for h in hold)]
 
     def _cut_off_verse(self, ref: Reference, toks: list[Token]) -> bool:
-        """A bare digit verse ending the segment right after "skyrius N".
-
-        An utterance cut inside a spoken number leaves its first syllables as a
-        digit ("...vienuoliktame skyriuje trys" | "Trisdešim šeštoje eilutė" for
-        Romans 11:36): reported at once it is a wrong verse. Held one segment
-        like a chapter-only reference, it gives way to the verse that follows.
-        The short form "Kolosiečiams trys du." has no chapter word and is a
-        whole citation: it is never held.
-        """
-        return (
-            self.parser.language == "lt"
-            and ref.verse_start is not None
-            and ref.verse_end is None
-            and 2 <= ref.verse_start <= 9
-            and ref.end == len(toks) >= 3
-            and isinstance(toks[-1], int)
-            and isinstance(toks[-2], int)
-            and toks[-3] in self.parser._chapter_words
-        )
+        return self._profile.cut_off_verse(ref, toks, self.parser._chapter_words)
 
     def _verse_from_text(self, ref: Reference, text: str) -> Reference:
         """``ref`` with the verse being read aloud filled in, if one matches."""

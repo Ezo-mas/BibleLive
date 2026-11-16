@@ -77,6 +77,8 @@ On Windows there is no `make`: use `.venv\Scripts\python.exe -m ...` with
 ## Lithuanian parser: lessons from past fixes
 
 How the parser works is in the module docstring of `core/verse_parser_lt.py`.
+Its `LithuanianProfile` owns the three segment-boundary rules used by
+`StreamingParser` through the `LanguageProfile` protocol in `core/verse_parser.py`.
 These are the mistakes that keep coming back; each was found on a real
 recording or service.
 

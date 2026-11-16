@@ -31,7 +31,10 @@ from __future__ import annotations
 import re
 import unicodedata
 from functools import lru_cache
-from typing import cast
+from typing import TYPE_CHECKING, cast
+
+if TYPE_CHECKING:
+    from .verse_parser import Reference
 
 Token = int | str
 
@@ -1157,3 +1160,65 @@ BOOKS: list[tuple[str, int, list[str]]] = [
     ("Jude", 1, ["judo laiskas", "judo"]),
     ("Revelation", 22, ["apreisk jonui", "apreisk"]),
 ]
+
+
+class LithuanianProfile:
+    """Lithuanian citation rules across transcript segment boundaries."""
+
+    def adjust_segment(
+        self,
+        new: list[Token],
+        carry: list[Token],
+        verse_intro_words: frozenset[str] | set[str],
+        chapter_words: frozenset[str] | set[str],
+        verse_words: frozenset[str] | set[str],
+        /,
+    ) -> list[Token]:
+        if (
+            new
+            and new[0] in ("viena", "vienas")
+            and _citation_slot(carry)
+            and any(
+                isinstance(t, int)
+                or t in verse_intro_words
+                or t in chapter_words
+                or t in verse_words
+                for t in new[1:4]
+            )
+        ):
+            # "...Jobo" | "Vienas nuo dvidešimtos": the number 1 split from its
+            # book by an utterance break, which tokenize alone cannot see. A
+            # citation word or number must follow ("Viena moteris" stays text).
+            new = [1, *new[1:]]
+        return new
+
+    def trim_carry(self, carry: list[Token], new: list[Token], /) -> list[Token]:
+        if new and isinstance(new[0], int):
+            return drop_dangling_tail(carry)
+        return carry
+
+    def cut_off_verse(
+        self,
+        ref: Reference,
+        toks: list[Token],
+        chapter_words: frozenset[str] | set[str],
+        /,
+    ) -> bool:
+        """A bare digit verse ending the segment right after "skyrius N".
+
+        An utterance cut inside a spoken number leaves its first syllables as a
+        digit ("...vienuoliktame skyriuje trys" | "Trisdešim šeštoje eilutė" for
+        Romans 11:36): reported at once it is a wrong verse. Held one segment
+        like a chapter-only reference, it gives way to the verse that follows.
+        The short form "Kolosiečiams trys du." has no chapter word and is a
+        whole citation: it is never held.
+        """
+        return (
+            ref.verse_start is not None
+            and ref.verse_end is None
+            and 2 <= ref.verse_start <= 9
+            and ref.end == len(toks) >= 3
+            and isinstance(toks[-1], int)
+            and isinstance(toks[-2], int)
+            and toks[-3] in chapter_words
+        )
