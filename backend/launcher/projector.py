@@ -1,16 +1,14 @@
 """Open the audience display full-screen on the projector monitor (Edge/Chrome app window)."""
 
 import logging
-import os
-import shutil
 import subprocess
-import sys
 import webbrowser
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass
 from pathlib import Path
 
+from . import platform
 from .monitors import Monitor
+from .platform import Browser as Browser
 from .process import kill_tree
 from .settings import app_data_dir
 
@@ -26,12 +24,6 @@ class ProjectorError(Exception):
         self.detail = detail
 
 
-@dataclass(frozen=True)
-class Browser:
-    path: str
-    kind: str  # "edge" | "chrome"
-
-
 def display_url(port: int) -> str:
     return f"http://127.0.0.1:{port}/display"
 
@@ -45,89 +37,19 @@ def default_profile_dir() -> Path:
 
 
 def find_browser(env: Mapping[str, str] | None = None) -> Browser | None:
-    """Microsoft Edge first, then Chrome: well-known install dirs, then PATH."""
-    env = os.environ if env is None else env
-    roots = [env.get(k) for k in ("ProgramFiles(x86)", "ProgramFiles", "LOCALAPPDATA")]
-    candidates = (
-        ("edge", ("Microsoft", "Edge", "Application", "msedge.exe"), "msedge"),
-        ("chrome", ("Google", "Chrome", "Application", "chrome.exe"), "chrome"),
-    )
-    for kind, parts, exe in candidates:
-        for root in roots:
-            if root:
-                p = Path(root).joinpath(*parts)
-                if p.is_file():
-                    return Browser(str(p), kind)
-        found = shutil.which(exe)
-        if found:
-            return Browser(found, kind)
-    return None
+    return platform.current().find_browser(env)
 
 
 def build_command(browser: Browser, url: str, monitor: Monitor, profile_dir: Path) -> list[str]:
-    """Pure: the command line placing a full-screen app window on ``monitor``.
-
-    A full-screen app window, not kiosk mode: it looks the same on the projector (no
-    browser bars), but F11 leaves full screen and Alt+F4 closes it, which kiosk mode
-    blocks, leaving the operator no way to move or close the window.
-    """
-    return [
-        browser.path,
-        f"--app={url}",
-        "--start-fullscreen",
-        "--no-first-run",
-        "--no-default-browser-check",
-        # The private profile must stay empty: Edge otherwise signs it into the Windows
-        # account on first launch and syncs that account's extensions into it, which
-        # opens an extra window of extension-install pages next to the display.
-        "--disable-sync",
-        "--disable-extensions",
-        "--disable-features=msImplicitSignin",
-        f"--window-position={monitor.x},{monitor.y}",
-        f"--user-data-dir={profile_dir}",
-    ]
+    return platform.current().build_command(browser, url, monitor, profile_dir)
 
 
 def find_profile_processes(profile_dir: Path) -> list[int]:
-    """PIDs of processes whose command line mentions ``profile_dir`` (Windows only).
-
-    A kiosk browser left over from a crashed run keeps our private profile locked, so a new
-    launch would hand off to it and exit. Only the profile path is matched, so the user's
-    normal browser (default profile) is never touched.
-    """
-    if sys.platform != "win32":
-        return []
-    script = (
-        "Get-CimInstance Win32_Process | Where-Object "
-        "{ $_.CommandLine -and $_.CommandLine.Contains($env:BL_PROFILE) } | "
-        "ForEach-Object { $_.ProcessId }"
-    )
-    env = {**os.environ, "BL_PROFILE": str(profile_dir)}
-    try:
-        out = subprocess.run(
-            ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script],
-            capture_output=True,
-            text=True,
-            timeout=20,
-            check=False,
-            env=env,
-            creationflags=subprocess.CREATE_NO_WINDOW,
-        ).stdout
-    except (OSError, subprocess.SubprocessError) as exc:
-        logger.warning("Could not look for stale display browsers: %s", exc)
-        return []
-    own = os.getpid()
-    return [int(line) for line in out.split() if line.isdigit() and int(line) != own]
+    return platform.current().find_profile_processes(profile_dir)
 
 
 def kill_pid_tree(pid: int) -> None:
-    """Force-kill ``pid`` and its children (Windows)."""
-    subprocess.run(
-        ["taskkill.exe", "/PID", str(pid), "/T", "/F"],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        check=False,
-    )
+    platform.current().kill_pid_tree(pid)
 
 
 class ProjectorBrowser:
@@ -173,17 +95,8 @@ class ProjectorBrowser:
             for pid in self._find_stale(profile):
                 logger.info("Closing stale display browser process %s", pid)
                 self._kill_pid(pid)
-            extra: dict[str, int] = {}
-            if sys.platform == "win32":
-                extra["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
-            else:
-                extra["start_new_session"] = True
-            self._proc = self._popen(
-                build_command(browser, url, monitor, profile),
-                stdin=subprocess.DEVNULL,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                **extra,
+            self._proc = platform.current().open_projector(
+                browser, url, monitor, profile, popen=self._popen
             )
         except OSError as exc:
             raise ProjectorError("launch_failed", str(exc)) from exc
