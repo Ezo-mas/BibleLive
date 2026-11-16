@@ -16,6 +16,7 @@ from tkinter import messagebox, ttk
 from typing import Any
 
 from . import i18n
+from . import platform as platform_api
 from .i18n import t
 from .monitors import Monitor, choose_projector, enumerate_monitors
 from .network import (
@@ -451,7 +452,7 @@ class App:
         self.running = True
         self._stop_flag = False
         self._apply_running_state()
-        self._log(t("log.logs_in", detail=app_data_dir() / "logs"), "info")
+        self._log(t("log.logs_in", detail=platform_api.current().log_dir(app_data_dir())), "info")
         threading.Thread(target=self._worker, args=(settings,), daemon=True).start()
 
     def _worker(self, settings: LauncherSettings) -> None:
@@ -539,7 +540,7 @@ class App:
             self._log(t("log.projector_opened", detail=monitor.label), "info")
 
     def on_open_logs(self) -> None:
-        log_dir = app_data_dir() / "logs"
+        log_dir = platform_api.current().log_dir(app_data_dir())
         log_dir.mkdir(parents=True, exist_ok=True)
         if sys.platform == "win32":
             os.startfile(log_dir)

@@ -110,7 +110,8 @@ def open_projector(
     popen: Callable[..., subprocess.Popen[bytes]] = subprocess.Popen,
 ) -> subprocess.Popen[bytes]:
     extra: dict[str, int] = {}
-    extra["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
+    if sys.platform == "win32":  # the flag exists only there (and mypy checks other platforms)
+        extra["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
     return popen(
         build_command(browser, url, monitor, profile_dir),
         stdin=subprocess.DEVNULL,
@@ -296,7 +297,8 @@ def child_process_options() -> dict[str, int]:
     extra: dict[str, int] = {}
     # Console Ctrl+C must reach only the launcher (which kills the trees), and no
     # console window may flash when started from pythonw.
-    extra["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW
+    if sys.platform == "win32":  # the flags exist only there (and mypy checks other platforms)
+        extra["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW
     return extra
 
 

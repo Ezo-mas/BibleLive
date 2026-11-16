@@ -122,9 +122,19 @@ jobs:
           python-version: '3.13'
 
       - name: Install ffmpeg
+        # Chocolatey puts a ShimGen shim for ffmpeg.exe on PATH. The shim starts the
+        # real ffmpeg as a child, so stopping the capture ends only the shim and the
+        # real ffmpeg keeps the stderr pipe open (the live-path tests then fail with
+        # "ffmpeg-stderr thread still alive"). Put the real binary first on PATH.
         run: |
           choco install ffmpeg -y --no-progress
-          python -c "import shutil; assert shutil.which('ffmpeg'), 'ffmpeg not on PATH'"
+          $real = Get-ChildItem "$env:ChocolateyInstall/lib/ffmpeg" -Recurse -Filter ffmpeg.exe | Select-Object -First 1
+          if (-not $real) { throw "real ffmpeg.exe not found under the Chocolatey package" }
+          $real.DirectoryName | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
+      - name: Check ffmpeg
+        run: |
+          python -c "import shutil; p = shutil.which('ffmpeg'); print(p); assert p and 'lib' in p.lower(), 'ffmpeg resolves to the Chocolatey shim, not the real binary'"
           ffmpeg -version
 
       - name: Install dependencies
