@@ -115,6 +115,18 @@ a 20 s tolerance unless noted. Check here before re-running one of these.
   shorter hop.
 - **Longer utterance cap (15 s soft / 25 s hard).** No recall gain over
   8/12 s, twice the false positives, ~6 s more latency (4/7/21).
+- **At the 12 s cap, cut at the quietest point of the last 1.5 s** (2026-11-16;
+  per-frame level summed over 3 frames; the audio after the cut leads the next
+  utterance). 44% of the 11-15 service's utterances reach the cap. Fresh
+  transcription, 15 services, against the cap at exactly 12 s with
+  `join_cut_number`: `kmynas` 165 TP / 12 FN / 5 low / 3 medium+high FP vs
+  167 / 10 / 3 / 4; `kmynas+canary` 172 / 5 / 17 / 1 vs 173 / 4 / 15 / 1. The
+  quietest point is often inside a citation too, so splits move rather than
+  vanish: gained Ephesians 2:5-6 and Isaiah 45:18 (CPU), lost 2 Corinthians
+  1:8 and 1:10 (a new cut gave "Ir Maskyrius" for "pirmas skyrius") and
+  1 Corinthians 12:7-11 (cut inside the range). Isaiah 58:11 (06-21) was
+  still found but scored as a repeat: its transcript-audit gold time is about
+  10 s early. Code dropped (branch not kept).
 - **Demucs vocal isolation of 09-13** (`htdemucs --two-stems=vocals`, an
   upper bound for a clean pulpit feed). The VAD found more real pauses
   (77% vs 85% of frames voiced), but detection did not improve
