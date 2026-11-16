@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, render, screen, waitFor } from '@testing-library/react'
 import StreamOverlay from './StreamOverlay'
+import { I18nProvider } from '../shared/I18nProvider'
+import { LANGUAGE_STORAGE_KEY } from '../shared/i18n'
 import type { DisplayMessage } from '../shared/types'
 import { createMockSocket, push } from '../test/operatorHarness'
 import type { MockSocket } from '../test/operatorHarness'
@@ -121,6 +123,21 @@ describe('stream overlay', () => {
 
     push(socket, { type: 'clear', data: {} })
     await waitFor(() => expect(screen.queryByTestId('stream-band')).toBeNull())
+  })
+
+  it('translates the hidden-verse note into Lithuanian', async () => {
+    window.localStorage.setItem(LANGUAGE_STORAGE_KEY, 'lt')
+    render(
+      <I18nProvider>
+        <StreamOverlay />
+      </I18nProvider>
+    )
+    push(socket, { type: 'display_settings', data: { verse_limit: 3, theme: 'dark' } })
+    push(socket, { type: 'reference', data: reference() })
+
+    const note = await screen.findByText('dar 1 eilutė')
+    expect(note.textContent).toBe(' dar 1 eilutė')
+    expect(screen.queryByText('In him was life.')).toBeNull()
   })
 
   it('never shows the idle picture, even when the server sends one (it sits over a camera)', async () => {

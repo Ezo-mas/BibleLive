@@ -39,16 +39,8 @@ selected segmented fill (1.85:1 against its track; the bold label is the second 
 - The source label (detected, manual, history) on Up Next is now screen-reader-only, so a
   sighted operator cannot see whether Show approves a queued detection or re-shows
   coordinates. Show it again if that matters.
-- `usePlanSnippets` fires one lookup per Plan item without text, never retries a
-  failure, and keeps text in the old translation after a Bible-version switch.
-- Settings still lists "Verses shown", which duplicates the control under the preview.
 - Up Next has a 1.5 px dashed border and the other cards 1 px, so their text edges differ
   by half a pixel (kept on purpose so Up Next reads as queued).
-
-### Translate the stream overlay's "+N more verses"
-The OBS overlay (`/display?mode=obs`, `frontend/src/display/StreamOverlay.tsx`)
-writes its note in English only. Use the i18n layer: `t('stage.moreVerses', { count })`.
-Small.
 
 ### Two-model speech on a 4 GB GPU with OBS running
 Kmynas + Canary has not been run with real audio on a 4 GB card next to OBS. The

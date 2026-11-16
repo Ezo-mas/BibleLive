@@ -83,11 +83,9 @@ export function SettingsDialog({
   open,
   section,
   onClose,
-  verseLimit,
   displayTheme,
   clearMode,
   disabled,
-  onVerseLimitChange,
   onThemeChange,
   onClearModeChange,
   spokenLanguage,
@@ -191,11 +189,9 @@ export function SettingsDialog({
               {t('settings.sectionDisplay')}
             </h3>
             <DisplaySettings
-              verseLimit={verseLimit}
               displayTheme={displayTheme}
               clearMode={clearMode}
               disabled={disabled}
-              onVerseLimitChange={onVerseLimitChange}
               onThemeChange={onThemeChange}
               onClearModeChange={onClearModeChange}
             />

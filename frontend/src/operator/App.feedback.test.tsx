@@ -66,7 +66,7 @@ function openSettings() {
 
 /** The verse-limit segmented control, scoped so 'All' cannot collide. */
 function versesShown() {
-  return within(screen.getByRole('group', { name: 'Verses shown on display' }))
+  return within(screen.getByRole('group', { name: 'Verses shown on the display' }))
 }
 
 beforeEach(() => {
