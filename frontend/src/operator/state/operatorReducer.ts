@@ -17,8 +17,20 @@ import type {
   StagedReference,
 } from './operatorTypes'
 
+/**
+ * How many history entries a state snapshot carries (the server sends the last
+ * 20, see `SNAPSHOT_HISTORY` in `backend/core/server/state.py`). The console
+ * keeps the same window, so an entry folded in from a confirmation cannot grow
+ * the list past what a reconnect would show. `history_count` still reports the
+ * server's total.
+ */
 const HISTORY_WINDOW = 20
 
+/**
+ * Operator-facing wording for a failed action. The server's own message is kept
+ * because it is already written for people ("Reference not found or already
+ * processed"); the prefix names which control to try again.
+ */
 const ERROR_PREFIX_KEYS: Record<string, MessageKey> = {
   approve: 'notice.errApprove',
   display_reference: 'notice.errDisplayReference',
@@ -32,6 +44,16 @@ const ERROR_PREFIX_KEYS: Record<string, MessageKey> = {
   set_follow_auto: 'notice.errFollowAuto',
 }
 
+/**
+ * Actions the console applies optimistically. When the server rejects one, the
+ * control has to go back to the last confirmed value or it would keep claiming
+ * a setting the display is not using (each one's revert is in `operatorReducer`,
+ * which must cover every name here: its type says so).
+ */
+// How each optimistic control goes back to its last confirmed value when the server
+// rejects it.
+// Keyed by OptimisticSettingAction['action'], so leaving one out does not type-check;
+// it is only read after isOptimisticAction, so an inherited property can never match.
 const SETTING_KEYS = {
   set_verse_limit: 'verseLimit',
   set_display_theme: 'theme',
@@ -75,12 +97,34 @@ export function createOperatorState(
   }
 }
 
+/**
+ * Keep a staged reference across a queue update when it is still queued.
+ *
+ * Detections arrive while an operator is deciding, and a new arrival used to
+ * wipe the staged selection mid-approval. The reference is only ever approved
+ * by ID, so holding on to it cannot show the wrong passage — and letting go
+ * when its ID leaves the queue keeps the button in step with the list.
+ *
+ * A manually staged passage and a history entry are deliberately unaffected:
+ * they never enter the queue, so an arriving detection must not discard them.
+ */
 function keepStagedReference(staged: StagedReference | null, pending: BibleReference[]) {
   return staged?.kind === 'pending' && !pending.some(reference => reference.id === staged.id)
     ? null
     : staged
 }
 
+/**
+ * Whether a confirmation is about the passage currently staged.
+ *
+ * A manual passage and a history entry are both identified by their coordinates:
+ * neither ever entered the queue and the server assigns the reference ID only
+ * when it displays the passage, so coordinates are what the request and the
+ * confirmation have in common. This is what stops a late confirmation for one
+ * passage from clearing a different one the operator staged in the meantime.
+ * A queued selection is matched by the queue update that follows an approval,
+ * never by coordinates.
+ */
 function isStagedPassage(staged: StagedReference, shown: BibleReference): boolean {
   if (staged.kind === 'pending') return false
   return samePassage(staged.kind === 'manual' ? staged.passage : staged.reference, shown)
@@ -94,6 +138,8 @@ function displaySettings(data: DisplaySettings) {
   }
 }
 
+// Only verse limit and theme are also kept in localStorage, so
+// each entry is written out.
 function storeSetting(settings: OperatorSettings, action: string): OperatorEffect[] {
   if (action === 'set_verse_limit')
     return [{ type: 'store_verse_limit', value: settings.verseLimit }]
@@ -121,7 +167,9 @@ export function operatorReducer(
         Object.assign(settings, displaySettings(data.display_settings))
         Object.assign(confirmed, displaySettings(data.display_settings))
       }
+      // Absent when talking to an older server, which leaves the mode off.
       if (data.auto_mode) settings.autoMode = confirmed.autoMode = coerceAutoMode(data.auto_mode)
+      // Absent when talking to an older server, which leaves follow-along auto-show off.
       if (typeof data.follow_auto === 'boolean')
         settings.followAuto = confirmed.followAuto = data.follow_auto
       next = {
@@ -132,11 +180,14 @@ export function operatorReducer(
         historyCount: data.history_count,
         currentDisplay: data.current_display,
         seenPassage: state.seenPassage || data.current_display !== null,
+        // Hints are not part of a snapshot; one from before a reconnect is stale.
         followAlongHint: null,
         displayConnected: data.display_connections > 0,
         settings,
         confirmed,
         idleImage: data.display_settings ? readIdleImage(data.display_settings) : state.idleImage,
+        // A reconnect can land while something is staged; keep it if the queue
+        // still holds it so a dropped socket does not undo the operator's work.
         staged: keepStagedReference(state.staged, data.pending),
       }
       break
@@ -156,9 +207,16 @@ export function operatorReducer(
       if (startCooldown) effects.push({ type: 'start_discard_cooldown' })
       break
     }
+    // The server pushes the approved reference; fold it into history and the
+    // counters so the sidebar is not stale until the next snapshot.
     case 'approval_confirmed':
     case 'display_confirmed': {
+      // For display_confirmed, the server resolved the manual passage and pushed
+      // it to the displays, so this is the first moment the console can say it is
+      // on screen. The reference comes back server-built: manual, with no confidence.
       const shown = event.data.reference
+      // A passage follow-along showed by itself answers no Show of this console:
+      // the operator's own request stays in flight and Up Next stays as it is.
       const followed = event.type === 'display_confirmed' && shown.source === 'follow'
       next = {
         ...state,
@@ -167,6 +225,9 @@ export function operatorReducer(
         currentDisplay: shown,
         seenPassage: true,
         showInFlight: followed ? state.showInFlight : false,
+        // It is on screen now, so it is no longer waiting in Up Next — unless the
+        // operator staged something else while this request was in flight, which
+        // is why the confirmation has to name the passage it belongs to.
         staged:
           event.type === 'display_confirmed' &&
           !followed &&
@@ -176,6 +237,7 @@ export function operatorReducer(
             : state.staged,
       }
       if (event.type === 'approval_confirmed') effects.push({ type: 'flash', target: 'approve' })
+      // A passage follow-along showed by itself is not one the operator picked.
       notice('success', {
         key:
           event.type === 'approval_confirmed'
@@ -188,6 +250,8 @@ export function operatorReducer(
       break
     }
     case 'follow_along':
+      // Replaces any earlier hint; whether it still applies is decided against
+      // the display at render time, so arrival order cannot matter.
       next = { ...state, followAlongHint: event.data }
       break
     case 'clear_confirmed':
@@ -204,6 +268,8 @@ export function operatorReducer(
       break
     case 'display_settings_confirmed': {
       const settings = displaySettings(event.data)
+      // The server echoes the whole settings block, so announce only what
+      // actually moved; an unrelated echo stays quiet.
       const changes: NoticeMessage[] = []
       if (settings.verseLimit !== state.confirmed.verseLimit)
         changes.push({
@@ -272,6 +338,7 @@ export function operatorReducer(
       break
     case 'error': {
       const { action: echoed, message: reason } = event.data
+      // The server echoes an unknown action as sent, so it can be any JSON value.
       const action = typeof echoed === 'string' ? echoed : ''
       const optimistic = isOptimisticAction(action)
       effects.push({ type: 'log_error', reason })
@@ -279,12 +346,14 @@ export function operatorReducer(
         next = { ...next, discardId: null, discardCoolingDown: false }
         effects.push({ type: 'clear_discard_timer' })
       }
+      // A rejected or failed action is over: let the operator try again.
       if (action === 'approve' || action === 'display_reference')
         next = { ...next, showInFlight: false }
       notice('error', {
         key: optimistic ? 'notice.reverted' : 'notice.failed',
         params: {
           prefix: {
+            // Own keys only: an echoed "constructor" must not find Object.prototype's.
             key: Object.prototype.hasOwnProperty.call(ERROR_PREFIX_KEYS, action)
               ? ERROR_PREFIX_KEYS[action]
               : 'notice.errGeneric',
@@ -292,6 +361,8 @@ export function operatorReducer(
           reason,
         },
       })
+      // An optimistic change is only provisional. Put the last confirmed value
+      // back so the console matches what the display is really using.
       if (optimistic) {
         const key = SETTING_KEYS[action]
         next = { ...next, settings: { ...state.settings, [key]: state.confirmed[key] } }
@@ -302,6 +373,7 @@ export function operatorReducer(
     case 'stage':
       next = { ...state, staged: event.staged }
       break
+    // Up and down the queue: the staged detection moves by `step`, held at either end.
     case 'select_by': {
       const id = state.staged?.kind === 'pending' ? state.staged.id : null
       const index = state.pending.findIndex(reference => reference.id === id)
@@ -314,6 +386,12 @@ export function operatorReducer(
       }
       break
     }
+    // Show is the one place the sources diverge, and they stay separate on the
+    // wire: a queued reference is approved by ID as before, while a passage the
+    // operator chose — by hand or from history — is sent as coordinates for the
+    // server to resolve itself. A history entry carries no ID that means anything
+    // to the server (nothing is queued), so showing it again is the same request
+    // the search panel makes; only the coordinates travel.
     case 'show_next': {
       if (!state.staged || state.showInFlight) break
       next = { ...state, showInFlight: true }
@@ -341,6 +419,8 @@ export function operatorReducer(
         effects.push({ type: 'send', action: { action: 'display_reference', ...event.request } })
       }
       break
+    // The queue's Approve button approves a staged *detection*. A manual passage is
+    // shown from Up Next instead, so this stays off until a queued item is staged.
     case 'approve_selected':
       if (state.staged?.kind === 'pending')
         effects.push({ type: 'send', action: { action: 'approve', reference_id: state.staged.id } })

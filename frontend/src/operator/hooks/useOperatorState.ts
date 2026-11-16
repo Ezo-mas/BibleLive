@@ -32,7 +32,18 @@ export type { NextSource } from './useStaging'
 /** Keep a second click from removing the row that moves under the pointer. */
 const DISCARD_COOLDOWN_MS = 500
 
-/** Own the socket and perform the pure reducer's effects; server confirmations remain authoritative. */
+/**
+ * Own the operator console's server state and the actions that mutate it.
+ *
+ * Approval is always sent by reference ID, never by queue position, so a queue
+ * update between selecting and approving cannot display the wrong passage. The
+ * server stays authoritative: every action is a request whose result arrives
+ * back over the socket, and a reconnect re-reads the state snapshot.
+ *
+ * Feedback follows the same rule: nothing is announced as done until the server
+ * says so. Confirmations and errors land in `notice`; errors that follow an
+ * optimistic settings change also put the confirmed value back.
+ */
 export function useOperatorState(): OperatorState {
   const { t } = useI18n()
   const { token, authFailed, tokenInput, setTokenInput, submitToken, logout, onSocketClose } =
@@ -43,9 +54,10 @@ export function useOperatorState(): OperatorState {
       coerceDisplayTheme(readStoredDisplayTheme(window.localStorage))
     )
   )
-  // Messages and intents can arrive in one React batch. Advance the authoritative
-  // state synchronously so every transition sees the preceding confirmation.
+  // State advances synchronously so two intents in one React batch see each other:
+  // a second Show is a no-op; staging then Show approves the newly staged item.
   const stateRef = useRef(state)
+  // Filled in once the socket and hooks below exist; dispatch is declared before them.
   const effectsRef = useRef<(effects: OperatorEffect[]) => void>(() => {})
   const dispatch = useCallback((event: OperatorEvent) => {
     const result = operatorReducer(stateRef.current, event)
@@ -53,6 +65,9 @@ export function useOperatorState(): OperatorState {
     setState(result.state)
     effectsRef.current(result.effects)
   }, [])
+  // Whether this session ever reached the server. A socket that opened and then
+  // closed is a dropped connection, which is a different situation from a server
+  // refusing us for want of a token.
   const [hasConnected, setHasConnected] = useState(false)
   const discardTimerRef = useRef<number | undefined>(undefined)
   const clearDiscardInFlight = useCallback(() => dispatch({ type: 'discard_settled' }), [dispatch])
@@ -64,13 +79,17 @@ export function useOperatorState(): OperatorState {
     reconnect: reconnectSocket,
   } = useWebSocket<OperatorMessage>('/ws/operator', dispatch, {
     maxReconnectAttempts: Infinity,
-    // The token stays in the socket's first message, never its URL. Even an
-    // empty token prompts an authenticated server's refusal immediately.
+    // The token goes in the socket's first message, not the URL: URLs end up
+    // in server and proxy logs. Always sent, even empty: with auth on and no
+    // token saved, the empty message draws the server's refusal at once
+    // instead of waiting out its 10 s first-message timeout. A server without
+    // auth ignores it.
     firstMessage: { action: 'authenticate', token: token ?? '' } satisfies AuthenticateAction,
     onClose: event => {
       onSocketClose(event)
       clearDiscardInFlight()
-      // A pre-auth refusal never counts as a session that reached the server.
+      // A 1008 is only ever sent pre-auth, so the socket behind it was never really
+      // connected: it must not count as a session that reached the server.
       if (event.code === 1008) setHasConnected(false)
     },
   })
@@ -79,17 +98,23 @@ export function useOperatorState(): OperatorState {
     clearDiscardInFlight()
     reconnectSocket()
   }, [clearDiscardInFlight, reconnectSocket])
+  // Remember a successful connection: it is what separates a dropped socket (the
+  // console stays, with a reconnect banner) from a server that wants a token.
   useEffect(() => {
     if (status === 'open') setHasConnected(true)
   }, [status])
+  // A show request only exists while the socket is open. If it dropped, the
+  // confirmation is not coming and the staged passage is still theirs to show.
   useEffect(() => {
     if (status !== 'open') dispatch({ type: 'disconnected' })
   }, [status, dispatch])
   useEffect(() => () => window.clearTimeout(discardTimerRef.current), [])
 
+  // The pipeline's language: read once the socket is up, switched only on request.
   const spokenLanguage = useSpokenLanguage(token, isConnected, showNotice)
   const bibleVersion = useBibleVersion(token, isConnected, showNotice)
   const idleScreen = useIdleScreen(token)
+  // The server's answer to this console's own read or change is the newest word on it.
   const idleInfo = idleScreen.info
   useEffect(() => {
     if (idleInfo === null) return
@@ -141,12 +166,16 @@ export function useOperatorState(): OperatorState {
   const staging = useStaging(state, dispatch, token, isConnected, bibleVersion.version, showNotice)
   const planSnippets = usePlanSnippets(staging.plan.items, token, isConnected, bibleVersion.version)
   const { currentDisplay, followAlongHint, showInFlight } = state
+  // A hint is only meaningful next to the passage it follows on from. Comparing
+  // ids here, not when the hint arrives, means a display that changed or was
+  // cleared simply stops matching — whichever message got here first.
   const followAlong =
     followAlongHint !== null &&
     currentDisplay !== null &&
     followAlongHint.display_id === currentDisplay.id
       ? followAlongHint
       : null
+  // The words of the passage the follow-along card points at, for its preview line.
   const followAlongText = usePassageText(
     followAlong
       ? {
@@ -160,6 +189,8 @@ export function useOperatorState(): OperatorState {
     isConnected
   )
   const { showManualDirect } = staging
+  // Show on a hint is the manual door, nothing newer: the same request Find
+  // Scripture sends with Enter, coordinates only, re-resolved by the server.
   const showFollowAlong = useCallback(() => {
     if (!followAlong) return
     showManualDirect({
@@ -169,6 +200,7 @@ export function useOperatorState(): OperatorState {
       verseEnd: followAlong.verse_end,
     })
   }, [followAlong, showManualDirect])
+  // Speech detection health, asked of the server only while it is reachable.
   const pipeline = usePipelineStatus(token, isConnected)
 
   const approveSelected = useCallback(() => dispatch({ type: 'approve_selected' }), [dispatch])
@@ -182,6 +214,8 @@ export function useOperatorState(): OperatorState {
   const clearPendingQueue = useCallback(() => {
     if (window.confirm(t('queue.confirmClear'))) dispatch({ type: 'clear_pending' })
   }, [dispatch, t])
+  // Applied optimistically so the control feels immediate; the server echoes
+  // the accepted value back in display_settings_confirmed.
   const setDisplayVerseLimit = useCallback(
     (next: VerseLimit) =>
       dispatch({ type: 'set_setting', action: { action: 'set_verse_limit', verse_limit: next } }),
@@ -197,11 +231,14 @@ export function useOperatorState(): OperatorState {
       dispatch({ type: 'set_setting', action: { action: 'set_clear_mode', clear_mode: next } }),
     [dispatch]
   )
+  // Applied optimistically so the switch feels immediate; the server echoes the
+  // accepted mode back in auto_mode_confirmed.
   const setAutoApproveMode = useCallback(
     (next: AutoMode) =>
       dispatch({ type: 'set_setting', action: { action: 'set_auto_mode', auto_mode: next } }),
     [dispatch]
   )
+  // Same pattern as the auto-approve mode: applied at once, confirmed by the server.
   const setFollowAutoEnabled = useCallback(
     (next: boolean) =>
       dispatch({ type: 'set_setting', action: { action: 'set_follow_auto', follow_auto: next } }),
@@ -219,7 +256,12 @@ export function useOperatorState(): OperatorState {
     reconnect,
     notice,
     dismissNotice,
-    // Once connected, a dropped socket keeps the console and reconnect banner.
+    // A rejected token (close 1008) means the operator must supply one. A socket
+    // that never opened and has no token is treated the same way, so the console
+    // does not flash before the server's refusal arrives — but once the session
+    // has connected, a close is a dropped connection, not an auth failure, and
+    // the console stays up with the reconnect banner instead of a dead-end
+    // token prompt.
     needsToken: authFailed || (status === 'closed' && !token && !hasConnected),
     authFailed,
     tokenInput,

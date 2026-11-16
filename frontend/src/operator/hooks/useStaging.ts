@@ -30,8 +30,9 @@ export function useStaging(
   const { staged, pending, history, showInFlight } = state
   const stagedRef = useRef(staged)
   stagedRef.current = staged
-  // A double-click is click, click, double-click. Restore what Up Next held
-  // before those clicks, so showing a row directly does not replace the staging.
+  // A double-click is click, click, double-click, and each click stages its row. The
+  // double-click is meant to skip staging, so it puts back what Up Next held before
+  // the gesture began instead of leaving it emptied by the row it just showed.
   const gestureRef = useRef<{ key: string; before: StagedReference | null; at: number } | null>(
     null
   )
@@ -60,6 +61,9 @@ export function useStaging(
     [beginGesture, dispatch]
   )
 
+  // Staging a history entry: NEXT previews it and nothing else changes. The
+  // notice says "staged", never "shown" — nothing is on the display until the
+  // server confirms the Show request.
   const selectHistory = useCallback(
     (reference: BibleReference) => {
       beginGesture(`history:${reference.id}`)
@@ -74,6 +78,9 @@ export function useStaging(
   const deselect = useCallback(() => dispatch({ type: 'stage', staged: null }), [dispatch])
   const showNext = useCallback(() => dispatch({ type: 'show_next' }), [dispatch])
 
+  // Staging a lookup result: NEXT previews it and nothing else changes. The
+  // notice says "staged", never "shown" — nothing is on the display until the
+  // server confirms the Show request.
   const stageManualPassage = useCallback(
     (passage: Passage) => {
       dispatch({ type: 'stage', staged: { kind: 'manual', passage } })
@@ -82,7 +89,11 @@ export function useStaging(
     [dispatch, showNotice, t]
   )
 
-  // Enter in Find Scripture sends coordinates without changing Up Next.
+  // Enter in Find Scripture: the resolved coordinates go to the display
+  // without staging anything first. This is the same `display_reference` action
+  // `showNext` sends for a staged manual passage — coordinates only, resolved
+  // by the server — so no new display path is introduced. The in-flight guard
+  // is shared with Show: a confirmation or rejection settles it the same way.
   const showManualDirect = useCallback(
     (request: PassageQuery) => {
       dispatch({
@@ -98,6 +109,8 @@ export function useStaging(
     [dispatch]
   )
 
+  // Double-click on a history entry: the same coordinates-only request Show sends
+  // for a staged one, without staging first.
   const showHistory = useCallback(
     (reference: BibleReference) => {
       if (!isConnected) return
@@ -112,6 +125,8 @@ export function useStaging(
     [isConnected, restoreBeforeGesture, showManualDirect]
   )
 
+  // Double-click on a queued detection: approved by ID exactly as Show approves
+  // a staged one. Shares Show's in-flight guard, so a double-click is one request.
   const approvePending = useCallback(
     (id: string) => {
       if (!isConnected || showInFlight) return
@@ -132,12 +147,16 @@ export function useStaging(
     [addToPlan, showNotice, t]
   )
 
+  // Manual passage search: the server's canon, the server's text, and staging on
+  // success only.
+  // Search names books as the loaded Bible translation does, so it follows a switch.
   const search = useScriptureSearch(
     token,
     stageManualPassage,
     showManualDirect,
     bibleVersion,
     planPassage,
+    // A plan row is clicked outside the search box, so its failure is a notice.
     message => showNotice('error', message)
   )
   const { stagePassage, cancelLookup } = search
@@ -157,7 +176,8 @@ export function useStaging(
     [beginGesture, stagePassage]
   )
 
-  // Cancel the first click's lookup before showing, so it cannot stage afterward.
+  // The click that began a double-click has a lookup in flight; letting it land
+  // after the display would stage a passage that is already on screen.
   const showPlanItem = useCallback(
     (item: PlanItem) => {
       if (!isConnected) return
@@ -173,7 +193,12 @@ export function useStaging(
     [isConnected, cancelLookup, restoreBeforeGesture, showManualDirect]
   )
 
+  // Staging is client-side and local to the console. A queued selection resolves
+  // through the queue by ID, so it cannot drift from the list on screen; a manual
+  // passage is a self-contained snapshot from the server's lookup.
   const selectedId = staged?.kind === 'pending' ? staged.id : null
+  // History holds one entry per passage, so the staged one is found by its passage:
+  // showing it again replaces the entry it was staged from with a new ID.
   const selectedHistoryId =
     staged?.kind === 'history'
       ? (history.find(entry => samePassage(entry, staged.reference))?.id ?? null)

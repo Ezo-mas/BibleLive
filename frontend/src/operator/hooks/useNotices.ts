@@ -17,7 +17,9 @@ export interface OperatorNotice {
   text: string
 }
 
+/** How long the button "pressed" feedback lasts after a confirmation. */
 const FLASH_MS = 150
+/** How long a notice stays up before it removes itself. */
 const NOTICE_MS: Record<NoticeTone, number> = { success: 3000, info: 4000, error: 6000 }
 
 function translateNotice(message: NoticeMessage, t: Translator): string {
@@ -42,12 +44,15 @@ export function useNotices() {
   const flashTimerRef = useRef<number | undefined>(undefined)
   const noticeTimerRef = useRef<number | undefined>(undefined)
 
+  // Brief "pressed" pulse on a button once the server confirms its action.
   const pulse = useCallback((target: FlashTarget) => {
     setFlash(target)
     window.clearTimeout(flashTimerRef.current)
     flashTimerRef.current = window.setTimeout(() => setFlash(null), FLASH_MS)
   }, [])
 
+  // One notice slot: a new message replaces the previous one instead of stacking,
+  // so a busy queue cannot bury the working area in toasts.
   const showNotice = useCallback((tone: NoticeTone, text: string) => {
     noticeIdRef.current += 1
     setNotice({ id: noticeIdRef.current, tone, text })
