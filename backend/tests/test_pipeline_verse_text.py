@@ -16,7 +16,7 @@ def _parsers(bible_db, verse_text_db_path):
     # The tests only inspect the parsers; close the Bible lookup the setup
     # opened, or Python 3.13 reports the unclosed connection in a later test.
     proc._local.bible_lookup.close()
-    return proc._local.streaming_parsers
+    return proc._local.detector.streaming_parsers
 
 
 def test_lithuanian_parser_gets_the_index_when_the_file_exists(bible_db):

@@ -53,16 +53,13 @@ from audio.cli import add_tuning_arguments, apply_tuning_arguments  # noqa: E402
 from audio.config import AudioPipelineConfig  # noqa: E402
 from audio.detection import (  # noqa: E402
     CONTEXT_TTL_S,
-    build_streaming_parser,
-    parser_sources,
-    unique_references,
     whisper_start_language,
 )
-from audio.ensemble import merge_agreement  # noqa: E402
+from audio.detector import UtteranceDetector  # noqa: E402
 from audio.metrics import PipelineMetrics  # noqa: E402
 from audio.segmenter import FRAME_DURATION_MS, Segmenter, SegmentEvent  # noqa: E402
 from audio.sender import ReferenceSender  # noqa: E402
-from audio.stt import SpeechToText  # noqa: E402
+from audio.stt import SpeechToText, Transcription  # noqa: E402
 from audio.stt_gguf import create_gguf_speech_to_text, engine_models  # noqa: E402
 from audio.vad import create_vad, silero_neg_threshold  # noqa: E402
 from core.bible_lookup import BibleLookup  # noqa: E402
@@ -602,15 +599,17 @@ def make_stt(config: AudioPipelineConfig, language: str) -> Any:
 
 def make_parsers(
     config: AudioPipelineConfig, language: str, context_ttl_s: float | None
-) -> tuple[StreamingParser, StreamingParser | None]:
-    """The parser for the (first) model's transcripts and, in two-model mode,
-    one for the second model's; each applies its model's spelling map, as live."""
-    sources = parser_sources(engine_models(config.stt_engine), language)
-
-    def build(source: str) -> StreamingParser:
-        return build_streaming_parser(language, _VALIDATOR, _VERSE_TEXT, source, context_ttl_s)
-
-    return build(sources[0]), (build(sources[1]) if len(sources) > 1 else None)
+) -> tuple[UtteranceDetector, StreamingParser | None]:
+    """The shared detector and, for feed-format compatibility, its alternate parser."""
+    detector = UtteranceDetector(
+        engine_models(config.stt_engine),
+        _VALIDATOR,
+        _VERSE_TEXT,
+        languages=(language,),
+        context_ttl_s=context_ttl_s,
+        catch_parser_errors=False,
+    )
+    return detector, detector.alternate_parsers.get(language)
 
 
 def feed_cache_path(cache_dir: Path, key: dict[str, Any]) -> Path:
@@ -692,7 +691,7 @@ def feeds_from_cache(unit: list[list[Any]]) -> list[Feed]:
 
 
 def register_feeds(
-    parser: StreamingParser,
+    parser: UtteranceDetector | StreamingParser,
     sender: BenchmarkingSender | None,
     feeds: list[Feed],
     detections: list[Detection],
@@ -712,20 +711,30 @@ def register_feeds(
     ``alternate_parser`` (two-model mode) the second model's text goes through
     it, and only references both models report keep their confidence.
     """
+    # Keep accepting an already-built parser for callers inspecting custom
+    # streaming settings; production paths pass the detector from make_parsers.
+    detector = (
+        parser
+        if isinstance(parser, UtteranceDetector)
+        else _detector_for_parser(parser, alternate_parser)
+    )
+    language = next(iter(detector.streaming_parsers))
+    primary = detector.streaming_parsers[language]
     seen: set[tuple] = set()
     for feed in feeds:
         t_s, text = feed[0], feed[1]
         span = (feed[2], t_s) if len(feed) > 2 and feed[2] is not None else None
         low_reason = feed[3] if len(feed) > 3 else ""
-        refs = _model_refs(parser, text, t_s, low_reason)
-        if alternate_parser is not None:
+        alternate_result = None
+        if language in detector.alternate_parsers:
             alt_text = feed[4] if len(feed) > 4 else ""
             alt_low = feed[5] if len(feed) > 5 else ""
-            refs = merge_agreement(
-                refs,
-                _model_refs(alternate_parser, alt_text, t_s, alt_low),
-                promote_inferred=not (low_reason or alt_low),
-            )
+            alternate_result = Transcription(alt_text, 0.0, low_confidence_reason=alt_low)
+        result = Transcription(
+            text, 0.0, low_confidence_reason=low_reason, alternate=alternate_result
+        )
+        detected = detector.detect(result, language, t_s)
+        refs = detected.released + (detected.references or [])
         for ref in refs:
             key = ref_key(ref.book, ref.chapter, ref.verse_start, ref.verse_end)
             if key in seen:
@@ -733,7 +742,7 @@ def register_feeds(
             seen.add(key)
             ref_span = span
             held = ref.verse_start is None or ref.from_text
-            if spans is not None and parser.hold_chapter_only and held:
+            if spans is not None and primary.hold_chapter_only and held:
                 ref_span = spans.prev
             detections.append(
                 Detection(
@@ -757,17 +766,21 @@ def register_feeds(
             spans.prev = span
 
 
-def _model_refs(
-    parser: StreamingParser, text: str | None, t_s: float, low_reason: str
-) -> list[ParsedReference]:
-    """One model's references in its text, each once ("low" after a shaky decode)."""
-    if text is None:  # this model heard nothing in a two-model utterance
-        return []
-    return unique_references(parser.feed(text, t_s), low_reason)[0]
+def _detector_for_parser(
+    parser: StreamingParser, alternate: StreamingParser | None = None
+) -> UtteranceDetector:
+    """Adapt an existing parser without rebuilding or resetting its context."""
+    detector = UtteranceDetector([], languages=(), catch_parser_errors=False)
+    language = parser.parser.language
+    detector.streaming_parsers[language] = parser
+    if alternate is not None:
+        detector.alternate_parsers[language] = alternate
+    detector.last_parser_language = language
+    return detector
 
 
 def release_held(
-    parser: StreamingParser,
+    parser: UtteranceDetector | StreamingParser,
     sender: BenchmarkingSender | None,
     units: list[Any],
     detections: list[Detection],
@@ -1189,7 +1202,14 @@ def run_windowed_recording(
     cpath = feed_cache_path(cache_dir, key) if cache_dir is not None and use_cache else None
 
     # Windowed mode decodes with Whisper only.
-    parser = build_streaming_parser(rec.language, _VALIDATOR, _VERSE_TEXT, "whisper", context_ttl_s)
+    parser = UtteranceDetector(
+        [],
+        _VALIDATOR,
+        _VERSE_TEXT,
+        languages=(rec.language,),
+        context_ttl_s=context_ttl_s,
+        catch_parser_errors=False,
+    )
     raw: list[Detection] = []
     transcripts: list[tuple[float, str]] = []
     config_snapshot = {

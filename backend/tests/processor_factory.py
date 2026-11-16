@@ -13,6 +13,7 @@ from queue import Queue
 from typing import Any
 
 from audio.config import AudioPipelineConfig
+from audio.detector import UtteranceDetector
 from audio.metrics import PipelineMetrics
 from audio.partials import PartialMailbox, PartialScheduler, PartialTranscript
 from audio.pipeline import BibleLiveAudioProcessor
@@ -78,4 +79,8 @@ def make_processor(**overrides: Any) -> BibleLiveAudioProcessor:
     proc = BibleLiveAudioProcessor.__new__(BibleLiveAudioProcessor)
     for name, value in {**defaults, **overrides}.items():
         setattr(proc, name, value)
+    # An empty detector lets tests inject parsers without opening a database.
+    # The transcription thread replaces it with the fully initialized detector.
+    if not hasattr(proc._local, "detector"):
+        proc._local.detector = UtteranceDetector([], languages=(), metrics=proc.metrics)
     return proc

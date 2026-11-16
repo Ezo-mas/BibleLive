@@ -1,14 +1,10 @@
 """Detection wiring shared by the live pipeline and the benchmark.
 
-The benchmark is the acceptance gate for every detection change, so it must
-build parsers, collapse duplicate references, mark a shaky decode "low", reset
-context on a language switch and start Whisper exactly as the live pipeline
-does. Each of those rules lives here once; ``tests/test_detection_parity.py``
-drives both sides and compares them.
-
-What stays at the call sites on purpose: live turns a parser exception into
-"no references" and keeps metrics and logs; the benchmark lets a parser error
-raise and also dedupes across a whole feed group.
+Low-level parser construction and reference rules used by ``UtteranceDetector``.
+The live pipeline, benchmark and session replay drive that class rather than
+wiring these helpers separately. Whisper's start-language rule also lives here.
+The detector handles live metrics, logging and parser-error recovery; benchmark
+parser errors raise, and feed-group dedupe stays in the benchmark.
 """
 
 from __future__ import annotations

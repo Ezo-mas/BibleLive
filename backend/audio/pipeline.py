@@ -12,28 +12,20 @@ from typing import Any
 from core.bible_lookup import BibleLookup
 from core.bible_versions import discover_versions
 from core.verse_parser import Reference, StreamingParser
-from core.verse_text import VerseTextIndex
 from core.version import version_string
 
 from .capture import AudioCapture
 from .config import AudioPipelineConfig
 from .control import LanguageControlServer
-from .detection import (
-    build_streaming_parser,
-    flush_held,
-    parser_sources,
-    switch_language,
-    unique_references,
-    whisper_start_language,
-)
-from .ensemble import merge_agreement
+from .detection import whisper_start_language
+from .detector import UtteranceDetector
 from .heartbeat import HeartbeatSender
 from .metrics import PipelineMetrics
 from .partials import PartialMailbox, PartialScheduler, PartialSnapshot, PartialTranscript
 from .segmenter import FRAME_DURATION_MS, Segmenter, SegmentEvent
 from .sender import ReferenceSender
 from .session_log import SessionLog
-from .stt import SUPPORTED_LANGUAGES, SpeechToText, Transcription
+from .stt import SpeechToText, Transcription
 from .stt_gguf import (
     MultiModelSpeechToText,
     create_gguf_speech_to_text,
@@ -163,7 +155,7 @@ class BibleLiveAudioProcessor:
         )
         self._utterance_seq = 0  # VAD thread: bumped at each utterance start
 
-        # Thread-local storage for BibleLookup + per-language parsers (owned by
+        # Thread-local storage for BibleLookup + utterance detector (owned by
         # the transcription thread).
         self._local = threading.local()
 
@@ -779,8 +771,8 @@ class BibleLiveAudioProcessor:
             # this flush lands and the reference is lost. Rare and bounded by
             # the join timeout; shutdown must not hang on a stuck transcription.
             try:
-                parsers = getattr(self._local, "streaming_parsers", None) or {}
-                for held_language in list(parsers):
+                detector = getattr(self._local, "detector", None)
+                for held_language in list(detector.streaming_parsers) if detector else []:
                     flushed = self._flush_held(held_language)
                     session_log = self.session_log
                     if session_log is not None:
@@ -799,6 +791,8 @@ class BibleLiveAudioProcessor:
                     except Exception as e:
                         logger.warning(f"Error closing Bible lookup: {e}")
                     self._local.bible_lookup = None
+                    if detector is not None:
+                        detector.bible_lookup = None
 
     def _init_thread_local_parsers(self):
         """Initialize the thread-local Bible lookup and one parser per language.
@@ -819,54 +813,18 @@ class BibleLiveAudioProcessor:
 
         lookup = self._local.bible_lookup
         validator = lookup.get_validator_hook() if lookup and lookup.conn else None
-        issues: list[dict[str, Any]] = []
-        if validator is None:
-            # Parsing still works, but nothing checks that a detected verse
-            # exists before it reaches the operator.
-            issues.append(
-                _health_issue(
-                    "bible_db_unavailable",
-                    "The pipeline could not open the Bible database, so detections "
-                    "are not checked against it",
-                )
-            )
-
-        verse_text = self._load_verse_text()
-
-        # English and Lithuanian parsing stay separate implementations; the
-        # language selects which tables a parser is built with. GGUF models
-        # transcribe Lithuanian only, so other languages' parsers read Whisper.
-        models = self._stt_models
-        parsers: dict[str, StreamingParser] = {}
-        # Two-model mode: the second model's transcripts get their own parsers,
-        # so its context never mixes with the first model's.
-        alternate_parsers: dict[str, StreamingParser] = {}
-        for language in SUPPORTED_LANGUAGES:
-            try:
-                sources = parser_sources(models, language)
-                parsers[language] = self._make_parser(language, validator, verse_text, sources[0])
-                if len(sources) > 1:
-                    alternate_parsers[language] = self._make_parser(
-                        language, validator, verse_text, sources[1]
-                    )
-            except Exception as e:
-                logger.error(f"Failed to initialize '{language}' parser: {e}")
-                issues.append(
-                    _health_issue(
-                        "parser_failed",
-                        f"The '{language}' reference parser failed to start, so no "
-                        f"references are detected in that language",
-                        language=language,
-                    )
-                )
-
-        self._parser_issues = issues
-        self._local.streaming_parsers = parsers
-        self._local.alternate_parsers = alternate_parsers
-        self._local.last_parser_language = None
+        detector = UtteranceDetector(
+            self._stt_models,
+            validator,
+            UtteranceDetector.load_verse_text(self.verse_text_db_path),
+            metrics=self.metrics,
+            bible_lookup=lookup,
+        )
+        self._local.detector = detector
+        self._parser_issues = list(detector.issues)
         logger.debug(
             f"Thread {threading.current_thread().name}: Initialized parsers for "
-            f"{', '.join(parsers) or 'no languages'}"
+            f"{', '.join(detector.streaming_parsers) or 'no languages'}"
         )
 
     def _follow_bible_version(self) -> None:
@@ -940,9 +898,7 @@ class BibleLiveAudioProcessor:
                 self._local.bible_version_warnings = warned
             return
         previous = self._local.bible_version
-        for parsers in (self._local.streaming_parsers, self._local.alternate_parsers):
-            for parser in parsers.values():
-                parser.parser.validator = validator
+        self._local.detector.set_validator(validator, replacement)
         self._local.bible_lookup = replacement
         self._local.bible_version = requested
         self._parser_issues = [
@@ -956,62 +912,30 @@ class BibleLiveAudioProcessor:
         if session_log is not None:
             session_log.event("bible_version", **{"from": previous, "to": requested})
 
-    @staticmethod
-    def _make_parser(
-        language: str,
-        validator,
-        verse_text: VerseTextIndex | None,
-        source: str,
-    ) -> StreamingParser:
-        """One streaming parser for ``source``'s transcripts in ``language``."""
-        return build_streaming_parser(language, validator, verse_text, source)
-
     def _flush_held(self, language: str) -> list[Reference]:
-        """Release ``language``'s held references (both models' in two-model mode)."""
-        parsers = getattr(self._local, "streaming_parsers", None) or {}
-        alternates = getattr(self._local, "alternate_parsers", None) or {}
-        return flush_held(parsers, alternates, language)
-
-    def _alternate_parser(self, language: str) -> StreamingParser | None:
-        """The second model's parser for ``language`` (two-model mode only)."""
-        return (getattr(self._local, "alternate_parsers", None) or {}).get(language)
-
-    def _load_verse_text(self) -> VerseTextIndex | None:
-        """The Lithuanian verse-text index, or None when it is not available."""
-        path = self.verse_text_db_path
-        if not path:
-            return None
-        if not Path(path).is_file():
-            logger.info(
-                "Verse text database %s not found: chapter-only references are "
-                "reported without picking the verse read aloud",
-                path,
-            )
-            return None
-        try:
-            return VerseTextIndex.from_sqlite(path)
-        except Exception as e:
-            logger.warning(f"Failed to load verse text from {path}: {e}")
-            return None
+        """Release held references before the sender stops."""
+        detector: UtteranceDetector | None = getattr(self._local, "detector", None)
+        return detector.flush_held(language) if detector is not None else []
 
     def _select_parser(self, language: str) -> StreamingParser | None:
-        """Select the parser for ``language``, resetting context on a switch."""
-        parsers: dict[str, StreamingParser] = getattr(self._local, "streaming_parsers", None) or {}
-        parser = parsers.get(language)
-        if parser is None:
+        """Deliver switch releases before parsing this utterance."""
+        detector: UtteranceDetector | None = getattr(self._local, "detector", None)
+        if detector is None:
             logger.warning("No streaming parser available for language '%s'", language)
             return None
-
-        last = getattr(self._local, "last_parser_language", None)
-        if language != last:
-            alternates = getattr(self._local, "alternate_parsers", None) or {}
-            for ref in switch_language(parsers, alternates, last, language):
+        previous = detector.last_parser_language
+        selection = detector.select_parser(language)
+        try:
+            for ref in selection.released:
                 logger.info("Flushing held reference on language switch: %s", ref)
                 self.sender.submit(ref)
-            self._local.last_parser_language = language
+        except BaseException:
+            # Selection used to be recorded only after all releases were submitted.
+            detector.last_parser_language = previous
+            raise
+        if selection.changed:
             logger.info("Selected '%s' parser (context reset)", language)
-
-        return parser
+        return selection.parser
 
     def _process_partial(self, snapshot: PartialSnapshot) -> None:
         """Transcribe the utterance still being spoken, for follow-along only (worker thread).
@@ -1124,24 +1048,8 @@ class BibleLiveAudioProcessor:
         # Wallclock-stamped so a book/chapter context older than the
         # TTL is dropped instead of attaching to stray numbers.
         now = time.time()
-        references = self._parse_transcription(parser, result, now)
-        if alternate is not None:
-            alternate_parser = self._alternate_parser(language)
-            alternate_refs = (
-                self._parse_transcription(alternate_parser, alternate, now)
-                if alternate_parser is not None
-                else None
-            )
-            if references is None and alternate_refs is None:
-                return result, []
-            # Only references both models found keep their confidence; a
-            # parser error on one model still leaves the other's (as low). A
-            # shaky decode on either side never promotes a context verse.
-            shaky = bool(result.low_confidence_reason or alternate.low_confidence_reason)
-            references = merge_agreement(
-                references or [], alternate_refs or [], promote_inferred=not shaky
-            )
-        elif references is None:
+        references = self._local.detector.detect(result, language, now).references
+        if references is None:
             return result, []
 
         if not references:
@@ -1158,31 +1066,3 @@ class BibleLiveAudioProcessor:
             # Queue for the sender thread (deduplicated); never blocks on the server
             self.sender.submit(ref)
         return result, references
-
-    def _parse_transcription(
-        self, parser: StreamingParser, result: Transcription, now: float | None
-    ) -> list[Reference] | None:
-        """One model's references in its transcript, each once; None on a parser error.
-
-        References from a shaky decode are marked "low".
-        """
-        if result.text is None:
-            return []
-        try:
-            references = parser.feed(result.text, now)
-        except Exception as e:
-            logger.error(f"Error parsing references: {e}", exc_info=True)
-            return None
-
-        # Collapsed here so logs and metrics describe what was actually heard.
-        unique, duplicates = unique_references(references, result.low_confidence_reason)
-        if duplicates:
-            self.metrics.references_deduplicated += duplicates
-            logger.warning(f"Collapsed {duplicates} duplicate reference(s) within this utterance")
-        if result.low_confidence_reason and unique:
-            self.metrics.references_low_confidence += len(unique)
-            logger.warning(
-                f"Low-confidence transcription ({result.low_confidence_reason}): "
-                f"marking {len(unique)} reference(s) as low confidence"
-            )
-        return unique

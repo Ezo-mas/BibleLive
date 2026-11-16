@@ -11,6 +11,7 @@ import requests
 from processor_factory import make_processor
 
 from audio.config import AudioPipelineConfig
+from audio.detector import UtteranceDetector
 from audio.heartbeat import HeartbeatSender
 from audio.pipeline import AUDIO_STALL_S, SILENT_MIC_S, BibleLiveAudioProcessor, frame_is_loud
 from audio.stt import Transcription
@@ -220,7 +221,7 @@ def test_missing_bible_database_is_reported(tmp_path):
     assert len(problems) == 1
     assert "could not open the Bible database" in problems[0]
     # Parsing itself still works without the validator.
-    assert set(proc._local.streaming_parsers) == {"en", "lt"}
+    assert set(proc._local.detector.streaming_parsers) == {"en", "lt"}
     assert proc.health_report()["issues"] == [
         {
             "code": "bible_db_unavailable",
@@ -233,14 +234,14 @@ def test_missing_bible_database_is_reported(tmp_path):
 def test_failed_parser_issue_names_its_language(tmp_path, monkeypatch):
     proc = _processor()
     proc.bible_db_path = str(tmp_path / "missing.sqlite")
-    real_make_parser = BibleLiveAudioProcessor._make_parser
+    real_make_parser = UtteranceDetector._make_parser
 
-    def make_parser(language, validator, verse_text, source):
+    def make_parser(language, validator, verse_text, source, context_ttl_s):
         if language == "lt":
             raise RuntimeError("model missing")
-        return real_make_parser(language, validator, verse_text, source)
+        return real_make_parser(language, validator, verse_text, source, context_ttl_s)
 
-    monkeypatch.setattr(proc, "_make_parser", make_parser)
+    monkeypatch.setattr(UtteranceDetector, "_make_parser", staticmethod(make_parser))
     proc._init_thread_local_parsers()
 
     assert [i for i in proc.health_report()["issues"] if i["code"] == "parser_failed"] == [
@@ -251,7 +252,7 @@ def test_failed_parser_issue_names_its_language(tmp_path, monkeypatch):
             "detected in that language",
         }
     ]
-    assert set(proc._local.streaming_parsers) == {"en"}
+    assert set(proc._local.detector.streaming_parsers) == {"en"}
 
 
 # ---------------------------------------------------------------------------

@@ -3,7 +3,7 @@
 A session log (``--session-log-dir``; the launcher writes them to
 ``logs/sessions`` in its data directory) keeps every utterance's transcripts and
 the references the live pipeline sent for it. This feeds those transcripts
-through the parsers the pipeline itself builds (``_make_parser``, per-model
+through the detector the pipeline itself builds (per-model
 spelling maps, duplicate collapse, low-confidence marking, two-model agreement,
 context reset on a language switch) and prints what the current code finds next
 to what was sent live. Run it before and after a parser change to see exactly
@@ -25,19 +25,16 @@ import argparse
 import json
 import sys
 from pathlib import Path
-from types import SimpleNamespace
 from typing import Any
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT / "backend"))
 
-from audio.detection import flush_held, switch_language  # noqa: E402
-from audio.ensemble import merge_agreement  # noqa: E402
+from audio.detector import UtteranceDetector  # noqa: E402
 from audio.metrics import PipelineMetrics  # noqa: E402
-from audio.pipeline import BibleLiveAudioProcessor  # noqa: E402
 from audio.stt import Transcription  # noqa: E402
 from core.bible_lookup import BibleLookup  # noqa: E402
-from core.verse_parser import Reference, StreamingParser  # noqa: E402
+from core.verse_parser import Reference  # noqa: E402
 from core.verse_text import VerseTextIndex  # noqa: E402
 
 
@@ -54,39 +51,22 @@ class Replayer:
     """The live pipeline's parsing steps for logged utterances, in order."""
 
     def __init__(self, validator=None, verse_text: VerseTextIndex | None = None):
-        self._validator = validator
-        self._verse_text = verse_text
-        # Per language, like the pipeline: the first model's parser and, in
-        # two-model mode, the second model's.
-        self._primary: dict[str, StreamingParser] = {}
-        self._alternate: dict[str, StreamingParser] = {}
-        self._last_language: str | None = None
-        self._last_t: float | None = None
-        # _parse_transcription only touches self.metrics.
-        self._stand_in: Any = SimpleNamespace(metrics=PipelineMetrics())
-
-    def _parser(self, parsers: dict[str, StreamingParser], language: str, source: str):
-        if language not in parsers:
-            parsers[language] = BibleLiveAudioProcessor._make_parser(
-                language, self._validator, self._verse_text, source
-            )
-        return parsers[language]
-
-    def _parse(self, parser: StreamingParser, transcript: dict[str, Any], t: float | None):
-        result = Transcription(
-            text=transcript.get("text"),
-            duration_ms=0.0,  # not read by the parse
-            low_confidence_reason=transcript.get("low_confidence_reason"),
+        self.detector = UtteranceDetector(
+            [], validator, verse_text, languages=(), metrics=PipelineMetrics()
         )
-        return BibleLiveAudioProcessor._parse_transcription(self._stand_in, parser, result, t)
+        self._last_t: float | None = None
 
-    def _switch(self, language: str) -> list[Reference]:
-        """Flush held references and reset context when the language changes."""
-        if language == self._last_language:
-            return []
-        flushed = switch_language(self._primary, self._alternate, self._last_language, language)
-        self._last_language = language
-        return flushed
+    @staticmethod
+    def _transcription(
+        transcript: dict[str, Any], alternate: Transcription | None = None
+    ) -> Transcription:
+        return Transcription(
+            text=transcript.get("text"),
+            duration_ms=0.0,
+            low_confidence_reason=transcript.get("low_confidence_reason"),
+            source=transcript["model"],
+            alternate=alternate,
+        )
 
     def feed(self, record: dict[str, Any]) -> tuple[list[Reference], list[Reference]]:
         """(references flushed by a language switch, the utterance's references)."""
@@ -98,26 +78,19 @@ class Replayer:
         if primary.get("text") is None and (alternate is None or alternate.get("text") is None):
             return [], []
         language = record["language"]
-        flushed = self._switch(language)
         if record.get("start_s") is not None:
             self._last_t = record["start_s"]
-        refs = self._parse(
-            self._parser(self._primary, language, primary["model"]), primary, self._last_t
-        )
-        if alternate is not None:
-            alternate_parser = self._parser(self._alternate, language, alternate["model"])
-            alternate_refs = self._parse(alternate_parser, alternate, self._last_t)
-            if refs is None and alternate_refs is None:
-                return flushed, []
-            shaky = primary.get("low_confidence_reason") or alternate.get("low_confidence_reason")
-            refs = merge_agreement(refs or [], alternate_refs or [], promote_inferred=not shaky)
-        return flushed, refs or []
+        detector = self.detector
+        detector.add_language(language, [t["model"] for t in transcripts[:2]])
+        alternate_result = self._transcription(alternate) if alternate is not None else None
+        result = self._transcription(primary, alternate_result)
+        detected = detector.detect(result, language, self._last_t)
+        return detected.released, detected.references or []
 
     def finish(self) -> list[Reference]:
         """References still held at the end of the session."""
-        if self._last_language is None:
-            return []
-        return flush_held(self._primary, self._alternate, self._last_language)
+        language = self.detector.last_parser_language
+        return self.detector.flush_held(language) if language is not None else []
 
 
 def replay(lines, replayer: Replayer, diff_only: bool = False) -> tuple[list[str], int, int]:

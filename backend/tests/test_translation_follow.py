@@ -63,11 +63,14 @@ def processor(tmp_path):
 
 def test_reply_switches_validator_without_losing_context(processor, monkeypatch):
     proc = processor
-    parser = proc._local.streaming_parsers["en"]
+    parser = proc._local.detector.streaming_parsers["en"]
     assert not parser.feed("1 Samuel 24:23.", t_s=1)
     assert parser.feed("1 Samuel 24:22.", t_s=2)
     parser.feed("amen " * 30, t_s=2.5)  # Expire the token carry, retaining book/chapter context.
-    parsers = [*proc._local.streaming_parsers.values(), *proc._local.alternate_parsers.values()]
+    parsers = [
+        *proc._local.detector.streaming_parsers.values(),
+        *proc._local.detector.alternate_parsers.values(),
+    ]
     contexts = [(p.ctx, p.carry[:], p._ctx_t, p._book_t.copy()) for p in parsers]
     old_lookup = proc._local.bible_lookup
     # Receipt on the heartbeat thread must not mutate worker-owned SQLite or parsers.
