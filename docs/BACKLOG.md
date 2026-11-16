@@ -103,6 +103,45 @@ check the session log: the "Partial transcripts" line of the metrics summary
 is still being read. Then try the switch for a passage that is read straight
 through. English (Whisper) takes no partial transcripts and is unmeasured.
 
+## Planned console and display features (owner notes, 2026-11-17)
+
+To start after the improvement plan (M7), apart from what is blocked waiting
+for new service recordings. Each changes how the operator works, so each gets a
+plan and review before it is built.
+
+### Remove staging; Plan always in view
+Staging (Up Next) has gone practically unused at real services: Plan already
+covers "what comes next", and the Live switch below covers "check it before the
+audience sees it". Remove staging and redesign the console so Plan is always
+visible, with the queue (pending) and History beside it. Rework every flow and
+shortcut that stages today: arrow-key selection then Show, Ctrl+Enter in Find
+Scripture, double-click restore, Show on a history row, and the Up Next card.
+Large: layout (designer + `DESIGN.md`), `useStaging`/reducer, many App tests.
+Mock the layout first and get it approved before building.
+
+### Live / not-live switch
+A console button. While not live the audience display shows nothing at all: a
+blank screen, no idle picture or logo, as if disconnected. Going live shows the
+current passage again. The state is the server's, so a reconnecting display
+obeys it. This is a protocol change (new action and confirmation, a field in the
+snapshot and `display_settings`): show the message shapes to the owner before
+building. Open: whether auto-approve keeps showing references while not live.
+Pairs with removing staging; build them as one milestone.
+
+### Follow-along adds verses (rolling window)
+When the speaker reads on, the display grows the passage instead of jumping to
+the next verse alone: 1 verse, then 2, then 3 (the verse limit). After that it
+rolls: verses 2-4, 3-5, and so on, so the previous verse stays as context and
+the text size stays steady (owner decision: rolling, not reset to one verse).
+Follow-up idea, maybe not worth it: an "expand" button on the console that does
+the same by hand for a single verse on screen (one more verse each press). It
+would share the mechanism with follow-along rather than compete with it.
+
+### Animations
+Subtle motion where it helps: the logo, the OBS overlay's show/hide, display
+passage swaps. Respect `prefers-reduced-motion`; nothing moves while text is
+being read.
+
 ## Maintenance
 
 ### npm 10.9 cannot install vitest 4.1.11 or later
@@ -150,3 +189,20 @@ see `benchmarks/BASELINE_NOTES.md`): WebRTC starts an utterance and Silero ends
 it, or a frame is voiced only when both agree. Add as `--vad hybrid`, keep 30 ms
 frames, one benchmark run per variant. Adopt only for about +5 correct
 references with no more medium/high false positives.
+
+### More recordings for the parser
+Every new service recording goes into the corpus (`benchmarks/corpus/`): the
+held-out set first, as M5 describes. Needs services recorded and copied into
+`bench_audio/`.
+
+### Fewer low-confidence false positives in two-model mode
+Two-model mode (Kmynas + Canary) has 15 low-confidence false positives on the
+fitted corpus against 3 for Kmynas alone. A replay on 2026-11-17 found where they
+come from: a reference only Canary found gives 6 correct and 9 wrong ones, one
+only Kmynas found gives 20 correct and 6 wrong. Dropping Canary-only references
+takes the tier back to Kmynas alone (167 TP). Dropping only single-model
+chapter-only references ("Psalms 25", no verse) removes 3 wrong ones and no
+correct one, on the same corpus it was found on, so it needs held-out services
+before it is adopted. Any change here is in `audio/ensemble.py`, which only the
+two-model tier runs, so the Kmynas CPU tier cannot change.
+
