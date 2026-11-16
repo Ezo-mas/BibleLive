@@ -671,6 +671,25 @@ class TestWhisperMergedAndGluedWords:
             "Antras Timotiejui, laiškas, pirma septyni, pirmas skyrius septintai lūtėje."
         ) == ["2 Timothy 1:7"]
 
+    def test_dash_between_ordinal_and_numbered_book(self):
+        # Live service 2026-11-15, Kmynas: the dash is punctuation, so the
+        # book number still applies (Canary wrote it without the dash).
+        said = (
+            "Antras – Timotiejui, ketvirtas skyrius, trečia eilutė sako: „Nes ateis laikas, "
+            "kai žmonės nebepakęs sveiko mokslo"
+        )
+        assert refs(said) == ["2 Timothy 4:3"]
+        assert refs(said.replace("–", "-")) == ["2 Timothy 4:3"]
+        assert refs("Pirmas – Karalių dvidešimt antras skyrius") == ["1 Kings 22"]
+        # Untouched (same as before the fix): a dash between ordinals is still
+        # a range; a digit is not a spoken ordinal; a book with no numbered
+        # books keeps its plain reading; an ordinal after "skyrius" is a
+        # chapter, not a book number.
+        assert refs("Jono trečias skyrius antra – trečia eilutė") == ["John 3:2-3"]
+        assert refs("2 – Timotiejui 4 skyrius 3 eilutė") == []
+        assert refs("Antras – Romiečiams 8 skyrius") == ["Romans 8"]
+        assert refs("skyrius antras – Karalių") == []
+
     def test_person_name_and_a_count_is_not_a_chapter(self):
         # Book names are people too: words then a bare number, with no
         # chapter word, is narrative (live service 2026-10-18 reported

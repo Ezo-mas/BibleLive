@@ -619,6 +619,25 @@ at 4a74244, `--mode offline --context-ttl-s 600`:
   "Ievutė" spelling did not occur; there were no repeats to credit. One service
   is too few to settle any of them.
 
+## Dash between a spoken ordinal and a numbered book (2026-11-16)
+
+`11-15-live-lt` moved from `lt-heldout.txt` to `lt-sermons.txt` first (its
+held-out score is above; the fitted set is now 15 services, 177 gold). Kmynas
+wrote "Antras – Timotiejui", and the dash became a range token, so nothing
+parsed. `tokenize` now drops a dash between a spoken ordinal (1–3) and a word
+of a numbered book's name; digits, ranges between ordinals ("antra – trečia
+eilutė") and other books are unchanged. Cached replay, 15 services:
+
+| Tier | Run | TP | FN | FP low | FP medium+high |
+| --- | --- | --- | --- | --- | --- |
+| `kmynas` | before | 165 | 12 | 3 | 6 |
+| `kmynas` | after | 166 | 11 | 3 | 6 |
+| `kmynas+canary` | before | 172 | 5 | 17 | 1 |
+| `kmynas+canary` | after | 172 | 5 | 17 | 1 |
+
+Only 11-15 changed on both tiers (whole result JSON compared): Kmynas finds
+2 Timothy 4:3, and with two models it goes from low (Canary alone) to high.
+
 ## Re-check on new recordings
 
 These were fitted and measured on the same 14 services, so their gains are

@@ -2,4 +2,4 @@
 # (the fitted set). A rule is never changed to fix a held-out miss without first moving that service
 # to lt-sermons.txt and saying so (docs/IMPROVEMENT_PLAN.md, M5).
 # One run per line: <manifest> <record id> [--t-range START:END = the sermon part].
-manifest-11-15-lt.json 11-15-live-lt 300:5781
+# (empty: 11-15-live-lt moved to lt-sermons.txt on 2026-11-16, see the note there)
