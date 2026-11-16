@@ -206,20 +206,22 @@ def test_restart_queues_the_utterance_in_progress_and_restarts_capture():
 def test_silence_clock_restarts_with_the_stream():
     """Silence during an outage is not silence from the restarted microphone."""
     proc = _processor(_FlakyCapture(), capture_restart_base_delay=0.0)
-    proc.capture.last_loud_at = time.monotonic() - 600
-    proc.capture.mic_silent_logged = True
+    proc.capture_supervisor.last_loud_at = time.monotonic() - 600
+    proc.capture_supervisor.mic_silent_logged = True
 
     proc._restart_capture()
 
-    assert time.monotonic() - proc.capture.last_loud_at < 5
-    assert proc.capture.mic_silent_logged is False
+    assert time.monotonic() - proc.capture_supervisor.last_loud_at < 5
+    assert proc.capture_supervisor.mic_silent_logged is False
 
 
 def test_failed_restarts_back_off_until_one_succeeds(monkeypatch):
     capture = _FlakyCapture(failures=3)
     proc = _processor(capture, capture_restart_base_delay=1.0, capture_restart_max_delay=4.0)
     waits: list[float] = []
-    monkeypatch.setattr(proc.capture, "wait_while_running", lambda s: waits.append(s) or True)
+    monkeypatch.setattr(
+        proc.capture_supervisor, "wait_while_running", lambda s: waits.append(s) or True
+    )
 
     proc._restart_capture()
 
@@ -236,7 +238,7 @@ def test_stop_during_backoff_does_not_start_ffmpeg_again(monkeypatch):
         proc.is_running = False
         return False
 
-    monkeypatch.setattr(proc.capture, "wait_while_running", stop_while_waiting)
+    monkeypatch.setattr(proc.capture_supervisor, "wait_while_running", stop_while_waiting)
 
     proc._restart_capture()
 
@@ -246,16 +248,16 @@ def test_stop_during_backoff_does_not_start_ffmpeg_again(monkeypatch):
 def test_backoff_resets_once_the_restarted_stream_is_healthy():
     capture = _FlakyCapture()
     proc = _processor(capture, capture_healthy_s=10.0)
-    proc.capture.restart_attempt = 3
-    proc.capture.restarted_at_s = 0.0
+    proc.capture_supervisor.restart_attempt = 3
+    proc.capture_supervisor.restarted_at_s = 0.0
 
     capture.captured_seconds = 9.0
-    proc.capture.note_capture_healthy()
-    assert proc.capture.restart_attempt == 3
+    proc.capture_supervisor.note_capture_healthy()
+    assert proc.capture_supervisor.restart_attempt == 3
 
     capture.captured_seconds = 10.0
-    proc.capture.note_capture_healthy()
-    assert proc.capture.restart_attempt == 0
+    proc.capture_supervisor.note_capture_healthy()
+    assert proc.capture_supervisor.restart_attempt == 0
 
 
 def test_vad_loop_resumes_after_ffmpeg_dies(monkeypatch):
@@ -275,7 +277,7 @@ def test_vad_loop_resumes_after_ffmpeg_dies(monkeypatch):
             time.sleep(0.01)
     finally:
         proc.is_running = False
-        with proc.capture.lock:
+        with proc.capture_supervisor.lock:
             capture.stop_capture()
         vad_thread.join(timeout=2)
 
@@ -290,15 +292,15 @@ def test_operator_hears_about_the_outage_until_capture_is_back(monkeypatch):
     proc = _processor(_FlakyCapture(failures=1), capture_restart_base_delay=0.0)
     down_while_waiting: list[bool] = []
     monkeypatch.setattr(
-        proc.capture,
+        proc.capture_supervisor,
         "wait_while_running",
-        lambda s: down_while_waiting.append(proc.capture.down) or True,
+        lambda s: down_while_waiting.append(proc.capture_supervisor.down) or True,
     )
 
     proc._restart_capture()
 
     assert down_while_waiting == [True, True]
-    assert proc.capture.down is True
+    assert proc.capture_supervisor.down is True
 
 
 def test_partial_frame_survives_bounded_wait(monkeypatch):
@@ -353,7 +355,7 @@ def test_hung_capture_restarts_without_health_flapping(monkeypatch):
         assert proc.health_report()["issues"] == []
     finally:
         proc.is_running = False
-        with proc.capture.lock:
+        with proc.capture_supervisor.lock:
             capture.stop_capture()
         thread.join(timeout=2)
     assert not thread.is_alive()
@@ -506,7 +508,7 @@ def test_vad_persistent_errors_stop_thread_and_report_health(monkeypatch):
     proc.segmenter = SimpleNamespace(
         push=lambda _frame: (_ for _ in ()).throw(ValueError("bad VAD"))
     )
-    monkeypatch.setattr(proc.capture, "wait_while_running", lambda _seconds: True)
+    monkeypatch.setattr(proc.capture_supervisor, "wait_while_running", lambda _seconds: True)
     failures = []
 
     def run():
@@ -577,7 +579,7 @@ def test_first_frame_grace_then_normal_stall_and_restart_timer(monkeypatch):
         assert proc.metrics.capture_restarts == 2
     finally:
         proc.is_running = False
-        with proc.capture.lock:
+        with proc.capture_supervisor.lock:
             capture.stop_capture()
         thread.join(2)
     assert not thread.is_alive()
@@ -596,7 +598,7 @@ def test_repeated_stall_restart_backoff_grows_and_discards_buffer(monkeypatch):
     )
     waits = []
     monkeypatch.setattr(
-        proc.capture, "wait_while_running", lambda seconds: waits.append(seconds) or True
+        proc.capture_supervisor, "wait_while_running", lambda seconds: waits.append(seconds) or True
     )
     capture.start_capture()
     capture.audio_queue.put(b"x" * 100)
@@ -614,7 +616,7 @@ def test_repeated_stall_restart_backoff_grows_and_discards_buffer(monkeypatch):
         assert b"x" not in capture._frame_buffer
     finally:
         proc.is_running = False
-        with proc.capture.lock:
+        with proc.capture_supervisor.lock:
             capture.stop_capture()
         thread.join(2)
     assert not thread.is_alive()
@@ -669,7 +671,7 @@ def test_raising_restart_resets_first_frame_grace(monkeypatch):
         raise RuntimeError("restart failed")
 
     monkeypatch.setattr(proc, "_restart_capture", restart)
-    monkeypatch.setattr(proc.capture, "wait_while_running", lambda _seconds: True)
+    monkeypatch.setattr(proc.capture_supervisor, "wait_while_running", lambda _seconds: True)
     thread = threading.Thread(target=proc._vad_loop)
     thread.start()
     try:

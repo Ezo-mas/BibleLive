@@ -26,6 +26,8 @@ def make_processor(**overrides: Any) -> BibleLiveAudioProcessor:
     """A processor as ``__init__`` leaves it, with ``overrides`` (attribute names) applied.
 
     An unknown attribute name raises TypeError, so a misspelt one cannot pass silently.
+    A test reassigning ``proc.config`` or ``proc.metrics`` after ``make_processor``
+    must rebuild ``proc.capture_supervisor`` to use the new objects.
     """
     config = overrides.get("config") or AudioPipelineConfig()
     partials_on = config.partial_transcripts
@@ -62,7 +64,7 @@ def make_processor(**overrides: Any) -> BibleLiveAudioProcessor:
         "_capture_language": config.language,
         "_pending_language": None,
         "_pending_language_lock": threading.Lock(),
-        "capture": None,  # Wired below, after overrides.
+        "capture_supervisor": None,  # Wired below, after overrides.
         "_consecutive_transcription_errors": 0,
         "_consecutive_utterance_failures": 0,
         "_parser_issues": [],
@@ -74,8 +76,8 @@ def make_processor(**overrides: Any) -> BibleLiveAudioProcessor:
     proc = BibleLiveAudioProcessor.__new__(BibleLiveAudioProcessor)
     for name, value in {**defaults, **overrides}.items():
         setattr(proc, name, value)
-    if proc.capture is None:
-        proc.capture = CaptureSupervisor(
+    if proc.capture_supervisor is None:
+        proc.capture_supervisor = CaptureSupervisor(
             proc.config,
             proc.metrics,
             lambda: proc.audio_capture,

@@ -47,6 +47,8 @@ class CaptureSupervisor:
     takes ``lock`` before stopping capture; it never changes supervisor state.
     Callbacks read the pipeline's current lifecycle, capture and session log.
     The supervisor never owns utterance assembly, queues or partials.
+    Production never reassigns the processor's config or metrics objects, which
+    the supervisor holds by reference.
     """
 
     def __init__(

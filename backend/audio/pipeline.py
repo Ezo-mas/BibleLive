@@ -142,7 +142,7 @@ class BibleLiveAudioProcessor:
         self.control_server: LanguageControlServer | None = None
 
         # Capture state belongs to the VAD thread; heartbeat only reads it.
-        self.capture = CaptureSupervisor(
+        self.capture_supervisor = CaptureSupervisor(
             self.config,
             self.metrics,
             lambda: self.audio_capture,
@@ -209,7 +209,7 @@ class BibleLiveAudioProcessor:
                 self.control_server.start()
 
             self.is_running = True
-            self.capture.initialize_health()
+            self.capture_supervisor.initialize_health()
 
             if self.config.session_log_dir:
                 self.session_log = self._open_session_log(self.config.session_log_dir)
@@ -304,7 +304,7 @@ class BibleLiveAudioProcessor:
 
         # Stop audio capture (after any restart in progress has finished, so it
         # cannot start ffmpeg again behind our back)
-        with self.capture.lock:
+        with self.capture_supervisor.lock:
             self.audio_capture.stop_capture()
 
         # Stop the runtime language-control server
@@ -367,7 +367,7 @@ class BibleLiveAudioProcessor:
         detecting normally (a quiet room is not a problem).
         """
         return build_health_report(
-            self.capture,
+            self.capture_supervisor,
             language=self.current_language,
             interval_s=self.config.heartbeat_interval,
             is_running=self.is_running,
@@ -410,7 +410,7 @@ class BibleLiveAudioProcessor:
         """VAD processing loop - detects speech segments"""
         frame_duration_ms = self.frame_duration_ms
 
-        self.capture.begin_watchdog()
+        self.capture_supervisor.begin_watchdog()
         # This counter is local to and owned by the VAD thread.
         consecutive_errors = 0
         while self.is_running:
@@ -421,11 +421,11 @@ class BibleLiveAudioProcessor:
                 # Get audio frame
                 frame = self.audio_capture.get_audio_frame(frame_duration_ms)
                 if frame is None:
-                    self.capture.note_missing_frame(self._restart_capture)
+                    self.capture_supervisor.note_missing_frame(self._restart_capture)
                     consecutive_errors = 0
                     continue
 
-                self.capture.note_frame(frame)
+                self.capture_supervisor.note_frame(frame)
                 self.metrics.audio_chunks_captured += 1
                 session_log = self.session_log
                 if session_log is not None:
@@ -460,7 +460,7 @@ class BibleLiveAudioProcessor:
                 logger.exception("Unexpected error in VAD loop")
                 if consecutive_errors >= 3:
                     raise
-                self.capture.wait_while_running(0.5)
+                self.capture_supervisor.wait_while_running(0.5)
 
     def _offer_partial(self, event: SegmentEvent | None) -> None:
         """Hand the transcription thread a snapshot of the open utterance when one is due.
@@ -480,7 +480,7 @@ class BibleLiveAudioProcessor:
 
     def _restart_capture(self, cause: str = "ffmpeg exited") -> None:
         """Flush the open utterance before the supervisor waits to restart capture."""
-        self.capture.restart(cause, self._flush_capture_utterance)
+        self.capture_supervisor.restart(cause, self._flush_capture_utterance)
 
     def _flush_capture_utterance(self) -> None:
         """Keep utterance and partial ownership on the pipeline's VAD thread."""
