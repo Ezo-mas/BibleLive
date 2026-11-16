@@ -344,6 +344,12 @@ async def _authenticate_operator(websocket: WebSocket, query_token: str | None) 
     return True
 
 
+def _log_orphaned_action_error(task: "asyncio.Future[None]") -> None:
+    """Log an operator action that failed after its endpoint stopped awaiting it."""
+    if not task.cancelled() and (error := task.exception()) is not None:
+        logger.error("Operator action failed after its socket was dropped", exc_info=error)
+
+
 # Operator WebSocket actions, dispatched by the ``action`` field. Each handler
 # emits exactly the messages (including errors) the previous if/elif chain did;
 # only the organization is new.
@@ -387,9 +393,12 @@ def build_router(app_state: AppState) -> APIRouter:
                 return
             accepted = True
 
-        await app_state.connection_manager.connect(websocket, client_type, accepted=accepted)
+        cm = app_state.connection_manager
+        await cm.connect(websocket, client_type, accepted=accepted, endpoint=asyncio.current_task())
 
-        # Send initial state to the newly connected client
+        # Send initial state to the newly connected client. These calls only enqueue:
+        # nothing before the ``try`` below may truly suspend, or a manager cancel
+        # (see ``except asyncio.CancelledError``) could land outside it.
         if client_type == "display":
             await app_state.send_display_current_state(websocket)
             # Display connections are broadcast to operators; operator connections
@@ -434,8 +443,25 @@ def build_router(app_state: AppState) -> APIRouter:
                         await _ws_error(websocket, app_state, action, _validation_message(e))
                         continue
 
-                    await handler(websocket, app_state, message)
+                    # Shielded: if this socket is abandoned (below) mid-action, the
+                    # action still finishes instead of stopping half-applied.
+                    action_task = asyncio.ensure_future(handler(websocket, app_state, message))
+                    cm._track(action_task)
+                    try:
+                        await asyncio.shield(action_task)
+                    except asyncio.CancelledError:
+                        # Nobody awaits the action any more: still log its failure.
+                        action_task.add_done_callback(_log_orphaned_action_error)
+                        raise
 
+        except asyncio.CancelledError:
+            # The manager cancels this task when it pruned the socket and could
+            # not close it (the peer stopped reading); end as a disconnect.
+            # Any other cancellation, such as server shutdown, propagates.
+            task = asyncio.current_task()
+            if not cm.take_abandoned(websocket) or (task is not None and task.uncancel() > 0):
+                raise
+            logger.info(f"{client_type.capitalize()} client pruned and would not close; dropped")
         except WebSocketDisconnect:
             logger.debug(f"{client_type.capitalize()} client disconnected normally")
         except ConnectionResetError:
@@ -443,7 +469,7 @@ def build_router(app_state: AppState) -> APIRouter:
         except Exception as e:
             logger.error(f"Unexpected WebSocket error for {client_type} client: {e}", exc_info=True)
         finally:
-            app_state.connection_manager.disconnect(websocket)
+            cm.disconnect(websocket)
             # Only display disconnections notify operators (mirrors connect behavior).
             if client_type == "display":
                 await app_state.notify_display_connection_status()

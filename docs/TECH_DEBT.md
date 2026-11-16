@@ -12,7 +12,7 @@ Entry format:
 
 ## Open
 
-### Pruned WebSockets can keep receiving when their close stalls
+### Pruned WebSockets can keep receiving when their close stalls (resolved)
 - **Where:** `backend/core/server/connections.py` (`ConnectionManager._prune`,
   `_close_socket`) and `backend/core/server/ws.py` (`websocket_endpoint`).
 - **Problem:** When a peer stops reading, a send times out and the manager prunes
@@ -28,6 +28,26 @@ Entry format:
   fails, with `ws.py` treating that as a disconnect) changes the WebSocket endpoint
   flow and needs an owner decision.
 - **Logged:** 2026-11-15
+- **Resolved:** 2026-11-16 (owner approved the fix on PR #82) — `connect()` takes the
+  endpoint task; when a pruned socket's close fails, the manager cancels it and
+  `ws.py` ends it as a disconnect (`take_abandoned()`), so the receive loop stops
+  and operators get the new display count once the close has timed out (up to
+  `SEND_TIMEOUT` after the prune). Operator actions run shielded, so the cancel
+  never stops one half-applied. Tests in `backend/tests/test_connections.py`.
+
+### A peer that stops reading holds its TCP connection open and blocks graceful shutdown
+- **Where:** `backend/core/server/connections.py` (`_close_socket`) and uvicorn's
+  connection handling; the server is run from `backend/core/server/app.py`.
+- **Problem:** Ending the endpoint of a pruned, unclosable socket (see the entry
+  above) does not end its TCP connection: uvicorn's `transport.close()` waits to
+  flush buffered data the peer never reads, so uvicorn still counts the connection.
+- **Impact:** On a graceful stop uvicorn waits at "Waiting for connections to
+  close" until that peer goes away, so the server needs a second Ctrl+C or a kill.
+- **Evidence:** Real-uvicorn harness in the review of the pruned-socket fix
+  (2026-11-16): a display with a 4 KB receive buffer that never reads, sent 40 ×
+  200 KB broadcasts; after the endpoint ended, shutdown hung for more than 20 s on
+  both the old and the fixed code until the client disconnected.
+- **Logged:** 2026-11-16
 
 ### The action row is back at the end of the list in the stacked layout
 - **Where:** `frontend/src/operator/operator.css` (`.operator-pending`,

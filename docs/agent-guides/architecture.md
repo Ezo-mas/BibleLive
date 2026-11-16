@@ -118,10 +118,13 @@ easy to break by accident.
    queued for the display, not delivered (Q5). Queue overflow prunes immediately;
    a writer send failure or `SEND_TIMEOUT` (5 s) also prunes, then attempts a
    best-effort close with the same timeout. A peer that has stopped reading can
-   prevent the close from completing; its receive loop then continues until the
-   TCP connection ends. Unregistered/pruned sockets drop sends. Disconnect drops
-   queued messages and cancels the writer; shutdown waits up to `SEND_TIMEOUT` for writers and outstanding
-   close cleanup. Keep two-socket integration tests inside `with TestClient(app)`
+   prevent the close from completing; the manager then cancels that socket's
+   endpoint task (registered by `connect(endpoint=...)`), and `ws.py` ends it as
+   a disconnect only when `take_abandoned()` says the cancel was the manager's —
+   any other cancellation propagates. Operator actions run shielded so such a
+   cancel never stops one half-applied. Unregistered/pruned sockets drop sends.
+   Disconnect drops queued messages and cancels the writer; shutdown waits up to
+   `SEND_TIMEOUT` for writers and outstanding close cleanup. Keep two-socket integration tests inside `with TestClient(app)`
    so both sockets share one event loop.
 3. **VAD frame discipline**: frames must be exactly the size the active
    VAD requires at 16 kHz — WebRTC VAD (the default): 10/20/30 ms. The

@@ -369,3 +369,199 @@ def test_testclient_exit_stops_old_manager_writers(app, app_state):
     assert not old_manager._queues
     assert not old_manager.display_connections
     assert not old_manager.operator_connections
+
+
+class _EndpointWebSocket(_FakeWebSocket):
+    """A fake socket the real ``/ws/{client_type}`` endpoint can run against."""
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.incoming: asyncio.Queue[str | None] = asyncio.Queue()
+
+    async def receive_text(self) -> str:
+        message = await self.incoming.get()
+        if message is None:
+            from fastapi import WebSocketDisconnect
+
+            raise WebSocketDisconnect(1000)
+        return message
+
+
+def _endpoint(app_state):
+    from core.server.ws import build_router
+
+    return build_router(app_state).routes[0].endpoint
+
+
+async def _wait_until(predicate, timeout=1.0):
+    async def poll():
+        while not predicate():
+            await asyncio.sleep(0.001)
+
+    await asyncio.wait_for(poll(), timeout)
+
+
+async def _ended(task, timeout=1.0):
+    """Wait for an endpoint to end without cancelling it (``wait_for`` would cancel it)."""
+    done, _ = await asyncio.wait({task}, timeout=timeout)
+    assert task in done
+    return task.result()
+
+
+def _statuses(socket):
+    return [
+        json.loads(m)["data"] for m in socket.sent if json.loads(m)["type"] == "connection_status"
+    ]
+
+
+def test_pruned_socket_that_will_not_close_ends_its_endpoint(app_state, monkeypatch):
+    """A peer that stops reading is pruned, its close times out, and its receive loop ends."""
+    monkeypatch.setattr(connections, "SEND_TIMEOUT", 0.01)
+
+    async def scenario():
+        cm = app_state.connection_manager
+        operator = _FakeWebSocket()
+        await cm.connect(operator, "operator")
+        display = _EndpointWebSocket(block=True, close_mode="block")
+        task = asyncio.create_task(_endpoint(app_state)(display, "display"))
+        try:
+            # The connect-time state send stalls, so the socket is pruned and closed.
+            await _ended(task)
+            assert display.close_started.is_set()
+            assert not task.cancelled()
+            assert display not in cm.display_connections
+            assert not cm._endpoints and not cm._pruned_endpoints and not cm._abandoned
+            await _drain(cm)
+            assert _statuses(operator)[-1] == {"display": 0, "operator": 1}
+        finally:
+            task.cancel()
+            await cm.close()
+
+    asyncio.run(scenario())
+
+
+def test_abandoned_operator_finishes_its_action(app_state, monkeypatch, caplog):
+    """Cancelling the endpoint mid-action never leaves the action half-applied."""
+    from core.server import ws
+
+    monkeypatch.setattr(connections, "SEND_TIMEOUT", 0.01)
+    monkeypatch.setattr(ws.config, "REQUIRE_AUTH", False)
+    started, release, finished = asyncio.Event(), asyncio.Event(), asyncio.Event()
+
+    async def slow_clear(_websocket, _app_state, _message):
+        started.set()
+        await release.wait()
+        finished.set()
+        raise RuntimeError("late failure")
+
+    monkeypatch.setitem(ws._OPERATOR_ACTIONS, "clear", slow_clear)
+
+    async def scenario():
+        cm = app_state.connection_manager
+        operator = _EndpointWebSocket(close_mode="block")
+        task = asyncio.create_task(_endpoint(app_state)(operator, "operator"))
+        try:
+            await _wait_until(lambda: operator in cm.operator_connections)
+            await operator.incoming.put(json.dumps({"action": "clear"}))
+            await asyncio.wait_for(started.wait(), 1)
+            operator.block = True
+            await cm._safe_send(operator, {"type": "later"})
+            await _ended(task)
+            assert not finished.is_set()
+            release.set()
+            await asyncio.wait_for(finished.wait(), 1)
+        finally:
+            release.set()
+            task.cancel()
+            await cm.close()
+        assert not cm._tasks
+
+    asyncio.run(scenario())
+    assert "Operator action failed after its socket was dropped" in caplog.text
+    assert "late failure" in caplog.text
+
+
+def test_shutdown_cancel_alongside_an_abandon_still_propagates(app_state, monkeypatch):
+    """When shutdown cancels the endpoint in the same step the manager does, it is not swallowed."""
+    monkeypatch.setattr(connections, "SEND_TIMEOUT", 0.01)
+
+    async def scenario():
+        cm = app_state.connection_manager
+        display = _EndpointWebSocket(fail=True)
+        task = None
+
+        async def close_and_shut_down():
+            task.cancel()  # The shutdown cancel lands just before the manager's own.
+            raise RuntimeError("close failed")
+
+        display.close = close_and_shut_down
+        task = asyncio.create_task(_endpoint(app_state)(display, "display"))
+        try:
+            done, _ = await asyncio.wait({task}, timeout=1)
+            assert task in done
+            assert task.cancelled()
+        finally:
+            await cm.close()
+
+    asyncio.run(scenario())
+
+
+def test_other_cancellation_of_an_endpoint_propagates(app_state):
+    """Shutdown-style cancellation is not mistaken for an abandoned socket."""
+
+    async def scenario():
+        cm = app_state.connection_manager
+        display = _EndpointWebSocket()
+        task = asyncio.create_task(_endpoint(app_state)(display, "display"))
+        try:
+            await _wait_until(lambda: display in cm.display_connections)
+            task.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await task
+            assert display not in cm.display_connections
+        finally:
+            await cm.close()
+
+    asyncio.run(scenario())
+
+
+def test_closed_pruned_socket_keeps_its_receive_loop(app_state, monkeypatch):
+    """A close that succeeds leaves the endpoint to end on the peer's disconnect."""
+    monkeypatch.setattr(connections, "SEND_TIMEOUT", 0.01)
+
+    async def scenario():
+        cm = app_state.connection_manager
+        display = _EndpointWebSocket(fail=True)
+        task = asyncio.create_task(_endpoint(app_state)(display, "display"))
+        try:
+            await asyncio.wait_for(display.closed.wait(), 1)
+            await asyncio.sleep(0.05)
+            assert not task.done()
+            await display.incoming.put(None)
+            await asyncio.wait_for(task, 1)
+            assert not cm._pruned_endpoints and not cm._abandoned
+        finally:
+            task.cancel()
+            await cm.close()
+
+    asyncio.run(scenario())
+
+
+def test_failed_close_after_endpoint_ended_cancels_nothing(monkeypatch):
+    """An endpoint that already disconnected is not cancelled by a late failed close."""
+    monkeypatch.setattr(connections, "SEND_TIMEOUT", 0.01)
+
+    async def scenario():
+        cm = ConnectionManager()
+        socket = _FakeWebSocket(fail=True, close_mode="block")
+        endpoint = asyncio.create_task(asyncio.Event().wait())
+        await cm.connect(socket, "display", endpoint=endpoint)
+        await cm._safe_send(socket, {"type": "clear"})
+        await asyncio.wait_for(socket.close_started.wait(), 1)
+        cm.disconnect(socket)  # The endpoint's own finally, before the close times out.
+        await asyncio.wait_for(cm.close(), 1)
+        assert not endpoint.done()
+        assert not cm.take_abandoned(socket)
+        endpoint.cancel()
+
+    asyncio.run(scenario())
