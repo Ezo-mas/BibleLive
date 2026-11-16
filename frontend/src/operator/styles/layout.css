@@ -8,7 +8,9 @@
    follow-along lies over the preview. So the column's last card always ends where the
    panel ends, and the miniature changes size only when the window does. */
 .operator-main {
-  --operator-side-w: clamp(300px, 34vw, 560px);
+  /* The floor (reached below 1082px) keeps each of the three tabs about 122px wide,
+     room for the Lithuanian "Laukiančios" and its count with a little air. */
+  --operator-side-w: clamp(368px, 34vw, 560px);
   /* The least height the monitor frame keeps; a window shorter than that scrolls the
      column instead of squeezing the preview to nothing. */
   --operator-frame-min: 160px;

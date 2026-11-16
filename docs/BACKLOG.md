@@ -32,7 +32,7 @@ not yet seen on a real service, not pushed, and `static/frontend/` is not rebuil
 `npm run build` from `frontend/` first). At the next service look at: the preview's text
 size at 10 and All verses (9 px and 7 px on a 1440x900 window, 7.4 px and 5.4 px at
 1280x720), the left column scrolling by about 66 px at 1280x720, the single-column
-layout below 1100 px (not re-checked after the last CSS edit), and the light theme's
+layout below 1024 px (checked in a browser on 2026-11-17, not yet on a device), and the light theme's
 selected segmented fill (1.85:1 against its track; the bold label is the second cue).
 
 ### Small console follow-ups

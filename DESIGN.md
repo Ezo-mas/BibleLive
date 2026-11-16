@@ -38,15 +38,30 @@ shared class instead of writing a one-off. Display page styling is separate
 
 Two columns inside the 16px page gutter, which is the only space at the window's
 sides: nothing is centred and nothing has a maximum width. Right: one tabbed panel
-(Pending, Plan, History) pinned to the right edge at `clamp(300px, 34vw, 560px)`
-(`--operator-side-w`), filling the height. Left, top to bottom: the ON DISPLAY preview
+(Pending, Plan, History) pinned to the right edge at `clamp(368px, 34vw, 560px)`
+(`--operator-side-w`; the floor keeps each tab about 122px wide, room for the Lithuanian
+"Laukiančios" and its count), filling the height. Left, top to bottom: the ON DISPLAY preview
 with its control row in the same card, then UP NEXT (follow-along is a strip laid over
 the top of the preview, not a card of its own); the column takes every
-pixel of width the panel does not (`flex: 1`, `min-width: 0`). Below 1100px it is one
-column, the page scrolls, and the preview takes its height from 16:9. The gear in the
+pixel of width the panel does not (`flex: 1`, `min-width: 0`). The gear in the
 header opens Settings, which holds everything not needed mid-service (language, Bible
 version, interface language, follow-along switch, the auto-approve modes, display
 background).
+
+**Stacked layout.** The two columns hold down to 1024px (the left column is then
+608px, above the control row's 560px one-line floor), so a laptop or a tablet held
+landscape keeps the queue, its footer, Up Next and the preview in view together.
+Below 1024px it is one column in the order above, the page scrolls, and the preview
+takes its height from 16:9. The tabbed panel comes last and is one fixed height,
+`min(520px, the visible height of the page)` with a 280px floor (the tabs, the footer
+and one row): scrolled down to, its tabs, list and footer are all on screen at once and
+the list scrolls inside it, the way it does beside the workspace. On a tall window the
+cap leaves the end of Up Next, with Show on display, in view above it; on a short one
+(a phone held landscape, an on-screen keyboard) the panel shrinks to what the window
+shows instead of running past its bottom edge. Its height never depends on how many
+rows it holds, so the page does not change length as detections arrive. The scrolling
+column is a size container (`cqh`) and positioned, so nothing in it lengthens the
+document behind it.
 
 **Heights.** The left column is a flex column of the full height. ON DISPLAY takes
 all the height the others leave (`flex: 1`, with a floor of `--operator-frame-min`,
