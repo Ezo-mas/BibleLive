@@ -139,7 +139,7 @@ export function useOperatorState(): OperatorState {
   }
 
   const staging = useStaging(state, dispatch, token, isConnected, bibleVersion.version, showNotice)
-  const planSnippets = usePlanSnippets(staging.plan.items, token, isConnected)
+  const planSnippets = usePlanSnippets(staging.plan.items, token, isConnected, bibleVersion.version)
   const { currentDisplay, followAlongHint, showInFlight } = state
   const followAlong =
     followAlongHint !== null &&
