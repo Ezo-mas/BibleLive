@@ -17,6 +17,9 @@ FRAME_WAIT_S = 0.5
 # ``"Microphone (Realtek(R) Audio)" (audio)``; the alternative-name lines that
 # follow carry no ``(audio)`` suffix.
 _DSHOW_AUDIO_DEVICE = re.compile(r'"(?P<name>[^"]+)"\s+\(audio\)')
+# ``ffmpeg -f avfoundation -list_devices true -i ""`` prints video devices, then
+# ``AVFoundation audio devices:`` and one ``[index] name`` line per audio input.
+_AVFOUNDATION_DEVICE = re.compile(r"\]\s\[(?P<index>\d+)\]\s(?P<name>.+)$")
 
 
 # ffmpeg is a console program. Started from a process with no console (the
@@ -30,11 +33,15 @@ def _no_window_flags() -> int:
 
 
 def list_input_devices() -> list[str]:
-    """Names of the DirectShow audio inputs ffmpeg can open (Windows only).
+    """Names of the audio inputs ffmpeg can open: DirectShow (Windows) or AVFoundation (macOS).
 
     dshow has no ``default`` device: ``-i audio=<name>`` needs one of these
-    names verbatim. Returns an empty list on other platforms.
+    names verbatim. On macOS a name works the same way (``-i :<name>``), and
+    no name means the system's default input. Returns an empty list on other
+    platforms.
     """
+    if sys.platform == "darwin":
+        return _list_avfoundation_audio()
     if sys.platform != "win32":
         return []
     try:
@@ -51,6 +58,30 @@ def list_input_devices() -> list[str]:
         raise RuntimeError("ffmpeg not found. Please install ffmpeg and ensure it's in PATH")
     # ffmpeg exits non-zero here (the "dummy" input never opens); the list is on stderr.
     return _DSHOW_AUDIO_DEVICE.findall(result.stderr)
+
+
+def _list_avfoundation_audio() -> list[str]:
+    try:
+        result = subprocess.run(
+            ["ffmpeg", "-hide_banner", "-f", "avfoundation", "-list_devices", "true", "-i", ""],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=10,
+        )
+    except FileNotFoundError:
+        raise RuntimeError("ffmpeg not found. Please install ffmpeg and ensure it's in PATH")
+    names: list[str] = []
+    in_audio = False
+    for line in result.stderr.splitlines():
+        if "AVFoundation audio devices:" in line:
+            in_audio = True
+        elif "AVFoundation video devices:" in line:
+            in_audio = False
+        elif in_audio and (match := _AVFOUNDATION_DEVICE.search(line)):
+            names.append(match.group("name").strip())
+    return names
 
 
 class AudioCapture:
@@ -98,12 +129,14 @@ class AudioCapture:
 
         ``device`` is the platform's input name: a DirectShow device name on
         Windows, a PulseAudio source on Linux, an avfoundation index or name on
-        macOS. ``None`` picks the platform default (the first dshow device on
-        Windows, which has no default of its own).
+        macOS. ``None`` picks the platform default (the system default input on
+        macOS; the first dshow device on Windows, which has no default of its own).
         """
         # Build ffmpeg command
         if sys.platform == "darwin":  # macOS
-            input_args = ["-f", "avfoundation", "-i", f":{device or ''}"]
+            # ":" alone names no device at all ("No AV capture device found"), so the
+            # microphone is never opened and macOS never asks for permission.
+            input_args = ["-f", "avfoundation", "-i", f":{device or 'default'}"]
         elif sys.platform.startswith("linux"):  # Linux
             input_args = ["-f", "pulse", "-i", device or "default"]
         elif sys.platform == "win32":  # Windows
