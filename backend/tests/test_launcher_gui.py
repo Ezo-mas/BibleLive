@@ -264,7 +264,7 @@ def test_find_browser_prefers_edge(tmp_path, monkeypatch):
     for p in (edge, chrome):
         p.parent.mkdir(parents=True)
         p.write_text("")
-    monkeypatch.setattr("launcher.projector.shutil.which", lambda _e: None)
+    monkeypatch.setattr("launcher.platform.windows.shutil.which", lambda _e: None)
     assert find_browser({"ProgramFiles": str(tmp_path)}) == Browser(str(edge), "edge")
     edge.unlink()
     assert find_browser({"ProgramFiles": str(tmp_path)}) == Browser(str(chrome), "chrome")
@@ -423,7 +423,7 @@ def test_find_profile_processes_is_noop_off_windows(monkeypatch, tmp_path):
 def test_find_profile_processes_parses_pids_and_skips_self(monkeypatch, tmp_path):
     import os
 
-    import launcher.projector as projector
+    import launcher.platform.windows as projector
 
     monkeypatch.setattr(sys, "platform", "win32")
     seen: dict = {}

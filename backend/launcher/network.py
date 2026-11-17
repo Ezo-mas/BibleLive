@@ -6,10 +6,7 @@ interfaces and every operator action needs the token (``process.build_plan`` set
 The display pages stay view-only and need no token.
 """
 
-import ctypes
 import io
-import ntpath
-import os
 import secrets
 import socket
 import subprocess
@@ -21,6 +18,14 @@ from urllib.parse import quote
 
 import segno
 
+from . import platform as platform_api
+from .platform.windows import _SYSTEM32 as _SYSTEM32
+from .platform.windows import FIREWALL_RULE_NAME as FIREWALL_RULE_NAME
+from .platform.windows import FIREWALL_WAIT_S as FIREWALL_WAIT_S
+from .platform.windows import SW_HIDE as SW_HIDE
+from .platform.windows import RunFn as RunFn
+from .platform.windows import ShellExecuteFn as ShellExecuteFn
+from .platform.windows import _shell_execute_runas as _shell_execute_runas
 from .settings import LauncherSettings
 
 # Lowercase letters and digits without i, l, o, 0 and 1: easy to read off a screen and type.
@@ -103,69 +108,22 @@ def qr_png(text: str) -> bytes:
 # The launcher adds the rule when the user asks for it (one administrator prompt) and the
 # installer removes it on uninstall. Other devices can reach the server only on Private networks.
 
-FIREWALL_RULE_NAME = "BibleLive"
-# The administrator prompt can wait for the user; the rule is looked for this long.
-FIREWALL_WAIT_S = 120.0
-SW_HIDE = 0
-_SYSTEM32 = ntpath.join(os.environ.get("SYSTEMROOT", r"C:\Windows"), "System32")
-
-RunFn = Callable[..., "subprocess.CompletedProcess[bytes]"]
-ShellExecuteFn = Callable[[str, str], int]
-
 
 def firewall_applies(platform: str = sys.platform) -> bool:
     """Only Windows has this rule; elsewhere the launcher shows no firewall row."""
-    return platform == "win32"
+    return platform_api.current(platform).firewall_applies()
 
 
 def firewall_programs(executable: str) -> list[str]:
-    """python.exe and pythonw.exe beside ``executable`` (whichever exist).
-
-    The launcher starts the server and the audio pipeline with this same interpreter, so these
-    are the programs that listen on the network.
-    """
-    folder = os.path.dirname(os.path.abspath(executable))
-    paths = [os.path.join(folder, name) for name in ("python.exe", "pythonw.exe")]
-    return [path for path in paths if os.path.isfile(path)]
+    return platform_api.current().firewall_programs(executable)
 
 
 def firewall_add_script(programs: Sequence[str], system32: str = _SYSTEM32) -> str:
-    """netsh commands that add one inbound allow rule per program, Private profile only.
-
-    Public networks stay blocked. The commands are joined with "&" (not "&&") so that a rule
-    which fails does not stop the next one.
-    """
-    netsh = ntpath.join(system32, "netsh.exe")
-    return " & ".join(
-        f'"{netsh}" advfirewall firewall add rule name={FIREWALL_RULE_NAME} dir=in action=allow '
-        f'profile=private enable=yes program="{program}"'
-        for program in programs
-    )
+    return platform_api.current().firewall_add_script(programs, system32)
 
 
 def firewall_rule_exists(run: RunFn = subprocess.run, system32: str = _SYSTEM32) -> bool:
-    """True if the BibleLive rule exists. Showing a rule needs no administrator rights.
-
-    netsh exits with 1 and "No rules match" when there is no such rule; a rule that exists
-    prints its name. A netsh that cannot run counts as no rule.
-    """
-    command = [ntpath.join(system32, "netsh.exe"), "advfirewall", "firewall", "show", "rule"]
-    try:
-        result = run(
-            [*command, f"name={FIREWALL_RULE_NAME}"],
-            capture_output=True,
-            check=False,
-            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),  # no console flash
-        )
-    except OSError:
-        return False
-    return result.returncode == 0 and FIREWALL_RULE_NAME.encode() in result.stdout
-
-
-def _shell_execute_runas(file: str, parameters: str) -> int:
-    """ShellExecuteW with the "runas" verb, which shows the UAC prompt. Above 32 means started."""
-    shell32 = ctypes.windll.shell32  # type: ignore[attr-defined,unused-ignore]
-    return int(shell32.ShellExecuteW(None, "runas", file, parameters, None, SW_HIDE))
+    return platform_api.current().firewall_rule_exists(run, system32)
 
 
 def add_firewall_rule(
@@ -173,13 +131,7 @@ def add_firewall_rule(
     shell_execute: ShellExecuteFn = _shell_execute_runas,
     system32: str = _SYSTEM32,
 ) -> bool:
-    """Add the rules in one elevated cmd.exe, so there is one administrator prompt.
-
-    True if the elevated command started, that is the prompt was accepted. ShellExecute does
-    not wait for the command to finish, so the caller looks for the rule afterwards.
-    """
-    script = firewall_add_script(programs, system32)
-    return shell_execute(ntpath.join(system32, "cmd.exe"), f'/c "{script}"') > 32
+    return platform_api.current().add_firewall_rule(programs, shell_execute, system32)
 
 
 def wait_until(

@@ -3,10 +3,11 @@
 import json
 import logging
 import os
-import sys
 from dataclasses import asdict, dataclass, field, fields
 from pathlib import Path
 from typing import Any
+
+from . import platform
 
 logger = logging.getLogger(__name__)
 
@@ -46,22 +47,11 @@ _ALLOWED: dict[str, tuple[str, ...]] = {
 
 
 def app_data_dir() -> Path:
-    """Per-user data directory: ``%APPDATA%\\BibleLive`` (``~/.biblelive`` elsewhere)."""
-    appdata = os.environ.get("APPDATA")
-    if sys.platform == "win32" and appdata:
-        return Path(appdata) / "BibleLive"
-    return Path.home() / ".biblelive"
+    return platform.current().app_data_dir()
 
 
 def models_dir() -> Path:
-    """Where speech models are cached (``HF_HOME``): ``%LOCALAPPDATA%\\BibleLive\\models``.
-
-    Machine-local rather than roaming: the models are ~1.6 GB. ``~/.biblelive/models`` elsewhere.
-    """
-    local = os.environ.get("LOCALAPPDATA")
-    if sys.platform == "win32" and local:
-        return Path(local) / "BibleLive" / "models"
-    return Path.home() / ".biblelive" / "models"
+    return platform.current().models_dir()
 
 
 def default_settings_path() -> Path:

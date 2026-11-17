@@ -71,10 +71,11 @@ jobs:
           APT_OPTS="-o Dir::Cache::Archives=$HOME/apt-archives -o Acquire::Retries=3 -o Acquire::http::Timeout=30"
           mkdir -p ~/apt-archives/partial
           sudo apt-get $APT_OPTS update
-          sudo apt-get $APT_OPTS install -y --no-install-recommends ffmpeg
+          sudo apt-get $APT_OPTS install -y --no-install-recommends ffmpeg xvfb xauth
           # Drop .debs the archive no longer carries so the cache does not grow.
           sudo apt-get $APT_OPTS autoclean
           ffmpeg -version
+          python -c "import tkinter"
 
       - name: Install dependencies
         id: install
@@ -103,4 +104,43 @@ jobs:
         if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         # Coverage is printed in this job's log; nothing uploads it (the Codecov
         # upload had no token and was being rate-limited, and nothing read it).
-        run: pytest backend/tests -v --cov=core --cov-report=term
+        run: |
+          xvfb-run -a python -c "import tkinter; root = tkinter.Tk(); root.destroy()"
+          xvfb-run -a pytest backend/tests -v --cov=core --cov-report=term
+
+  windows:
+    name: Windows backend tests
+    if: github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'Merge pull request')
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.13'
+
+      - name: Install ffmpeg
+        # Chocolatey puts a ShimGen shim for ffmpeg.exe on PATH. The shim starts the
+        # real ffmpeg as a child, so stopping the capture ends only the shim and the
+        # real ffmpeg keeps the stderr pipe open (the live-path tests then fail with
+        # "ffmpeg-stderr thread still alive"). Put the real binary first on PATH.
+        run: |
+          choco install ffmpeg -y --no-progress
+          $real = Get-ChildItem "$env:ChocolateyInstall/lib/ffmpeg" -Recurse -Filter ffmpeg.exe | Select-Object -First 1
+          if (-not $real) { throw "real ffmpeg.exe not found under the Chocolatey package" }
+          $real.DirectoryName | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
+      - name: Check ffmpeg
+        run: |
+          python -c "import shutil; p = shutil.which('ffmpeg'); print(p); assert p and 'lib' in p.lower(), 'ffmpeg resolves to the Chocolatey shim, not the real binary'"
+          ffmpeg -version
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e "./backend[dev,audio]" -c backend/constraints.txt
+
+      - name: Run tests
+        run: pytest backend/tests -v -rs
