@@ -12,7 +12,9 @@
 #   --ffmpeg-dir DIR       a folder from build-ffmpeg.sh (default: build it into build/cache/ffmpeg-macos)
 #   --bible-db FILE        the English database (default: build it from data/kjv2.json)
 #
-# The Lithuanian Bible is never bundled (it is not ours to redistribute); see the install notes.
+# Needs the Xcode Command Line Tools (clang, codesign, otool) on the build machine only; the
+# app needs nothing installed on the user's Mac. The Lithuanian Bible is never bundled (it is
+# not ours to redistribute); see the install notes.
 set -euo pipefail
 
 SKIP_FRONTEND=0
@@ -197,17 +199,15 @@ cat > "$CONTENTS/Info.plist" <<EOF
 </plist>
 EOF
 plutil -lint "$CONTENTS/Info.plist"
-# The bundle's executable execs the bundled Python in place (same process), so macOS attributes
-# microphone access to BibleLive.app and shows the prompt with the text above; the server and the
-# audio pipeline (and its ffmpeg) are children and inherit that.
-cat > "$CONTENTS/MacOS/BibleLive" <<'EOF'
-#!/bin/bash
-RES="$(cd "$(dirname "$0")/../Resources" && pwd)"
-cd "$RES/app" || exit 1
-unset PYTHONHOME PYTHONPATH VIRTUAL_ENV
-exec "$RES/python/bin/python3" -m launcher "$@"
-EOF
-chmod +x "$CONTENTS/MacOS/BibleLive"
+# The bundle's executable is a small compiled program embedding the bundled Python
+# (scripts/macos/launcher.c): macOS attributes microphone access to the process that is the
+# bundle's CFBundleExecutable and shows the prompt with the text above; the server and the
+# audio pipeline (and its ffmpeg) are its children. A shell script that execs python3 would
+# turn the process into the Python binary, which has no Info.plist.
+clang -O2 -Wall -mmacosx-version-min="$MACOS_MIN" \
+  -I "$RES/python/include/python3.13" -L "$RES/python/lib" -lpython3.13 \
+  -Wl,-rpath,@executable_path/../Resources/python/lib \
+  -o "$CONTENTS/MacOS/BibleLive" "$REPO/scripts/macos/launcher.c"
 
 # ---- linkage ----------------------------------------------------------------------------
 step "Checking linkage (no Homebrew, /usr/local or build paths)"
@@ -221,12 +221,30 @@ while IFS= read -r -d '' f; do
       bad=1
     fi
   fi
-done < <(find "$RES" -type f \( -perm -u+x -o -name '*.so' -o -name '*.dylib' \) -print0)
+done < <(find "$CONTENTS" -type f \( -perm -u+x -o -name '*.so' -o -name '*.dylib' \) -print0)
 [ "$bad" = 0 ] || { echo "Linkage check failed" >&2; exit 1; }
 echo "linkage OK"
 
+# ---- bytecode and signature -------------------------------------------------------------
+# Python must never write into the signed app (that breaks the signature and macOS may then
+# ask for the microphone again): compile everything now, and the launcher sets
+# PYTHONDONTWRITEBYTECODE for itself and its children. unchecked-hash: the files never
+# change inside the bundle, so no timestamp check is needed.
+step "Precompiling bytecode"
+find "$CONTENTS" -name __pycache__ -type d -prune -exec rm -rf {} +
+"$PY" -m compileall -q -j 0 --invalidation-mode unchecked-hash \
+  -x '/(test|tests|idle_test|lib2to3)/' "$RES/python/lib/python3.13" "$APP/backend"
+
+step "Ad-hoc signature"
+# Not a Developer ID signature: every Mach-O on Apple Silicon must carry one, and editing the
+# tree (pip, the .pth, the launcher) invalidates the ones it came with.
+codesign --force --deep --sign - "$APP_BUNDLE"
+codesign --verify --deep --strict "$APP_BUNDLE"
+echo "signature OK"
+
 # ---- smoke test -------------------------------------------------------------------------
-step "Smoke test (bundled Python, empty temporary home)"
+step "Smoke test (the signed app, empty temporary home)"
+export PYTHONDONTWRITEBYTECODE=1
 TMPH="$(mktemp -d)"
 SERVER_PID=""
 cleanup() { [ -n "$SERVER_PID" ] && kill "$SERVER_PID" 2>/dev/null; rm -rf "$TMPH"; }
@@ -235,8 +253,10 @@ trap cleanup EXIT
   cd "$APP"
   export HOME="$TMPH"
   unset PYTHONHOME PYTHONPATH VIRTUAL_ENV
-  echo "- launcher --dry-run (through the bundle executable)"
+  echo "- launcher --dry-run (through the app's executable)"
   "$CONTENTS/MacOS/BibleLive" --dry-run
+  echo "- launcher window (through the app's executable; closes itself)"
+  "$CONTENTS/MacOS/BibleLive" --smoke
   echo "- imports"
   "$PY" -c "import faster_whisper, ctranslate2, webrtcvad, transcribe_cpp, tkinter, core.config as c; print('imports OK, PROJECT_ROOT =', c.PROJECT_ROOT)"
   echo "- version stamp"
@@ -266,19 +286,9 @@ done
 kill "$SERVER_PID" 2>/dev/null || true
 wait "$SERVER_PID" 2>/dev/null || true
 SERVER_PID=""
-echo "Smoke test passed."
-
-# ---- cleanup and signature --------------------------------------------------------------
-step "Cleaning"
-find "$APP" -name __pycache__ -type d -prune -exec rm -rf {} +
-find "$RES/python" -name __pycache__ -type d -prune -exec rm -rf {} +
-
-step "Ad-hoc signature"
-# Not a Developer ID signature: every Mach-O on Apple Silicon must carry one, and editing the
-# tree (pip, the .pth) can invalidate the ones it came with.
-codesign --force --deep --sign - "$APP_BUNDLE"
+echo "- running it left the app unchanged"
 codesign --verify --deep --strict "$APP_BUNDLE"
-echo "signature OK"
+echo "Smoke test passed."
 
 SIZE_MB="$(du -sm "$APP_BUNDLE" | cut -f1)"
 if [ "$NO_ZIP" = 1 ]; then

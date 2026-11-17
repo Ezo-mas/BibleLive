@@ -10,9 +10,9 @@ expected for this release; nothing is wrong with the download.
 
 - **Google Chrome** (or Microsoft Edge). BibleLive opens the audience display as a full-screen
   Chrome window on the projector and closes it again when you stop. Without Chrome the display
-  opens in Safari, and you have to drag it to the projector and press ⌃⌘F yourself.
-- An internet connection for the first start: the speech model (about 1.6 GB) is downloaded
-  once.
+  opens in your default browser (Safari on a new Mac), and you have to drag it to the
+  projector and press ⌃⌘F yourself.
+- An internet connection for step 4: the speech models (a download of a few gigabytes) are fetched once.
 
 ## 2. Install
 
@@ -30,7 +30,19 @@ xattr -dr com.apple.quarantine /Applications/BibleLive.app
 This removes the "downloaded from the internet" mark that makes macOS refuse an unsigned
 app. You need to do it again only after installing a new version.
 
-## 4. First start
+## 4. Download the speech models (once)
+
+In Terminal, paste this line and press Return, then wait until it says it is done:
+
+```
+/Applications/BibleLive.app/Contents/MacOS/BibleLive --download-model
+```
+
+It downloads the Lithuanian model (Kmynas) and Whisper for English. Without
+it, Lithuanian services fall back to Whisper, which finds fewer references; the launcher
+window says so.
+
+## 5. First start
 
 1. Open BibleLive from Applications (or Launchpad).
 2. Choose the language and the microphone in the launcher window and press **Start**.
@@ -39,14 +51,14 @@ app. You need to do it again only after installing a new version.
    turn **BibleLive** on, then stop and start again.
 4. The operator page opens in your browser; the display opens on the projector screen.
 
-## 5. Projector
+## 6. Projector
 
 Connect the projector as a **separate screen**, not as a mirror: System Settings → Displays
 → select the projector → **Use as: Extended display**. When the projector only mirrors your
 screen, BibleLive reports that there is no projector, so the audience display never covers
 the operator page.
 
-## 6. The Lithuanian Bible
+## 7. The Lithuanian Bible
 
 The Lithuanian Bible text is not part of the download. If you have `bible_ltb.sqlite`, copy it
 into this folder (BibleLive creates it on the first start):
