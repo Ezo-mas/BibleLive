@@ -22,6 +22,9 @@
 #   - every pin that applies on Windows has a CPython 3.13 win_amd64 (or abi3 or
 #     pure-Python) wheel on PyPI;
 #   - the full backend suite and mypy pass on Linux, Python 3.13.
+# Verified (2026-11-17), macOS arm64 (M1 Pro, macOS 27.2.1, Python 3.13.16):
+#   - `backend[dev,audio,gguf]` installs from wheels (webrtcvad via webrtcvad-wheels)
+#     and the full backend suite passes.
 #
 # Updating (deliberately, not as a side effect of an install):
 #   1. In a fresh venv: pip install -e "./backend[dev,audio,cuda]" --upgrade
@@ -93,8 +96,8 @@ urllib3==2.8.0
 uvicorn==0.54.0
 uvloop==0.23.0; sys_platform != "win32"
 watchfiles==1.3.0
-webrtcvad==2.0.10; sys_platform != "win32"
-webrtcvad-wheels==2.0.14.post1; sys_platform == "win32"
+webrtcvad==2.0.10; sys_platform != "win32" and sys_platform != "darwin"
+webrtcvad-wheels==2.0.14.post1; sys_platform == "win32" or sys_platform == "darwin"
 websockets==17.2
 
 # GPU transcription (the `cuda` extra): CUDA 12 cuBLAS and cuDNN 9, the line

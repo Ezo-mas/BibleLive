@@ -33,10 +33,10 @@ audio = [
     # webrtcvad imports pkg_resources: removed in setuptools 81+, absent from
     # Python 3.12+ venvs. Remove the pin once the VAD package stops importing it.
     "setuptools<81",
-    # No prebuilt Windows wheels for webrtcvad; webrtcvad-wheels is a drop-in
-    # providing the same `webrtcvad` module.
-    "webrtcvad>=2.0.10; sys_platform != 'win32'",
-    "webrtcvad-wheels>=2.0.10; sys_platform == 'win32'",
+    # webrtcvad ships only as source; webrtcvad-wheels is a drop-in providing the same
+    # `webrtcvad` module with Windows and macOS arm64 wheels (no compiler on a user's Mac).
+    "webrtcvad>=2.0.10; sys_platform != 'win32' and sys_platform != 'darwin'",
+    "webrtcvad-wheels>=2.0.10; sys_platform == 'win32' or sys_platform == 'darwin'",
 ]
 # GPU transcription (`--device cuda`): the CUDA 12 cuBLAS and cuDNN 9 libraries
 # ctranslate2 4.x loads, as pip wheels instead of a system CUDA install. On

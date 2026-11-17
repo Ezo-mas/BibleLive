@@ -10,7 +10,8 @@ import sys
 from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 
-from . import Browser, Monitor
+from . import Browser, Monitor, RunFn, ShellExecuteFn
+from .chromium import build_command
 
 logger = logging.getLogger("launcher.projector")
 
@@ -33,30 +34,6 @@ def find_browser(env: Mapping[str, str] | None = None) -> Browser | None:
         if found:
             return Browser(found, kind)
     return None
-
-
-def build_command(browser: Browser, url: str, monitor: Monitor, profile_dir: Path) -> list[str]:
-    """Pure: the command line placing a full-screen app window on ``monitor``.
-
-    A full-screen app window, not kiosk mode: it looks the same on the projector (no
-    browser bars), but F11 leaves full screen and Alt+F4 closes it, which kiosk mode
-    blocks, leaving the operator no way to move or close the window.
-    """
-    return [
-        browser.path,
-        f"--app={url}",
-        "--start-fullscreen",
-        "--no-first-run",
-        "--no-default-browser-check",
-        # The private profile must stay empty: Edge otherwise signs it into the Windows
-        # account on first launch and syncs that account's extensions into it, which
-        # opens an extra window of extension-install pages next to the display.
-        "--disable-sync",
-        "--disable-extensions",
-        "--disable-features=msImplicitSignin",
-        f"--window-position={monitor.x},{monitor.y}",
-        f"--user-data-dir={profile_dir}",
-    ]
 
 
 def find_profile_processes(profile_dir: Path) -> list[int]:
@@ -181,13 +158,8 @@ def _enumerate_windows() -> list[Monitor]:
 
 
 FIREWALL_RULE_NAME = "BibleLive"
-# The administrator prompt can wait for the user; the rule is looked for this long.
-FIREWALL_WAIT_S = 120.0
 SW_HIDE = 0
 _SYSTEM32 = ntpath.join(os.environ.get("SYSTEMROOT", r"C:\Windows"), "System32")
-
-RunFn = Callable[..., "subprocess.CompletedProcess[bytes]"]
-ShellExecuteFn = Callable[[str, str], int]
 
 
 def firewall_applies() -> bool:
@@ -205,13 +177,13 @@ def firewall_programs(executable: str) -> list[str]:
     return [path for path in paths if os.path.isfile(path)]
 
 
-def firewall_add_script(programs: Sequence[str], system32: str = _SYSTEM32) -> str:
+def firewall_add_script(programs: Sequence[str], system32: str | None = None) -> str:
     """netsh commands that add one inbound allow rule per program, Private profile only.
 
     Public networks stay blocked. The commands are joined with "&" (not "&&") so that a rule
     which fails does not stop the next one.
     """
-    netsh = ntpath.join(system32, "netsh.exe")
+    netsh = ntpath.join(system32 or _SYSTEM32, "netsh.exe")
     return " & ".join(
         f'"{netsh}" advfirewall firewall add rule name={FIREWALL_RULE_NAME} dir=in action=allow '
         f'profile=private enable=yes program="{program}"'
@@ -219,13 +191,19 @@ def firewall_add_script(programs: Sequence[str], system32: str = _SYSTEM32) -> s
     )
 
 
-def firewall_rule_exists(run: RunFn = subprocess.run, system32: str = _SYSTEM32) -> bool:
+def firewall_rule_exists(run: RunFn = subprocess.run, system32: str | None = None) -> bool:
     """True if the BibleLive rule exists. Showing a rule needs no administrator rights.
 
     netsh exits with 1 and "No rules match" when there is no such rule; a rule that exists
     prints its name. A netsh that cannot run counts as no rule.
     """
-    command = [ntpath.join(system32, "netsh.exe"), "advfirewall", "firewall", "show", "rule"]
+    command = [
+        ntpath.join(system32 or _SYSTEM32, "netsh.exe"),
+        "advfirewall",
+        "firewall",
+        "show",
+        "rule",
+    ]
     try:
         result = run(
             [*command, f"name={FIREWALL_RULE_NAME}"],
@@ -246,16 +224,18 @@ def _shell_execute_runas(file: str, parameters: str) -> int:
 
 def add_firewall_rule(
     programs: Sequence[str],
-    shell_execute: ShellExecuteFn = _shell_execute_runas,
-    system32: str = _SYSTEM32,
+    shell_execute: ShellExecuteFn | None = None,
+    system32: str | None = None,
 ) -> bool:
     """Add the rules in one elevated cmd.exe, so there is one administrator prompt.
 
     True if the elevated command started, that is the prompt was accepted. ShellExecute does
     not wait for the command to finish, so the caller looks for the rule afterwards.
     """
+    system32 = system32 or _SYSTEM32
     script = firewall_add_script(programs, system32)
-    return shell_execute(ntpath.join(system32, "cmd.exe"), f'/c "{script}"') > 32
+    run_elevated = shell_execute or _shell_execute_runas
+    return run_elevated(ntpath.join(system32, "cmd.exe"), f'/c "{script}"') > 32
 
 
 def app_data_dir() -> Path:

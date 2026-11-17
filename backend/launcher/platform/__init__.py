@@ -69,21 +69,29 @@ class Platform(Protocol):
 
     def firewall_programs(self, executable: str) -> list[str]: ...
 
-    def firewall_add_script(self, programs: Sequence[str], system32: str) -> str: ...
+    def firewall_add_script(self, programs: Sequence[str], system32: str | None = None) -> str: ...
 
-    def firewall_rule_exists(self, run: RunFn, system32: str) -> bool: ...
+    def firewall_rule_exists(self, run: RunFn = ..., system32: str | None = None) -> bool: ...
 
     def add_firewall_rule(
-        self, programs: Sequence[str], shell_execute: ShellExecuteFn, system32: str
+        self,
+        programs: Sequence[str],
+        shell_execute: ShellExecuteFn | None = None,
+        system32: str | None = None,
     ) -> bool: ...
 
 
 def current(name: str | None = None) -> Platform:
-    """Select Windows or the existing fallback; future platforms fit beside them."""
-    if (sys.platform if name is None else name) == "win32":
+    """Windows, macOS, or the generic POSIX fallback (Linux)."""
+    name = sys.platform if name is None else name
+    if name == "win32":
         from . import windows
 
         return windows
+    if name == "darwin":
+        from . import macos
+
+        return macos
     from . import fallback
 
     return fallback
