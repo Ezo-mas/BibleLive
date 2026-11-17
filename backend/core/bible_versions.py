@@ -94,13 +94,21 @@ def discover_versions_in(directories: Iterable[Path]) -> dict[str, BibleVersion]
         seen.add(key)
         for translation, version in discover_versions(directory).items():
             if translation in versions:
-                logger.warning(
-                    f"Ignoring {version.path}: translation '{translation}' is already "
-                    f"provided by {versions[translation].path}"
-                )
+                _warn_clash_once(version.path, versions[translation].path, translation)
                 continue
             versions[translation] = version
     return versions
+
+
+_clashes_logged: set[tuple[Path, Path]] = set()
+
+
+def _warn_clash_once(ignored: Path, kept: Path, translation: str) -> None:
+    # Discovery runs on every /api/bible-version request; say it once per pair of files.
+    if (ignored, kept) in _clashes_logged:
+        return
+    _clashes_logged.add((ignored, kept))
+    logger.warning(f"Ignoring {ignored}: translation '{translation}' is already provided by {kept}")
 
 
 @lru_cache(maxsize=32)

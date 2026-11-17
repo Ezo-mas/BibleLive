@@ -20,6 +20,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import IO
 
+from core.bible_versions import discover_versions_in
+
 from . import platform
 from .gpu import SupportedProbe, cuda_supported_compute_types, resolve_compute_type, resolve_device
 from .i18n import resolve_ui_language
@@ -89,7 +91,7 @@ class LaunchPlan:
         return f"{self.base_url}/readyz"
 
 
-LITHUANIAN_BIBLE = "bible_ltb.sqlite"
+LITHUANIAN_VERSION = "ltb"
 
 
 def user_bible_dir(data_dir: Path) -> Path:
@@ -196,10 +198,11 @@ def build_plan(
         "on" if settings.session_audio else "off",
     ]
     audio_cmd += ["--user-bible-dir", str(bibles)]
-    # The Lithuanian text for the verse read aloud: the user folder's copy when there is one,
-    # else the pipeline's default (the app's own bible_data, as installs before this had it).
-    if (bibles / LITHUANIAN_BIBLE).is_file():
-        audio_cmd += ["--verse-text-db", str(bibles / LITHUANIAN_BIBLE)]
+    # The Lithuanian text for the verse read aloud: the same 'ltb' file the server shows,
+    # found the same way (the app's bible_data first, then the user folder).
+    ltb = discover_versions_in([app_root / "bible_data", bibles]).get(LITHUANIAN_VERSION)
+    if ltb is not None:
+        audio_cmd += ["--verse-text-db", str(ltb.path)]
     for name, path in speech.model_paths.items():
         audio_cmd += [f"--{name}-model", path]
     if settings.input_device:

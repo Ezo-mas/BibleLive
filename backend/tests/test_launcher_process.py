@@ -773,9 +773,29 @@ def test_user_bible_folder_is_handed_to_server_and_pipeline(tmp_path):
     assert plan.env["BIBLELIVE_USER_BIBLE_DIR"] == str(bibles)
     cmd = plan.audio_cmd
     assert cmd[cmd.index("--user-bible-dir") + 1] == str(bibles)
-    # No Lithuanian Bible there yet: the pipeline keeps its default (the app's bible_data).
+    # No Lithuanian Bible anywhere: the pipeline keeps its default.
     assert "--verse-text-db" not in cmd
-    bibles.mkdir(parents=True)
-    (bibles / "bible_ltb.sqlite").write_bytes(b"")
+
+
+def _bible(path, translation):
+    import sqlite3
+    from contextlib import closing
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with closing(sqlite3.connect(path)) as conn, conn:
+        conn.executescript(
+            "CREATE TABLE books (id INTEGER); CREATE TABLE verses (id INTEGER);"
+            "CREATE TABLE bible_metadata (key TEXT, value TEXT);"
+        )
+        conn.execute("INSERT INTO bible_metadata VALUES ('translation', ?)", (translation,))
+
+
+def test_verse_text_is_the_ltb_translation_the_server_would_show(tmp_path):
+    user = tmp_path / "data" / "bible_data"
+    app = tmp_path / "app" / "bible_data"
+    _bible(user / "LTB lietuviu.sqlite", "ltb")  # any file name: found by its translation id
     cmd = _plan(tmp_path).audio_cmd
-    assert cmd[cmd.index("--verse-text-db") + 1] == str(bibles / "bible_ltb.sqlite")
+    assert cmd[cmd.index("--verse-text-db") + 1] == str(user / "LTB lietuviu.sqlite")
+    _bible(app / "bible_ltb.sqlite", "ltb")  # the app's own copy wins, as on the server
+    cmd = _plan(tmp_path).audio_cmd
+    assert cmd[cmd.index("--verse-text-db") + 1] == str(app / "bible_ltb.sqlite")
