@@ -139,6 +139,10 @@ class App:
         self._inputs: list[Any] = []
         self.form = form_from_settings(self.settings)
         self.root.protocol("WM_DELETE_WINDOW", self.on_close)
+        # macOS Cmd-Q and Dock > Quit run this Tk command; without it Tk exits at once and the
+        # server, the pipeline and its ffmpeg (each in its own session) keep running. Harmless
+        # elsewhere (nothing calls it).
+        self.root.createcommand("tk::mac::Quit", lambda: self.on_close())
         self.refresh_monitors()
         self._build()
         self.refresh_microphones()

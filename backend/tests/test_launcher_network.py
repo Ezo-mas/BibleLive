@@ -792,3 +792,12 @@ def test_window_fits_a_1366x768_screen_with_the_network_and_firewall_rows(firewa
     assert on > off  # the panel is there
     assert tallest <= 690, f"requests {tallest} px of height (off {off}, on {on})"
     assert int(app.log.cget("height")) >= 4  # the log keeps at least four lines
+
+
+def test_mac_quit_command_stops_like_the_close_button(firewall_window, monkeypatch):
+    # Cmd-Q / Dock > Quit on macOS run tk::mac::Quit, which must not skip stopping the services.
+    app = firewall_window
+    closed = []
+    monkeypatch.setattr(app, "on_close", lambda: closed.append(True))
+    app.root.tk.call("tk::mac::Quit")
+    assert closed == [True]
