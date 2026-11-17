@@ -1,0 +1,56 @@
+name: macOS app
+
+# Builds BibleLive.app for Apple Silicon (scripts/macos/build-app.sh) and uploads the zip as a
+# workflow artifact. Manual runs only: the app is unsigned (docs/macos-arm64.md, decision Q10)
+# and is not attached to releases until it has passed the Phase 1 test on a real Mac, and macOS
+# runners bill 10x, so it must not run on every push.
+
+on:
+  workflow_dispatch:
+  # workflow_dispatch needs the file on the default branch, so a push to a macos/** branch
+  # that changes the build runs it there (as macos-spikes.yml does for spike/**).
+  push:
+    branches:
+      - 'macos/**'
+    paths:
+      - '.github/workflows/macos-app.yml'
+      - 'scripts/macos/**'
+
+permissions:
+  contents: read
+
+jobs:
+  app:
+    name: Build BibleLive.app (arm64)
+    runs-on: macos-15
+    # ffmpeg from source (~5 min when not cached) + packages + smoke test; a hang held to the
+    # default 360 min would burn 3600 included minutes.
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      # build-ffmpeg.sh pins the source by hash, so its own contents are the cache key.
+      - name: Cache ffmpeg
+        uses: actions/cache@v6
+        with:
+          path: build/cache/ffmpeg-macos
+          key: ffmpeg-macos-arm64-${{ hashFiles('scripts/macos/build-ffmpeg.sh') }}
+
+      - name: Build the app
+        run: bash scripts/macos/build-app.sh
+
+      - name: Upload the app
+        uses: actions/upload-artifact@v7
+        with:
+          name: BibleLive-macos-arm64
+          path: dist/BibleLive-*-macos-arm64.zip
+          # Already compressed.
+          compression-level: 0
+          if-no-files-found: error
