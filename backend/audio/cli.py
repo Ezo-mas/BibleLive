@@ -154,6 +154,11 @@ def build_parser() -> argparse.ArgumentParser:
             "chapter and reads a verse aloud, report that verse (skipped if missing)"
         ),
     )
+    parser.add_argument(
+        "--user-bible-dir",
+        default=None,
+        help="Folder with more translations, searched after --bible-db's folder (the launcher's)",
+    )
     parser.add_argument("--server", default="http://localhost:8000", help="BibleLive server URL")
     parser.add_argument(
         "--server-token",
@@ -315,6 +320,7 @@ def main() -> None:
         server_url=args.server,
         config=config,
         verse_text_db_path=args.verse_text_db,
+        user_bible_dir=args.user_bible_dir,
     )
 
     try:

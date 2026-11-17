@@ -36,6 +36,7 @@ def make_processor(**overrides: Any) -> BibleLiveAudioProcessor:
         # Never the developer's real database: a test that needs one passes its own.
         "bible_db_path": "/nonexistent/biblelive-test.sqlite",
         "verse_text_db_path": None,
+        "user_bible_dir": None,
         "server_url": "http://localhost:8000",
         # Not built: models, audio capture, and the senders and heartbeat that run threads.
         "audio_capture": None,

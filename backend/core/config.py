@@ -58,6 +58,11 @@ class Config(BaseSettings):
     # Database configuration
     DB_PATH: str = "bible_data/biblelive.sqlite"
     DB_READONLY: bool = True
+    # Optional per-user folder with more translations (*.sqlite, read-only), searched
+    # after DB_PATH's folder. The launcher sets it to <data folder>/bible_data, so a
+    # translation that is not shipped with the app (the Lithuanian Bible) is added on
+    # each machine without touching the installed app.
+    USER_BIBLE_DIR: str = ""
 
     # Server settings that must survive a restart (currently the auto-approve
     # mode). Written atomically by the server; deliberately outside bible_data/,
@@ -165,6 +170,14 @@ class Config(BaseSettings):
         """Resolve DB_PATH, which may be relative to the project root."""
         db_path = Path(self.DB_PATH)
         return db_path if db_path.is_absolute() else PROJECT_ROOT / db_path
+
+    def bible_dirs(self) -> list[Path]:
+        """Folders searched for translations: DB_PATH's folder, then USER_BIBLE_DIR."""
+        dirs = [self.resolve_db_path().parent]
+        if self.USER_BIBLE_DIR:
+            user = Path(self.USER_BIBLE_DIR)
+            dirs.append(user if user.is_absolute() else PROJECT_ROOT / user)
+        return dirs
 
     def resolve_settings_path(self) -> Path:
         """Resolve SETTINGS_PATH, which may be relative to the project root."""

@@ -61,6 +61,19 @@ def test_huggingface_advice_stays_out_of_the_logs(tmp_path):
     assert plan.env["HF_HUB_VERBOSITY"] == "error"
 
 
+def test_model_downloads_use_https_not_xet(tmp_path):
+    from launcher.commands import apply_model_env
+
+    assert _plan(tmp_path).env["HF_HUB_DISABLE_XET"] == "1"
+    env: dict[str, str] = {}
+    apply_model_env(tmp_path / "models", env)
+    assert env["HF_HUB_DISABLE_XET"] == "1"
+    # Someone who sets it keeps their choice.
+    env = {"HF_HUB_DISABLE_XET": "0"}
+    apply_model_env(tmp_path / "models", env)
+    assert env["HF_HUB_DISABLE_XET"] == "0"
+
+
 def test_ui_language_is_handed_to_the_server(tmp_path, monkeypatch):
     assert _plan(tmp_path, LauncherSettings(ui_language="lt")).env["BIBLELIVE_UI_LANGUAGE"] == "lt"
     assert _plan(tmp_path, LauncherSettings(ui_language="en")).env["BIBLELIVE_UI_LANGUAGE"] == "en"
@@ -764,3 +777,38 @@ def test_cli_registers_shutdown_signals_and_reports_network_once(tmp_path, monke
         if hasattr(signal, name):
             handlers[getattr(signal, name)](None, None)
     assert len(stops) == len(handlers)
+
+
+def test_user_bible_folder_is_handed_to_server_and_pipeline(tmp_path):
+    bibles = tmp_path / "data" / "bible_data"
+    plan = _plan(tmp_path)
+    assert plan.user_bible_dir == bibles
+    assert plan.env["BIBLELIVE_USER_BIBLE_DIR"] == str(bibles)
+    cmd = plan.audio_cmd
+    assert cmd[cmd.index("--user-bible-dir") + 1] == str(bibles)
+    # No Lithuanian Bible anywhere: the pipeline keeps its default.
+    assert "--verse-text-db" not in cmd
+
+
+def _bible(path, translation):
+    import sqlite3
+    from contextlib import closing
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with closing(sqlite3.connect(path)) as conn, conn:
+        conn.executescript(
+            "CREATE TABLE books (id INTEGER); CREATE TABLE verses (id INTEGER);"
+            "CREATE TABLE bible_metadata (key TEXT, value TEXT);"
+        )
+        conn.execute("INSERT INTO bible_metadata VALUES ('translation', ?)", (translation,))
+
+
+def test_verse_text_is_the_ltb_translation_the_server_would_show(tmp_path):
+    user = tmp_path / "data" / "bible_data"
+    app = tmp_path / "app" / "bible_data"
+    _bible(user / "LTB lietuviu.sqlite", "ltb")  # any file name: found by its translation id
+    cmd = _plan(tmp_path).audio_cmd
+    assert cmd[cmd.index("--verse-text-db") + 1] == str(user / "LTB lietuviu.sqlite")
+    _bible(app / "bible_ltb.sqlite", "ltb")  # the app's own copy wins, as on the server
+    cmd = _plan(tmp_path).audio_cmd
+    assert cmd[cmd.index("--verse-text-db") + 1] == str(app / "bible_ltb.sqlite")

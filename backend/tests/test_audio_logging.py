@@ -338,3 +338,59 @@ def test_transcribe_utterance_flags_a_trimmed_repetition_loop():
     assert result.text == "Romans 8, or"
     assert result.low_confidence_reason is not None
     assert "repetition loop" in result.low_confidence_reason
+
+
+# Real ``ffmpeg -f avfoundation -list_devices true -i ""`` stderr (ffmpeg 8.1.3, M1 Pro).
+_AVFOUNDATION_LISTING = """[AVFoundation indev @ 0x7c32c14140] AVFoundation video devices:
+[AVFoundation indev @ 0x7c32c14140] [0] FaceTime HD Camera
+[AVFoundation indev @ 0x7c32c14140] [1] Capture screen 0
+[AVFoundation indev @ 0x7c32c14140] AVFoundation audio devices:
+[AVFoundation indev @ 0x7c32c14140] [0] MacBook Pro Microphone
+[AVFoundation indev @ 0x7c32c14140] [1] USB Audio [Device] 2
+[in#0 @ 0x7c32c14000] Error opening input: Input/output error
+Error opening input file .
+"""
+
+
+def _fake_mac_ffmpeg(monkeypatch, popen_calls):
+    monkeypatch.setattr(capture_module.sys, "platform", "darwin")
+    monkeypatch.setattr(
+        capture_module.subprocess,
+        "run",
+        lambda *a, **k: SimpleNamespace(returncode=1, stdout="", stderr=_AVFOUNDATION_LISTING),
+    )
+
+    def _popen(cmd, **kwargs):
+        popen_calls.append(cmd)
+        return SimpleNamespace(
+            stdout=io.BytesIO(b""),
+            stderr=io.BytesIO(b"Error opening input: I/O error\n"),
+            poll=lambda: 1,
+        )
+
+    monkeypatch.setattr(capture_module.subprocess, "Popen", _popen)
+
+
+def test_list_input_devices_lists_avfoundation_microphones_not_cameras(monkeypatch):
+    _fake_mac_ffmpeg(monkeypatch, [])
+    assert list_input_devices() == ["MacBook Pro Microphone", "USB Audio [Device] 2"]
+
+
+@pytest.mark.parametrize(
+    ("device", "expected_input"),
+    [
+        # ":" alone opens no device; the system default input is ":default".
+        (None, ":default"),
+        ("MacBook Pro Microphone", ":MacBook Pro Microphone"),
+    ],
+)
+def test_start_capture_on_macos_opens_a_real_input(monkeypatch, device, expected_input):
+    popen_calls: list[list[str]] = []
+    _fake_mac_ffmpeg(monkeypatch, popen_calls)
+    capture = AudioCapture()
+    capture.start_capture(device)
+    capture.capture_thread.join(timeout=2)
+    capture.stop_capture()
+    cmd = popen_calls[0]
+    assert cmd[cmd.index("-f") + 1] == "avfoundation"
+    assert cmd[cmd.index("-i") + 1] == expected_input

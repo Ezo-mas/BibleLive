@@ -114,6 +114,11 @@ GPU** (most accurate), or Whisper only — and the installer downloads just thos
 models and tests them. The build ships the Lithuanian Bible
 (`bible_data\bible_ltb.sqlite`) when it is there. Every service is logged to
 `%APPDATA%\BibleLive\logs\sessions` (transcript + audio, see "Session log").
+Translations that are not shipped (the Lithuanian Bible) go in the per-user Bibles
+folder, `%APPDATA%\BibleLive\bible_data` (`~/Library/Application Support/BibleLive/bible_data`
+on a Mac): the launcher creates it, and the server and the pipeline read translations
+there as well as next to the app's own database. macOS: see
+[docs/macos-install.md](docs/macos-install.md).
 Details, requirements and silent-install switches: `scripts/windows/README.md`.
 
 ### Run the server only

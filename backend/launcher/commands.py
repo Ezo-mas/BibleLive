@@ -46,6 +46,7 @@ def apply_model_env(models_dir: Path, env: dict[str, str] | None = None) -> None
     target = os.environ if env is None else env
     target["HF_HOME"] = str(models_dir)
     target.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
+    target.setdefault("HF_HUB_DISABLE_XET", "1")  # see XET_NOTE in process.py
 
 
 def _dir_size_mb(path: Path) -> int:

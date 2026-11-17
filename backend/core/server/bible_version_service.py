@@ -5,7 +5,7 @@ import sqlite3
 from typing import Protocol
 
 from ..bible_lookup import BibleLookup
-from ..bible_versions import BibleVersion, discover_versions
+from ..bible_versions import BibleVersion, discover_versions_in
 from ..config import config
 from .service_log import ServiceLog
 from .settings_store import SettingsStore
@@ -41,8 +41,8 @@ class BibleVersions:
         self.bible_lookup = bible_lookup
 
     def available_bible_versions(self) -> dict[str, BibleVersion]:
-        """Translations that can be switched to, found next to the configured database."""
-        return discover_versions(config.resolve_db_path().parent)
+        """Translations that can be switched to: next to the database, then the user folder."""
+        return discover_versions_in(config.bible_dirs())
 
     def active_bible_version(self) -> str | None:
         """The translation id the loaded Bible text reports, if it has metadata."""

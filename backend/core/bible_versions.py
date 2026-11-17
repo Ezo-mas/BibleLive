@@ -1,7 +1,9 @@
 """Discover the Bible translations available to switch between at runtime.
 
 Each translation is its own SQLite file in the same directory as the configured
-database (``config.DB_PATH``), with the same ``books``/``verses`` schema and a
+database (``config.DB_PATH``) or in the per-user Bibles folder
+(``config.USER_BIBLE_DIR``, where translations that are not shipped with the app
+are added on each machine), with the same ``books``/``verses`` schema and a
 ``bible_metadata`` row ``translation`` naming it (``kjv``, ``ltb``, ``web``...).
 Only files that look like that are offered, so raw source dumps, ``.bak`` copies
 and anything else in ``bible_data/`` are ignored. Files are opened read-only and
@@ -13,6 +15,7 @@ from __future__ import annotations
 import logging
 import re
 import sqlite3
+from collections.abc import Iterable
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
@@ -74,6 +77,38 @@ def discover_versions(directory: Path) -> dict[str, BibleVersion]:
     except _IncompleteScan as exc:
         versions = exc.versions
     return versions.copy()
+
+
+def discover_versions_in(directories: Iterable[Path]) -> dict[str, BibleVersion]:
+    """Translations from several folders; an earlier folder wins a clash (logged).
+
+    The app's own folder comes first, so a file added by hand cannot replace a shipped
+    translation; it can only add one.
+    """
+    versions: dict[str, BibleVersion] = {}
+    seen: set[Path] = set()
+    for directory in directories:
+        key = directory.resolve()
+        if key in seen:
+            continue
+        seen.add(key)
+        for translation, version in discover_versions(directory).items():
+            if translation in versions:
+                _warn_clash_once(version.path, versions[translation].path, translation)
+                continue
+            versions[translation] = version
+    return versions
+
+
+_clashes_logged: set[tuple[Path, Path]] = set()
+
+
+def _warn_clash_once(ignored: Path, kept: Path, translation: str) -> None:
+    # Discovery runs on every /api/bible-version request; say it once per pair of files.
+    if (ignored, kept) in _clashes_logged:
+        return
+    _clashes_logged.add((ignored, kept))
+    logger.warning(f"Ignoring {ignored}: translation '{translation}' is already provided by {kept}")
 
 
 @lru_cache(maxsize=32)
