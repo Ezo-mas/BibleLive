@@ -244,8 +244,19 @@ a 20 s tolerance unless noted. Check here before re-running one of these.
   10-11, 10-08 and 09-13 (2 Kings 6:24/26, Isaiah 26:3, Ephesians 2:5 and
   2:8, Luke 12:29-30) and worse on 04-19, 05-31, 07-19 and 10-04. Not
   adopted; WebRTC stays the default. Runtimes not comparable (runs shared
-  the GPU). Still open: a WebRTC + Silero hybrid (WebRTC starts the
-  utterance, Silero with post-roll ends it, or both must agree).
+  the GPU). The hybrid that was still open is the next entry.
+- **WebRTC + Silero hybrid VAD** (2026-11-17; the last Silero test, which
+  closes the question). Three modes fed every 30 ms frame to both detectors:
+  `hybrid` (WebRTC starts speech, Silero's hysteresis ends it once it has
+  triggered), `hybrid-and` (voiced only when both agree) and `hybrid-or`
+  (voiced when either does). Fresh transcription, `kmynas+canary`, the 15
+  fitted services, against 173 TP / 4 FN / 15 low / 1 medium+high FP:
+  `hybrid` 165 / 12 / 16 / 4, `hybrid-and` 159 / 18 / 14 / 7, `hybrid-or`
+  173 / 4 / 15 / 1 (identical to WebRTC alone: Silero never adds a frame
+  WebRTC misses that changes an utterance). The stricter the VAD, the more
+  references are cut, as with Silero alone. No mode passed the bar set for
+  it (about +5 TP, no more medium/high FP), so the CPU tier was not run and
+  the code was dropped (branch `exp/vad-hybrid`, not merged). WebRTC stays.
 
 What did help, for contrast: picking the verse read aloud for a Lithuanian
 chapter-only reference (`core/verse_text.py`, 2026-10-16; same 13

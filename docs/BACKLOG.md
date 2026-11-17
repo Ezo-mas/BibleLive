@@ -175,13 +175,6 @@ Python 3.13 installer" above). Left:
 
 ## Experiments
 
-### Hybrid WebRTC + Silero VAD
-One last test before closing the Silero question (Silero alone lost to WebRTC,
-see `benchmarks/BASELINE_NOTES.md`): WebRTC starts an utterance and Silero ends
-it, or a frame is voiced only when both agree. Add as `--vad hybrid`, keep 30 ms
-frames, one benchmark run per variant. Adopt only for about +5 correct
-references with no more medium/high false positives.
-
 ### More recordings for the parser
 Every new service recording goes into the corpus (`benchmarks/corpus/`): the
 held-out set first, as M5 describes. Needs services recorded and copied into
