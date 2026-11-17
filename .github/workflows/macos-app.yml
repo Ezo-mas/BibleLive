@@ -8,13 +8,11 @@ name: macOS app
 on:
   workflow_dispatch:
   # workflow_dispatch needs the file on the default branch, so a push to a macos/** branch
-  # that changes the build runs it there (as macos-spikes.yml does for spike/**).
+  # runs it there (as macos-spikes.yml does for spike/**). Any change: the app bundles the
+  # backend and the frontend too, and pushing to macos/** is only ever done to get a build.
   push:
     branches:
       - 'macos/**'
-    paths:
-      - '.github/workflows/macos-app.yml'
-      - 'scripts/macos/**'
 
 permissions:
   contents: read
