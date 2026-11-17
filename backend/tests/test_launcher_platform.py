@@ -307,6 +307,60 @@ def test_macos_monitor_query_failure_returns_empty(monkeypatch, error):
     assert macos.enumerate_monitors() == []
 
 
+class _FakeQuartz:
+    """CoreGraphics stand-in: id -> (bounds, builtin, unit, mirrors-of)."""
+
+    def __init__(self, displays, main):
+        self.displays = displays
+        self.main = main
+
+    def CGMainDisplayID(self):
+        return self.main
+
+    def CGDisplayBounds(self, did):
+        x, y, w, h = self.displays[did][0]
+        return SimpleNamespace(
+            origin=SimpleNamespace(x=x, y=y), size=SimpleNamespace(width=w, height=h)
+        )
+
+    def CGDisplayIsBuiltin(self, did):
+        return int(self.displays[did][1])
+
+    def CGDisplayUnitNumber(self, did):
+        return self.displays[did][2]
+
+    def CGDisplayMirrorsDisplay(self, did):
+        return self.displays[did][3]
+
+
+def test_macos_monitors_main_first_with_global_points():
+    cg = _FakeQuartz(
+        {
+            7: ((1512.0, -120.0, 1920.0, 1080.0), False, 2, 0),
+            3: ((0.0, 0.0, 1512.0, 982.0), True, 0, 0),
+        },
+        main=3,
+    )
+    assert macos._monitors(cg, [7, 3]) == [
+        platform.Monitor("Built-in", 0, 0, 1512, 982, True),
+        platform.Monitor("Display 2", 1512, -120, 1920, 1080, False),
+    ]
+
+
+def test_macos_mirrored_projector_is_not_a_second_monitor():
+    # Projector mirrors the built-in screen: both are active, same bounds.
+    cg = _FakeQuartz(
+        {
+            3: ((0.0, 0.0, 1512.0, 982.0), True, 0, 0),
+            7: ((0.0, 0.0, 1512.0, 982.0), False, 2, 3),
+        },
+        main=3,
+    )
+    found = macos._monitors(cg, [3, 7])
+    assert found == [platform.Monitor("Built-in", 0, 0, 1512, 982, True)]
+    assert monitors.choose_projector(found) is None
+
+
 @pytest.mark.skipif(sys.platform != "darwin", reason="needs Quartz (macOS)")
 def test_macos_real_monitor_query():
     found = macos.enumerate_monitors()

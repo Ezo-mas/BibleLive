@@ -7,6 +7,7 @@ import subprocess
 import sys
 from collections.abc import Mapping
 from pathlib import Path
+from typing import Any
 
 from . import Browser, Monitor
 from .chromium import build_command as build_command
@@ -116,7 +117,7 @@ def _enumerate_quartz() -> list[Monitor]:
     cg.CGDisplayBounds.restype = CGRect
     for fn in ("CGMainDisplayID",):
         getattr(cg, fn).restype = ctypes.c_uint32
-    for fn in ("CGDisplayIsBuiltin", "CGDisplayUnitNumber"):
+    for fn in ("CGDisplayIsBuiltin", "CGDisplayUnitNumber", "CGDisplayMirrorsDisplay"):
         getattr(cg, fn).argtypes = [ctypes.c_uint32]
         getattr(cg, fn).restype = ctypes.c_uint32
 
@@ -124,9 +125,22 @@ def _enumerate_quartz() -> list[Monitor]:
     count = ctypes.c_uint32(0)
     if cg.CGGetActiveDisplayList(16, ids, ctypes.byref(count)) != 0:
         return []
+    return _monitors(cg, list(ids[: count.value]))
+
+
+def _monitors(cg: Any, ids: list[int]) -> list[Monitor]:
+    """One Monitor per display, leaving out mirror copies.
+
+    A projector set to mirror the built-in screen is still an active display, at the same
+    0,0 bounds; listing it would let the display page open full screen over the operator's
+    own screen. Windows reports a duplicated screen as one monitor, so both platforms then
+    have no projector to offer (``no_monitor``).
+    """
     main = cg.CGMainDisplayID()
     found: list[Monitor] = []
-    for did in ids[: count.value]:
+    for did in ids:
+        if cg.CGDisplayMirrorsDisplay(did):  # kCGNullDirectDisplay (0) unless a mirror copy
+            continue
         r = cg.CGDisplayBounds(did)
         name = (
             "Built-in" if cg.CGDisplayIsBuiltin(did) else f"Display {cg.CGDisplayUnitNumber(did)}"
