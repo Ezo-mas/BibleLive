@@ -15,6 +15,7 @@ usually a `.wav`, the whole service as 16 kHz mono. An utterance's
 | Machine | Path |
 |---|---|
 | Windows (launcher) | `%APPDATA%\BibleLive\logs\sessions` |
+| macOS (launcher) | `~/Library/Application Support/BibleLive/logs/sessions` |
 | Elsewhere (launcher) | `~/.biblelive/logs/sessions` |
 | Linux dev box (copies) | `~/Documents/biblelive-transfer/app-logs/sessions` |
 
