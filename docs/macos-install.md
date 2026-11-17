@@ -30,6 +30,13 @@ xattr -dr com.apple.quarantine /Applications/BibleLive.app
 This removes the "downloaded from the internet" mark that makes macOS refuse an unsigned
 app. You need to do it again only after installing a new version.
 
+After a new version, macOS may ask for the microphone again. If it does not ask and nothing
+is detected, reset the permission in Terminal and start again (it will ask once more):
+
+```
+tccutil reset Microphone org.biblelive.launcher
+```
+
 ## 4. Download the speech models (once)
 
 In Terminal, paste this line and press Return, then wait until it says it is done:
@@ -47,8 +54,9 @@ window says so.
 1. Open BibleLive from Applications (or Launchpad).
 2. Choose the language and the microphone in the launcher window and press **Start**.
 3. macOS asks: *"BibleLive" would like to access the microphone.* Click **Allow**.
-   If you clicked Don't Allow by mistake: System Settings → Privacy & Security → Microphone,
-   turn **BibleLive** on, then stop and start again.
+   (It may already ask when the launcher window opens, since the window lists the
+   microphones.) If you clicked Don't Allow by mistake: System Settings → Privacy & Security
+   → Microphone, turn **BibleLive** on, then stop and start again.
 4. The operator page opens in your browser; the display opens on the projector screen.
 
 ## 6. Projector

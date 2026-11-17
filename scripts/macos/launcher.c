@@ -37,10 +37,11 @@ int main(int argc, char **argv) {
         return die("cannot find its own path");
     }
     /* .../BibleLive.app/Contents/MacOS/BibleLive -> .../BibleLive.app/Contents/Resources */
-    char res[PATH_MAX];
+    char up[PATH_MAX], res[PATH_MAX];
     char *slash = strrchr(exe, '/');
     if (slash == NULL) return die("bad executable path");
-    snprintf(res, sizeof(res), "%.*s/../Resources", (int)(slash - exe), exe);
+    snprintf(up, sizeof(up), "%.*s/../Resources", (int)(slash - exe), exe);
+    if (realpath(up, res) == NULL) return die("cannot find Contents/Resources");
     char home[PATH_MAX], python[PATH_MAX], app[PATH_MAX];
     snprintf(home, sizeof(home), "%s/python", res);
     snprintf(python, sizeof(python), "%s/python/bin/python3.13", res);
@@ -49,6 +50,7 @@ int main(int argc, char **argv) {
 
     /* Children inherit these through os.environ (the launcher copies it). */
     setenv("PYTHONDONTWRITEBYTECODE", "1", 1);
+    setenv("PYTHONNOUSERSITE", "1", 1); /* only the bundle's packages, never ~/.local ones */
     unsetenv("PYTHONHOME");
     unsetenv("PYTHONPATH");
     unsetenv("VIRTUAL_ENV");
@@ -73,6 +75,7 @@ int main(int argc, char **argv) {
     PyConfig_InitPythonConfig(&config);
     config.write_bytecode = 0;
     config.use_environment = 0; /* PYTHON* variables from the user's shell are ignored */
+    config.user_site_directory = 0;
     status = PyConfig_SetBytesString(&config, &config.home, home);
     if (PyStatus_Exception(status)) goto fail;
     status = PyConfig_SetBytesString(&config, &config.executable, python);

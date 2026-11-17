@@ -232,7 +232,9 @@ echo "linkage OK"
 # change inside the bundle, so no timestamp check is needed.
 step "Precompiling bytecode"
 find "$CONTENTS" -name __pycache__ -type d -prune -exec rm -rf {} +
-"$PY" -m compileall -q -j 0 --invalidation-mode unchecked-hash \
+# -B: the compiling interpreter writes no timestamp .pyc of its own; -f: rewrite every file,
+# since compileall's up-to-date check would otherwise keep a timestamp .pyc already there.
+"$PY" -B -m compileall -f -q -j 0 --invalidation-mode unchecked-hash \
   -x '/(test|tests|idle_test|lib2to3)/' "$RES/python/lib/python3.13" "$APP/backend"
 
 step "Ad-hoc signature"
