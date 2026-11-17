@@ -167,6 +167,11 @@ def build_plan(
     # Its errors are still logged.
     env.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
     env.setdefault("HF_HUB_VERBOSITY", "error")
+    # XET_NOTE: model downloads use plain HTTPS, not Hugging Face's Xet transfer (hf_xet).
+    # On 2026-11-17 Xet stalled at 0 MB on both test machines (Windows and the Mac) while
+    # HTTPS fetched the same file at ~8 MB/s, and a stalled download left a lock that made
+    # every retry wait forever. Set the variable yourself to opt back in.
+    env.setdefault("HF_HUB_DISABLE_XET", "1")
 
     ffmpeg_dir = Path(settings.ffmpeg_dir) if settings.ffmpeg_dir else app_root / "ffmpeg"
     if ffmpeg_dir.is_dir():

@@ -61,6 +61,19 @@ def test_huggingface_advice_stays_out_of_the_logs(tmp_path):
     assert plan.env["HF_HUB_VERBOSITY"] == "error"
 
 
+def test_model_downloads_use_https_not_xet(tmp_path):
+    from launcher.commands import apply_model_env
+
+    assert _plan(tmp_path).env["HF_HUB_DISABLE_XET"] == "1"
+    env: dict[str, str] = {}
+    apply_model_env(tmp_path / "models", env)
+    assert env["HF_HUB_DISABLE_XET"] == "1"
+    # Someone who sets it keeps their choice.
+    env = {"HF_HUB_DISABLE_XET": "0"}
+    apply_model_env(tmp_path / "models", env)
+    assert env["HF_HUB_DISABLE_XET"] == "0"
+
+
 def test_ui_language_is_handed_to_the_server(tmp_path, monkeypatch):
     assert _plan(tmp_path, LauncherSettings(ui_language="lt")).env["BIBLELIVE_UI_LANGUAGE"] == "lt"
     assert _plan(tmp_path, LauncherSettings(ui_language="en")).env["BIBLELIVE_UI_LANGUAGE"] == "en"

@@ -3,8 +3,8 @@
 For Macs with an Apple processor (M1 or newer) and macOS 14 or later. Intel Macs are not
 supported.
 
-The app is not signed by Apple, so macOS blocks it until you allow it once (step 3). That is
-expected for this release; nothing is wrong with the download.
+The app is not signed by Apple, so macOS blocks it until you allow it once in System
+Settings (step 3). That is expected for this release; nothing is wrong with the download.
 
 ## 1. Before you start
 
@@ -21,14 +21,15 @@ expected for this release; nothing is wrong with the download.
 
 ## 3. Allow it to open (once)
 
-Open **Terminal** (Applications → Utilities) and paste this line, then press Return:
+1. Open BibleLive from Applications. macOS says it cannot check BibleLive for malicious
+   software and does not open it. Close the message.
+2. Open **System Settings → Privacy & Security**, scroll down to the message about
+   BibleLive, and click **Open Anyway**. Confirm with your password or Touch ID.
+3. BibleLive opens. From now on it opens normally; repeat this only after installing a new
+   version.
 
-```
-xattr -dr com.apple.quarantine /Applications/BibleLive.app
-```
-
-This removes the "downloaded from the internet" mark that makes macOS refuse an unsigned
-app. You need to do it again only after installing a new version.
+(Instead of steps 1–2 you can run `xattr -dr com.apple.quarantine /Applications/BibleLive.app`
+in Terminal, which removes the "downloaded from the internet" mark.)
 
 After a new version, macOS may ask for the microphone again. If it does not ask and nothing
 is detected, reset the permission in Terminal and start again (it will ask once more):
