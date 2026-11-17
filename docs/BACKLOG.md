@@ -146,10 +146,11 @@ passage swaps. Respect `prefers-reduced-motion`; nothing moves while text is
 being read.
 
 ### Launcher redesign: simple and advanced views
-The launcher window should look like a real app, with a simple view (start,
-stop, language, microphone, projector) and an advanced view for everything
-else (speech engine, network mode, ports, logs). Its wording needs a pass at the
-same time, including the macOS network prompt above.
+One launcher window for Windows and macOS (the same Tk code runs on both),
+redesigned to look like a real app, with a simple view (start, stop, language,
+microphone, projector) and an advanced view for everything else (speech engine,
+network mode, ports, logs). Its wording needs a pass at the same time, on both
+platforms, including the macOS network prompt above.
 
 ## Maintenance
 
