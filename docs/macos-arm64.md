@@ -3,6 +3,15 @@
 Updated 2026-10-28 · branch `spike/macos-arm64` · owner-facing summary of the
 pre-pin spike work and what remains before an Apple Silicon release can ship.
 
+**Status 2026-11-17.** Decisions: *unsigned, documented* (owner decision Q10; install
+notes in [`macos-install.md`](macos-install.md)), and the Lithuanian Bible is **not
+shipped** in any installer (owner, 2026-11-17): it is added on each machine in the per-user
+Bibles folder (`~/Library/Application Support/BibleLive/bible_data`, `%APPDATA%\BibleLive\bible_data`
+on Windows). Phase 1 in progress: the launcher's macOS platform module (PR #93),
+`scripts/macos/build-app.sh` + the manual `macos-app.yml` workflow build `BibleLive.app`
+with `NSMicrophoneUsageDescription`; the real-Mac exit test (microphone prompt, live
+capture, second screen, clean stop) is next. Test Mac: M1 Pro, macOS 27.2.1.
+
 **Phase 0 result: complete.** Run `40584729242` (2026-10-27, `macos-15` arm64)
 reports `PIN STATUS: passed` — bundled Python/Tk, the source-built ffmpeg and the
 speech stack all green on one runner, each with its evidence attached to the
@@ -130,8 +139,8 @@ counts as acceptable.
   runs from a checked-in, checksummed fixture whose source and license are
   documented beside it. A real speaker recording is preferable and should replace it
   (file, checksum and README together) when one is legally available.
-- **Database.** A validated Lithuanian database remains a hard release requirement —
-  no silent KJV-only production build.
+- **Database.** Superseded 2026-11-17: the Lithuanian database is not shipped; it is
+  added per machine (see the status above), and the launcher's install notes say how.
 - **Out of scope here.** The Windows CI database gate is a separate, explicitly
   approved follow-up; it is deliberately absent from this branch.
 
@@ -208,8 +217,8 @@ hardware, OS and date noted, and no pin whose only evidence is a single measurem
 
 **Phase 3 — packaging and release.** ZIP and DMG built from the one verified tree,
 signing state enforced as decided above (a signed app never ships inside an unsigned
-image, and vice versa), install/uninstall notes tested on a clean Mac, and the
-Lithuanian database verified in the shipped artifact.
+image, and vice versa), install/uninstall notes tested on a clean Mac (the Lithuanian database is not
+shipped; adding it to the per-user Bibles folder is part of the notes).
 
 **Separate follow-ups (need their own approval).** The Windows CI database gate; Metal
 backend evaluation; Intel Macs (out of scope: arm64 only); any code-signing/CI-token
@@ -217,7 +226,4 @@ change (security review).
 
 ## Open questions
 
-- Which validated Lithuanian database ships, and how its presence is verified in CI.
-- Signed + notarized or unsigned-with-instructions (see "Decision before Phase 1").
-- Who provides the clean Apple Silicon Mac for the Phase 1 exit test.
 - When to replace the synthetic Lithuanian fixture with a real recording.

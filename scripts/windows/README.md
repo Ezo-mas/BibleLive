@@ -46,6 +46,9 @@ Produces `build\BibleLive\` and `dist\BibleLive-portable-<version>.zip` (version
   does not): Lithuanian services need it, since the server switches the display to that
   translation for Lithuanian and the pipeline picks the verse being read aloud from it. Without
   it the display shows the English text. `-ExtraBibleDb @()` ships no extra translation.
+  Release builds ship none (the Lithuanian Bible is not ours to redistribute): users copy
+  `bible_ltb.sqlite` into the per-user Bibles folder, `%APPDATA%\BibleLive\bible_data`, which
+  the launcher creates and hands to the server and the pipeline.
 - **Smoke test** (fails the build): bundled Python with an empty temp `APPDATA`/`LOCALAPPDATA`:
   `launcher --dry-run`, imports (including `transcribe_cpp`), `ffmpeg -version` + dshow, and
   `core.server` serving `/readyz`, `/display`, `/operator`.
