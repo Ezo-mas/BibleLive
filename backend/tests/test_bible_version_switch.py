@@ -14,7 +14,7 @@ from fastapi.testclient import TestClient
 
 from core import bible_versions
 from core.bible_lookup import BibleLookup
-from core.bible_versions import discover_versions
+from core.bible_versions import discover_versions, discover_versions_in
 from core.config import config
 from core.server import language_control
 from core.server.app import create_app
@@ -664,3 +664,43 @@ def test_changed_db_path_overrides_the_saved_version(bible_dir: Path):
 
     with TestClient(create_app()) as second:
         assert second.get("/api/bible-version").json()["version"] == "kjv"
+
+
+@pytest.fixture
+def user_bibles(bible_dir: Path, tmp_path: Path):
+    """A per-user folder (the launcher's <data>/bible_data) with a translation of its own."""
+    user = tmp_path / "user_bibles"
+    user.mkdir()
+    _make_bible(user / "bible_web.sqlite", "web", "For God loved the world so much")
+    original = config.USER_BIBLE_DIR
+    config.USER_BIBLE_DIR = str(user)
+    yield user
+    config.USER_BIBLE_DIR = original
+
+
+def test_bible_dirs_are_the_database_folder_then_the_user_folder(bible_dir, user_bibles):
+    assert config.bible_dirs() == [bible_dir, user_bibles]
+    config.USER_BIBLE_DIR = ""
+    assert config.bible_dirs() == [bible_dir]
+
+
+def test_discovery_across_folders_keeps_the_first_folder_on_a_clash(bible_dir, tmp_path, caplog):
+    other = tmp_path / "other"
+    other.mkdir()
+    _make_bible(other / "my_ltb.sqlite", "ltb", "pakeista")
+    _make_bible(other / "web.sqlite", "web", "x")
+    found = discover_versions_in([bible_dir, other, bible_dir])
+    assert sorted(found) == ["kjv", "ltb", "web"]
+    assert found["ltb"].path == bible_dir / "bible_ltb.sqlite"
+    assert found["web"].path == other / "web.sqlite"
+    assert "my_ltb.sqlite" in caplog.text
+    assert discover_versions_in([bible_dir, tmp_path / "missing"]) == discover_versions(bible_dir)
+
+
+def test_server_offers_and_switches_to_a_user_folder_translation(user_bibles):
+    with TestClient(create_app()) as client:
+        body = client.get("/api/bible-version").json()
+        assert body == {"version": "kjv", "available": ["kjv", "ltb", "web"]}
+        assert client.post("/api/bible-version", json={"version": "web"}).status_code == 200
+        after = client.get("/api/lookup", params={"book": "John", "chapter": 3, "verse_start": 16})
+        assert after.json()["text"] == "For God loved the world so much"

@@ -764,3 +764,18 @@ def test_cli_registers_shutdown_signals_and_reports_network_once(tmp_path, monke
         if hasattr(signal, name):
             handlers[getattr(signal, name)](None, None)
     assert len(stops) == len(handlers)
+
+
+def test_user_bible_folder_is_handed_to_server_and_pipeline(tmp_path):
+    bibles = tmp_path / "data" / "bible_data"
+    plan = _plan(tmp_path)
+    assert plan.user_bible_dir == bibles
+    assert plan.env["BIBLELIVE_USER_BIBLE_DIR"] == str(bibles)
+    cmd = plan.audio_cmd
+    assert cmd[cmd.index("--user-bible-dir") + 1] == str(bibles)
+    # No Lithuanian Bible there yet: the pipeline keeps its default (the app's bible_data).
+    assert "--verse-text-db" not in cmd
+    bibles.mkdir(parents=True)
+    (bibles / "bible_ltb.sqlite").write_bytes(b"")
+    cmd = _plan(tmp_path).audio_cmd
+    assert cmd[cmd.index("--verse-text-db") + 1] == str(bibles / "bible_ltb.sqlite")

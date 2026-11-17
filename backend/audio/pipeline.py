@@ -9,7 +9,7 @@ from queue import Empty, Full, Queue
 from typing import Any
 
 from core.bible_lookup import BibleLookup
-from core.bible_versions import discover_versions
+from core.bible_versions import discover_versions_in
 from core.verse_parser import Reference, StreamingParser
 from core.version import version_string
 
@@ -58,6 +58,7 @@ class BibleLiveAudioProcessor:
         server_url: str = "http://localhost:8000",
         config: AudioPipelineConfig | None = None,
         verse_text_db_path: str | None = None,
+        user_bible_dir: str | None = None,
     ):
         # Configuration
         self.config = config or AudioPipelineConfig()
@@ -65,6 +66,8 @@ class BibleLiveAudioProcessor:
         # Lithuanian Bible text: a chapter-only reference gets the verse the
         # speaker reads aloud. Optional; without it the chapter is reported.
         self.verse_text_db_path = verse_text_db_path
+        # Per-user translations (the server's USER_BIBLE_DIR), searched after bible_db's folder.
+        self.user_bible_dir = user_bible_dir
         self.server_url = server_url
 
         # Initialize components with bounded queues
@@ -647,7 +650,10 @@ class BibleLiveAudioProcessor:
         self._local.bible_version_attempt = (requested, now)
         replacement = None
         try:
-            version = discover_versions(Path(self.bible_db_path).resolve().parent).get(requested)
+            dirs = [Path(self.bible_db_path).resolve().parent]
+            if self.user_bible_dir:
+                dirs.append(Path(self.user_bible_dir))
+            version = discover_versions_in(dirs).get(requested)
             if version is None:
                 raise FileNotFoundError(requested)
             replacement = BibleLookup(str(version.path), readonly=True)

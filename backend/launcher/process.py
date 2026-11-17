@@ -78,6 +78,7 @@ class LaunchPlan:
     warnings: list[str] = field(default_factory=list)
     speech_engine: str = "whisper"  # the Lithuanian engine actually run (after fallbacks)
     network_token: str | None = None  # set only in network mode (see network.py)
+    user_bible_dir: Path | None = None  # created at launch, so the user can find it
 
     @property
     def base_url(self) -> str:
@@ -86,6 +87,18 @@ class LaunchPlan:
     @property
     def ready_url(self) -> str:
         return f"{self.base_url}/readyz"
+
+
+LITHUANIAN_BIBLE = "bible_ltb.sqlite"
+
+
+def user_bible_dir(data_dir: Path) -> Path:
+    """Where translations not shipped with the app go on this machine (read-only to BibleLive).
+
+    Outside the installed app, so an update keeps them and the macOS app bundle stays
+    unmodified (its signature covers every file inside).
+    """
+    return data_dir / "bible_data"
 
 
 def build_plan(
@@ -130,6 +143,9 @@ def build_plan(
         env["BIBLELIVE_REQUIRE_AUTH"] = "true"
         env["BIBLELIVE_OPERATOR_TOKEN"] = network_token
     env["BIBLELIVE_SETTINGS_PATH"] = str(data_dir / "server_settings.json")
+    # Translations added on this machine (not shipped with the app): see user_bible_dir().
+    bibles = user_bible_dir(data_dir)
+    env["BIBLELIVE_USER_BIBLE_DIR"] = str(bibles)
     env["BIBLELIVE_SERVICE_LOG_DIR"] = str(platform.current().log_dir(data_dir) / "services")
     env["BIBLELIVE_AUTO_MODE"] = settings.auto_mode
     # "auto" is not a language the server knows: resolve it here to the Windows UI language.
@@ -179,6 +195,11 @@ def build_plan(
         "--session-audio",
         "on" if settings.session_audio else "off",
     ]
+    audio_cmd += ["--user-bible-dir", str(bibles)]
+    # The Lithuanian text for the verse read aloud: the user folder's copy when there is one,
+    # else the pipeline's default (the app's own bible_data, as installs before this had it).
+    if (bibles / LITHUANIAN_BIBLE).is_file():
+        audio_cmd += ["--verse-text-db", str(bibles / LITHUANIAN_BIBLE)]
     for name, path in speech.model_paths.items():
         audio_cmd += [f"--{name}-model", path]
     if settings.input_device:
@@ -197,6 +218,7 @@ def build_plan(
         warnings=warnings,
         speech_engine=speech.engine,
         network_token=network_token,
+        user_bible_dir=bibles,
     )
 
 
@@ -293,6 +315,8 @@ class Launcher:
 
     def _spawn(self, name: str, cmd: list[str]) -> subprocess.Popen[bytes]:
         self.plan.log_dir.mkdir(parents=True, exist_ok=True)
+        if self.plan.user_bible_dir is not None:
+            self.plan.user_bible_dir.mkdir(parents=True, exist_ok=True)
         path = self.plan.log_dir / f"{name}.log"
         log = next((stream for stream in self._logs if stream.name == str(path)), None)
         if log is None:

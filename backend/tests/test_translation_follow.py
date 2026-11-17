@@ -275,3 +275,30 @@ def test_failed_follow_does_not_stop_transcription_loop(processor, monkeypatch, 
     assert seen == ["en"]
     assert "Could not follow the server's Bible translation" in caplog.text
     proc._local.bible_lookup = SimpleNamespace(close=lambda: None)
+
+
+def test_follows_a_translation_from_the_user_folder(tmp_path, monkeypatch):
+    app, user = tmp_path / "app", tmp_path / "user"
+    app.mkdir()
+    user.mkdir()
+    _database(app / "kjv.sqlite", "kjv", 22)
+    _database(user / "bible_ltb.sqlite", "ltb", 23)
+    config = AudioPipelineConfig(stt_engine="kmynas+canary")
+    sender = HeartbeatSender("http://server", config, lambda: {})
+    proc = make_processor(
+        config=config,
+        bible_db_path=str(app / "kjv.sqlite"),
+        user_bible_dir=str(user),
+        heartbeat=sender,
+        sender=SimpleNamespace(delivery_problem=None),
+        stt=SimpleNamespace(language="en"),
+    )
+    proc._init_thread_local_parsers()
+    try:
+        _reply(monkeypatch, sender)
+        proc._follow_bible_version()
+        validator = proc._local.detector.streaming_parsers["en"].parser.validator
+        assert validator(Reference("1 Samuel", 24, 23, None))  # only the user folder's has it
+        assert not proc._parser_issues
+    finally:
+        proc._local.bible_lookup.close()
