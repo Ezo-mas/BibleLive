@@ -518,10 +518,24 @@ def _completed(code: int, out: bytes = b"") -> subprocess.CompletedProcess[bytes
     return subprocess.CompletedProcess(args=[], returncode=code, stdout=out, stderr=b"")
 
 
+@pytest.fixture
+def windows_firewall(monkeypatch):
+    """The netsh rule exists only on Windows; these tests drive that implementation anywhere."""
+    from launcher.platform import windows
+
+    selected = network.platform_api.current
+    monkeypatch.setattr(
+        network.platform_api,
+        "current",
+        lambda name=None: windows if name is None else selected(name),
+    )
+
+
 def test_firewall_rule_name_matches_the_installer():
     assert FIREWALL_RULE_NAME == "BibleLive"
 
 
+@pytest.mark.usefixtures("windows_firewall")
 def test_firewall_add_script_adds_one_private_inbound_rule_per_program():
     script = firewall_add_script([FW_PY, FW_PYW], system32=SYSTEM32)
     assert script == f'{NETSH}{RULE_ARGS} program="{FW_PY}" & {NETSH}{RULE_ARGS} program="{FW_PYW}"'
@@ -529,6 +543,7 @@ def test_firewall_add_script_adds_one_private_inbound_rule_per_program():
     assert "profile=public" not in script and "profile=any" not in script
 
 
+@pytest.mark.usefixtures("windows_firewall")
 def test_firewall_programs_are_the_interpreters_beside_sys_executable(tmp_path):
     (tmp_path / "python.exe").touch()
     (tmp_path / "pythonw.exe").touch()
@@ -539,6 +554,7 @@ def test_firewall_programs_are_the_interpreters_beside_sys_executable(tmp_path):
     assert firewall_programs(str(tmp_path / "elsewhere" / "python.exe")) == []
 
 
+@pytest.mark.usefixtures("windows_firewall")
 def test_firewall_rule_exists_shows_the_rule_unelevated():
     calls = []
 
@@ -561,6 +577,7 @@ def test_firewall_rule_exists_shows_the_rule_unelevated():
         assert kwargs["creationflags"] == subprocess.CREATE_NO_WINDOW
 
 
+@pytest.mark.usefixtures("windows_firewall")
 def test_firewall_rule_exists_reads_the_exit_code_and_the_name():
     # netsh exits 1 and says "No rules match" when the rule is not there.
     none = b"No rules match the specified criteria.\r\n"
@@ -574,6 +591,7 @@ def test_firewall_rule_exists_reads_the_exit_code_and_the_name():
     assert firewall_rule_exists(cannot_run) is False
 
 
+@pytest.mark.usefixtures("windows_firewall")
 def test_add_firewall_rule_is_one_elevated_cmd_and_reports_the_prompt():
     calls = []
 
@@ -591,6 +609,7 @@ def test_add_firewall_rule_is_one_elevated_cmd_and_reports_the_prompt():
     assert add_firewall_rule([FW_PY], lambda f, p: 32, system32=SYSTEM32) is False
 
 
+@pytest.mark.usefixtures("windows_firewall")
 def test_allow_through_firewall_looks_for_the_rule_after_the_prompt():
     seen = []
 

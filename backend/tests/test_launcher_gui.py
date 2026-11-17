@@ -18,7 +18,6 @@ from launcher.projector import (
     ProjectorError,
     build_command,
     display_url,
-    find_browser,
     find_profile_processes,
 )
 from launcher.settings import (
@@ -264,12 +263,15 @@ def test_find_browser_prefers_edge(tmp_path, monkeypatch):
     for p in (edge, chrome):
         p.parent.mkdir(parents=True)
         p.write_text("")
-    monkeypatch.setattr("launcher.platform.windows.shutil.which", lambda _e: None)
-    assert find_browser({"ProgramFiles": str(tmp_path)}) == Browser(str(edge), "edge")
+    from launcher.platform import windows
+
+    # The Windows lookup (install dirs, then PATH), whatever the test machine.
+    monkeypatch.setattr(windows.shutil, "which", lambda _e: None)
+    assert windows.find_browser({"ProgramFiles": str(tmp_path)}) == Browser(str(edge), "edge")
     edge.unlink()
-    assert find_browser({"ProgramFiles": str(tmp_path)}) == Browser(str(chrome), "chrome")
+    assert windows.find_browser({"ProgramFiles": str(tmp_path)}) == Browser(str(chrome), "chrome")
     chrome.unlink()
-    assert find_browser({"ProgramFiles": str(tmp_path)}) is None
+    assert windows.find_browser({"ProgramFiles": str(tmp_path)}) is None
 
 
 def test_projector_requires_monitor_and_never_falls_back():

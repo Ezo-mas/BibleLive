@@ -19,13 +19,8 @@ from urllib.parse import quote
 import segno
 
 from . import platform as platform_api
-from .platform.windows import _SYSTEM32 as _SYSTEM32
+from .platform import RunFn, ShellExecuteFn
 from .platform.windows import FIREWALL_RULE_NAME as FIREWALL_RULE_NAME
-from .platform.windows import FIREWALL_WAIT_S as FIREWALL_WAIT_S
-from .platform.windows import SW_HIDE as SW_HIDE
-from .platform.windows import RunFn as RunFn
-from .platform.windows import ShellExecuteFn as ShellExecuteFn
-from .platform.windows import _shell_execute_runas as _shell_execute_runas
 from .settings import LauncherSettings
 
 # Lowercase letters and digits without i, l, o, 0 and 1: easy to read off a screen and type.
@@ -105,6 +100,9 @@ def qr_png(text: str) -> bytes:
 
 
 # --- Windows Firewall -----------------------------------------------------------------------
+# The administrator prompt can wait for the user; the rule is looked for this long.
+FIREWALL_WAIT_S = 120.0
+
 # The launcher adds the rule when the user asks for it (one administrator prompt) and the
 # installer removes it on uninstall. Other devices can reach the server only on Private networks.
 
@@ -118,18 +116,18 @@ def firewall_programs(executable: str) -> list[str]:
     return platform_api.current().firewall_programs(executable)
 
 
-def firewall_add_script(programs: Sequence[str], system32: str = _SYSTEM32) -> str:
+def firewall_add_script(programs: Sequence[str], system32: str | None = None) -> str:
     return platform_api.current().firewall_add_script(programs, system32)
 
 
-def firewall_rule_exists(run: RunFn = subprocess.run, system32: str = _SYSTEM32) -> bool:
+def firewall_rule_exists(run: RunFn = subprocess.run, system32: str | None = None) -> bool:
     return platform_api.current().firewall_rule_exists(run, system32)
 
 
 def add_firewall_rule(
     programs: Sequence[str],
-    shell_execute: ShellExecuteFn = _shell_execute_runas,
-    system32: str = _SYSTEM32,
+    shell_execute: ShellExecuteFn | None = None,
+    system32: str | None = None,
 ) -> bool:
     return platform_api.current().add_firewall_rule(programs, shell_execute, system32)
 
@@ -155,7 +153,7 @@ def wait_until(
 def allow_through_firewall(
     programs: Sequence[str],
     *,
-    shell_execute: ShellExecuteFn = _shell_execute_runas,
+    shell_execute: ShellExecuteFn | None = None,
     run: RunFn = subprocess.run,
     wait_s: float = FIREWALL_WAIT_S,
 ) -> bool:

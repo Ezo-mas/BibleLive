@@ -6,11 +6,11 @@ from types import SimpleNamespace
 
 import pytest
 from launcher import monitors, network, platform, process, projector, settings
-from launcher.platform import fallback, windows
+from launcher.platform import fallback, macos, posix, windows
 
 
 @pytest.mark.parametrize(
-    "name, implementation", [("win32", windows), ("linux", fallback), ("darwin", fallback)]
+    "name, implementation", [("win32", windows), ("linux", fallback), ("darwin", macos)]
 )
 def test_current_selects_platform(monkeypatch, name, implementation):
     monkeypatch.setattr(sys, "platform", name)
@@ -23,13 +23,15 @@ def test_legacy_value_imports_are_shared():
 
 
 @pytest.mark.parametrize("name", ["linux", "darwin"])
-def test_fallback_does_not_query_native_monitors_or_processes(monkeypatch, tmp_path, name):
+def test_posix_platforms_do_not_query_windows(monkeypatch, tmp_path, name):
     def unexpected(*args, **kwargs):
         pytest.fail("fallback queried Windows")
 
     monkeypatch.setattr(sys, "platform", name)
     monkeypatch.setattr(windows, "enumerate_monitors", unexpected)
     monkeypatch.setattr(windows, "find_profile_processes", unexpected)
+    monkeypatch.setattr(macos, "_enumerate_quartz", lambda: [])
+    monkeypatch.setattr(macos.subprocess, "run", lambda *a, **k: SimpleNamespace(stdout=""))
     assert monitors.enumerate_monitors() == []
     assert projector.find_profile_processes(tmp_path) == []
 
@@ -117,9 +119,11 @@ def test_platform_folder_locations(monkeypatch, tmp_path, name):
     monkeypatch.setenv("APPDATA", str(tmp_path / "roaming"))
     monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "local"))
     monkeypatch.setattr(settings.Path, "home", lambda: tmp_path / "home")
-    data = (
-        tmp_path / "roaming" / "BibleLive" if name == "win32" else tmp_path / "home" / ".biblelive"
-    )
+    data = {
+        "win32": tmp_path / "roaming" / "BibleLive",
+        "linux": tmp_path / "home" / ".biblelive",
+        "darwin": tmp_path / "home" / "Library" / "Application Support" / "BibleLive",
+    }[name]
     models = tmp_path / "local" / "BibleLive" / "models" if name == "win32" else data / "models"
     assert settings.app_data_dir() == data
     assert settings.default_settings_path() == data / "launcher.json"
@@ -196,5 +200,116 @@ def test_windows_runas_keeps_shell_execute_arguments(monkeypatch):
     calls = []
     shell32 = SimpleNamespace(ShellExecuteW=lambda *args: calls.append(args) or 42)
     monkeypatch.setattr(windows.ctypes, "windll", SimpleNamespace(shell32=shell32), raising=False)
-    assert network._shell_execute_runas("cmd.exe", "/c script") == 42
+    assert windows._shell_execute_runas("cmd.exe", "/c script") == 42
     assert calls == [(None, "runas", "cmd.exe", "/c script", None, 0)]
+
+
+def test_windows_firewall_defaults_to_system32_and_runas(monkeypatch):
+    calls = []
+    monkeypatch.setattr(windows, "_SYSTEM32", r"C:\Sys")
+    monkeypatch.setattr(windows, "_shell_execute_runas", lambda f, p: calls.append((f, p)) or 42)
+    assert windows.add_firewall_rule(["py.exe"]) is True
+    assert calls[0][0] == r"C:\Sys\cmd.exe"
+    assert r'"C:\Sys\netsh.exe" advfirewall' in calls[0][1]
+
+
+@pytest.mark.parametrize("module", [fallback, macos])
+def test_posix_platforms_have_no_firewall_rule(module):
+    assert module.firewall_applies() is False
+    assert module.firewall_programs("/usr/bin/python3") == []
+    assert module.firewall_rule_exists() is False
+    assert module.add_firewall_rule(["python3"]) is False
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="process groups are POSIX-only")
+def test_posix_kill_pid_tree_kills_the_group(monkeypatch):
+    calls = []
+    monkeypatch.setattr(posix.os, "killpg", lambda pid, sig: calls.append(("pg", pid, sig)))
+    posix.kill_pid_tree(321)
+    assert calls == [("pg", 321, posix.signal.SIGKILL)]
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="process groups are POSIX-only")
+def test_posix_kill_pid_tree_falls_back_to_the_pid(monkeypatch):
+    calls = []
+
+    def gone(pid, sig):
+        raise ProcessLookupError
+
+    monkeypatch.setattr(posix.os, "killpg", gone)
+    monkeypatch.setattr(posix.os, "kill", lambda pid, sig: calls.append((pid, sig)))
+    posix.kill_pid_tree(321)
+    assert calls == [(321, posix.signal.SIGKILL)]
+
+
+def test_macos_find_browser_prefers_chrome_in_user_applications(monkeypatch, tmp_path):
+    monkeypatch.setattr(macos.shutil, "which", lambda _name: None)
+    edge = tmp_path / "Applications" / "Microsoft Edge.app" / "Contents" / "MacOS"
+    edge.mkdir(parents=True)
+    (edge / "Microsoft Edge").write_text("")
+    env = {"HOME": str(tmp_path)}
+    real_is_file = macos.Path.is_file
+    # /Applications is the real one; only the temp home counts in this test.
+    monkeypatch.setattr(
+        macos.Path, "is_file", lambda p: str(p).startswith(str(tmp_path)) and real_is_file(p)
+    )
+    assert macos.find_browser(env) == platform.Browser(str(edge / "Microsoft Edge"), "edge")
+    chrome = tmp_path / "Applications" / "Google Chrome.app" / "Contents" / "MacOS"
+    chrome.mkdir(parents=True)
+    (chrome / "Google Chrome").write_text("")
+    assert macos.find_browser(env) == platform.Browser(str(chrome / "Google Chrome"), "chrome")
+
+
+def test_macos_find_browser_none(monkeypatch, tmp_path):
+    monkeypatch.setattr(macos.Path, "is_file", lambda p: False)
+    monkeypatch.setattr(macos.shutil, "which", lambda _name: None)
+    assert macos.find_browser({"HOME": str(tmp_path)}) is None
+
+
+def test_macos_profile_processes_match_only_the_profile(monkeypatch, tmp_path):
+    profile = tmp_path / "display-profile"
+    out = "\n".join(
+        [
+            f"  101 /Applications/Google Chrome.app/Contents/MacOS/Google Chrome "
+            f"--user-data-dir={profile} --app=x",
+            f"  102 /Applications/Google Chrome.app/Contents/MacOS/Google Chrome --type=gpu "
+            f"--user-data-dir={profile}",
+            "  103 /Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+            f"  {macos.os.getpid()} python launcher {profile}",
+            "garbage line",
+        ]
+    )
+    calls = []
+
+    def run(cmd, **kw):
+        calls.append(cmd)
+        return SimpleNamespace(stdout=out)
+
+    monkeypatch.setattr(macos.subprocess, "run", run)
+    assert macos.find_profile_processes(profile) == [101, 102]
+    assert calls == [["/bin/ps", "-axww", "-o", "pid=,command="]]
+
+
+def test_macos_profile_process_query_failure_returns_empty(monkeypatch, tmp_path):
+    def fail(*a, **k):
+        raise OSError("no ps")
+
+    monkeypatch.setattr(macos.subprocess, "run", fail)
+    assert macos.find_profile_processes(tmp_path) == []
+
+
+@pytest.mark.parametrize("error", [AttributeError, OSError])
+def test_macos_monitor_query_failure_returns_empty(monkeypatch, error):
+    def fail():
+        raise error("query failed")
+
+    monkeypatch.setattr(macos, "_enumerate_quartz", fail)
+    assert macos.enumerate_monitors() == []
+
+
+@pytest.mark.skipif(sys.platform != "darwin", reason="needs Quartz (macOS)")
+def test_macos_real_monitor_query():
+    found = macos.enumerate_monitors()
+    assert found, "a Mac always has at least one active display"
+    assert found[0].primary
+    assert (found[0].x, found[0].y) == (0, 0)

@@ -1,0 +1,162 @@
+"""macOS (Apple Silicon) launcher operations."""
+
+import logging
+import os
+import shutil
+import subprocess
+import sys
+from collections.abc import Mapping
+from pathlib import Path
+
+from . import Browser, Monitor
+from .chromium import build_command as build_command
+from .posix import add_firewall_rule as add_firewall_rule
+from .posix import child_process_options as child_process_options
+from .posix import firewall_add_script as firewall_add_script
+from .posix import firewall_applies as firewall_applies
+from .posix import firewall_programs as firewall_programs
+from .posix import firewall_rule_exists as firewall_rule_exists
+from .posix import kill_pid_tree as kill_pid_tree
+from .posix import kill_tree as kill_tree
+from .posix import log_dir as log_dir
+from .posix import open_projector as open_projector
+
+logger = logging.getLogger("launcher.projector")
+
+# (kind, app bundle, executable inside Contents/MacOS); Chrome first: unlike Windows, no
+# Chromium browser comes with the system, and Chrome is the one most Macs have.
+_BROWSERS = (
+    ("chrome", "Google Chrome.app", "Google Chrome"),
+    ("edge", "Microsoft Edge.app", "Microsoft Edge"),
+)
+
+
+def find_browser(env: Mapping[str, str] | None = None) -> Browser | None:
+    """Chrome, then Edge: /Applications, then ~/Applications, then PATH."""
+    env = os.environ if env is None else env
+    home = env.get("HOME") or str(Path.home())
+    roots = (Path("/Applications"), Path(home) / "Applications")
+    for kind, bundle, exe in _BROWSERS:
+        for root in roots:
+            p = root / bundle / "Contents" / "MacOS" / exe
+            if p.is_file():
+                return Browser(str(p), kind)
+    for kind, name in (("chrome", "google-chrome"), ("edge", "microsoft-edge")):
+        found = shutil.which(name)
+        if found:
+            return Browser(found, kind)
+    return None
+
+
+def find_profile_processes(profile_dir: Path) -> list[int]:
+    """PIDs of processes whose command line mentions ``profile_dir``.
+
+    A display browser left over from a crashed run keeps the private profile locked, so a
+    new launch would hand off to it and exit. Only the profile path is matched, so the
+    user's own browser is never touched.
+    """
+    try:
+        out = subprocess.run(
+            ["/bin/ps", "-axww", "-o", "pid=,command="],
+            capture_output=True,
+            text=True,
+            timeout=20,
+            check=False,
+        ).stdout
+    except (OSError, subprocess.SubprocessError) as exc:
+        logger.warning("Could not look for stale display browsers: %s", exc)
+        return []
+    needle = str(profile_dir)
+    own = os.getpid()
+    pids = []
+    for line in out.splitlines():
+        pid, _, command = line.strip().partition(" ")
+        if pid.isdigit() and int(pid) != own and needle in command:
+            pids.append(int(pid))
+    return pids
+
+
+def enumerate_monitors() -> list[Monitor]:
+    """All active displays (main display first); empty if the query fails."""
+    try:
+        return _enumerate_quartz()
+    except (AttributeError, OSError):
+        return []
+
+
+def _enumerate_quartz() -> list[Monitor]:
+    # Quartz Display Services through ctypes: no PyObjC in the bundle. Coordinates are
+    # global points with the main display's top-left at 0,0, which is what Chromium's
+    # --window-position expects.
+    if sys.platform != "darwin":
+        return []
+    import ctypes
+    import ctypes.util
+
+    class CGPoint(ctypes.Structure):
+        _fields_ = [("x", ctypes.c_double), ("y", ctypes.c_double)]  # noqa: RUF012
+
+    class CGSize(ctypes.Structure):
+        _fields_ = [("width", ctypes.c_double), ("height", ctypes.c_double)]  # noqa: RUF012
+
+    class CGRect(ctypes.Structure):
+        _fields_ = [("origin", CGPoint), ("size", CGSize)]  # noqa: RUF012
+
+    path = ctypes.util.find_library("CoreGraphics") or (
+        "/System/Library/Frameworks/CoreGraphics.framework/CoreGraphics"
+    )
+    cg = ctypes.CDLL(path)
+    cg.CGGetActiveDisplayList.argtypes = [
+        ctypes.c_uint32,
+        ctypes.POINTER(ctypes.c_uint32),
+        ctypes.POINTER(ctypes.c_uint32),
+    ]
+    cg.CGGetActiveDisplayList.restype = ctypes.c_int32
+    cg.CGDisplayBounds.argtypes = [ctypes.c_uint32]
+    cg.CGDisplayBounds.restype = CGRect
+    for fn in ("CGMainDisplayID",):
+        getattr(cg, fn).restype = ctypes.c_uint32
+    for fn in ("CGDisplayIsBuiltin", "CGDisplayUnitNumber"):
+        getattr(cg, fn).argtypes = [ctypes.c_uint32]
+        getattr(cg, fn).restype = ctypes.c_uint32
+
+    ids = (ctypes.c_uint32 * 16)()
+    count = ctypes.c_uint32(0)
+    if cg.CGGetActiveDisplayList(16, ids, ctypes.byref(count)) != 0:
+        return []
+    main = cg.CGMainDisplayID()
+    found: list[Monitor] = []
+    for did in ids[: count.value]:
+        r = cg.CGDisplayBounds(did)
+        name = (
+            "Built-in" if cg.CGDisplayIsBuiltin(did) else f"Display {cg.CGDisplayUnitNumber(did)}"
+        )
+        found.append(
+            Monitor(
+                device=name,
+                x=round(r.origin.x),
+                y=round(r.origin.y),
+                width=round(r.size.width),
+                height=round(r.size.height),
+                primary=did == main,
+            )
+        )
+    return sorted(found, key=lambda m: (not m.primary, m.device))
+
+
+def _support_dir() -> Path:
+    return Path.home() / "Library" / "Application Support" / "BibleLive"
+
+
+def app_data_dir() -> Path:
+    """Per-user data directory: ``~/Library/Application Support/BibleLive``."""
+    return _support_dir()
+
+
+def models_dir() -> Path:
+    """Speech model cache (``HF_HOME``, ~1.6 GB): beside the data, not in Caches.
+
+    ~/Library/Caches may be emptied by the system, which would mean a re-download before
+    a service.
+    """
+    return _support_dir() / "models"
