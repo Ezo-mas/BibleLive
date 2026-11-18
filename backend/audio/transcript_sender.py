@@ -20,6 +20,8 @@ from .metrics import PipelineMetrics
 
 logger = logging.getLogger(__name__)
 
+QUEUE_POLL_S = 0.2
+
 
 class TranscriptSender:
     """Post transcripts to ``/api/transcript`` from a background thread."""
@@ -93,7 +95,7 @@ class TranscriptSender:
     def _run(self) -> None:
         while not self._stop.is_set():
             try:
-                text, language = self._queue.get(timeout=0.2)
+                text, language = self._queue.get(timeout=QUEUE_POLL_S)
             except Empty:
                 continue
             if not self._unsupported:  # items queued before a 404 are dropped

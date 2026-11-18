@@ -26,6 +26,14 @@ REPO_ROOT = BACKEND_ROOT.parent
 KJV_SOURCE = REPO_ROOT / "data" / "kjv2.json"
 
 
+@pytest.fixture(autouse=True)
+def fast_transcript_sender_poll(monkeypatch):
+    """Shorten the worker's idle wait when tests stop a transcript sender."""
+    from audio import transcript_sender
+
+    monkeypatch.setattr(transcript_sender, "QUEUE_POLL_S", 0.01)
+
+
 @pytest.fixture(scope="session", autouse=True)
 def disable_service_logging():
     """Never write to a developer-configured service-log directory during tests."""
