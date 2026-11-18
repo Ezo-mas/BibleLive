@@ -390,6 +390,7 @@ class Hint:
     verse_end: int
     follows: str  # the passage on screen it follows, for the report
     root: int  # gold item at the root of the display chain
+    show_from: int | None = None
     shown: bool = False  # the simulated operator showed it
     confirmed: bool = False  # strict: see confirm_hints
     confirmed_loose: bool = False  # the reference window rule, kept for comparison
@@ -655,6 +656,7 @@ class FollowAlongReplay:
                 chapter=hint.chapter,
                 verse=hint.verse_start,
                 verse_end=hint.verse_end,
+                show_from=hint.show_from,
                 follows=_ref_text(
                     display.book, display.chapter, display.verse_start, display.verse_end
                 ),
@@ -672,7 +674,7 @@ class FollowAlongReplay:
             BibleReference(
                 book=hint.book,
                 chapter=hint.chapter,
-                verse_start=hint.verse,
+                verse_start=hint.show_from if hint.show_from is not None else hint.verse,
                 verse_end=hint.verse_end,
             ),
             hint.root,

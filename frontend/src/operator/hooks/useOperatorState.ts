@@ -196,7 +196,7 @@ export function useOperatorState(): OperatorState {
     showManualDirect({
       book: followAlong.book,
       chapter: followAlong.chapter,
-      verseStart: followAlong.verse_start,
+      verseStart: followAlong.show_from ?? followAlong.verse_start,
       verseEnd: followAlong.verse_end,
     })
   }, [followAlong, showManualDirect])

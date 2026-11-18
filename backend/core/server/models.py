@@ -377,6 +377,8 @@ class FollowAlongHint(BaseModel):
     Sent to operators only (``follow_along``), never to displays, and kept neither in
     the state snapshot nor in history. ``display_id`` is the on-screen reference the
     hint follows on from; once the display changes or clears, the hint is stale.
+    ``show_from`` is the first verse to display through ``verse_end``, including any
+    earlier context. If absent, start at ``verse_start``.
     Mirrored in frontend/src/shared/types.ts.
     """
 
@@ -386,6 +388,7 @@ class FollowAlongHint(BaseModel):
     verse_start: int
     verse_end: int
     display_id: str
+    show_from: int | None = None
 
 
 class OperatorApproveAction(BaseModel):

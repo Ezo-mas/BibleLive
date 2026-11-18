@@ -183,7 +183,27 @@ describe('follow-along hint', () => {
     expect(screen.getByText('Luke 16:14-16')).toBeInTheDocument()
   })
 
-  it('Show sends display_reference with exactly the hint coordinates', () => {
+  it('Show sends the rolling range while Reading now labels the matched verse', () => {
+    openWith(onScreen)
+    push(socket, hintFor('d-1', { verse_end: 13, show_from: 11 }))
+
+    expect(screen.getByText('Luke 16:13')).toBeInTheDocument()
+    act(() => {
+      screen.getByRole('button', { name: 'Show Luke 16:13 on display' }).click()
+    })
+
+    expect(sentActions()).toEqual([
+      {
+        action: 'display_reference',
+        book: 'Luke',
+        chapter: 16,
+        verse_start: 11,
+        verse_end: 13,
+      },
+    ])
+  })
+
+  it('Show falls back to the hint coordinates when show_from is missing', () => {
     openWith(onScreen)
     push(socket, hintFor('d-1'))
 
@@ -269,12 +289,16 @@ describe('follow-along preview text', () => {
 
   it('shows the reference alone until the verse text is looked up, then the text', async () => {
     let answer: (response: Response) => void = () => {}
-    stubFetch(() => new Promise<Response>(resolve => (answer = resolve)))
+    const fetchMock = stubFetch(() => new Promise<Response>(resolve => (answer = resolve)))
     openWith(onScreen)
-    push(socket, hintFor('d-1'))
+    push(socket, hintFor('d-1', { verse_end: 13, show_from: 11 }))
 
     const card = within(hintRegion() as HTMLElement)
-    expect(card.getByText('Luke 16:13-15')).toBeInTheDocument()
+    expect(card.getByText('Luke 16:13')).toBeInTheDocument()
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringMatching(/\/api\/lookup\?.*verse_start=13/),
+      expect.anything()
+    )
     expect(card.queryByText('No servant can serve two masters.')).not.toBeInTheDocument()
 
     await act(async () => {

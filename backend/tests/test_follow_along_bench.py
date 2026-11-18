@@ -28,6 +28,7 @@ from benchmarks.follow_along_bench import (
 )
 from benchmarks.run_benchmark import GoldItem
 from benchmarks.verse_timing import VerseRead
+from core.server.models import FollowAlongHint
 
 
 class FakeIndex:
@@ -207,7 +208,7 @@ class _ScriptedServer:
         return None, (self.answers.pop(0) if self.answers else False)
 
 
-def _replay(pcm, *, partials, mode="chunk", server=None, partial_rtf=0.21):
+def _replay(pcm, *, partials, mode="chunk", server=None, partial_rtf=0.21, gold=(), chain=False):
     config = AudioPipelineConfig(control_enabled=False)
     config.partial_transcripts = partials
     config.partial_mode = mode
@@ -222,7 +223,7 @@ def _replay(pcm, *, partials, mode="chunk", server=None, partial_rtf=0.21):
     replay = FollowAlongReplay(
         record_id="synthetic",
         language="lt",
-        gold=[],
+        gold=gold,
         feed=lambda end_s: (None, "final words", True),
         index=None,  # type: ignore[arg-type]
         bible=None,  # type: ignore[arg-type]
@@ -232,9 +233,9 @@ def _replay(pcm, *, partials, mode="chunk", server=None, partial_rtf=0.21):
         transcribe_partial=transcribe if partials else None,
         final_rtf=0.21,
         partial_rtf=partial_rtf,
-        display_delay_s=3.0,
+        display_delay_s=0.0,
         operator_delay_s=1.5,
-        chain=False,
+        chain=chain,
     )
     result: ReplayResult = replay.run(pcm, 0, len(pcm) // BYTES_PER_FRAME)
     return result, calls
@@ -243,6 +244,27 @@ def _replay(pcm, *, partials, mode="chunk", server=None, partial_rtf=0.21):
 # Utterance A (12 voiced frames) is closed by silence and posts a final, which arms
 # partials. Utterance B (200 voiced frames) is the one that gets partials.
 SCENARIO = _frames(*(["v"] * 12 + ["s"] * 60 + ["v"] * 200 + ["s"] * 60))
+
+
+def test_simulated_show_uses_the_rolling_range_for_the_next_hint():
+    class Server:
+        def on_transcript(self, index, bible, display, text, now):
+            verse = (display.verse_end or display.verse_start) + 1
+            return FollowAlongHint(
+                book=display.book,
+                chapter=display.chapter,
+                verse_start=verse,
+                verse_end=verse,
+                display_id=display.id,
+                show_from=16,
+            ), True
+
+    gold = [GoldItem("synthetic", 0.0, 0.0, "John 3:16", "John", 3, 16, None)]
+    result, _ = _replay(SCENARIO, partials=False, server=Server(), gold=gold, chain=True)
+
+    first, second = result.hints
+    assert (first.verse, first.show_from, first.shown) == (17, 16, True)
+    assert (second.verse, second.follows) == (18, "John 3:16-17")
 
 
 def test_partials_are_transcribed_and_posted_while_armed():

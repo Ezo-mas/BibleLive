@@ -21,14 +21,15 @@ from core.bible_versions import BibleVersion
 from core.config import config
 from core.import_bible import BibleImporter
 from core.server.follow_along import (
+    FOLLOW_AUTO_MAX_JUMP,
     FollowAlong,
     HintPolicy,
     VerseIndexes,
+    follow_along_show_from,
     next_verse_hint,
     verse_started,
 )
 from core.server.models import BibleReference, FollowAlongHint
-from core.server.state import FOLLOW_AUTO_MAX_JUMP
 from core.verse_text import VerseTextIndex, ordered_stems
 
 # Verses 1-15 and 26-35 repeat FILLER, so its words are common (IDF below 2) and never
@@ -250,6 +251,7 @@ class TestHints:
                 "verse_start": 17,
                 "verse_end": 17,
                 "display_id": display["id"],
+                "show_from": 16,
             }
         ]
         assert app_state.current_display.verse_start == 16  # nothing moved on screen
@@ -316,16 +318,19 @@ class TestHints:
         assert [hint["display_id"] for hint in hints] == [second["id"]]
         assert second["id"] != first["id"]
 
-    def test_hint_keeps_the_operators_page_size(self, client, operator):
-        display = _show(operator, 16, 17)  # two verses on screen
+    def test_hint_offers_only_the_matched_verse_after_a_manual_range(self, client, operator):
+        display = _show(operator, 8, 17)
         hints = _post_transcript(client, operator, SPOKEN[18])
         assert hints[0]["verse_start"] == 18
-        assert hints[0]["verse_end"] == 19
+        assert hints[0]["verse_end"] == 18
+        assert hints[0]["show_from"] == 16
         assert hints[0]["display_id"] == display["id"]
+        shown = _show(operator, hints[0]["show_from"], hints[0]["verse_end"])
+        assert (shown["verse_start"], shown["verse_end"]) == (16, 18)
 
     def test_hint_stops_at_the_end_of_the_chapter_in_the_active_bible(self, client, operator):
         _show(operator, 34, 35)
-        # Verse 36 is the last of John 3 in the KJV; the page would run on to 37.
+        # Verse 36 is the last of John 3 in the KJV.
         hints = _post_transcript(client, operator, SPOKEN[36])
         assert [(hint["verse_start"], hint["verse_end"]) for hint in hints] == [(36, 36)]
 
@@ -453,33 +458,16 @@ def _gap_index() -> VerseTextIndex:
     return VerseTextIndex(filler + [("Acts", 8, verse, text) for verse, text in GAP_SPOKEN.items()])
 
 
-class TestMissingVersesInTheActiveBible:
-    """A hint's end must be a verse the active Bible has, or its Show click fails."""
+def test_rolling_start_skips_missing_verses_in_the_active_bible(gap_bible):
+    display = BibleReference(id="page", book="Acts", chapter=8, verse_start=35, verse_end=36)
+    hint, _ = FollowAlong().on_transcript(_gap_index(), gap_bible, display, GAP_SPOKEN[39], 0.0)
+    assert hint is not None
+    assert (hint.show_from, hint.verse_start, hint.verse_end) == (39, 39, 39)
 
-    @pytest.mark.parametrize(
-        ("page_start", "page_end", "expected_end"),
-        [
-            (34, 35, 36),  # two verses on screen: 36-37 ends on the missing 37, so 36-36
-            (33, 35, 36),  # three verses: 36-38 has two missing ends, so it steps back to 36
-            (32, 35, 39),  # four verses: 36-39 ends on a verse that exists, gap inside is kept
-        ],
-    )
-    def test_end_steps_back_over_missing_verses(
-        self, gap_bible, page_start, page_end, expected_end
-    ):
-        display = BibleReference(
-            id="page",
-            book="Acts",
-            chapter=8,
-            verse_start=page_start,
-            verse_end=page_end,
-        )
-        hint = next_verse_hint(_gap_index(), gap_bible, display, GAP_SPOKEN[36])
-        assert hint is not None
-        assert (hint.verse_start, hint.verse_end) == (36, expected_end)
-        # Both ends of the hint exist in the active Bible, so Show can resolve them.
-        assert gap_bible.validate_reference("Acts", 8, hint.verse_start)
-        assert gap_bible.validate_reference("Acts", 8, hint.verse_end)
+
+@pytest.mark.parametrize("hint_end", [13, 14])
+def test_rolling_window_keeps_a_hint_of_three_or_more_verses_intact(hint_end):
+    assert follow_along_show_from(8, 10, 11, hint_end) == 11
 
 
 def _assert_nothing_queued(operator_ws) -> None:
@@ -1088,12 +1076,17 @@ class TestVerseStartArming:
         follow.on_transcript(start_index, bible, other, FILLER, 3.0)
         assert follow._carried_read is None
 
+    @pytest.mark.parametrize("shown_start", [15, 17])
     def test_after_showing_the_hint_a_bare_start_of_the_next_verse_is_offered(
-        self, start_index, app_state
+        self, start_index, app_state, shown_start
     ):
         follow, bible = FollowAlong(), app_state.bible_lookup
-        follow.on_transcript(start_index, bible, START_PAGE, END_THEN_START, 0.0)
-        shown = BibleReference(id="p17", book="John", chapter=16, verse_start=17, verse_end=17)
+        page = START_PAGE.model_copy(update={"verse_start": 14})
+        offered, _ = follow.on_transcript(start_index, bible, page, END_THEN_START, 0.0)
+        assert offered is not None and (offered.show_from, offered.verse_end) == (15, 17)
+        shown = BibleReference(
+            id="p17", book="John", chapter=16, verse_start=shown_start, verse_end=17
+        )
         hint, _ = follow.on_transcript(
             start_index, bible, shown, "Tad jie klausinėjo ką reiškia valandėlė", 5.0
         )
@@ -1176,17 +1169,32 @@ class TestFollowAuto:
         assert (shown["book"], shown["chapter"], shown["verse_start"], shown["verse_end"]) == (
             "John",
             3,
-            17,
+            16,
             17,
         )
         assert shown["source"] == "follow"
         assert shown["confidence"] is None
         # The text is the server's own Bible text, never anything the transcript carried.
-        assert shown["text"] == _kjv_text(app_state, 17)
-        assert shown["verses"] == [{"verse": 17, "text": _kjv_text(app_state, 17)}]
+        assert shown["text"] == _kjv_text(app_state, 16, 17)
+        assert shown["verses"] == [
+            {"verse": verse, "text": _kjv_text(app_state, verse)} for verse in (16, 17)
+        ]
         assert app_state.current_display.id == shown["id"]
         assert app_state.reference_history[0].id == shown["id"]
         assert body == {"status": "success", "follow_along_active": True}
+
+    @pytest.mark.parametrize("ranges", [[(16, 17), (16, 18), (17, 19), (18, 20)], [(16, 18)]])
+    def test_auto_show_rolls_and_keeps_context_through_a_small_skip(self, client, operator, ranges):
+        _show(operator, 16)
+        _set_follow_auto(operator, True)
+        operator.send_text(json.dumps({"action": "set_verse_limit", "verse_limit": 5}))
+        assert json.loads(operator.receive_text())["type"] == "display_settings_confirmed"
+
+        for start, end in ranges:
+            _, messages = _post_all(client, operator, SPOKEN[end])
+            assert [message["type"] for message in messages] == ["display_confirmed"]
+            shown = messages[0]["data"]["reference"]
+            assert (shown["verse_start"], shown["verse_end"]) == (start, end)
 
     def test_the_display_gets_the_followed_passage_once(self, client, spoken):
         with (
@@ -1247,7 +1255,8 @@ class TestFollowAuto:
         _, messages = _post_all(client, operator, SPOKEN[19])  # three past verse 16
 
         assert [message["type"] for message in messages] == ["display_confirmed"]
-        assert app_state.current_display.verse_start == 19
+        shown = app_state.current_display
+        assert (shown.verse_start, shown.verse_end) == (17, 19)
 
     def test_a_verse_four_past_the_passage_stays_a_hint(self, client, operator, app_state):
         _show(operator, 16)
@@ -1257,8 +1266,11 @@ class TestFollowAuto:
 
         assert [message["type"] for message in messages] == ["follow_along"]
         assert messages[0]["data"]["verse_start"] == 20
+        assert messages[0]["data"]["show_from"] == 20
         assert app_state.current_display.verse_start == 16
         assert len(app_state.reference_history) == 1
+        shown = _show(operator, messages[0]["data"]["show_from"], messages[0]["data"]["verse_end"])
+        assert (shown["verse_start"], shown["verse_end"]) == (20, 20)
 
     def test_the_jump_is_counted_from_the_end_of_the_passage_on_screen(
         self, client, operator, app_state
@@ -1270,8 +1282,8 @@ class TestFollowAuto:
 
         assert [message["type"] for message in messages] == ["display_confirmed"]
         shown = messages[0]["data"]["reference"]
-        assert (shown["verse_start"], shown["verse_end"]) == (20, 21)
-        assert shown["text"] == _kjv_text(app_state, 20, 21)
+        assert (shown["verse_start"], shown["verse_end"]) == (18, 20)
+        assert shown["text"] == _kjv_text(app_state, 18, 20)
 
     def test_a_hint_four_past_the_end_of_a_two_verse_passage_stays_a_hint(
         self, client, operator, app_state
