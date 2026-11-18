@@ -18,6 +18,10 @@ on:
   pull_request:
     branches: [main, develop]
     paths-ignore: *ignored
+  # Weekly (and on demand) only the ffmpeg-cache job runs; the test jobs skip.
+  schedule:
+    - cron: '17 3 * * 1'
+  workflow_dispatch:
 
 # A new push to a PR cancels that PR's run still in progress; runs on main finish.
 concurrency:
@@ -29,7 +33,7 @@ jobs:
     name: Python lint, types & tests
     # The merge commit of a PR was already tested as the PR's merge ref, so its push
     # to main is skipped; direct pushes to main still run.
-    if: github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'Merge pull request')
+    if: github.event_name == 'pull_request' || (github.event_name == 'push' && !startsWith(github.event.head_commit.message, 'Merge pull request'))
     runs-on: ubuntu-latest
     # Install + lint + types + ~1 min of tests takes ~2-3 min; a hung test fails here
     # instead of holding the job to GitHub's 6-hour limit.
@@ -52,7 +56,7 @@ jobs:
         # The Ubuntu mirrors sometimes serve the ~66 MB of ffmpeg .debs at ~40 KB/s,
         # which ran this job into its timeout. Keep the .debs between runs. A PR can
         # only read caches saved on main (or its own earlier runs), so the
-        # ffmpeg-cache job below fills main's copy on merges, which skip this job.
+        # ffmpeg-cache job below refills main's copy once a week.
         id: ffmpeg-cache
         uses: actions/cache/restore@v6
         with:
@@ -133,8 +137,10 @@ jobs:
   ffmpeg-cache:
     name: Fill the ffmpeg package cache on main
     # Merge pushes skip the python job, so without this main never saves the cache
-    # and every PR downloads ffmpeg from the mirror again. Downloads only.
-    if: github.event_name == 'push' && startsWith(github.event.head_commit.message, 'Merge pull request')
+    # and every PR downloads ffmpeg from the mirror again. Weekly rather than on
+    # every merge: a billed minute per merge adds up if the repo is private, and
+    # PRs reading main's copy keep it from being evicted in between. Downloads only.
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
@@ -147,7 +153,7 @@ jobs:
 
   windows:
     name: Windows backend tests
-    if: github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'Merge pull request')
+    if: github.event_name == 'pull_request' || (github.event_name == 'push' && !startsWith(github.event.head_commit.message, 'Merge pull request'))
     runs-on: windows-latest
     timeout-minutes: 20
     steps:
