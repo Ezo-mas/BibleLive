@@ -134,6 +134,8 @@ export interface FollowAlongHint {
   verse_start: number
   verse_end: number
   display_id: string
+  /** First verse to show through verse_end, including any earlier context. */
+  show_from?: number | null
 }
 
 /** Messages the server sends to operator clients (ws /ws/operator). */

@@ -50,6 +50,9 @@ easy to break by accident.
    carries `follow_along_active`, which tells the audio pipeline to keep
    sending partial transcripts. Its Show button sends the
    ordinary `display_reference` action, so it is not a third door.
+   For both Show and auto-show, `show_from` supplies the start of a rolling
+   three-verse window ending on the matched verse, independent of the display
+   verse limit. Jumps of more than three verses omit earlier context.
    With the operator's `follow_auto` switch on (`set_follow_auto`: server-held,
    persisted with the auto-approve mode, off by default, confirmed to every
    console as `follow_auto_confirmed`; refused, and reported off, while

@@ -113,7 +113,12 @@ def test_real_server_protocol_fixtures(client, app_state, kjv_db, monkeypatch):
             receive(display, "display", "reference", save=False)
 
             hint = FollowAlongHint(
-                book="John", chapter=3, verse_start=18, verse_end=18, display_id=REFERENCE_ID
+                book="John",
+                chapter=3,
+                verse_start=18,
+                verse_end=18,
+                display_id=REFERENCE_ID,
+                show_from=16,
             )
             monkeypatch.setattr(
                 app_state.verse_indexes, "for_language", AsyncMock(return_value=None)

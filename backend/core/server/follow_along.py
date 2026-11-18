@@ -30,6 +30,11 @@ logger = logging.getLogger(__name__)
 FOLLOW_ALONG_MIN_SCORE = 0.5
 # How many verses past the displayed passage a hint may point to.
 FOLLOW_ALONG_LOOKAHEAD = 8
+# Show and auto-show keep at most this many verses on screen, ending on the verse being read
+# (rolling window: 10, 10-11, 10-12, 11-13 ...). Independent of the display's verse limit.
+FOLLOW_ALONG_WINDOW = 3
+# A bigger jump stays a hint for the operator and shows without earlier context.
+FOLLOW_AUTO_MAX_JUMP = 3
 # Armed (the audio pipeline should send partial transcripts) for this long after a
 # passage with a verse is first seen, and for ARM_HOLD_S after a transcript reads a
 # verse in the window a hint could point to.
@@ -208,6 +213,15 @@ def _in_order_totals(
     return totals
 
 
+def follow_along_show_from(
+    display_start: int, display_end: int, hint_start: int, hint_end: int
+) -> int:
+    """Start of the rolling passage, keeping at least the whole hint."""
+    if hint_start > display_end + FOLLOW_AUTO_MAX_JUMP:
+        return hint_start
+    return min(hint_start, max(display_start, hint_end - FOLLOW_ALONG_WINDOW + 1))
+
+
 def next_verse_hint(
     index: VerseTextIndex,
     bible: BibleLookup,
@@ -230,9 +244,7 @@ def next_verse_hint(
     a hint may point to. ``latest`` is the most recent verse hinted for this display: the
     sequentially next verse, after the later of ``latest`` and the passage's last verse,
     needs ``policy.next_min_score`` (when set), the other candidates ``policy.min_score``;
-    ``policy.pick`` chooses among them. The hint keeps the operator's page size (the on-screen
-    width) and ends at the last verse of the chapter in the active Bible, because a Show
-    click resolves against that Bible.
+    ``policy.pick`` chooses among them. The hint points to the matched verse only.
     """
     start = display.verse_start
     if start is None:
@@ -273,22 +285,11 @@ def next_verse_hint(
         verse = max(candidates, key=lambda v: (scores.get(v, 0.0), -v))
     if not bible.validate_reference(display.book, display.chapter, verse):
         return None
-    last = bible.last_verse(display.book, display.chapter)
-    if last is None:
-        return None
-    width = end - start + 1
-    verse_end = min(verse + width - 1, last)
-    # Some translations skip verses (WEB has no Acts 8:37); a Show click needs
-    # both ends to exist.
-    while verse_end > verse and not bible.validate_reference(
-        display.book, display.chapter, verse_end
-    ):
-        verse_end -= 1
     return FollowAlongHint(
         book=display.book,
         chapter=display.chapter,
         verse_start=verse,
-        verse_end=verse_end,
+        verse_end=verse,
         display_id=display.id,
     )
 
@@ -323,7 +324,7 @@ class FollowAlong:
         # start and time.
         self._offered: set[int] = set()
         self._last_offer: tuple[int, float] | None = None
-        # The current display's first verse when it puts up the hint offered just before it.
+        # The hinted verse at the end of the current display when it puts up the last hint.
         self._carried_read: int | None = None
         # When a transcript last read a verse in the window, for the current display.
         self._last_reading: float | None = None
@@ -343,17 +344,18 @@ class FollowAlong:
         """
         if display is None or display.verse_start is None or index is None:
             return None, False
+        start = display.verse_start
+        end = display.verse_end or start
         if display.id != self._display_id:
-            # A display that puts up the verse follow-along just offered (a Show click or
-            # auto-show) starts on a verse already seen read, so the next verse's start can
-            # count at once (see HintPolicy.start_prev_min). In effect a one-verse feature:
-            # the next verse follows the display's last verse, and only its first was read.
+            # A display that ends on the hint can begin with earlier verses for context.
+            # Carry the hinted verse so the next verse's start can count at once.
             hint = self.last_hint
             self._carried_read = (
-                display.verse_start
+                hint.verse_end
                 if hint is not None
-                and (hint.book, hint.chapter, hint.verse_start)
-                == (display.book, display.chapter, display.verse_start)
+                and (hint.book, hint.chapter, hint.verse_end)
+                == (display.book, display.chapter, end)
+                and start <= hint.verse_start
                 else None
             )
             self._display_id = display.id
@@ -362,8 +364,6 @@ class FollowAlong:
             self._last_offer = None
             self._last_reading = None
             self.last_hint = None
-        start = display.verse_start
-        end = display.verse_end or start
         read_bar = self.policy.min_score
         if self.policy.next_min_score is not None:
             read_bar = min(read_bar, self.policy.next_min_score)
@@ -404,6 +404,13 @@ class FollowAlong:
             read_through,
         )
         if hint is not None:
+            show_from = follow_along_show_from(start, end, hint.verse_start, hint.verse_end)
+            # Some translations skip verse numbers. A Show request needs both ends to exist.
+            while show_from < hint.verse_start and not bible.validate_reference(
+                hint.book, hint.chapter, show_from
+            ):
+                show_from += 1
+            hint.show_from = show_from
             self._offered.add(hint.verse_start)
             self._last_offer = (hint.verse_start, now)
             self.last_hint = hint

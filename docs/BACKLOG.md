@@ -132,13 +132,13 @@ building. Open: whether auto-approve keeps showing references while not live.
 Pairs with removing staging; build them as one milestone.
 
 ### Follow-along adds verses (rolling window)
-When the speaker reads on, the display grows the passage instead of jumping to
-the next verse alone: 1 verse, then 2, then 3 (the verse limit). After that it
-rolls: verses 2-4, 3-5, and so on, so the previous verse stays as context and
-the text size stays steady (owner decision: rolling, not reset to one verse).
-Follow-up idea, maybe not worth it: an "expand" button on the console that does
-the same by hand for a single verse on screen (one more verse each press). It
-would share the mechanism with follow-along rather than compete with it.
+Built (2026-11-18), not yet seen live. As the speaker reads on, Show and
+auto-show grow the passage to three verses, then roll (10, 10-11, 10-12,
+11-13 ...), whatever the verse limit; a hint now names only the verse being
+read. At a service, check that the text size stays steady and that the next
+verse is still offered promptly after a rolled passage goes up.
+Optional follow-up: a console "expand" button that adds one verse per press,
+sharing the same window rule.
 
 ### Animations
 Subtle motion where it helps: the logo, the OBS overlay's show/hide, display

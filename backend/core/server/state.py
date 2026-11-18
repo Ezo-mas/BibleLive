@@ -21,7 +21,7 @@ from .bible_version_service import BibleVersions
 from .connections import SEND_TIMEOUT, ConnectionManager
 from .display_session import ApprovalRefusal as ApprovalRefusal
 from .display_session import DisplaySession
-from .follow_along import FollowAlong, VerseIndexes
+from .follow_along import FOLLOW_AUTO_MAX_JUMP, FollowAlong, VerseIndexes
 from .idle_screen import IdleImage, IdleScreenFit, IdleScreenState, ImageKind
 from .idle_service import IdleScreenService
 from .models import (
@@ -70,10 +70,6 @@ AUTO_APPROVE_CONFIDENCES: dict[AutoMode, frozenset[str]] = {
     "medium_and_up": frozenset({"high", "medium"}),
     "all": frozenset({"high", "medium", "low"}),
 }
-
-# Follow-along auto-show (``set_follow_auto``) shows a hint by itself only when it starts
-# at most this many verses after the passage on screen ends. A bigger jump stays a hint.
-FOLLOW_AUTO_MAX_JUMP = 3
 
 # How many history entries the state snapshot carries (the operator's ``state_snapshot``
 # message and GET /api/state). The list itself is bounded by ``config.MAX_HISTORY_REFERENCES``.
@@ -725,7 +721,7 @@ class AppState:
                 self.bible_lookup,
                 book=hint.book,
                 chapter=hint.chapter,
-                verse_start=hint.verse_start,
+                verse_start=hint.show_from if hint.show_from is not None else hint.verse_start,
                 verse_end=hint.verse_end,
             )
         except PassageError as e:

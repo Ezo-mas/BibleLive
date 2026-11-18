@@ -13,6 +13,7 @@ import logging
 import pytest
 
 from core.config import config
+from core.server.models import BibleReference, FollowAlongHint
 from core.server.settings_store import (
     DEFAULT_FOLLOW_AUTO,
     SettingsStore,
@@ -290,3 +291,18 @@ class TestSettingsStoreFollowAuto:
         assert coerce_follow_auto(1) is False
         assert coerce_follow_auto(None) is False
         assert coerce_follow_auto("true", default=True) is True
+
+
+def test_auto_show_resolves_the_display_range_without_losing_a_multi_verse_hint(app_state):
+    app_state.follow_auto = True
+    app_state.current_display = BibleReference(
+        id="shown", book="John", chapter=3, verse_start=16, verse_end=16
+    )
+    hint = FollowAlongHint(
+        book="John", chapter=3, verse_start=17, verse_end=18, display_id="shown", show_from=16
+    )
+
+    passage = app_state._follow_auto_passage(hint)
+
+    assert passage is not None
+    assert (passage.verse_start, passage.verse_end) == (16, 18)
