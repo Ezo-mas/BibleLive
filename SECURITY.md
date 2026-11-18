@@ -6,7 +6,7 @@ manual display) and reference ingestion from the audio pipeline require
 authentication via:
 
 - WebSocket: first message `{"action": "authenticate", "token": "YOUR_TOKEN"}`
-  (the deprecated `?token=` query parameter still works)
+  (a `?token=` query parameter is ignored; it was accepted until 0.2.0)
 - HTTP: `Authorization: Bearer YOUR_TOKEN` header
 
 The audio pipeline sends the token with every reference and health report. It reads
@@ -221,10 +221,11 @@ sudo systemctl daemon-reload
 
 ### Nginx Configuration with Log Redaction
 
-The operator console sends its token inside the WebSocket, not in the URL, and
-the server redacts any `token=` query parameter from its own logs. A client
-still using the deprecated `?token=` form puts the token in the URL a proxy
-sees, so this configuration keeps query strings out of the proxy's logs too:
+The operator console sends its token inside the WebSocket, not in the URL; the
+server no longer accepts `?token=` and redacts any `token=` query parameter from
+its own logs. An old client that still sends `?token=` (it is refused) puts the
+token in the URL a proxy sees, so this configuration keeps query strings out of
+the proxy's logs too:
 
 ```nginx
 # Redact query strings from logs

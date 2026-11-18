@@ -120,7 +120,8 @@ ws.onopen = () => ws.send(JSON.stringify({ action: 'authenticate', token }))
 ```
 
 The server closes the socket with code 1008 if the token is wrong or does not
-arrive within 10 seconds. `?token=` in the URL still works but is deprecated.
+arrive within 10 seconds. A `?token=` in the URL is ignored (it was accepted
+until 0.2.0).
 
 ### Token Storage
 
@@ -128,7 +129,7 @@ The operator should prompt for the token on first use and store it:
 - In `localStorage` for web deployments
 - In secure storage for desktop apps
 
-**Security Note:** Tokens are transmitted in headers/query params. Always use HTTPS/WSS in production.
+**Security Note:** Tokens are transmitted in headers and WebSocket messages. Always use HTTPS/WSS in production.
 
 ---
 

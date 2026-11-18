@@ -297,13 +297,13 @@ async def _handle_authenticate(
 OPERATOR_AUTH_TIMEOUT_S = 10.0
 
 
-async def _authenticate_operator(websocket: WebSocket, query_token: str | None) -> bool:
+async def _authenticate_operator(websocket: WebSocket) -> bool:
     """Accept an operator socket and check its token; close it with 1008 if wrong.
 
     The token arrives as the first message, ``{"action": "authenticate",
-    "token": ...}``. ``?token=`` in the URL is still honoured for consoles built
-    before that change, but it is deprecated: URLs are logged, by uvicorn (which
-    ``log_redaction`` covers) and by any proxy in front (which nothing here can).
+    "token": ...}``, and nowhere else. A ``?token=`` in the URL is ignored (it
+    was accepted until 0.2.0): URLs are logged, by uvicorn and by any proxy in
+    front, so a client still sending one waits out the timeout and gets 1008.
 
     The socket is accepted before the check either way, so a refusal reaches the
     browser as close code 1008 — a refusal before the handshake surfaces as a
@@ -316,26 +316,25 @@ async def _authenticate_operator(websocket: WebSocket, query_token: str | None) 
         await websocket.close(code=1008, reason="Server misconfiguration")
         return False
 
-    if query_token is not None:
-        authorized = token_matches(query_token)
-        method = "websocket_query"
-    else:
-        method = "websocket_message"
-        try:
-            raw = await asyncio.wait_for(websocket.receive_text(), OPERATOR_AUTH_TIMEOUT_S)
-            message = json.loads(raw)
-        except (TimeoutError, json.JSONDecodeError, WebSocketDisconnect, RuntimeError):
-            message = None
-        authorized = (
-            isinstance(message, dict)
-            and message.get("action") == "authenticate"
-            and token_matches(message.get("token"))
-        )
+    try:
+        raw = await asyncio.wait_for(websocket.receive_text(), OPERATOR_AUTH_TIMEOUT_S)
+        message = json.loads(raw)
+    except (TimeoutError, json.JSONDecodeError, WebSocketDisconnect, RuntimeError):
+        message = None
+    authorized = (
+        isinstance(message, dict)
+        and message.get("action") == "authenticate"
+        and token_matches(message.get("token"))
+    )
 
     if not authorized:
         logger.warning(
             "Unauthorized operator WebSocket connection attempt",
-            extra={"event": "auth_failure", "auth_method": method, "client_type": "operator"},
+            extra={
+                "event": "auth_failure",
+                "auth_method": "websocket_message",
+                "client_type": "operator",
+            },
         )
         # RuntimeError: the client already went away.
         with contextlib.suppress(RuntimeError):
@@ -372,15 +371,12 @@ def build_router(app_state: AppState) -> APIRouter:
     router = APIRouter()
 
     @router.websocket("/ws/{client_type}")
-    async def websocket_endpoint(
-        websocket: WebSocket, client_type: str, token: str | None = None
-    ) -> None:
+    async def websocket_endpoint(websocket: WebSocket, client_type: str) -> None:
         """WebSocket endpoint for display and operator clients.
 
         When authentication is enabled, an operator client's first message must
         be ``{"action": "authenticate", "token": "YOUR_TOKEN"}``; nothing is
-        sent to it before that. (``?token=`` in the URL still works but is
-        deprecated, because URLs are logged.)
+        sent to it before that. A ``?token=`` in the URL is ignored.
         """
         if client_type not in ("display", "operator"):
             await websocket.close(code=4000)
@@ -389,7 +385,7 @@ def build_router(app_state: AppState) -> APIRouter:
         # Authenticate operator connections if required
         accepted = False
         if client_type == "operator" and config.REQUIRE_AUTH:
-            if not await _authenticate_operator(websocket, token):
+            if not await _authenticate_operator(websocket):
                 return
             accepted = True
 

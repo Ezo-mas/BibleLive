@@ -386,7 +386,8 @@ class TestShowAgain:
         assert client.get("/api/state").status_code == 401
         entry = _display(client, book="Romans", chapter=8, verse_start=28, headers=headers)
 
-        with client.websocket_connect(f"/ws/operator?token={token}") as operator_ws:
+        with client.websocket_connect("/ws/operator") as operator_ws:
+            operator_ws.send_text(json.dumps({"action": "authenticate", "token": token}))
             assert json.loads(operator_ws.receive_text())["type"] == "state_snapshot"
             _replay(operator_ws, entry)
 

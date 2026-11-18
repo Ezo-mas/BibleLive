@@ -1,10 +1,12 @@
 """Keep the operator token out of the server's own logs.
 
-Browsers cannot set headers on a WebSocket, so the operator console sends its
-token as ``/ws/operator?token=...``. uvicorn logs every WebSocket handshake with
-its full path and query string at INFO (``"WebSocket /ws/operator?token=..."
-[accepted]``), so without this the token lands in the log of every connection,
-and anyone who can read the log can operate the console.
+The operator console sends its token as the first WebSocket message, and the
+server no longer accepts ``/ws/operator?token=...`` (it did until 0.2.0). An old
+console or script may still send the token that way, though, and uvicorn logs
+every WebSocket handshake with its full path and query string at INFO
+(``"WebSocket /ws/operator?token=..." [accepted]``), so without this a token
+sent in the URL would land in the log, and anyone who can read the log could
+operate the console.
 
 The filter rewrites the value of any ``token`` query parameter in uvicorn's log
 records before they are formatted. It changes nothing on the wire: clients still

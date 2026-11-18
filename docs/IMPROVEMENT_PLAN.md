@@ -757,9 +757,10 @@ Uses decisions Q8 to Q10.
    into `bible_data/backups/`, which the version scan does not read.
 6. **Types (optional).** Turn on `disallow_untyped_defs` for `core.server.*`,
    then `audio.*`, one package per change.
-7. **Retire `?token=` (optional).** One release after the first-message
-   handshake shipped, remove the query-string path from
-   `_authenticate_operator`. Security review required.
+7. **Retire `?token=` (optional). Done after 0.2.0.** One release after the
+   first-message handshake shipped, remove the query-string path from
+   `_authenticate_operator`. Security review required. The uvicorn log
+   redaction stays, for old clients that still send the token in the URL.
 
 **Depends on.** M2 for the supervisor and the POSIX process-group handling.
 
