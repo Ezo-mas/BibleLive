@@ -461,6 +461,8 @@ class App:
 
     def _worker(self, settings: LauncherSettings) -> None:
         try:
+            if sys.platform == "darwin":
+                self._ask_microphone()
             plan = build_plan(settings)
             launcher = Launcher(plan, lambda k, m: self._on_launcher_event(launcher, k, m))
             with self._lock:
@@ -477,6 +479,24 @@ class App:
             self.queue.put(("event", "error", str(exc), "unknown", str(exc)))
             code = 1
         self.queue.put(("finished", code))
+
+    def _ask_microphone(self) -> None:
+        """macOS: ask for the microphone before the server starts and the browser opens.
+
+        The pipeline's ffmpeg would trigger the same prompt, but only after the operator page
+        has opened over it. A refusal is reported, not fatal: the server still serves manual
+        passages, and allowing it later in System Settings needs only a restart.
+        """
+        from .platform.macos import microphone_access
+
+        status = microphone_access(ask=False)
+        if status == "not_determined":
+            self.queue.put(("mic", "asking"))
+            status = microphone_access(cancelled=lambda: self._stop_flag)
+            if status == "not_determined" and not self._stop_flag:
+                self.queue.put(("mic", "no_answer"))
+        if status in ("denied", "restricted"):
+            self.queue.put(("mic", status))
 
     def _on_launcher_event(self, launcher: Launcher, kind: str, message: str) -> None:
         code = launcher.error_code if kind == "error" else None
@@ -597,6 +617,13 @@ class App:
                 self._log(t("fw.not_added"), "warning")
             self._firewall = status
             self._refresh_network()
+        elif tag == "mic":
+            key = {
+                "asking": "log.mic_asking",
+                "no_answer": "log.mic_no_answer",
+                "restricted": "warn.mic_restricted",
+            }.get(item[1], "warn.mic_denied")
+            self._log(t(key), "info" if key.startswith("log.") else "warning")
         elif tag == "gpu":
             self.gpu_text = item[1]
             self._refresh_status()

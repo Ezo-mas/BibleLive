@@ -2,17 +2,34 @@
 
 import pytest
 
-from audio.cli import build_parser
+from audio.cli import WHISPER_MODEL_NAMES, build_parser
 
 # Requires the optional audio extras (faster-whisper).
 pytestmark = pytest.mark.audio
 
 
-def test_every_model_choice_is_a_name_faster_whisper_knows():
-    """A choice the installed faster-whisper cannot resolve fails only at load."""
+def test_every_model_name_is_one_faster_whisper_knows():
+    """A name the installed faster-whisper cannot resolve fails only at load."""
     from faster_whisper.utils import available_models
 
-    model_action = next(a for a in build_parser()._actions if a.dest == "model")
+    assert set(WHISPER_MODEL_NAMES) <= set(available_models())
+    assert "large-v3-turbo" in WHISPER_MODEL_NAMES
 
-    assert set(model_action.choices) <= set(available_models())
-    assert "large-v3-turbo" in model_action.choices
+
+def test_model_takes_a_name_or_a_downloaded_folder(tmp_path, capsys):
+    """The launcher passes its pinned download's folder; anything else is refused at parse."""
+    parser = build_parser()
+    assert parser.parse_args(["--model", "large-v3-turbo"]).model == "large-v3-turbo"
+    assert parser.parse_args(["--model", str(tmp_path)]).model == str(tmp_path)
+    with pytest.raises(SystemExit):
+        parser.parse_args(["--model", str(tmp_path / "missing")])
+    assert "model folder" in capsys.readouterr().err
+
+
+def test_session_log_names_a_model_folder_without_its_path(tmp_path):
+    from audio.pipeline import _model_label
+
+    snapshot = tmp_path / "hub" / "models--org--whisper" / "snapshots" / "abc123"
+    snapshot.mkdir(parents=True)
+    assert _model_label(str(snapshot)) == "models--org--whisper@abc123"
+    assert _model_label("large-v3-turbo") == "large-v3-turbo"

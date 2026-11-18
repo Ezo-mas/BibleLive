@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Build build/BibleLive.app (Apple Silicon) and, unless --no-zip, dist/BibleLive-<version>-macos-arm64.zip.
+# Build build/BibleLive.app (Apple Silicon) and, unless --no-zip, dist/BibleLive-<version>-macos-arm64.zip
+# and dist/BibleLive-<version>-macos-arm64.dmg, both made from the one tested app.
 #
 # The macOS counterpart of scripts/windows/build-portable.ps1: the pinned standalone Python (with
 # Tk), the backend's pinned audio+gguf packages, the app, the LGPL ffmpeg from build-ffmpeg.sh, the
@@ -8,6 +9,7 @@
 # install notes say (docs/macos-install.md).
 #
 # Usage: scripts/macos/build-app.sh [--skip-frontend-build] [--ffmpeg-dir DIR] [--bible-db FILE] [--no-zip]
+#   --no-zip               build and test the app only (no zip, no disk image)
 #   --skip-frontend-build  reuse static/frontend (no npm on the machine)
 #   --ffmpeg-dir DIR       a folder from build-ffmpeg.sh (default: build it into build/cache/ffmpeg-macos)
 #   --bible-db FILE        the English database (default: build it from data/kjv2.json)
@@ -100,24 +102,13 @@ tar -xzf "$CACHE/$PY_ASSET" -C "$RES"
 "$PY" -c "import tkinter, sqlite3, ssl; print('python OK, tk', tkinter.TkVersion)"
 
 # ---- third-party dependencies -----------------------------------------------------------
-step "Installing third-party dependencies (pinned by backend/constraints.txt)"
-REQ="$CACHE/requirements-macos.txt"
-"$PY" - "$REPO/backend/pyproject.toml" audio,gguf > "$REQ" <<'EOF'
-import sys
-import tomllib
-
-with open(sys.argv[1], "rb") as fh:
-    project = tomllib.load(fh)["project"]
-reqs = list(project["dependencies"])
-for extra in sys.argv[2].split(","):
-    reqs += project["optional-dependencies"][extra]
-print("\n".join(reqs))
-EOF
-cat "$REQ"
-# Wheels only: a source build would need a compiler on the build machine and could pick up
-# Homebrew or /usr/local libraries.
-"$PY" -m pip install --disable-pip-version-check --no-warn-script-location --no-cache-dir \
-  --only-binary=:all: -r "$REQ" -c "$REPO/backend/constraints.txt"
+step "Installing third-party dependencies (scripts/macos/requirements-arm64.lock, hash-checked)"
+# Every wheel by version and SHA256 (generated from backend/constraints.txt by
+# lock_requirements.py; backend/tests/test_macos_lock.py keeps the two in step). pip refuses a
+# wheel whose hash differs and any dependency the lock does not list. Wheels only: a source
+# build would need a compiler and could pick up Homebrew or /usr/local libraries.
+"$PY" -m pip install --disable-pip-version-check --no-warn-script-location --no-cache-dir   --only-binary=:all: --require-hashes -r "$REPO/scripts/macos/requirements-arm64.lock"
+"$PY" -m pip check
 
 # ---- app --------------------------------------------------------------------------------
 step "Copying the application"
@@ -187,6 +178,7 @@ cat > "$CONTENTS/Info.plist" <<EOF
   <key>CFBundleDisplayName</key><string>BibleLive</string>
   <key>CFBundleIdentifier</key><string>org.biblelive.launcher</string>
   <key>CFBundleExecutable</key><string>BibleLive</string>
+  <key>CFBundleIconFile</key><string>biblelive</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleShortVersionString</key><string>$VERSION</string>
   <key>CFBundleVersion</key><string>$STAMP</string>
@@ -199,6 +191,8 @@ cat > "$CONTENTS/Info.plist" <<EOF
 </plist>
 EOF
 plutil -lint "$CONTENTS/Info.plist"
+# The icon (scripts/macos/make_icns.py draws it; the same artwork as the Windows icon).
+cp "$REPO/scripts/macos/biblelive.icns" "$RES/biblelive.icns"
 # The bundle's executable is a small compiled program embedding the bundled Python
 # (scripts/macos/launcher.c): macOS attributes microphone access to the process that is the
 # bundle's CFBundleExecutable and shows the prompt with the text above; the server and the
@@ -297,9 +291,39 @@ if [ "$NO_ZIP" = 1 ]; then
   echo "Built $APP_BUNDLE (${SIZE_MB} MB). Zip skipped (--no-zip)."
   exit 0
 fi
-step "Creating the zip"
+step "Creating the zip and the disk image"
 mkdir -p "$DIST"
 ZIP="$DIST/BibleLive-$VERSION-macos-arm64.zip"
-rm -f "$ZIP"
+DMG="$DIST/BibleLive-$VERSION-macos-arm64.dmg"
+rm -f "$ZIP" "$DMG"
 ditto -c -k --keepParent "$APP_BUNDLE" "$ZIP"
-echo "Built $ZIP ($(du -m "$ZIP" | cut -f1) MB from ${SIZE_MB} MB)."
+# The disk image: the app and a link to /Applications to drag it onto, in a laid-out window
+# (background with an arrow, fixed icon positions, no toolbar or sidebar). Unsigned, like the
+# app inside it (ad-hoc signature only): a signed app never ships in an unsigned image or the
+# other way round (docs/macos-arm64.md, Phase 3). dmgbuild writes the window layout without
+# Finder; it and its two dependencies are hash-pinned build tools, never shipped.
+DMG_TOOLS="$BUILD/dmg-tools"
+case "$DMG_TOOLS" in "$BUILD"/*) ;; *) echo "Refusing to delete outside build/" >&2; exit 1 ;; esac
+rm -rf "$DMG_TOOLS"
+mkdir -p "$DMG_TOOLS/bg"
+"$PY" -m pip install --disable-pip-version-check --no-cache-dir --only-binary=:all: --no-deps \
+  --require-hashes --target "$DMG_TOOLS/lib" -r "$REPO/scripts/macos/requirements-dmg.lock"
+swift "$REPO/scripts/macos/dmg-background.swift" "$DMG_TOOLS/bg/background.png" "$DMG_TOOLS/bg/background@2x.png"
+PYTHONPATH="$DMG_TOOLS/lib" "$PY" -B -s -m dmgbuild -s "$REPO/scripts/macos/dmg-settings.py" \
+  -D app="$APP_BUNDLE" -D background="$DMG_TOOLS/bg/background.png" \
+  -D icon="$REPO/scripts/macos/biblelive.icns" "BibleLive" "$DMG"
+rm -rf "$DMG_TOOLS"
+echo "- the disk image holds the same, still valid app, and its window layout"
+MNT="$(mktemp -d)"
+hdiutil attach -quiet -nobrowse -readonly -mountpoint "$MNT" "$DMG"
+dmg_ok=1
+codesign --verify --deep --strict "$MNT/BibleLive.app" || dmg_ok=0
+diff -rq "$APP_BUNDLE" "$MNT/BibleLive.app" >/dev/null || { echo "The disk image's app differs from $APP_BUNDLE" >&2; dmg_ok=0; }
+[ "$(readlink "$MNT/Applications")" = /Applications ] || dmg_ok=0
+[ -f "$MNT/.DS_Store" ] && [ -f "$MNT/.background.tiff" ] || { echo "The disk image has no window layout" >&2; dmg_ok=0; }
+# Detach can fail with "Resource busy" for a moment after the checks; retry, then force.
+for _ in 1 2 3; do hdiutil detach -quiet "$MNT" 2>/dev/null && break; sleep 2; done
+[ ! -d "$MNT/BibleLive.app" ] || hdiutil detach -quiet -force "$MNT" || true
+rmdir "$MNT" 2>/dev/null || true
+[ "$dmg_ok" = 1 ] || { rm -f "$DMG"; echo "Disk image check failed" >&2; exit 1; }
+echo "Built $ZIP ($(du -m "$ZIP" | cut -f1) MB) and $DMG ($(du -m "$DMG" | cut -f1) MB) from ${SIZE_MB} MB."

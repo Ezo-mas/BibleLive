@@ -16,15 +16,25 @@ Settings (step 3). That is expected for this release; nothing is wrong with the 
 
 ## 2. Install
 
-1. Download `BibleLive-<version>-macos-arm64.zip` and double-click it. You get `BibleLive.app`.
-2. Drag `BibleLive.app` into **Applications**.
+Each release on GitHub has the same app in two forms; take either.
+
+- **Disk image:** download `BibleLive-<version>-macos-arm64.dmg` and double-click it. In the
+  window that opens, drag **BibleLive** onto **Applications**, as the arrow shows. Then eject the disk image
+  (the ⏏ button next to "BibleLive" in the Finder sidebar) and delete the `.dmg`.
+- **Zip:** download `BibleLive-<version>-macos-arm64.zip` and double-click it. You get
+  `BibleLive.app`; drag it into **Applications**.
+
+Do not start BibleLive from inside the disk image or from Downloads: run it from
+Applications. To update, quit BibleLive, install the new version the same way (replace the
+old app when Finder asks) and do step 3 again.
 
 ## 3. Allow it to open (once)
 
-1. Open BibleLive from Applications. macOS says it cannot check BibleLive for malicious
-   software and does not open it. Close the message.
-2. Open **System Settings → Privacy & Security**, scroll down to the message about
-   BibleLive, and click **Open Anyway**. Confirm with your password or Touch ID.
+1. Open BibleLive from Applications. macOS says *"BibleLive" Not Opened* (Apple could not
+   verify it) and does not open it. Close the message.
+2. Open **System Settings → Privacy & Security** and scroll down to the **Security** section,
+   which says BibleLive was blocked. Click **Open Anyway**, click **Open Anyway** again in the
+   message that follows, and confirm with your password or Touch ID.
 3. BibleLive opens. From now on it opens normally; repeat this only after installing a new
    version.
 
@@ -46,19 +56,22 @@ In Terminal, paste this line and press Return, then wait until it says it is don
 /Applications/BibleLive.app/Contents/MacOS/BibleLive --download-model
 ```
 
-It downloads the Lithuanian model (Kmynas) and Whisper for English. Without
-it, Lithuanian services fall back to Whisper, which finds fewer references; the launcher
-window says so.
+It downloads the Lithuanian model (Kmynas) and Whisper for English, and checks every file
+against the version BibleLive was tested with (a damaged or changed file is deleted and the
+download reports an error; run it again). Without it, Lithuanian services fall back to
+Whisper, which finds fewer references; the launcher window says so. If the launcher says a
+model is "an older download, not the checked version", run the line above again.
 
 ## 5. First start
 
 1. Open BibleLive from Applications (or Launchpad).
 2. Choose the language and the microphone in the launcher window and press **Start**.
-3. macOS asks: *"BibleLive" would like to access the microphone.* Click **Allow**.
-   (It may already ask when the launcher window opens, since the window lists the
-   microphones.) If you clicked Don't Allow by mistake: System Settings → Privacy & Security
-   → Microphone, turn **BibleLive** on, then stop and start again.
-4. The operator page opens in your browser; the display opens on the projector screen.
+3. The first time, macOS asks: *"BibleLive" would like to access the microphone.* Click
+   **Allow**. BibleLive waits for your answer (up to two minutes) before it opens anything
+   else. If you clicked
+   Don't Allow by mistake, the launcher says so: System Settings → Privacy & Security →
+   Microphone, turn **BibleLive** on, then stop and start again.
+4. The operator page opens in your browser and the display on the projector screen.
 
 ## 6. Projector
 
@@ -89,6 +102,16 @@ start BibleLive. Do not put it inside `BibleLive.app`; changing the app breaks i
 
 ## Uninstall
 
-Drag `BibleLive.app` from Applications to the Bin. To remove the settings, logs, models and
-Bibles too, delete `~/Library/Application Support/BibleLive`. To remove the microphone
-permission: System Settings → Privacy & Security → Microphone.
+1. Quit BibleLive (⌘Q in the launcher window; that also stops the display and the
+   listening).
+2. Drag `BibleLive.app` from Applications to the Bin.
+3. To remove the settings, logs, session recordings, models (several gigabytes) and Bibles
+   too, delete `~/Library/Application Support/BibleLive` (Finder: Go → Go to Folder…).
+4. To remove the microphone permission, run this in Terminal:
+
+```
+tccutil reset Microphone org.biblelive.launcher
+```
+
+If you allowed incoming network connections (network mode), macOS keeps that entry under
+System Settings → Network → Firewall → Options; remove it there.

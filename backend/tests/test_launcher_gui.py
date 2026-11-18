@@ -57,10 +57,13 @@ def fake_process_groups(monkeypatch):
 
 def test_choices_match_audio_cli():
     pytest.importorskip("audio.cli")
+    from audio.cli import WHISPER_MODEL_NAMES
     from audio.cli import build_parser as audio_parser
 
     actions = {a.dest: a for a in audio_parser()._actions}
-    assert tuple(actions["model"].choices) == MODELS
+    # --model also takes a model folder (the launcher's pinned download), so it lists its
+    # names instead of argparse choices.
+    assert WHISPER_MODEL_NAMES == MODELS
     assert tuple(actions["language"].choices) == LANGUAGES
     # launcher CLI uses the same shared tuples
     launcher_actions = {a.dest: a for a in build_parser()._actions}
@@ -614,3 +617,40 @@ def test_projector_posix_spawn_uses_own_session(tmp_path, monkeypatch):
     pb.open(8000, SECOND)
     pb.close()
     assert seen["start_new_session"] is True
+
+
+@pytest.mark.parametrize(
+    ("statuses", "stopped", "messages"),
+    [
+        (["not_determined", "authorized"], False, [("mic", "asking")]),
+        (["not_determined", "denied"], False, [("mic", "asking"), ("mic", "denied")]),
+        (["not_determined", "not_determined"], False, [("mic", "asking"), ("mic", "no_answer")]),
+        (["not_determined", "not_determined"], True, [("mic", "asking")]),  # Stop while asked
+        (["denied"], False, [("mic", "denied")]),
+        (["restricted"], False, [("mic", "restricted")]),
+        (["authorized"], False, []),
+        (["unknown"], False, []),
+    ],
+)
+def test_macos_start_asks_for_the_microphone_first(monkeypatch, statuses, stopped, messages):
+    import queue
+    from types import SimpleNamespace
+
+    pytest.importorskip("tkinter")
+    from launcher import gui
+    from launcher.platform import macos
+
+    answers = iter(statuses)
+    calls = []
+
+    def access(*, ask=True, timeout=120.0, cancelled=None):
+        calls.append(ask)
+        if ask:
+            assert cancelled is not None and cancelled() is stopped
+        return next(answers)
+
+    monkeypatch.setattr(macos, "microphone_access", access)
+    window = SimpleNamespace(queue=queue.Queue(), _stop_flag=stopped)
+    gui.App._ask_microphone(window)  # type: ignore[arg-type]
+    assert calls == [False, True][: len(statuses)]
+    assert [window.queue.get_nowait() for _ in range(window.queue.qsize())] == messages

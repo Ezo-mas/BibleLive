@@ -15,7 +15,9 @@ from launcher.cli import apply_overrides, build_parser, format_plan
 from launcher.commands import (
     EXIT_FAIL,
     EXIT_OK,
+    ChecksumError,
     _whisper_cached,
+    check_sha256,
     download_speech_command,
     gpu_self_test_command,
 )
@@ -23,13 +25,17 @@ from launcher.process import build_plan
 from launcher.settings import SPEECH_ENGINES, LauncherSettings, load_settings, save_settings
 from launcher.speech import (
     GGUF_MODELS,
+    WHISPER_MODELS,
     SpeechChoice,
     cached_gguf_path,
+    cached_whisper_dir,
+    file_sha256,
     hub_cache_dir,
     physical_cores,
     resolve_speech,
     resolve_speech_engine,
     speech_threads,
+    whisper_model_arg,
 )
 from launcher.viewmodel import (
     describe_speech,
@@ -50,16 +56,35 @@ def _restore_hf_home(monkeypatch):
     monkeypatch.setenv("HF_HOME", "unset-by-test")
 
 
-def _cache(models_dir: Path, model) -> Path:
-    """Write ``model`` into the hub layout huggingface_hub reads (refs/main + snapshots)."""
-    repo = hub_cache_dir(models_dir) / ("models--" + model.repo_id.replace("/", "--"))
-    (repo / "refs").mkdir(parents=True, exist_ok=True)
-    (repo / "refs" / "main").write_text("abc123", encoding="utf-8")
-    snapshot = repo / "snapshots" / "abc123"
+def _snapshot(models_dir: Path, repo_id: str, commit: str, *, main: bool) -> Path:
+    """A snapshot folder in the hub layout huggingface_hub reads; ``main``: also refs/main."""
+    repo = hub_cache_dir(models_dir) / ("models--" + repo_id.replace("/", "--"))
+    if main:
+        (repo / "refs").mkdir(parents=True, exist_ok=True)
+        (repo / "refs" / "main").write_text(commit, encoding="utf-8")
+    snapshot = repo / "snapshots" / commit
     snapshot.mkdir(parents=True, exist_ok=True)
+    return snapshot
+
+
+def _cache(models_dir: Path, model, *, pinned: bool = True) -> Path:
+    """Write ``model`` into the hub cache: as the pinned download does (the pinned commit, no
+    refs/main), or as a download by name before the pins did (refs/main -> another commit)."""
+    if pinned:
+        snapshot = _snapshot(models_dir, model.repo_id, model.revision, main=False)
+    else:
+        snapshot = _snapshot(models_dir, model.repo_id, "abc123", main=True)
     path = snapshot / model.filename
     path.write_bytes(b"GGUF")
     return path
+
+
+def _cache_whisper(models_dir: Path, name: str) -> Path:
+    pin = WHISPER_MODELS[name]
+    snapshot = _snapshot(models_dir, pin.repo_id, pin.revision, main=False)
+    for filename in pin.files:
+        (snapshot / filename).write_bytes(b"x")
+    return snapshot
 
 
 def _plan(tmp_path, settings, probe):
@@ -105,6 +130,69 @@ def test_cached_models_are_found(tmp_path):
         "canary": canary,
     }
     assert choice.warnings == []
+
+
+def test_models_are_pinned_to_a_commit_and_a_sha256():
+    for model in [*GGUF_MODELS.values(), *WHISPER_MODELS.values()]:
+        assert len(model.revision) == 40 and int(model.revision, 16) >= 0
+    hashes = [m.sha256 for m in GGUF_MODELS.values()]
+    hashes += [h for m in WHISPER_MODELS.values() for h in m.files.values()]
+    assert all(len(h) == 64 and int(h, 16) >= 0 for h in hashes)
+    # Every file faster-whisper loads: the weights, the config and the tokenizer.
+    for pin in WHISPER_MODELS.values():
+        assert {"model.bin", "config.json", "tokenizer.json"} <= set(pin.files)
+
+
+def test_an_older_download_still_runs_with_a_warning(tmp_path):
+    # Downloaded by name before the pins: still used (the service keeps running), but the
+    # operator is told to re-download the checked version.
+    kmynas = _cache(tmp_path, KMYNAS, pinned=False)
+    assert cached_gguf_path("kmynas", tmp_path, pinned_only=True) is None
+    choice = resolve_speech("kmynas", tmp_path, NO_GPU)
+    assert choice.engine == "kmynas" and Path(choice.model_paths["kmynas"]) == kmynas
+    assert len(choice.warnings) == 1 and "--download-model" in choice.warnings[0]
+    # The pinned download wins once it is there.
+    pinned = _cache(tmp_path, KMYNAS)
+    choice = resolve_speech("kmynas", tmp_path, NO_GPU)
+    assert Path(choice.model_paths["kmynas"]) == pinned and choice.warnings == []
+
+
+def test_whisper_runs_from_the_pinned_folder(tmp_path):
+    assert whisper_model_arg("large-v3-turbo", tmp_path) == "large-v3-turbo"  # not downloaded
+    folder = _cache_whisper(tmp_path, "large-v3-turbo")
+    assert Path(cached_whisper_dir("large-v3-turbo", tmp_path)) == folder
+    assert Path(whisper_model_arg("large-v3-turbo", tmp_path)) == folder
+    assert _whisper_cached("large-v3-turbo", tmp_path) is True
+    # A file missing from the pinned folder: load by name, as before the pins.
+    (folder / "tokenizer.json").unlink()
+    assert whisper_model_arg("large-v3-turbo", tmp_path) == "large-v3-turbo"
+    # A model without a pin always goes by name.
+    assert whisper_model_arg("tiny", tmp_path) == "tiny"
+
+
+def test_launch_plan_passes_the_pinned_whisper_folder(tmp_path):
+    folder = _cache_whisper(tmp_path / "models", "large-v3-turbo")
+    plan = _plan(tmp_path, LauncherSettings(language="en", model="large-v3-turbo"), NO_GPU)
+    assert Path(_arg(plan.audio_cmd, "--model")) == folder
+    plan = _plan(tmp_path, LauncherSettings(language="en", model="small"), NO_GPU)
+    assert _arg(plan.audio_cmd, "--model") == "small"
+
+
+def test_checksum_mismatch_deletes_the_file(tmp_path):
+    good = tmp_path / "good.bin"
+    good.write_bytes(b"model")
+    check_sha256(good, file_sha256(good))
+    assert good.exists()
+    blob = tmp_path / "blob"
+    blob.write_bytes(b"tampered")
+    link = tmp_path / "snapshot.bin"
+    try:
+        link.symlink_to(blob)
+    except OSError:  # Windows without Developer Mode: the hub cache holds a copy instead
+        link = blob
+    with pytest.raises(ChecksumError, match="expected"):
+        check_sha256(link, "0" * 64)
+    assert not blob.exists() and not link.exists()
 
 
 def test_missing_models_fall_back_to_whisper(tmp_path):
@@ -264,8 +352,8 @@ def test_speech_options_and_status_text():
 def test_download_fetches_gguf_then_whisper(tmp_path):
     calls: list[tuple] = []
 
-    def gguf(repo, filename, cache):
-        calls.append(("gguf", repo, filename, cache))
+    def gguf(model, cache):
+        calls.append(("gguf", model.repo_id, model.filename, cache))
         return str(cache / "file.gguf")
 
     def whisper(model):
@@ -420,3 +508,54 @@ def test_selftest_also_checks_whisper_when_it_is_downloaded(tmp_path):
     assert code == EXIT_OK
     assert whisper_seen == [("large-v3-turbo", "cpu", "int8")]
     assert out.getvalue().count("SELFTEST OK") == 2
+
+
+def test_default_downloaders_fetch_the_pinned_commit_and_check_it(tmp_path, monkeypatch):
+    import faster_whisper.utils
+    import huggingface_hub
+    from launcher import commands
+    from launcher.speech import GgufModel, WhisperModel
+
+    folder = tmp_path / "snap"
+    folder.mkdir()
+    (folder / "model.bin").write_bytes(b"weights")
+    seen: dict = {}
+
+    def fake_download_model(model, revision=None):
+        seen["whisper"] = (model, revision)
+        return str(folder)
+
+    pin = WhisperModel("x/y", "c" * 40, {"model.bin": file_sha256(folder / "model.bin")})
+    monkeypatch.setattr(faster_whisper.utils, "download_model", fake_download_model)
+    monkeypatch.setitem(commands.WHISPER_MODELS, "small", pin)
+    assert commands._default_downloader("small") == str(folder)
+    assert seen["whisper"] == ("x/y", "c" * 40)
+    assert commands._default_downloader("tiny") == str(folder)  # no pin: by name
+    assert seen["whisper"] == ("tiny", None)
+    monkeypatch.setitem(
+        commands.WHISPER_MODELS, "small", WhisperModel("x/y", "c" * 40, {"model.bin": "0" * 64})
+    )
+    with pytest.raises(ChecksumError):
+        commands._default_downloader("small")
+    assert not (folder / "model.bin").exists()
+
+    gguf_file = tmp_path / "m.gguf"
+    gguf_file.write_bytes(b"GGUF")
+
+    def fake_hf_hub_download(**kwargs):
+        seen["gguf"] = kwargs
+        return str(gguf_file)
+
+    monkeypatch.setattr(huggingface_hub, "hf_hub_download", fake_hf_hub_download)
+    model = GgufModel("a/b", "m.gguf", 1, "d" * 40, file_sha256(gguf_file))
+    assert commands._default_gguf_downloader(model, tmp_path) == str(gguf_file)
+    assert seen["gguf"]["revision"] == "d" * 40 and seen["gguf"]["filename"] == "m.gguf"
+
+
+def test_whisper_pins_use_faster_whispers_repo_ids():
+    # The cache folder is named after the repo id: the pin and faster-whisper must agree, or a
+    # by-name load would look in another folder than the pinned download.
+    from faster_whisper.utils import _MODELS
+
+    for name, pin in WHISPER_MODELS.items():
+        assert _MODELS[name] == pin.repo_id, name

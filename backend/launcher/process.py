@@ -27,7 +27,7 @@ from .gpu import SupportedProbe, cuda_supported_compute_types, resolve_compute_t
 from .i18n import resolve_ui_language
 from .settings import LauncherSettings, app_data_dir
 from .settings import models_dir as default_models_dir
-from .speech import GGUF_LANGUAGES, resolve_speech, speech_threads
+from .speech import GGUF_LANGUAGES, resolve_speech, speech_threads, whisper_model_arg
 
 logger = logging.getLogger(__name__)
 
@@ -186,7 +186,7 @@ def build_plan(
         "--language",
         settings.language,
         "--model",
-        settings.model,
+        whisper_model_arg(settings.model, hf_models),
         "--device",
         device,
         "--compute-type",

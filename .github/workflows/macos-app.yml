@@ -1,16 +1,19 @@
 name: macOS app
 
-# Builds BibleLive.app for Apple Silicon (scripts/macos/build-app.sh) and uploads the zip as a
-# workflow artifact. Manual runs only: the app is unsigned (docs/macos-arm64.md, decision Q10)
-# and is not attached to releases until it has passed the Phase 1 test on a real Mac, and macOS
-# runners bill 10x, so it must not run on every push.
+# Builds BibleLive.app for Apple Silicon (scripts/macos/build-app.sh) and uploads the zip and
+# the disk image as a workflow artifact; v* tags also attach both to the GitHub release (as
+# windows-installer.yml does the Windows installer). Unsigned (docs/macos-arm64.md, decision
+# Q10; install notes in docs/macos-install.md). macOS runners bill 10x, so it never runs on
+# every push.
 
 on:
   workflow_dispatch:
-  # workflow_dispatch needs the file on the default branch, so a push to a macos/** branch
-  # runs it there (as macos-spikes.yml does for spike/**). Any change: the app bundles the
-  # backend and the frontend too, and pushing to macos/** is only ever done to get a build.
+  # A v* tag builds the release. A push to a macos/** branch builds that branch (as
+  # macos-spikes.yml does for spike/**); `gh workflow run macos-app.yml --ref <branch>` does
+  # the same for any branch. Any change: the app bundles the backend and the frontend too, and
+  # pushing to macos/** is only ever done to get a build.
   push:
+    tags: ['v*']
     branches:
       - 'macos/**'
 
@@ -48,7 +51,35 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: BibleLive-macos-arm64
-          path: dist/BibleLive-*-macos-arm64.zip
+          path: |
+            dist/BibleLive-*-macos-arm64.zip
+            dist/BibleLive-*-macos-arm64.dmg
           # Already compressed.
           compression-level: 0
+          # Two copies of a ~300 MB app count against the storage allowance until they
+          # expire; tagged builds keep theirs on the release.
+          retention-days: 14
           if-no-files-found: error
+
+  release:
+    # A separate job so that only this step, on a tag, can write to the repository: the build
+    # (which runs npm and pip) stays read-only.
+    name: Attach to the GitHub release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: app
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v7
+        with:
+          name: BibleLive-macos-arm64
+          path: dist
+
+      - name: Attach the zip and the disk image
+        uses: softprops/action-gh-release@v3
+        with:
+          files: |
+            dist/BibleLive-*-macos-arm64.zip
+            dist/BibleLive-*-macos-arm64.dmg
