@@ -3,6 +3,7 @@
 import asyncio
 import logging
 import sqlite3
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 import uvicorn
@@ -93,7 +94,7 @@ def create_app(bible_lookup: BibleLookup | None = None) -> FastAPI:
         app_state.restore_runtime_state()
 
     @asynccontextmanager
-    async def lifespan(_app: FastAPI):
+    async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         yield
         await app_state.shutdown()
 

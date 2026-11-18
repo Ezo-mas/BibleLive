@@ -104,6 +104,11 @@ check_untyped_defs = true
 # benchmarks/ has no __init__.py but follow_along_bench imports benchmarks.run_benchmark.
 explicit_package_bases = true
 
+# Tightened one package at a time (improvement plan M7 item 6).
+[[tool.mypy.overrides]]
+module = "core.server.*"
+disallow_untyped_defs = true
+
 [[tool.mypy.overrides]]
 module = "tests.*"
 disallow_untyped_defs = false

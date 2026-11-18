@@ -3,6 +3,7 @@
 import asyncio
 import json
 import logging
+from collections.abc import Iterable
 from typing import Any
 
 from fastapi import WebSocket
@@ -30,7 +31,7 @@ class ConnectionManager:
     ``take_abandoned`` tells the endpoint that cancellation was this one.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize the connection manager with empty connection sets."""
         self.display_connections: set[WebSocket] = set()
         self.operator_connections: set[WebSocket] = set()
@@ -47,7 +48,7 @@ class ConnectionManager:
         client_type: str = "display",
         accepted: bool = False,
         endpoint: asyncio.Task[Any] | None = None,
-    ):
+    ) -> None:
         """Accept a websocket connection and register it based on client type.
 
         Args:
@@ -72,7 +73,7 @@ class ConnectionManager:
         elif client_type == "operator":
             self.operator_connections.add(websocket)
 
-    def disconnect(self, websocket: WebSocket):
+    def disconnect(self, websocket: WebSocket) -> None:
         """Remove a websocket, drop queued messages and stop its writer.
 
         Args:
@@ -170,7 +171,9 @@ class ConnectionManager:
             return True
         return False
 
-    async def _send_to_connections(self, message: dict, connections) -> list[WebSocket]:
+    async def _send_to_connections(
+        self, message: dict, connections: Iterable[WebSocket]
+    ) -> list[WebSocket]:
         """Enqueue a broadcast; return sockets pruned now because their queue is full."""
         # Copy before iterating: pruning a failed socket mutates the sets below,
         # which is not safe while iterating them.
@@ -181,7 +184,7 @@ class ConnectionManager:
         payload = json.dumps(message)
         return [connection for connection in connections if self._enqueue(connection, payload)]
 
-    async def _safe_send(self, websocket: WebSocket, message: dict):
+    async def _safe_send(self, websocket: WebSocket, message: dict) -> None:
         """Enqueue for one registered socket; silently drop after disconnect/prune."""
         if websocket in self._queues:
             self._enqueue(websocket, json.dumps(message))
