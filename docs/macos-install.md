@@ -18,8 +18,9 @@ Settings (step 3). That is expected for this release; nothing is wrong with the 
 
 Each release on GitHub has the same app in two forms; take either.
 
-- **Disk image:** download `BibleLive-<version>-macos-arm64.dmg` and double-click it. In the
-  window that opens, drag **BibleLive** onto **Applications**. Then eject the disk image
+- **Disk image:** download `BibleLive-<version>-macos-arm64.dmg` and double-click it. A plain
+  Finder window opens with two items, **BibleLive** and **Applications**; drag **BibleLive**
+  onto **Applications**. Then eject the disk image
   (the ⏏ button next to "BibleLive" in the Finder sidebar) and delete the `.dmg`.
 - **Zip:** download `BibleLive-<version>-macos-arm64.zip` and double-click it. You get
   `BibleLive.app`; drag it into **Applications**.
@@ -30,10 +31,11 @@ old app when Finder asks) and do step 3 again.
 
 ## 3. Allow it to open (once)
 
-1. Open BibleLive from Applications. macOS says it cannot check BibleLive for malicious
-   software and does not open it. Close the message.
-2. Open **System Settings → Privacy & Security**, scroll down to the message about
-   BibleLive, and click **Open Anyway**. Confirm with your password or Touch ID.
+1. Open BibleLive from Applications. macOS says *"BibleLive" Not Opened* (Apple could not
+   verify it) and does not open it. Close the message.
+2. Open **System Settings → Privacy & Security** and scroll down to the **Security** section,
+   which says BibleLive was blocked. Click **Open Anyway**, click **Open Anyway** again in the
+   message that follows, and confirm with your password or Touch ID.
 3. BibleLive opens. From now on it opens normally; repeat this only after installing a new
    version.
 
@@ -65,11 +67,13 @@ model is "an older download, not the checked version", run the line above again.
 
 1. Open BibleLive from Applications (or Launchpad).
 2. Choose the language and the microphone in the launcher window and press **Start**.
-3. macOS asks: *"BibleLive" would like to access the microphone.* Click **Allow**.
-   (It may already ask when the launcher window opens, since the window lists the
-   microphones.) If you clicked Don't Allow by mistake: System Settings → Privacy & Security
-   → Microphone, turn **BibleLive** on, then stop and start again.
-4. The operator page opens in your browser; the display opens on the projector screen.
+3. The operator page opens in your browser and the display on the projector screen.
+4. The first time, macOS then asks: *"BibleLive" would like to access the microphone.* It
+   comes up after the browser page, so look for it over (or behind) the browser and click
+   **Allow**; nothing is heard until you do. (It may instead ask when the launcher window
+   opens, since the window lists the microphones.) If you clicked Don't Allow by mistake:
+   System Settings → Privacy & Security → Microphone, turn **BibleLive** on, then stop and
+   start again.
 
 ## 6. Projector
 

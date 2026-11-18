@@ -10,7 +10,10 @@ Bibles folder (`~/Library/Application Support/BibleLive/bible_data`, `%APPDATA%\
 on Windows). Phase 1 passed on a real Mac (PRs #93, #94; the second screen is still
 untested, see `docs/BACKLOG.md`). Phase 2 (pins + acceptance test) and Phase 3 (zip and disk
 image from one tree, attached to `v*` releases) are in the branch `feat/macos-release`; see
-"Acceptance test" below. Test Mac: Apple M1 (4 performance + 4 efficiency cores, 16 GB),
+"Acceptance test" below. The disk image's Gatekeeper path was tested by the owner on
+2026-11-18 (CI build `0.1.0+ecd85ea` downloaded in a browser, quarantined, opened with
+Privacy & Security → Open Anyway as the install notes say; the pipeline loaded both models
+from their pinned commits). Test Mac: Apple M1 (4 performance + 4 efficiency cores, 16 GB),
 macOS 27.2.1.
 
 **Phase 0 result: complete.** Run `40584729242` (2026-10-27, `macos-15` arm64)
