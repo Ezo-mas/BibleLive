@@ -3,14 +3,15 @@
 Updated 2026-10-28 · branch `spike/macos-arm64` · owner-facing summary of the
 pre-pin spike work and what remains before an Apple Silicon release can ship.
 
-**Status 2026-11-17.** Decisions: *unsigned, documented* (owner decision Q10; install
+**Status 2026-11-18.** Decisions: *unsigned, documented* (owner decision Q10; install
 notes in [`macos-install.md`](macos-install.md)), and the Lithuanian Bible is **not
 shipped** in any installer (owner, 2026-11-17): it is added on each machine in the per-user
 Bibles folder (`~/Library/Application Support/BibleLive/bible_data`, `%APPDATA%\BibleLive\bible_data`
-on Windows). Phase 1 in progress: the launcher's macOS platform module (PR #93),
-`scripts/macos/build-app.sh` + the manual `macos-app.yml` workflow build `BibleLive.app`
-with `NSMicrophoneUsageDescription`; the real-Mac exit test (microphone prompt, live
-capture, second screen, clean stop) is next. Test Mac: M1 Pro, macOS 27.2.1.
+on Windows). Phase 1 passed on a real Mac (PRs #93, #94; the second screen is still
+untested, see `docs/BACKLOG.md`). Phase 2 (pins + acceptance test) and Phase 3 (zip and disk
+image from one tree, attached to `v*` releases) are in the branch `feat/macos-release`; see
+"Acceptance test" below. Test Mac: Apple M1 (4 performance + 4 efficiency cores, 16 GB),
+macOS 27.2.1.
 
 **Phase 0 result: complete.** Run `40584729242` (2026-10-27, `macos-15` arm64)
 reports `PIN STATUS: passed` — bundled Python/Tk, the source-built ffmpeg and the
@@ -223,6 +224,65 @@ shipped; adding it to the per-user Bibles folder is part of the notes).
 **Separate follow-ups (need their own approval).** The Windows CI database gate; Metal
 backend evaluation; Intel Macs (out of scope: arm64 only); any code-signing/CI-token
 change (security review).
+
+## Acceptance test (Phase 2)
+
+`scripts/macos/acceptance.py`, run with the installed app's own Python (so it measures the
+shipped interpreter, wheels and model), checks the Kmynas model file against its pinned
+SHA256 and then measures:
+
+- **cold:** fresh processes, each loading Kmynas and transcribing one 12 s utterance;
+- **warm:** ten 12 s utterances (the pipeline's hard cap, the slowest case a live service
+  meets) spread over a sermon, three times each; RTF = transcription time / 12 s;
+- **end to end:** a `benchmarks/run_benchmark.py --mode rt` run (the whole pipeline fed at
+  the speaker's pace) on a real service; latency = detection time minus the middle of the
+  spoken reference, as in the benchmark.
+
+`--check` exits 1 when a number misses its threshold (the `THRESHOLDS` in the script).
+
+**Recorded pass, 2026-11-18:** Apple M1 (4P + 4E cores, 16 GB), macOS 27.2.1, app
+`0.1.0+f0b221e` (CI run 44277614922, installed from its disk image), Kmynas
+`kmynas-v4-Q8_0.gguf` @ `b4c73adf`, 3 threads (the launcher's choice on this Mac),
+service 10-08 (`2280:3260`, 980 s, 7 gold references).
+
+| Measure | Result | Threshold |
+|---|---|---|
+| Warm RTF, 30 runs (10 utterances × 3) | median 0.069, slowest 0.072 (per trial 0.069 / 0.069 / 0.069) | ≤ 0.25 |
+| Cold, process start → first text (3 trials) | 1.66 / 1.64 / 1.60 s (model load 0.35–0.37 s) | ≤ 20 s |
+| Cold, first load after the files were copied (dev tree, same Mac) | 10.1 s (load 8.2 s) | ≤ 20 s |
+| End to end, rt benchmark (7 references) | 7 TP / 0 FP / 0 FN; latency mean 3.8 s, slowest 7.87 s | ≤ 8 s mean, ≤ 15 s slowest |
+
+The rt result matches the Windows CPU baseline for the same service (7/7, mean 3.8 s,
+slowest 7.87 s, tag `split-after-cpu`), so arm64 transcribes this service the same way.
+Report: `~/bl-accept/acceptance.json` on the test Mac (`passed: true`).
+
+Thread count, same utterances (warm RTF median): 3 threads 0.069, 4 threads 0.058,
+6 threads 0.080 (the efficiency cores slow it down). The launcher's 3 leaves a performance
+core for ffmpeg, the server and the display browser, and is far inside real time, so it
+stays.
+
+**Thresholds** (set from those trials, with headroom; a slower Mac failing them is a
+finding, not a reason to raise them): warm RTF ≤ 0.25 for the slowest utterance; process
+start to first text ≤ 20 s; end-to-end latency ≤ 15 s for the slowest reference and ≤ 8 s
+on average. Not measured: Whisper on the Mac's processor (English services), which has no
+gold corpus.
+
+## Pins (Phase 2)
+
+| What | Pinned by | Where |
+|---|---|---|
+| Python + Tk | URL + SHA256 | `build-app.sh` (`PY_SHA256`) |
+| ffmpeg | source tarball SHA256 | `build-ffmpeg.sh` |
+| Python packages | version + SHA256 per wheel, `pip install --require-hashes` | `scripts/macos/requirements-arm64.lock` (from `constraints.txt` by `lock_requirements.py`; `backend/tests/test_macos_lock.py` keeps them in step) |
+| Speech models | repo commit + SHA256 per file, checked after every download | `GGUF_MODELS` / `WHISPER_MODELS` in `backend/launcher/speech.py` (re-pin with `scripts/pin-models.py`) |
+
+The model pins are shared with Windows: the launcher downloads at the pinned commit, and
+the pipeline loads a pinned Whisper model from its folder, so it starts offline and never
+follows a repo's `main`. Downloads from before the pins keep working (a GGUF model with a
+warning to re-download; Whisper by name, as before). Each pin has more than one piece of
+evidence: the GGUF files and Whisper small/large-v3-turbo hashes match the files the
+benchmarks and the Mac tests ran; medium and large-v3 are pinned from the Hub's published
+hashes only (no install runs them).
 
 ## Open questions
 

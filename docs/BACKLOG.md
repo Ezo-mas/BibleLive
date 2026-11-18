@@ -96,7 +96,7 @@ is still being read. Then try the switch for a passage that is read straight
 through. English (Whisper) takes no partial transcripts and is unmeasured.
 
 ### macOS: second screen, and the network prompt's wording
-From the first Mac test (M1 Pro, 2026-11-17, PR #94). The display opening full
+From the first Mac test (M1, 2026-11-17, PR #94). The display opening full
 screen on an extended display is untested (no USB-C adapter on hand); check it
 with the projector set to "Extended display", including a screen placed left of
 or above the main one (negative coordinates). Network mode works, but macOS's
