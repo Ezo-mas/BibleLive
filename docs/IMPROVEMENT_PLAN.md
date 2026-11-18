@@ -796,6 +796,14 @@ mode's firewall rule stays limited to Private networks. Port 8000.
 | Worthwhile | Rest of M2 (translation follow, no-text refusal, service log, flap fix). M3 routes, collaborators and per-socket writers. M4. M5. M6 reducer and layout. From M7: platform layer, Windows CI, releases. | Lowers the cost and risk of every later change, or replaces a guess with a measurement. |
 | Optional | Liveness message. Version-discovery cache. CSS split. mypy tightening. Snapshot move. Removing `?token=`. `_parse_tail` split beyond the first clean steps. macOS release. | Real but small, or dependent on something outside engineering. |
 
+Status of the optional items (2026-11-18): **done**: version-discovery cache
+(M3, `39ffe5a`), CSS split (M6, `4e08778`), mypy tightening (`core.server.*`
+and `audio.*`), snapshot move (closed by deleting the snapshots), removing
+`?token=`, macOS release (0.2.0). **Waiting**: the liveness message, until a
+stale display is seen in a real service (Q6). **Not planned**: `_parse_tail`
+beyond the first three steps (M4 stopped at the required-number phase, which
+needs a new stop-or-continue signal).
+
 If time allows only one milestone after the safety net, do M2. If a service
 is days away, do the first three pipeline items of M2 and the launcher
 supervision, and leave the server-side items for after it.
