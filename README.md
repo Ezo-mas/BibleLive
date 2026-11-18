@@ -442,8 +442,8 @@ A missing local translation keeps the previous validator and reports
     re-resolves them). Also used for Show Again from display history.
 - With authentication enabled, the operator WebSocket's first message must be
   `{action: 'authenticate', token}`; the server sends nothing before it and
-  closes with code 1008 on a wrong or missing token (`?token=` in the URL still
-  works but is deprecated, because URLs are logged)
+  closes with code 1008 on a wrong or missing token (a `?token=` in the URL is
+  ignored, because URLs are logged)
 
 ## Auto-approve mode
 

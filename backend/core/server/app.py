@@ -70,8 +70,8 @@ def create_app(bible_lookup: BibleLookup | None = None) -> FastAPI:
     Returns:
         FastAPI: Configured application instance.
     """
-    # The operator console's WebSocket carries its token in the query string,
-    # which uvicorn would otherwise write to the log on every connection.
+    # A client that still puts the operator token in the URL (``?token=``, no
+    # longer accepted) would otherwise have it written to the log by uvicorn.
     install_token_redaction()
 
     injected_lookup = bible_lookup is not None

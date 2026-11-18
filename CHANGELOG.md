@@ -14,7 +14,12 @@ to the same release.
 
 ## Unreleased
 
-Nothing yet.
+### Security
+- The operator WebSocket no longer accepts its token as `?token=` in the URL,
+  where web servers and proxies log it. Consoles since 0.1.0 already send it
+  as the first message; a client that still uses the URL is closed with code
+  1008 after 10 seconds. Scripts that open `/ws/operator` must send
+  `{"action": "authenticate", "token": "..."}` first.
 
 ## 0.2.0 (2026-11-18)
 

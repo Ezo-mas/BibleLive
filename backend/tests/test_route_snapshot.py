@@ -52,7 +52,7 @@ EXCEPTIONS = {
     ("/ws/{client_type}", "WEBSOCKET", False): (
         {("GET /ws/display", False), ("GET /ws/operator", True)},
         "Other client types close with 4000 before accept; with auth enabled, the operator "
-        "token is checked in the first message or deprecated ?token= query.",
+        "token is checked in the first message.",
     ),
 }
 

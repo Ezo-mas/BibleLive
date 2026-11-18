@@ -91,21 +91,24 @@ def test_websocket_operator_closed_when_token_never_arrives(client, auth_enabled
     assert _closed_with(client, "/ws/operator") == 1008
 
 
-def test_websocket_operator_accepted_with_valid_query_token(client, auth_enabled):
-    """The deprecated ?token= form keeps working for consoles built before the change."""
-    token = auth_enabled
-    with client.websocket_connect(f"/ws/operator?token={token}") as websocket:
-        message = json.loads(websocket.receive_text())
-        assert message["type"] == "state_snapshot"
+def test_websocket_operator_ignores_query_token(client, auth_enabled, monkeypatch):
+    """A correct token in the URL no longer lets a socket in (retired after 0.2.0).
+
+    URLs end up in logs, so the token is taken from the first message only; a
+    client still sending ?token= waits out the timeout and is closed with 1008.
+    """
+    monkeypatch.setattr("core.server.ws.OPERATOR_AUTH_TIMEOUT_S", 0.1)
+    assert _closed_with(client, f"/ws/operator?token={auth_enabled}") == 1008
 
 
-def test_websocket_operator_rejects_wrong_query_token(client, auth_enabled):
-    assert _closed_with(client, "/ws/operator?token=wrong") == 1008
+def test_websocket_operator_query_token_does_not_replace_the_message(client, auth_enabled):
+    """With a correct ?token=, a non-authenticate first message is still refused."""
+    path = f"/ws/operator?token={auth_enabled}"
+    assert _closed_with(client, path, {"action": "clear"}) == 1008
 
 
 def test_websocket_operator_non_ascii_token_is_refused_not_an_error(client, auth_enabled):
     """compare_digest raises on non-ASCII str; that must read as a wrong token."""
-    assert _closed_with(client, "/ws/operator?token=t%C3%B6ken") == 1008
     assert (
         _closed_with(client, "/ws/operator", {"action": "authenticate", "token": "tökén"}) == 1008
     )
