@@ -67,7 +67,8 @@ model is "an older download, not the checked version", run the line above again.
 1. Open BibleLive from Applications (or Launchpad).
 2. Choose the language and the microphone in the launcher window and press **Start**.
 3. The first time, macOS asks: *"BibleLive" would like to access the microphone.* Click
-   **Allow**. BibleLive waits for your answer before it opens anything else. If you clicked
+   **Allow**. BibleLive waits for your answer (up to two minutes) before it opens anything
+   else. If you clicked
    Don't Allow by mistake, the launcher says so: System Settings → Privacy & Security →
    Microphone, turn **BibleLive** on, then stop and start again.
 4. The operator page opens in your browser and the display on the projector screen.

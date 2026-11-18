@@ -374,11 +374,13 @@ def test_macos_microphone_access_is_unknown_off_macos(monkeypatch):
     assert macos.microphone_access() == "unknown"
 
 
-@pytest.mark.parametrize("error", [OSError("no AVFoundation"), AttributeError("objc")])
+@pytest.mark.parametrize(
+    "error", [OSError("no AVFoundation"), AttributeError("objc"), TypeError("ctypes")]
+)
 def test_macos_microphone_query_failure_is_unknown(monkeypatch, error):
     monkeypatch.setattr(macos.sys, "platform", "darwin")
 
-    def fail(ask, timeout):
+    def fail(ask, timeout, cancelled):
         raise error
 
     monkeypatch.setattr(macos, "_microphone_access", fail)

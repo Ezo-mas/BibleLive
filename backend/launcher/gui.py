@@ -489,10 +489,14 @@ class App:
         """
         from .platform.macos import microphone_access
 
-        if microphone_access(ask=False) == "not_determined":
+        status = microphone_access(ask=False)
+        if status == "not_determined":
             self.queue.put(("mic", "asking"))
-        if microphone_access() in ("denied", "restricted"):
-            self.queue.put(("mic", "denied"))
+            status = microphone_access(cancelled=lambda: self._stop_flag)
+            if status == "not_determined" and not self._stop_flag:
+                self.queue.put(("mic", "no_answer"))
+        if status in ("denied", "restricted"):
+            self.queue.put(("mic", status))
 
     def _on_launcher_event(self, launcher: Launcher, kind: str, message: str) -> None:
         code = launcher.error_code if kind == "error" else None
@@ -614,10 +618,12 @@ class App:
             self._firewall = status
             self._refresh_network()
         elif tag == "mic":
-            if item[1] == "asking":
-                self._log(t("log.mic_asking"), "info")
-            else:
-                self._log(t("warn.mic_denied"), "warning")
+            key = {
+                "asking": "log.mic_asking",
+                "no_answer": "log.mic_no_answer",
+                "restricted": "warn.mic_restricted",
+            }.get(item[1], "warn.mic_denied")
+            self._log(t(key), "info" if key.startswith("log.") else "warning")
         elif tag == "gpu":
             self.gpu_text = item[1]
             self._refresh_status()

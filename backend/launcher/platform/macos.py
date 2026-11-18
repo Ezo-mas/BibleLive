@@ -6,7 +6,7 @@ import shutil
 import subprocess
 import sys
 import threading
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any
 
@@ -184,25 +184,27 @@ _MIC_STATUS = {0: "not_determined", 1: "restricted", 2: "denied", 3: "authorized
 _KEEP_ALIVE: list[object] = []
 
 
-def microphone_access(*, ask: bool = True, timeout: float = 120.0) -> str:
+def microphone_access(
+    *, ask: bool = True, timeout: float = 120.0, cancelled: Callable[[], bool] | None = None
+) -> str:
     """This app's microphone permission: authorized, denied, restricted or not_determined.
 
     With ``ask`` and no decision yet, shows the system prompt ("BibleLive" would like to
     access the microphone) and waits up to ``timeout`` s for the answer; not_determined
-    means no answer in time. The launcher asks at Start, before the browser opens, so the
+    means no answer in time (or ``cancelled()`` turned true while waiting). The launcher asks at Start, before the browser opens, so the
     prompt is not hidden behind the operator page. "unknown" off macOS or if the query fails
     (the pipeline's ffmpeg then triggers the prompt itself, as before).
     """
     if sys.platform != "darwin":
         return "unknown"
     try:
-        return _microphone_access(ask, timeout)
-    except (AttributeError, OSError, ValueError) as exc:
+        return _microphone_access(ask, timeout, cancelled or (lambda: False))
+    except Exception as exc:  # never fatal: the pipeline's ffmpeg still asks
         logger.warning("Could not check the microphone permission: %s", exc)
         return "unknown"
 
 
-def _microphone_access(ask: bool, timeout: float) -> str:
+def _microphone_access(ask: bool, timeout: float, cancelled: Callable[[], bool]) -> str:
     # AVCaptureDevice through ctypes and the Objective-C runtime (no PyObjC in the bundle).
     import ctypes
 
@@ -276,6 +278,9 @@ def _microphone_access(ask: bool, timeout: float) -> str:
         audio,
         ctypes.byref(block),
     )
-    if not answered.wait(timeout):
-        return "not_determined"
+    waited = 0.0
+    while not answered.wait(0.25):
+        waited += 0.25
+        if waited >= timeout or cancelled():
+            return "not_determined"
     return "authorized" if granted[0] else "denied"

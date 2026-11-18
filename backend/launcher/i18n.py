@@ -108,6 +108,13 @@ EN: dict[str, str] = {
         "macOS does not let BibleLive use the microphone, so nothing will be heard. Turn "
         "BibleLive on in System Settings > Privacy & Security > Microphone, then Stop and Start."
     ),
+    "log.mic_no_answer": (
+        "No answer to the microphone question yet: starting anyway. Click Allow when you see it."
+    ),
+    "warn.mic_restricted": (
+        "This Mac's administrator or Screen Time settings block the microphone for BibleLive, "
+        "so nothing will be heard. Ask the person who manages this Mac to allow it."
+    ),
     "warn.browser_fallback": (
         "Microsoft Edge or Chrome was not found. The display opened in the default "
         "browser on this screen: drag it to the projector and press F11."
@@ -250,8 +257,15 @@ LT: dict[str, str] = {
     "log.mic_asking": "macOS klausia, ar BibleLive gali naudoti mikrofoną: spauskite Allow.",
     "warn.mic_denied": (
         "macOS neleidžia BibleLive naudoti mikrofono, todėl nieko nebus girdėti. Įjunkite "
-        "BibleLive: Sistemos nustatymai > Privatumas ir saugumas > Mikrofonas, tada "
-        "sustabdykite ir paleiskite iš naujo."
+        "BibleLive: System Settings > Privacy & Security > Microphone, tada sustabdykite ir "
+        "paleiskite iš naujo."
+    ),
+    "log.mic_no_answer": (
+        "Į klausimą dėl mikrofono dar neatsakyta: paleidžiama vis tiek. Pamatę spauskite Allow."
+    ),
+    "warn.mic_restricted": (
+        "Šio Mac administratoriaus arba Screen Time nustatymai neleidžia BibleLive naudoti "
+        "mikrofono, todėl nieko nebus girdėti. Paprašykite Mac prižiūrinčio žmogaus tai leisti."
     ),
     "warn.browser_fallback": (
         "Nerasta Microsoft Edge ar Chrome naršyklė. Vaizdas atidarytas numatytojoje "
