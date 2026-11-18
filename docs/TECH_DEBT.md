@@ -106,7 +106,7 @@ below the fold.
   Post-fix full suite: `337 passed`.
 - **Logged:** 2026-10-10
 
-### Stale DB snapshot files sit beside the live database
+### Stale DB snapshot files sit beside the live database (resolved)
 - **Where:** `bible_data/*.sqlite.bak-*` and `bible_data/*.sqlite.pre-repair-*`
   (one-off snapshots from a 2026-10-11 DB repair).
 - **Problem:** The snapshots sit permanently next to the live database with
@@ -123,6 +123,10 @@ below the fold.
   no manifest, script, or code refers to the snapshots. Entry revised
   2026-10-13 (logged 2026-10-11).
 - **Logged:** 2026-10-11
+- **Resolved:** 2026-11-18 (M7 item 5) — the owner had both snapshots deleted
+  rather than moved to `bible_data/backups/`: they were byte-identical copies of
+  the pre-repair database and nothing still makes or reads such files. The
+  `.gitignore` rule stays, so a future one still cannot be committed.
 
 ### Lithuanian 1 and 2 Timothy are missed when spelled "Timotiej-" (resolved)
 - **Where:** `backend/core/verse_parser_lt.py` (`BOOK_STEMS`, `BOOKS` entries for
