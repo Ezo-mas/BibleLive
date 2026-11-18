@@ -178,6 +178,7 @@ cat > "$CONTENTS/Info.plist" <<EOF
   <key>CFBundleDisplayName</key><string>BibleLive</string>
   <key>CFBundleIdentifier</key><string>org.biblelive.launcher</string>
   <key>CFBundleExecutable</key><string>BibleLive</string>
+  <key>CFBundleIconFile</key><string>biblelive</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleShortVersionString</key><string>$VERSION</string>
   <key>CFBundleVersion</key><string>$STAMP</string>
@@ -190,6 +191,8 @@ cat > "$CONTENTS/Info.plist" <<EOF
 </plist>
 EOF
 plutil -lint "$CONTENTS/Info.plist"
+# The icon (scripts/macos/make_icns.py draws it; the same artwork as the Windows icon).
+cp "$REPO/scripts/macos/biblelive.icns" "$RES/biblelive.icns"
 # The bundle's executable is a small compiled program embedding the bundled Python
 # (scripts/macos/launcher.c): macOS attributes microphone access to the process that is the
 # bundle's CFBundleExecutable and shows the prompt with the text above; the server and the
@@ -303,9 +306,12 @@ DMG_TOOLS="$BUILD/dmg-tools"
 case "$DMG_TOOLS" in "$BUILD"/*) ;; *) echo "Refusing to delete outside build/" >&2; exit 1 ;; esac
 rm -rf "$DMG_TOOLS"
 mkdir -p "$DMG_TOOLS/bg"
-"$PY" -m pip install --disable-pip-version-check --no-cache-dir --only-binary=:all: --no-deps   --require-hashes --target "$DMG_TOOLS/lib" -r "$REPO/scripts/macos/requirements-dmg.lock"
+"$PY" -m pip install --disable-pip-version-check --no-cache-dir --only-binary=:all: --no-deps \
+  --require-hashes --target "$DMG_TOOLS/lib" -r "$REPO/scripts/macos/requirements-dmg.lock"
 swift "$REPO/scripts/macos/dmg-background.swift" "$DMG_TOOLS/bg/background.png" "$DMG_TOOLS/bg/background@2x.png"
-PYTHONPATH="$DMG_TOOLS/lib" "$PY" -B -s -m dmgbuild -s "$REPO/scripts/macos/dmg-settings.py"   -D app="$APP_BUNDLE" -D background="$DMG_TOOLS/bg/background.png" "BibleLive" "$DMG"
+PYTHONPATH="$DMG_TOOLS/lib" "$PY" -B -s -m dmgbuild -s "$REPO/scripts/macos/dmg-settings.py" \
+  -D app="$APP_BUNDLE" -D background="$DMG_TOOLS/bg/background.png" \
+  -D icon="$REPO/scripts/macos/biblelive.icns" "BibleLive" "$DMG"
 rm -rf "$DMG_TOOLS"
 echo "- the disk image holds the same, still valid app, and its window layout"
 MNT="$(mktemp -d)"

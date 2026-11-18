@@ -10,6 +10,7 @@ import os.path
 
 app = defines["app"]  # noqa: F821 (provided by dmgbuild)
 background = defines["background"]  # noqa: F821
+icon = defines["icon"]  # noqa: F821 (the volume icon: the app's own)
 
 filesystem = "APFS"
 format = "ULMO"  # noqa: A001 (dmgbuild's setting name)
