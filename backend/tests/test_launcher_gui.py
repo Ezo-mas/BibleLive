@@ -57,10 +57,13 @@ def fake_process_groups(monkeypatch):
 
 def test_choices_match_audio_cli():
     pytest.importorskip("audio.cli")
+    from audio.cli import WHISPER_MODEL_NAMES
     from audio.cli import build_parser as audio_parser
 
     actions = {a.dest: a for a in audio_parser()._actions}
-    assert tuple(actions["model"].choices) == MODELS
+    # --model also takes a model folder (the launcher's pinned download), so it lists its
+    # names instead of argparse choices.
+    assert WHISPER_MODEL_NAMES == MODELS
     assert tuple(actions["language"].choices) == LANGUAGES
     # launcher CLI uses the same shared tuples
     launcher_actions = {a.dest: a for a in build_parser()._actions}

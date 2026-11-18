@@ -24,12 +24,16 @@ from .gpu import (
 from .settings import LauncherSettings
 from .speech import (
     GGUF_MODELS,
+    WHISPER_MODELS,
     GgufModel,
     cached_gguf_path,
+    cached_whisper_dir,
     engine_models,
+    file_sha256,
     hub_cache_dir,
     resolve_speech_engine,
     speech_threads,
+    whisper_model_arg,
 )
 
 EXIT_OK = 0
@@ -58,16 +62,52 @@ def _dir_size_mb(path: Path) -> int:
     return total // (1024 * 1024)
 
 
+class ChecksumError(Exception):
+    """A downloaded model file is not the pinned one (it has been deleted)."""
+
+
+def check_sha256(path: str | Path, expected: str) -> None:
+    """Raise ChecksumError, after deleting the file, unless ``path`` has SHA256 ``expected``.
+
+    The Hub cache may hold the file as a link to a blob: both go, so the next download fetches
+    it again and nothing ever loads the bad copy.
+    """
+    actual = file_sha256(path)
+    if actual == expected:
+        return
+    for target in {os.path.realpath(path), str(path)}:
+        with contextlib.suppress(OSError):
+            os.remove(target)
+    raise ChecksumError(f"{path}: SHA256 {actual}, expected {expected}; the file was deleted")
+
+
 def _default_downloader(model: str) -> str:
+    """Download a Whisper model; a pinned one at its commit, every file checked."""
     from faster_whisper.utils import download_model
 
-    return str(download_model(model))
+    pin = WHISPER_MODELS.get(model)
+    if pin is None:
+        return str(download_model(model))
+    folder = Path(download_model(model, revision=pin.revision))
+    for filename, sha256 in pin.files.items():
+        check_sha256(folder / filename, sha256)
+    return str(folder)
 
 
-def _default_gguf_downloader(repo_id: str, filename: str, cache_dir: Path) -> str:
+def _default_gguf_downloader(model: GgufModel, cache_dir: Path) -> str:
+    """Download a GGUF model file at its pinned commit and check it."""
     from huggingface_hub import hf_hub_download
 
-    return str(hf_hub_download(repo_id=repo_id, filename=filename, cache_dir=str(cache_dir)))
+    path = str(
+        hf_hub_download(
+            repo_id=model.repo_id,
+            filename=model.filename,
+            revision=model.revision,
+            cache_dir=str(cache_dir),
+        )
+    )
+    check_sha256(path, model.sha256)
+    return path
 
 
 @dataclass(frozen=True)
@@ -151,7 +191,7 @@ def download_speech_command(
     with_whisper: bool = True,
     probe: SupportedProbe = cuda_supported_compute_types,
     whisper_downloader: Callable[[str], str] = _default_downloader,
-    gguf_downloader: Callable[[str, str, Path], str] = _default_gguf_downloader,
+    gguf_downloader: Callable[[GgufModel, Path], str] = _default_gguf_downloader,
     out: TextIO | None = None,
     err: TextIO | None = None,
     progress_interval: float = 2.0,
@@ -174,15 +214,11 @@ def download_speech_command(
 
 
 def _gguf_job(
-    name: str, models_dir: Path, downloader: Callable[[str, str, Path], str]
+    name: str, models_dir: Path, downloader: Callable[[GgufModel, Path], str]
 ) -> _Download:
     model: GgufModel = GGUF_MODELS[name]
     cache = hub_cache_dir(models_dir)
-    return _Download(
-        name,
-        lambda: downloader(model.repo_id, model.filename, cache),
-        model.approx_mb,
-    )
+    return _Download(name, lambda: downloader(model, cache), model.approx_mb)
 
 
 # Minimum hardware. float16 in CTranslate2 needs compute capability 7.0 (GTX 16xx / RTX 20xx and
@@ -353,6 +389,8 @@ def _whisper_cached(model: str, models_dir: Path) -> bool:
     """True if the Whisper model is already downloaded (the self-test never downloads)."""
     from faster_whisper.utils import download_model
 
+    if cached_whisper_dir(model, models_dir) is not None:
+        return True
     try:
         download_model(model, local_files_only=True, cache_dir=str(hub_cache_dir(models_dir)))
     except Exception:  # not downloaded: faster-whisper raises
@@ -409,7 +447,8 @@ def gpu_self_test_command(
 
     if engine == "whisper" or whisper_cached(settings.model, models_dir):
         try:
-            transcribe = loader(settings.model, device, compute_type)
+            # What the pipeline loads: the pinned folder, else the name.
+            transcribe = loader(whisper_model_arg(settings.model, models_dir), device, compute_type)
             result = transcribe(_SILENCE_1S)
         except Exception as exc:
             print(f"SELFTEST FAIL: {type(exc).__name__}: {exc} ({tag})", file=out, flush=True)

@@ -2,6 +2,7 @@
 
 import argparse
 import logging
+import os
 import time
 from collections.abc import Callable
 from typing import Any
@@ -30,6 +31,28 @@ def _flag(value: str) -> bool:
     if lowered in ("0", "false", "no", "off"):
         return False
     raise argparse.ArgumentTypeError(f"expected on/off, got {value!r}")
+
+
+# Whisper model names faster-whisper resolves on the Hub.
+WHISPER_MODEL_NAMES = (
+    "tiny",
+    "base",
+    "small",
+    "medium",
+    "large-v2",
+    "large-v3",
+    "large-v3-turbo",
+    "distil-large-v3",
+)
+
+
+def _whisper_model(value: str) -> str:
+    """A Whisper model name, or the folder of a downloaded model (the launcher's pinned copy)."""
+    if value in WHISPER_MODEL_NAMES or os.path.isdir(value):
+        return value
+    raise argparse.ArgumentTypeError(
+        f"expected one of {', '.join(WHISPER_MODEL_NAMES)} or a model folder, got {value!r}"
+    )
 
 
 def _vad_engine(value: str) -> str:
@@ -172,18 +195,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--model",
         default="small",
-        choices=[
-            "tiny",
-            "base",
-            "small",
-            "medium",
-            "large-v2",
-            "large-v3",
-            "large-v3-turbo",
-            "distil-large-v3",
-        ],
+        type=_whisper_model,
         help=(
-            "Whisper model size (default: small). On a GPU, large-v3-turbo with "
+            f"Whisper model: {', '.join(WHISPER_MODEL_NAMES)}, or the folder of a downloaded "
+            "model (default: small). On a GPU, large-v3-turbo with "
             "--compute-type float16 is far more accurate for Lithuanian at similar speed; "
             "distil-* models are English-only"
         ),

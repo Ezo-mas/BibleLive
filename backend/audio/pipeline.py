@@ -278,7 +278,9 @@ class BibleLiveAudioProcessor:
                 name: os.path.basename(getattr(config, f"{name}_model") or "")
                 for name in self._stt_models
             },
-            "whisper_model": config.whisper_model,
+            # A name, or (the launcher's pinned download) a folder: its commit, as for the
+            # GGUF models no path goes in the log.
+            "whisper_model": os.path.basename(os.path.normpath(config.whisper_model)),
             "device": config.whisper_device,
             "language": config.language,
             "vad": config.vad,
