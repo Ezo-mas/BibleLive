@@ -753,8 +753,10 @@ Uses decisions Q8 to Q10.
    quarantine once, and the install notes are tested on a clean Mac. Record
    the decision in that document's "Decision before Phase 1". This plan adds
    only the platform layer above as its first step.
-5. **Database snapshots (optional, Q8).** Move `*.sqlite.bak-*` and similar
-   into `bible_data/backups/`, which the version scan does not read.
+5. **Database snapshots (optional, Q8). Done 2026-11-18, by deleting.** Move
+   `*.sqlite.bak-*` and similar into `bible_data/backups/`, which the version
+   scan does not read. The owner chose to delete the two snapshots instead: they
+   were identical copies of the pre-repair database and no tool makes new ones.
 6. **Types (optional).** Turn on `disallow_untyped_defs` for `core.server.*`,
    then `audio.*`, one package per change.
 7. **Retire `?token=` (optional). Done after 0.2.0.** One release after the
