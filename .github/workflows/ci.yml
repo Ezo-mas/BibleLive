@@ -18,6 +18,10 @@ on:
   pull_request:
     branches: [main, develop]
     paths-ignore: *ignored
+  # Weekly (and on demand) only the ffmpeg-cache job runs; the test jobs skip.
+  schedule:
+    - cron: '17 3 * * 1'
+  workflow_dispatch:
 
 # A new push to a PR cancels that PR's run still in progress; runs on main finish.
 concurrency:
@@ -29,7 +33,7 @@ jobs:
     name: Python lint, types & tests
     # The merge commit of a PR was already tested as the PR's merge ref, so its push
     # to main is skipped; direct pushes to main still run.
-    if: github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'Merge pull request')
+    if: github.event_name == 'pull_request' || (github.event_name == 'push' && !startsWith(github.event.head_commit.message, 'Merge pull request'))
     runs-on: ubuntu-latest
     # Install + lint + types + ~1 min of tests takes ~2-3 min; a hung test fails here
     # instead of holding the job to GitHub's 6-hour limit.
@@ -42,23 +46,30 @@ jobs:
         with:
           python-version: '3.13'
 
-      - name: Get runner image version
+      - &image-version
+        name: Get runner image version
         id: image
         run: echo "version=$ImageOS-$ImageVersion" >> "$GITHUB_OUTPUT"
 
-      - name: Cache ffmpeg packages
-        # The Azure Ubuntu mirror sometimes serves the ~66 MB of ffmpeg .debs at
-        # ~40 KB/s, which ran this job into its timeout. Keep the .debs between runs.
-        uses: actions/cache@v6
+      - &restore-ffmpeg
+        name: Restore ffmpeg packages
+        # The Ubuntu mirrors sometimes serve the ~66 MB of ffmpeg .debs at ~40 KB/s,
+        # which ran this job into its timeout. Keep the .debs between runs. A PR can
+        # only read caches saved on main (or its own earlier runs), so the
+        # ffmpeg-cache job below refills main's copy once a week.
+        id: ffmpeg-cache
+        uses: actions/cache/restore@v6
         with:
           path: ~/apt-archives/*.deb
           key: apt-ffmpeg-${{ steps.image.outputs.version }}
           restore-keys: apt-ffmpeg-
 
-      - name: Install ffmpeg
+      - &install-ffmpeg
+        name: Install ffmpeg
         # The live-path tests run real ffmpeg; they fail (not skip) in CI without it.
         # A stalled mirror fails this step in minutes instead of holding the job
-        # to its timeout; re-run the job if it does.
+        # to its timeout; the .debs fetched so far are still saved below, so a
+        # re-run of the job picks up where this one stopped.
         timeout-minutes: 6
         run: |
           # azure.archive.ubuntu.com is first in the runner's mirror list and keeps
@@ -71,9 +82,24 @@ jobs:
           APT_OPTS="-o Dir::Cache::Archives=$HOME/apt-archives -o Acquire::Retries=3 -o Acquire::http::Timeout=30"
           mkdir -p ~/apt-archives/partial
           sudo apt-get $APT_OPTS update
-          sudo apt-get $APT_OPTS install -y --no-install-recommends ffmpeg xvfb xauth
+          # APT_DOWNLOAD_ONLY is set by the ffmpeg-cache job, which only fills the cache.
+          sudo apt-get $APT_OPTS install -y --no-install-recommends $APT_DOWNLOAD_ONLY ffmpeg xvfb xauth
           # Drop .debs the archive no longer carries so the cache does not grow.
           sudo apt-get $APT_OPTS autoclean
+
+      - &save-ffmpeg
+        name: Save ffmpeg packages
+        # Saved even when the install timed out, so a re-run resumes the download. A
+        # partial set gets its own key: under the full key it would count as a hit
+        # and never be completed. restore-keys picks the newest of either.
+        if: always() && steps.ffmpeg-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: ~/apt-archives/*.deb
+          key: apt-ffmpeg-${{ steps.image.outputs.version }}${{ job.status != 'success' && format('-partial-{0}-{1}', github.run_id, github.run_attempt) || '' }}
+
+      - name: Check ffmpeg and tkinter
+        run: |
           ffmpeg -version
           python -c "import tkinter"
 
@@ -108,9 +134,26 @@ jobs:
           xvfb-run -a python -c "import tkinter; root = tkinter.Tk(); root.destroy()"
           xvfb-run -a pytest backend/tests -v --cov=core --cov-report=term
 
+  ffmpeg-cache:
+    name: Fill the ffmpeg package cache on main
+    # Merge pushes skip the python job, so without this main never saves the cache
+    # and every PR downloads ffmpeg from the mirror again. Weekly rather than on
+    # every merge: a billed minute per merge adds up if the repo is private, and
+    # PRs reading main's copy keep it from being evicted in between. Downloads only.
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      APT_DOWNLOAD_ONLY: --download-only
+    steps:
+      - *image-version
+      - *restore-ffmpeg
+      - *install-ffmpeg
+      - *save-ffmpeg
+
   windows:
     name: Windows backend tests
-    if: github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'Merge pull request')
+    if: github.event_name == 'pull_request' || (github.event_name == 'push' && !startsWith(github.event.head_commit.message, 'Merge pull request'))
     runs-on: windows-latest
     timeout-minutes: 20
     steps:
