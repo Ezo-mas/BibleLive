@@ -29,4 +29,5 @@ icon_locations = {
     os.path.basename(app): (170, 180),
     "Applications": (470, 180),
 }
-hide_extensions = [os.path.basename(app)]
+# No hide_extensions: it sets Finder flags on the app, which `codesign --strict` rejects,
+# and Finder hides an app's .app extension by default anyway.
