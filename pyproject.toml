@@ -106,7 +106,7 @@ explicit_package_bases = true
 
 # Tightened one package at a time (improvement plan M7 item 6).
 [[tool.mypy.overrides]]
-module = "core.server.*"
+module = ["core.server.*", "audio.*"]
 disallow_untyped_defs = true
 
 [[tool.mypy.overrides]]
