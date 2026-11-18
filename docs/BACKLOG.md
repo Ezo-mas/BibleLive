@@ -185,11 +185,11 @@ Python 3.13 installer" above). Left:
   SQLite or antivirus file cost) and `test_launcher_process.py` (1.5–2.5 s).
   Profile them on Windows with `pytest --durations=15` (the Windows 3.13 test
   run is a good moment).
-- Smaller fixed waits left in production code: the transcript sender's 0.2 s
-  queue poll (`audio/transcript_sender.py`) costs ~0.2 s per stopping test,
-  and `test_capture_recovery.py::test_vad_loop_resumes_after_ffmpeg_dies`
-  takes 0.5 s. Shortening them needs a production change (a constant tests can
-  patch); worth ~2 s.
+- `test_capture_recovery.py::test_vad_loop_resumes_after_ffmpeg_dies` takes
+  ~2.2 s on Windows (0.5 s on Linux), spent in thread joins, not in the frame
+  wait (now patched to 0.05 s). The transcript sender's 0.2 s queue poll is
+  done: a constant (`QUEUE_POLL_S`) patched to 0.01 s in tests, so a sender
+  stop costs ~0.02 s instead of ~0.2 s (2026-11-18).
 
 ## Experiments
 

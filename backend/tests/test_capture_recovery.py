@@ -262,6 +262,7 @@ def test_backoff_resets_once_the_restarted_stream_is_healthy():
 
 def test_vad_loop_resumes_after_ffmpeg_dies(monkeypatch):
     """End to end through the real VAD loop and AudioCapture: the old hang."""
+    monkeypatch.setattr(capture_module, "FRAME_WAIT_S", 0.05)
     _fake_popen(monkeypatch, [_ExitingFfmpeg(b"\0" * FRAME_BYTES * 5), _StreamingFfmpeg()])
     capture = AudioCapture()
     proc = _processor(capture, capture_restart_base_delay=0.0)
