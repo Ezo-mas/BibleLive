@@ -617,3 +617,36 @@ def test_projector_posix_spawn_uses_own_session(tmp_path, monkeypatch):
     pb.open(8000, SECOND)
     pb.close()
     assert seen["start_new_session"] is True
+
+
+@pytest.mark.parametrize(
+    ("statuses", "messages"),
+    [
+        (["not_determined", "authorized"], [("mic", "asking")]),
+        (["not_determined", "denied"], [("mic", "asking"), ("mic", "denied")]),
+        (["denied", "denied"], [("mic", "denied")]),
+        (["restricted", "restricted"], [("mic", "denied")]),
+        (["authorized", "authorized"], []),
+        (["unknown", "unknown"], []),
+    ],
+)
+def test_macos_start_asks_for_the_microphone_first(monkeypatch, statuses, messages):
+    import queue
+    from types import SimpleNamespace
+
+    pytest.importorskip("tkinter")
+    from launcher import gui
+    from launcher.platform import macos
+
+    answers = iter(statuses)
+    calls = []
+
+    def access(*, ask=True, timeout=120.0):
+        calls.append(ask)
+        return next(answers)
+
+    monkeypatch.setattr(macos, "microphone_access", access)
+    window = SimpleNamespace(queue=queue.Queue())
+    gui.App._ask_microphone(window)
+    assert calls == [False, True]
+    assert [window.queue.get_nowait() for _ in range(window.queue.qsize())] == messages

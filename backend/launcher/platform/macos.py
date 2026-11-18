@@ -5,6 +5,7 @@ import os
 import shutil
 import subprocess
 import sys
+import threading
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
@@ -174,3 +175,107 @@ def models_dir() -> Path:
     a service.
     """
     return _support_dir() / "models"
+
+
+# AVAuthorizationStatus values.
+_MIC_STATUS = {0: "not_determined", 1: "restricted", 2: "denied", 3: "authorized"}
+# Completion blocks handed to AVFoundation stay alive for the process: macOS may answer after
+# microphone_access() has given up waiting, and a freed block would crash the launcher then.
+_KEEP_ALIVE: list[object] = []
+
+
+def microphone_access(*, ask: bool = True, timeout: float = 120.0) -> str:
+    """This app's microphone permission: authorized, denied, restricted or not_determined.
+
+    With ``ask`` and no decision yet, shows the system prompt ("BibleLive" would like to
+    access the microphone) and waits up to ``timeout`` s for the answer; not_determined
+    means no answer in time. The launcher asks at Start, before the browser opens, so the
+    prompt is not hidden behind the operator page. "unknown" off macOS or if the query fails
+    (the pipeline's ffmpeg then triggers the prompt itself, as before).
+    """
+    if sys.platform != "darwin":
+        return "unknown"
+    try:
+        return _microphone_access(ask, timeout)
+    except (AttributeError, OSError, ValueError) as exc:
+        logger.warning("Could not check the microphone permission: %s", exc)
+        return "unknown"
+
+
+def _microphone_access(ask: bool, timeout: float) -> str:
+    # AVCaptureDevice through ctypes and the Objective-C runtime (no PyObjC in the bundle).
+    import ctypes
+
+    objc = ctypes.CDLL("/usr/lib/libobjc.A.dylib")
+    avf = ctypes.CDLL("/System/Library/Frameworks/AVFoundation.framework/AVFoundation")
+    libsystem = ctypes.CDLL("/usr/lib/libSystem.B.dylib")
+    objc.objc_getClass.restype = ctypes.c_void_p
+    objc.objc_getClass.argtypes = [ctypes.c_char_p]
+    objc.sel_registerName.restype = ctypes.c_void_p
+    objc.sel_registerName.argtypes = [ctypes.c_char_p]
+    send = ctypes.cast(objc.objc_msgSend, ctypes.c_void_p).value
+    device = objc.objc_getClass(b"AVCaptureDevice")
+    audio = ctypes.c_void_p.in_dll(avf, "AVMediaTypeAudio").value
+    if not (send and device and audio):
+        raise OSError("AVFoundation is not available")
+
+    status_of = ctypes.CFUNCTYPE(ctypes.c_long, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p)(
+        send
+    )
+    status = _MIC_STATUS.get(
+        status_of(device, objc.sel_registerName(b"authorizationStatusForMediaType:"), audio),
+        "unknown",
+    )
+    if status != "not_determined" or not ask:
+        return status
+
+    # requestAccessForMediaType:completionHandler: takes a block; build a global one by hand
+    # (the Blocks ABI: isa, flags, reserved, invoke, descriptor).
+    invoke_type = ctypes.CFUNCTYPE(None, ctypes.c_void_p, ctypes.c_bool)
+
+    class Descriptor(ctypes.Structure):
+        _fields_ = [  # noqa: RUF012
+            ("reserved", ctypes.c_ulong),
+            ("size", ctypes.c_ulong),
+            ("signature", ctypes.c_char_p),
+        ]
+
+    class Block(ctypes.Structure):
+        _fields_ = [  # noqa: RUF012
+            ("isa", ctypes.c_void_p),
+            ("flags", ctypes.c_int),
+            ("reserved", ctypes.c_int),
+            ("invoke", invoke_type),
+            ("descriptor", ctypes.POINTER(Descriptor)),
+        ]
+
+    answered = threading.Event()
+    granted: list[bool] = []
+
+    def on_answer(_block: object, ok: bool) -> None:
+        granted.append(bool(ok))
+        answered.set()
+
+    invoke = invoke_type(on_answer)
+    descriptor = Descriptor(0, ctypes.sizeof(Block), b"v12@?0B8")
+    block_is_global, block_has_signature = 1 << 28, 1 << 30
+    block = Block(
+        ctypes.addressof(ctypes.c_void_p.in_dll(libsystem, "_NSConcreteGlobalBlock")),
+        block_is_global | block_has_signature,
+        0,
+        invoke,
+        ctypes.pointer(descriptor),
+    )
+    _KEEP_ALIVE.append((invoke, descriptor, block))
+    request = ctypes.CFUNCTYPE(
+        None, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p
+    )(send)
+    request(
+        device,
+        objc.sel_registerName(b"requestAccessForMediaType:completionHandler:"),
+        audio,
+        ctypes.byref(block),
+    )
+    if not answered.wait(timeout):
+        return "not_determined"
+    return "authorized" if granted[0] else "denied"

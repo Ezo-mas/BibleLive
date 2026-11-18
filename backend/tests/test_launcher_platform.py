@@ -367,3 +367,29 @@ def test_macos_real_monitor_query():
     assert found, "a Mac always has at least one active display"
     assert found[0].primary
     assert (found[0].x, found[0].y) == (0, 0)
+
+
+def test_macos_microphone_access_is_unknown_off_macos(monkeypatch):
+    monkeypatch.setattr(macos.sys, "platform", "win32")
+    assert macos.microphone_access() == "unknown"
+
+
+@pytest.mark.parametrize("error", [OSError("no AVFoundation"), AttributeError("objc")])
+def test_macos_microphone_query_failure_is_unknown(monkeypatch, error):
+    monkeypatch.setattr(macos.sys, "platform", "darwin")
+
+    def fail(ask, timeout):
+        raise error
+
+    monkeypatch.setattr(macos, "_microphone_access", fail)
+    assert macos.microphone_access() == "unknown"
+
+
+@pytest.mark.skipif(sys.platform != "darwin", reason="needs AVFoundation (macOS)")
+def test_macos_microphone_status_query_runs():
+    assert macos.microphone_access(ask=False) in {
+        "authorized",
+        "denied",
+        "restricted",
+        "not_determined",
+    }

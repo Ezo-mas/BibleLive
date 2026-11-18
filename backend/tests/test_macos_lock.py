@@ -61,3 +61,20 @@ def test_the_lock_has_the_speech_stack_and_the_mac_vad_wheel():
     for name in ("faster-whisper", "ctranslate2", "transcribe-cpp", "webrtcvad-wheels", "numpy"):
         assert name in entries, name
     assert "webrtcvad" not in entries  # source-only on PyPI: needs a compiler on the Mac
+
+
+def test_the_disk_image_build_tools_are_hash_pinned():
+    lines = [
+        line
+        for line in (REPO / "scripts" / "macos" / "requirements-dmg.lock")
+        .read_text(encoding="utf-8")
+        .splitlines()
+        if line and not line.startswith("#")
+    ]
+    assert {_name(_PIN.match(line).group(1)) for line in lines} == {
+        "dmgbuild",
+        "ds-store",
+        "mac-alias",
+    }
+    for line in lines:
+        assert re.search(r"--hash=sha256:[0-9a-f]{64}$", line), line

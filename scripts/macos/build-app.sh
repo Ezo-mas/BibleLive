@@ -294,24 +294,27 @@ ZIP="$DIST/BibleLive-$VERSION-macos-arm64.zip"
 DMG="$DIST/BibleLive-$VERSION-macos-arm64.dmg"
 rm -f "$ZIP" "$DMG"
 ditto -c -k --keepParent "$APP_BUNDLE" "$ZIP"
-# The disk image: the app and a link to /Applications to drag it onto. Unsigned, like the app
-# inside it (ad-hoc signature only): a signed app never ships in an unsigned image or the
-# other way round (docs/macos-arm64.md, Phase 3).
-STAGE="$BUILD/dmg"
-case "$STAGE" in "$BUILD"/*) ;; *) echo "Refusing to delete outside build/" >&2; exit 1 ;; esac
-rm -rf "$STAGE"
-mkdir -p "$STAGE"
-ditto "$APP_BUNDLE" "$STAGE/BibleLive.app"
-ln -s /Applications "$STAGE/Applications"
-hdiutil create -quiet -volname "BibleLive" -srcfolder "$STAGE" -fs APFS -format ULMO -ov "$DMG"
-rm -rf "$STAGE"
-echo "- the disk image holds the same, still valid app"
+# The disk image: the app and a link to /Applications to drag it onto, in a laid-out window
+# (background with an arrow, fixed icon positions, no toolbar or sidebar). Unsigned, like the
+# app inside it (ad-hoc signature only): a signed app never ships in an unsigned image or the
+# other way round (docs/macos-arm64.md, Phase 3). dmgbuild writes the window layout without
+# Finder; it and its two dependencies are hash-pinned build tools, never shipped.
+DMG_TOOLS="$BUILD/dmg-tools"
+case "$DMG_TOOLS" in "$BUILD"/*) ;; *) echo "Refusing to delete outside build/" >&2; exit 1 ;; esac
+rm -rf "$DMG_TOOLS"
+mkdir -p "$DMG_TOOLS/bg"
+"$PY" -m pip install --disable-pip-version-check --no-cache-dir --only-binary=:all: --no-deps   --require-hashes --target "$DMG_TOOLS/lib" -r "$REPO/scripts/macos/requirements-dmg.lock"
+swift "$REPO/scripts/macos/dmg-background.swift" "$DMG_TOOLS/bg/background.png" "$DMG_TOOLS/bg/background@2x.png"
+PYTHONPATH="$DMG_TOOLS/lib" "$PY" -B -s -m dmgbuild -s "$REPO/scripts/macos/dmg-settings.py"   -D app="$APP_BUNDLE" -D background="$DMG_TOOLS/bg/background.png" "BibleLive" "$DMG"
+rm -rf "$DMG_TOOLS"
+echo "- the disk image holds the same, still valid app, and its window layout"
 MNT="$(mktemp -d)"
 hdiutil attach -quiet -nobrowse -readonly -mountpoint "$MNT" "$DMG"
 dmg_ok=1
 codesign --verify --deep --strict "$MNT/BibleLive.app" || dmg_ok=0
 diff -rq "$APP_BUNDLE" "$MNT/BibleLive.app" >/dev/null || { echo "The disk image's app differs from $APP_BUNDLE" >&2; dmg_ok=0; }
 [ "$(readlink "$MNT/Applications")" = /Applications ] || dmg_ok=0
+[ -f "$MNT/.DS_Store" ] && [ -f "$MNT/.background.tiff" ] || { echo "The disk image has no window layout" >&2; dmg_ok=0; }
 # Detach can fail with "Resource busy" for a moment after the checks; retry, then force.
 for _ in 1 2 3; do hdiutil detach -quiet "$MNT" 2>/dev/null && break; sleep 2; done
 [ ! -d "$MNT/BibleLive.app" ] || hdiutil detach -quiet -force "$MNT" || true
