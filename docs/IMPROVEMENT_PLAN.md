@@ -758,7 +758,7 @@ Uses decisions Q8 to Q10.
    scan does not read. The owner chose to delete the two snapshots instead: they
    were identical copies of the pre-repair database and no tool makes new ones.
 6. **Types (optional).** Turn on `disallow_untyped_defs` for `core.server.*`,
-   then `audio.*`, one package per change.
+   then `audio.*`, one package per change. `core.server.*` done 2026-11-18.
 7. **Retire `?token=` (optional). Done after 0.2.0.** One release after the
    first-message handshake shipped, remove the query-string path from
    `_authenticate_operator`. Security review required. The uvicorn log
