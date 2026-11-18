@@ -124,7 +124,7 @@ class AudioCapture:
         """Total audio seconds received from the input device."""
         return self.total_bytes_captured / 2 / self.sample_rate
 
-    def start_capture(self, device: str | None = None):
+    def start_capture(self, device: str | None = None) -> None:
         """Start capturing audio from the microphone.
 
         ``device`` is the platform's input name: a DirectShow device name on
@@ -205,7 +205,7 @@ class AudioCapture:
         self.capture_thread = capture_thread
         capture_thread.start()
 
-    def _consume_stderr(self):
+    def _consume_stderr(self) -> None:
         """Consume ffmpeg stderr to prevent pipe from filling and blocking."""
         if not self.ffmpeg_process or not self.ffmpeg_process.stderr:
             return
@@ -225,7 +225,7 @@ class AudioCapture:
         except Exception as e:
             logger.warning(f"Error consuming ffmpeg stderr: {e}")
 
-    def _read_audio_data(self, proc: subprocess.Popen[bytes], generation: int):
+    def _read_audio_data(self, proc: subprocess.Popen[bytes], generation: int) -> None:
         """Read audio data from ffmpeg stdout and put in queue"""
         chunk_size = 2 * self.sample_rate // 100  # 10ms chunks (2 bytes per sample)
 
@@ -332,7 +332,7 @@ class AudioCapture:
             f"dropped={self.dropped_chunks})"
         )
 
-    def stop_capture(self):
+    def stop_capture(self) -> None:
         """Stop audio capture and cleanup resources"""
         logger.info("Stopping audio capture...")
         with self._stream_lock:

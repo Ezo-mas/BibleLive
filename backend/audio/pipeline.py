@@ -193,7 +193,7 @@ class BibleLiveAudioProcessor:
             cpu_threads=self.config.cpu_threads,
         )
 
-    def start(self):
+    def start(self) -> None:
         """Start the audio processing pipeline.
 
         Raises:
@@ -306,7 +306,7 @@ class BibleLiveAudioProcessor:
             session_log.close()
             self.session_log = None
 
-    def stop(self):
+    def stop(self) -> None:
         """Stop the audio processing pipeline"""
         logger.info("Stopping audio pipeline...")
         self.is_running = False
@@ -420,7 +420,7 @@ class BibleLiveAudioProcessor:
             )
         self._capture_language = pending
 
-    def _vad_loop(self):
+    def _vad_loop(self) -> None:
         """VAD processing loop - detects speech segments"""
         frame_duration_ms = self.frame_duration_ms
 
@@ -531,7 +531,7 @@ class BibleLiveAudioProcessor:
                 f"(fewer than {self.segmenter.min_speech_frames} voiced frames)"
             )
 
-    def _transcription_loop(self):
+    def _transcription_loop(self) -> None:
         """Transcription processing loop - transcribes speech segments"""
         # Initialize thread-local Bible lookup and one parser per language
         self._init_thread_local_parsers()
@@ -594,7 +594,7 @@ class BibleLiveAudioProcessor:
                         logger.warning(f"Error closing Bible lookup: {e}")
                     self._local.bible_lookup = None
 
-    def _init_thread_local_parsers(self):
+    def _init_thread_local_parsers(self) -> None:
         """Initialize the thread-local Bible lookup and one parser per language.
 
         Parsers live in the transcription thread's thread-local storage: the
@@ -762,7 +762,7 @@ class BibleLiveAudioProcessor:
         if text:
             self.transcript_sender.submit(text, snapshot.language)
 
-    def _process_utterance(self, language: str, speech_frames: list[bytes]):
+    def _process_utterance(self, language: str, speech_frames: list[bytes]) -> None:
         """Process a completed utterance captured in ``language``"""
         try:
             result, references = self._detect_references(language, speech_frames)

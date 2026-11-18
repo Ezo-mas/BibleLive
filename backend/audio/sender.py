@@ -10,6 +10,8 @@ from typing import Any
 
 import requests
 
+from core.verse_parser import Reference
+
 from .config import AudioPipelineConfig
 from .metrics import PipelineMetrics
 
@@ -60,12 +62,12 @@ class ReferenceSender:
             )
         )
 
-    def _get_reference_hash(self, ref) -> str:
+    def _get_reference_hash(self, ref: Reference) -> str:
         """Generate a hash for deduplication"""
         key = f"{ref.book}:{ref.chapter}:{ref.verse_start}-{ref.verse_end}"
         return hashlib.md5(key.encode()).hexdigest()[:16]
 
-    def _is_duplicate(self, ref) -> bool:
+    def _is_duplicate(self, ref: Reference) -> bool:
         """Check if reference was recently sent (within dedup window)"""
         ref_hash = self._get_reference_hash(ref)
         current_time = time.time()
@@ -89,7 +91,7 @@ class ReferenceSender:
         self.recent_references[ref_hash] = current_time
         return False
 
-    def _skip_duplicate(self, ref) -> bool:
+    def _skip_duplicate(self, ref: Reference) -> bool:
         """Count and log ``ref`` if it is a duplicate; return whether it was."""
         if not self._is_duplicate(ref):
             return False
@@ -130,7 +132,7 @@ class ReferenceSender:
         if unsent:
             logger.warning(f"Stopping with {unsent} detected reference(s) not yet sent")
 
-    def submit(self, ref) -> None:
+    def submit(self, ref: Reference) -> None:
         """Queue ``ref`` for the worker without blocking (transcription thread)."""
         if self._skip_duplicate(ref):
             return
@@ -160,12 +162,12 @@ class ReferenceSender:
                 continue
             self._deliver(ref, submitted_at)
 
-    def _drop(self, ref, reason: str) -> None:
+    def _drop(self, ref: Reference, reason: str) -> None:
         self.metrics.references_dropped += 1
         self.delivery_problem = f"it was discarded because {reason}"
         logger.warning(f"Discarding detected reference {ref}: {reason}")
 
-    def _is_stale(self, ref, submitted_at: float | None) -> bool:
+    def _is_stale(self, ref: Reference, submitted_at: float | None) -> bool:
         """Drop ``ref`` if it waited longer than ``send_max_age_s``.
 
         Late is worse than missing here: with auto-approve on, a reference that
@@ -183,13 +185,13 @@ class ReferenceSender:
     # ------------------------------------------------------------------
     # Delivery on the calling thread
     # ------------------------------------------------------------------
-    def send(self, ref) -> None:
+    def send(self, ref: Reference) -> None:
         """Send a Bible reference to the BibleLive server with retry logic"""
         if self._skip_duplicate(ref):
             return
         self._deliver(ref)
 
-    def _deliver(self, ref, submitted_at: float | None = None) -> None:
+    def _deliver(self, ref: Reference, submitted_at: float | None = None) -> None:
         """POST ``ref``, retrying server errors and timeouts with backoff.
 
         ``submitted_at`` is set for queued references: one that has become too

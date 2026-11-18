@@ -14,6 +14,7 @@ when replaying, so a map change replays in seconds.
 
 import re
 from collections.abc import Callable
+from typing import Any
 
 from core.verse_parser import Reference, StreamingParser
 
@@ -81,7 +82,7 @@ class MappedStreamingParser(StreamingParser):
     context) only ever sees the corrected text.
     """
 
-    def __init__(self, *args, spelling_map: Callable[[str], str], **kwargs):
+    def __init__(self, *args: Any, spelling_map: Callable[[str], str], **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
         self.spelling_map = spelling_map
 

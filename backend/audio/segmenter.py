@@ -116,7 +116,9 @@ class Segmenter:
         )
 
     @classmethod
-    def from_config(cls, is_speech: Callable[[bytes], bool], config: AudioPipelineConfig):
+    def from_config(
+        cls, is_speech: Callable[[bytes], bool], config: AudioPipelineConfig
+    ) -> "Segmenter":
         """Build from the config's durations, rounded to whole VAD frames."""
 
         def frames(seconds: float) -> int:
