@@ -49,6 +49,15 @@ PCM_BYTES_PER_SECOND = 2 * 16000
 PARTIAL_POLL_S = 0.1
 
 
+def _model_label(model: str) -> str:
+    """A Whisper model name as given, or ``<repo folder>@<commit>`` for a snapshot folder."""
+    if not os.path.isdir(model):
+        return model
+    snapshot = os.path.normpath(model)
+    repo = os.path.basename(os.path.dirname(os.path.dirname(snapshot)))
+    return f"{repo}@{os.path.basename(snapshot)}"
+
+
 class BibleLiveAudioProcessor:
     """Main audio processing pipeline for BibleLive with reliability improvements"""
 
@@ -278,9 +287,9 @@ class BibleLiveAudioProcessor:
                 name: os.path.basename(getattr(config, f"{name}_model") or "")
                 for name in self._stt_models
             },
-            # A name, or (the launcher's pinned download) a folder: its commit, as for the
-            # GGUF models no path goes in the log.
-            "whisper_model": os.path.basename(os.path.normpath(config.whisper_model)),
+            # A name, or (the launcher's pinned download) a hub snapshot folder: its repo
+            # folder and commit, as for the GGUF models no full path goes in the log.
+            "whisper_model": _model_label(config.whisper_model),
             "device": config.whisper_device,
             "language": config.language,
             "vad": config.vad,

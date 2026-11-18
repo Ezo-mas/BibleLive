@@ -88,7 +88,9 @@ def _default_downloader(model: str) -> str:
     pin = WHISPER_MODELS.get(model)
     if pin is None:
         return str(download_model(model))
-    folder = Path(download_model(model, revision=pin.revision))
+    # The pin's own repo id: the one cached_whisper_dir looks up, whatever faster-whisper maps
+    # the name to in a later release.
+    folder = Path(download_model(pin.repo_id, revision=pin.revision))
     for filename, sha256 in pin.files.items():
         check_sha256(folder / filename, sha256)
     return str(folder)

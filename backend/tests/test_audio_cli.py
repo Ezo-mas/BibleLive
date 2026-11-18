@@ -24,3 +24,12 @@ def test_model_takes_a_name_or_a_downloaded_folder(tmp_path, capsys):
     with pytest.raises(SystemExit):
         parser.parse_args(["--model", str(tmp_path / "missing")])
     assert "model folder" in capsys.readouterr().err
+
+
+def test_session_log_names_a_model_folder_without_its_path(tmp_path):
+    from audio.pipeline import _model_label
+
+    snapshot = tmp_path / "hub" / "models--org--whisper" / "snapshots" / "abc123"
+    snapshot.mkdir(parents=True)
+    assert _model_label(str(snapshot)) == "models--org--whisper@abc123"
+    assert _model_label("large-v3-turbo") == "large-v3-turbo"

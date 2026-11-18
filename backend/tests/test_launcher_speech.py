@@ -529,7 +529,7 @@ def test_default_downloaders_fetch_the_pinned_commit_and_check_it(tmp_path, monk
     monkeypatch.setattr(faster_whisper.utils, "download_model", fake_download_model)
     monkeypatch.setitem(commands.WHISPER_MODELS, "small", pin)
     assert commands._default_downloader("small") == str(folder)
-    assert seen["whisper"] == ("small", "c" * 40)
+    assert seen["whisper"] == ("x/y", "c" * 40)
     assert commands._default_downloader("tiny") == str(folder)  # no pin: by name
     assert seen["whisper"] == ("tiny", None)
     monkeypatch.setitem(
@@ -550,3 +550,12 @@ def test_default_downloaders_fetch_the_pinned_commit_and_check_it(tmp_path, monk
     model = GgufModel("a/b", "m.gguf", 1, "d" * 40, file_sha256(gguf_file))
     assert commands._default_gguf_downloader(model, tmp_path) == str(gguf_file)
     assert seen["gguf"]["revision"] == "d" * 40 and seen["gguf"]["filename"] == "m.gguf"
+
+
+def test_whisper_pins_use_faster_whispers_repo_ids():
+    # The cache folder is named after the repo id: the pin and faster-whisper must agree, or a
+    # by-name load would look in another folder than the pinned download.
+    from faster_whisper.utils import _MODELS
+
+    for name, pin in WHISPER_MODELS.items():
+        assert _MODELS[name] == pin.repo_id, name

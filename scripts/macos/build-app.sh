@@ -312,7 +312,9 @@ dmg_ok=1
 codesign --verify --deep --strict "$MNT/BibleLive.app" || dmg_ok=0
 diff -rq "$APP_BUNDLE" "$MNT/BibleLive.app" >/dev/null || { echo "The disk image's app differs from $APP_BUNDLE" >&2; dmg_ok=0; }
 [ "$(readlink "$MNT/Applications")" = /Applications ] || dmg_ok=0
-hdiutil detach -quiet "$MNT"
+# Detach can fail with "Resource busy" for a moment after the checks; retry, then force.
+for _ in 1 2 3; do hdiutil detach -quiet "$MNT" 2>/dev/null && break; sleep 2; done
+[ ! -d "$MNT/BibleLive.app" ] || hdiutil detach -quiet -force "$MNT" || true
 rmdir "$MNT" 2>/dev/null || true
-[ "$dmg_ok" = 1 ] || { echo "Disk image check failed" >&2; exit 1; }
+[ "$dmg_ok" = 1 ] || { rm -f "$DMG"; echo "Disk image check failed" >&2; exit 1; }
 echo "Built $ZIP ($(du -m "$ZIP" | cut -f1) MB) and $DMG ($(du -m "$DMG" | cut -f1) MB) from ${SIZE_MB} MB."
