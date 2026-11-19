@@ -35,6 +35,7 @@ EVENT_FIELDS = {
         "auto_approved",
     },
     "cleared": set(),
+    "live_changed": {"live"},
     "queue_cleared": {"count"},
     "pending_discarded": {"reference_id", "book", "chapter", "verse_start", "verse_end"},
     "queue_overflowed": {"count"},
