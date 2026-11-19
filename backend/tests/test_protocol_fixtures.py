@@ -29,6 +29,7 @@ ACTIONS = {
     "set_verse_limit": {"action": "set_verse_limit", "verse_limit": 5},
     "set_display_theme": {"action": "set_display_theme", "theme": "light"},
     "set_clear_mode": {"action": "set_clear_mode", "clear_mode": "blank"},
+    "set_live": {"action": "set_live", "live": False},
     "set_auto_mode": {"action": "set_auto_mode", "auto_mode": "high"},
     "set_follow_auto": {"action": "set_follow_auto", "follow_auto": True},
     "display_reference": {
@@ -136,6 +137,14 @@ def test_real_server_protocol_fixtures(client, app_state, kjv_db, monkeypatch):
                     save=action == "set_display_theme",
                 )
                 receive(display, "display", "display_settings", save=action == "set_display_theme")
+            send(operator, "set_live")
+            receive(operator, "operator", "display_settings_confirmed", save=False)
+            receive(display, "display", "display_settings", save=False)
+            receive(display, "display", "clear", save=False)
+            operator.send_text(json.dumps({"action": "set_live", "live": True}))
+            receive(operator, "operator", "display_settings_confirmed", save=False)
+            receive(display, "display", "reference", save=False)
+            receive(display, "display", "display_settings", save=False)
             send(operator, "set_auto_mode")
             receive(operator, "operator", "auto_mode_confirmed")
             send(operator, "set_follow_auto")

@@ -45,6 +45,12 @@ export default function App() {
   // The operator's idle picture. Shown only while nothing is on screen.
   const [idleImage, setIdleImage] = useState<IdleImage | null>(null)
   const [clearMode, setClearMode] = useState<ClearMode>('idle')
+  // Off air the page draws nothing. The server also stops sending passages and clears
+  // this page, so this is the second lock, not the only one.
+  const [live, setLive] = useState(true)
+  // The socket handler reads it between renders: back on air the server sends the
+  // passage just before the settings, and both must land before the next paint.
+  const liveRef = useRef(true)
   // Page-local by design: a display reloaded mid-service shows the picture again
   // until the next passage; the protocol has no server-side "has shown" field.
   const [hasShownPassage, setHasShownPassage] = useState(false)
@@ -62,6 +68,23 @@ export default function App() {
       setTheme(coerceDisplayTheme(message.data.theme))
       setClearMode(coerceClearMode(message.data.clear_mode))
       setIdleImage(readIdleImage(message.data))
+      liveRef.current = message.data.live !== false
+      setLive(liveRef.current)
+      return
+    }
+
+    // Off air nothing is drawn, so there is nothing to fade: take the passage (or the
+    // clear) at once, and going back on air shows it without flashing the idle screen.
+    if (!liveRef.current) {
+      window.clearTimeout(swapTimerRef.current)
+      if (message.type === 'reference') {
+        setReference(message.data)
+        setHasShownPassage(true)
+        setVisible(true)
+      } else {
+        setReference(null)
+        setVisible(false)
+      }
       return
     }
 
@@ -162,9 +185,13 @@ export default function App() {
     const observer = new ResizeObserver(compute)
     observer.observe(stage)
     return () => observer.disconnect()
-  }, [visibleVerses, theme])
+    // `live`: off air the stage is not mounted, so going live must fit again.
+  }, [visibleVerses, theme, live])
 
   const fadeClass = visible ? 'display-fade-in' : 'display-fade-out'
+
+  if (!live)
+    return <div className="display-app display-app--off-air" data-testid="display-off-air" />
 
   return (
     <div className="display-app">

@@ -11,6 +11,8 @@ ALLOWED = {
     "_send_display_reference": {
         ("display_session.py", "DisplaySession.approve_pending"),
         ("display_session.py", "DisplaySession.display_manual_passage"),
+        # Back on air: re-sends the already-authorized current_display, nothing else.
+        ("display_session.py", "DisplaySession._resend_current_display"),
         ("state.py", "AppState._send_display_reference"),  # one-line forwarder
     },
     "display_manual_passage": {

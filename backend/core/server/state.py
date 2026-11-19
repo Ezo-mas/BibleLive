@@ -354,6 +354,18 @@ class AppState:
         logger.info(f"Display clear mode set to {clear_mode}")
         return True
 
+    async def set_live(self, live: object) -> bool:
+        """Put the audience display on air or take it off. Returns False if invalid.
+
+        Server-held so a reconnecting display obeys it, and never persisted: a
+        restarted server is live, so a restart cannot leave the projector dark unseen.
+        """
+        if not isinstance(live, bool):
+            return False
+        await self._display_session.set_live(live)
+        logger.info(f"Display {'live' if live else 'off air'}")
+        return True
+
     async def set_auto_mode(self, auto_mode: object) -> bool:
         """Choose which new detections are displayed without operator action.
 
@@ -460,7 +472,15 @@ class AppState:
                 await self.connection_manager.send_to_operator(message)
 
     async def send_display_current_state(self, websocket: WebSocket) -> None:
-        """Send current display state to a newly connected display client."""
+        """Send current display state to a newly connected display client.
+
+        Off air, a new display gets no passage at all: the settings first (so a page
+        with an idle picture goes black at once), then the clear.
+        """
+        if not self.display_settings.live:
+            await self.send_display_settings(websocket)
+            await self.connection_manager._safe_send(websocket, DisplayClear(data={}).model_dump())
+            return
         if self.current_display:
             await self.connection_manager._safe_send(
                 websocket, DisplayReference(data=self.current_display).model_dump()

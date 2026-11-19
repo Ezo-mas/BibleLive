@@ -217,3 +217,15 @@
 .operator-live-tag {
   margin-left: var(--space-2);
 }
+
+/* The live switch sits at the right of the ON DISPLAY header, opposite the title. */
+.operator-live-switch {
+  margin-left: auto;
+}
+
+/* Off air the preview keeps the passage, so the operator can check it, all of it
+   readable (citation included), inside a warning ring drawn over its edge. */
+.operator-monitor-wrap.is-off-air {
+  outline: var(--focus-ring-width) solid var(--color-warning);
+  outline-offset: calc(-1 * var(--focus-ring-width));
+}

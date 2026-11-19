@@ -163,6 +163,9 @@ export default function App() {
             reference={operator.currentDisplay}
             verseLimit={operator.verseLimit}
             displayTheme={operator.displayTheme}
+            live={operator.live}
+            onLiveChange={operator.setLive}
+            liveDisabled={!operator.isConnected}
             idleImage={
               operator.clearMode === 'blank' && operator.seenPassage ? null : operator.idleImage
             }

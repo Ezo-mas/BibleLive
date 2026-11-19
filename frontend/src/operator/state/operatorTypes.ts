@@ -39,6 +39,10 @@ export interface OperatorSettings {
   // Display background. Projectors run dark, so that is the default here too.
   theme: DisplayTheme
   clearMode: ClearMode
+  // Whether the audience display is on air. Never set optimistically: the console
+  // shows only what the server confirmed, so it can never claim a dark screen that
+  // the audience can still see.
+  live: boolean
   // Auto-approve mode. Server-side state (persisted there too), so the console
   // only mirrors it: the snapshot on connect is the source of truth.
   autoMode: AutoMode
@@ -122,6 +126,7 @@ export type OperatorIntent =
   | { type: 'clear_display' }
   | { type: 'clear_pending' }
   | { type: 'set_setting'; action: OptimisticSettingAction }
+  | { type: 'set_live'; live: boolean }
   | { type: 'disconnected' }
   | { type: 'discard_settled' }
   | { type: 'set_idle_image'; image: IdleImage | null }

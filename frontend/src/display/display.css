@@ -38,6 +38,14 @@ body {
     color var(--transition-slow);
 }
 
+/* Off air: nothing at all, not even the idle picture, whatever the theme. */
+.display-app--off-air {
+  background: var(--color-display-off-air);
+  cursor: none;
+  /* Instant, like a pulled cable, not the theme's slow fade. */
+  transition: none;
+}
+
 /* Measured box the verse font is fitted into. Everything else is positioned
    relative to the viewport, so this takes the full available area. */
 .display-stage {

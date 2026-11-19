@@ -434,6 +434,10 @@ A missing local translation keeps the previous validator and reports
   - `{action: 'clear_pending'}`
   - `{action: 'set_verse_limit', verse_limit: 3 | 5 | 10 | 'all'}`
   - `{action: 'set_display_theme', theme: 'dark' | 'light'}`
+  - `{action: 'set_live', live: true | false}` — put the audience display on air
+    or take it off (a black screen; the server sends displays no passage while off
+    air). Not saved: the server always starts live. Confirmed to every console in
+    `display_settings_confirmed` (`live` field)
   - `{action: 'set_auto_mode', auto_mode: 'off' | 'high' | 'medium_and_up' | 'all'}`
   - `{action: 'set_follow_auto', follow_auto: true | false}` — follow-along auto-show
     (see Follow-along); the confirmation goes to every operator console
@@ -481,7 +485,7 @@ same file.
 | `BIBLELIVE_LOG_LEVEL`     | `INFO`                      | Server log level         |
 | `BIBLELIVE_DB_READONLY`   | `false`                     | Fail rather than write to the Bible DB |
 | `BIBLELIVE_AUDIO_LOG_LEVEL` | `INFO`                    | Audio pipeline log level |
-| `BIBLELIVE_SERVICE_LOG_DIR` | unset (off)               | Write a JSON-lines service log (what was shown or cleared, queue and translation changes, pipeline status; no transcript or verse text) to this folder. The launcher sets it to `logs/services` in its data folder |
+| `BIBLELIVE_SERVICE_LOG_DIR` | unset (off)               | Write a JSON-lines service log (what was shown or cleared, the display going on or off air (`live_changed`; a `shown` while off air reached the console, not the audience), queue and translation changes, pipeline status; no transcript or verse text) to this folder. The launcher sets it to `logs/services` in its data folder |
 
 See `.env.example` for the full annotated list. `BIBLELIVE_AUDIO_LOG_LEVEL`,
 `BIBLELIVE_AUDIO_ARGS` (start scripts), and the pipeline's model/device/language

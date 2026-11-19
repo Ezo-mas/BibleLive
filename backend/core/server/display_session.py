@@ -5,6 +5,8 @@ from collections.abc import Awaitable, Callable
 from enum import Enum
 from typing import Literal, Protocol
 
+from fastapi import WebSocket
+
 from ..bible_lookup import BibleLookup
 from ..config import config
 from ..passage import ResolvedPassage
@@ -14,6 +16,7 @@ from .models import (
     BibleReference,
     DisplayClear,
     DisplayReference,
+    DisplaySettings,
     OperatorApprovalConfirmed,
     OperatorClearConfirmed,
     OperatorDisplayConfirmed,
@@ -38,6 +41,7 @@ class ApprovalRefusal(Enum):
 
 class DisplaySessionOwner(Protocol):
     auto_mode: AutoMode
+    display_settings: DisplaySettings
     bible_lookup: BibleLookup
     connection_manager: ConnectionManager
     runtime_state: RuntimeStateStore
@@ -62,6 +66,8 @@ class DisplaySessionOwner(Protocol):
     async def _send_display_reference(self, ref: BibleReference) -> None: ...
 
     async def _send_display_clear(self) -> None: ...
+
+    async def send_display_settings(self, websocket: WebSocket | None = None) -> None: ...
 
     async def approve_pending(
         self, reference_id: str
@@ -107,13 +113,20 @@ class DisplaySession:
         """Notify displays to show a reference.
 
         The only path that puts a reference on a projector. Its callers are the
-        two operator-authorized ways to change the display: approving a queued
+        two operator-authorized ways to change the display (plus
+        ``_resend_current_display``, which repeats the one already shown): approving a queued
         detection (``approve_pending``) and displaying a passage by coordinates
         (``display_manual_passage``) — one the operator picked by hand, or, while the
         operator has follow-along auto-show on, the verse the speaker reads on to
         (``source="follow"``). Nothing else — and in particular no unapproved
         detection — can reach this method.
+
+        While the operator has the display off air (``display_settings.live`` false)
+        nothing is sent: ``current_display`` and the operator preview still change, but
+        no passage reaches a display socket until ``set_live`` puts it back on air.
         """
+        if not self._owner.display_settings.live:
+            return
         await self._owner.connection_manager.send_to_display(
             DisplayReference(data=ref).model_dump()
         )
@@ -174,6 +187,10 @@ class DisplaySession:
         try:
             translation = self._owner.active_bible_version()
             self._owner.runtime_state.record(ref, translation)
+            # Off air the audience never saw it: keep it in history, but a restarted
+            # (and so live) server must not put it on screen by itself.
+            if not self._owner.display_settings.live:
+                self._owner.runtime_state.clear()
         except Exception:
             logger.warning("Could not record runtime display state", exc_info=True)
         try:
@@ -401,6 +418,50 @@ class DisplaySession:
             OperatorDisplayConfirmed(data=ReferenceConfirmedData(reference=ref)).model_dump()
         )
         return ref
+
+    async def set_live(self, live: bool) -> None:
+        """Put the audience display on air or take it off (operator action ``set_live``).
+
+        Off air, displays are told ``live: false`` (a black screen) and then cleared, so
+        even a display page too old to know the field drops the passage. Back on air,
+        the passage on screen — already authorized when the operator or auto-approve
+        showed it, and kept server-side as ``current_display`` — is sent first, then the
+        settings, so a display never flashes its idle picture in between. The flag
+        changes and both sends are enqueued without an await that yields, so no other
+        action can interleave (see the architecture guide).
+        """
+        if self._owner.display_settings.live == live:
+            return
+        self._owner.display_settings = self._owner.display_settings.model_copy(
+            update={"live": live}
+        )
+        try:
+            self._owner.service_log.emit("live_changed", live=live)
+        except Exception:
+            logger.warning("Could not log live switch", exc_info=True)
+        if not live:
+            # A restart comes back live, so it must not restore what is on screen now.
+            # Back on air the passage is restored again only once a new one is shown.
+            try:
+                self._owner.runtime_state.clear()
+            except Exception:
+                logger.warning("Could not record off-air display", exc_info=True)
+        if live:
+            await self._resend_current_display()
+            await self._owner.send_display_settings()
+        else:
+            await self._owner.send_display_settings()
+            await self._owner._send_display_clear()
+
+    async def _resend_current_display(self) -> None:
+        """Send displays the passage already on screen, and nothing else.
+
+        Takes no argument on purpose: back on air the only thing it can send is
+        ``current_display``, which an approval or a manual show already authorized.
+        The door guard allows this method, not ``set_live``.
+        """
+        if self.current_display is not None:
+            await self._owner._send_display_reference(self.current_display)
 
     async def clear_display(self) -> None:
         """Clear the current display"""

@@ -155,6 +155,13 @@ class DisplaySettings(BaseModel):
         default=None,
         description="Picture shown while nothing is on screen; null means a blank screen",
     )
+    live: bool = Field(
+        default=True,
+        description=(
+            "Whether the audience sees anything; while false displays get no passage "
+            "and show a black screen. Not persisted: the server always starts live"
+        ),
+    )
 
 
 class StateResponse(BaseModel):
@@ -438,6 +445,13 @@ class OperatorSetClearModeAction(BaseModel):
     clear_mode: Literal["idle", "blank"]
 
 
+class OperatorSetLiveAction(BaseModel):
+    """Operator action: put the audience display on air (``live``) or black it out."""
+
+    action: Literal["set_live"]
+    live: StrictBool
+
+
 class OperatorSetAutoModeAction(BaseModel):
     """Action to choose which new detections are shown without operator approval."""
 
@@ -496,6 +510,7 @@ OperatorAction = Annotated[
     | OperatorSetVerseLimitAction
     | OperatorSetDisplayThemeAction
     | OperatorSetClearModeAction
+    | OperatorSetLiveAction
     | OperatorSetAutoModeAction
     | OperatorSetFollowAutoAction
     | OperatorDisplayReferenceAction,

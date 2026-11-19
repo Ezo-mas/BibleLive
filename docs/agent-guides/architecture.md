@@ -38,7 +38,7 @@ easy to break by accident.
    auto-show, so nothing can auto-approve it). The supported operator actions are
    `authenticate` (the token, as the socket's first message; it carries no
    operation and is ignored once the socket is let in), `approve`, `discard_pending`, `clear`, `clear_pending`, `set_verse_limit`,
-   `set_display_theme`, `set_clear_mode`, `set_auto_mode`, `set_follow_auto`, `display_reference` — there is no
+   `set_display_theme`, `set_clear_mode`, `set_live`, `set_auto_mode`, `set_follow_auto`, `display_reference` — there is no
    `reject` action; `discard_pending` removes one pending row and broadcasts only `pending_update`.
    Display settings include verse limit, theme, idle picture and persisted
    `clear_mode` (`idle` by default, or `blank` after a passage has been cleared).
@@ -94,6 +94,16 @@ easy to break by accident.
    `approve_pending` drops it from the queue and leaves the display alone; the
    approving operator gets an `error` (action `approve`) before everyone's
    `pending_update`, and an auto-approved one just leaves the queue (logged).
+   **The live switch** (`set_live`, `DisplaySession.set_live`) gates the doors
+   rather than adding one. Off air (`display_settings.live` false, in memory only,
+   so a restarted server is live) `_send_display_reference` sends nothing and a
+   newly connected display gets a `clear` instead of `current_display`; approvals,
+   manual shows, auto-approve and follow-along still change `current_display` and
+   reach operators. Going off air sends displays the settings, then a `clear` (so a
+   page too old to know `live` still drops the passage). Going back on air is the
+   one other caller the door guard allows: it re-sends the stored, already
+   authorized `current_display` and nothing else (never a pending item, never
+   client input), then the settings. Covered by `backend/tests/test_live_switch.py`.
    **Restore after a restart** is not a door either. `core/server/runtime_state.py`
    keeps the on-screen passage and the last 20 history entries as coordinates
    (never text) in `runtime_state.json` beside the settings file, written in the

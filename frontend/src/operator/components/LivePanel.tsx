@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react'
 import type { ReactNode } from 'react'
-import { MonitorIcon, StatusBadge } from '../../components'
+import { MonitorIcon, SegmentedOption, StatusBadge } from '../../components'
 import { useI18n } from '../../shared/i18nContext'
 import { PanelHint } from './PanelHint'
 import { usePreviewFit } from '../hooks/usePreviewFit'
@@ -22,6 +22,12 @@ export interface LivePanelProps {
   children?: ReactNode
   /** Laid over the top of the preview frame, taking no space (the follow-along strip). */
   overlay?: ReactNode
+  /** Whether the audience display is on air; off air the preview keeps showing the passage. */
+  live?: boolean
+  /** Switch the display on or off air; omitted, the switch is not drawn. */
+  onLiveChange?: (next: boolean) => void
+  /** Server-held, so the switch is read-only while disconnected. */
+  liveDisabled?: boolean
 }
 
 /**
@@ -41,6 +47,9 @@ export function LivePanel({
   idleImage = null,
   children,
   overlay,
+  live = true,
+  onLiveChange,
+  liveDisabled = false,
 }: LivePanelProps) {
   const { t } = useI18n()
   // A picture the browser could not load falls back to the empty message, as the
@@ -72,9 +81,41 @@ export function LivePanel({
             {t('ref.followed')}
           </StatusBadge>
         )}
+        {!live && (
+          <span title={t('stage.offAirNote')} data-testid="off-air-badge">
+            <StatusBadge variant="warning" className="operator-live-tag">
+              {t('stage.offAirBadge')}
+              <span className="sr-only">: {t('stage.offAirNote')}</span>
+            </StatusBadge>
+          </span>
+        )}
+        {onLiveChange && (
+          <div
+            className="segmented operator-live-switch"
+            role="group"
+            aria-label={t('stage.liveGroup')}
+          >
+            <SegmentedOption
+              aria-pressed={live}
+              disabled={liveDisabled}
+              title={t('stage.liveOnTitle')}
+              onClick={() => !live && onLiveChange(true)}
+            >
+              {t('stage.liveOn')}
+            </SegmentedOption>
+            <SegmentedOption
+              aria-pressed={!live}
+              disabled={liveDisabled}
+              title={t('stage.liveOffTitle')}
+              onClick={() => live && onLiveChange(false)}
+            >
+              {t('stage.liveOff')}
+            </SegmentedOption>
+          </div>
+        )}
       </div>
 
-      <div className="operator-monitor-wrap">
+      <div className={`operator-monitor-wrap${live ? '' : ' is-off-air'}`}>
         {reference ? (
           /* The display theme scopes the colour tokens here, so the preview
              shows the background the projectors are actually using. */

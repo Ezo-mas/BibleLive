@@ -105,6 +105,11 @@ export interface DisplaySettings {
   clear_mode?: ClearMode
   /** Optional and additive: an older server omits it, which means a blank screen. */
   idle_image?: IdleScreenPicture | null
+  /**
+   * Off air (false): the audience sees a black screen and the server sends displays no
+   * passage. Server-held, never saved; an older server omits it, which means live.
+   */
+  live?: boolean
 }
 
 /**
@@ -199,6 +204,16 @@ export interface SetClearModeAction {
 }
 
 /**
+ * Put the audience display on air (`live: true`) or take it off. Off air the server
+ * sends displays no passage and they show a black screen; the console keeps its
+ * preview. Server-held, never saved, and confirmed in `display_settings_confirmed`.
+ */
+export interface SetLiveAction {
+  action: 'set_live'
+  live: boolean
+}
+
+/**
  * Turn follow-along auto-show on or off. Server-held, like the auto-approve mode: the
  * server shows the verses a speaker reads on to, and every console hears the result.
  */
@@ -242,6 +257,7 @@ export type OperatorAction =
   | SetVerseLimitAction
   | SetDisplayThemeAction
   | SetClearModeAction
+  | SetLiveAction
   | SetAutoModeAction
   | SetFollowAutoAction
   | DisplayReferenceAction

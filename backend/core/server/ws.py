@@ -182,6 +182,21 @@ async def _handle_set_clear_mode(
     )
 
 
+async def _handle_set_live(
+    websocket: WebSocket, app_state: AppState, message: dict[str, Any]
+) -> None:
+    """Put the audience display on air or take it off (operator action ``set_live``)."""
+    live = message.get("live")
+    if live is None or not await app_state.set_live(live):
+        await _ws_error(websocket, app_state, "set_live", "Invalid live; expected true or false")
+        return
+
+    # Confirm to every operator, so each console's switch shows what displays obey.
+    await app_state.connection_manager.send_to_operator(
+        OperatorDisplaySettingsConfirmed(data=app_state.display_settings).model_dump()
+    )
+
+
 async def _handle_display_reference(
     websocket: WebSocket, app_state: AppState, message: dict[str, Any]
 ) -> None:
@@ -361,6 +376,7 @@ _OPERATOR_ACTIONS: dict[str, Any] = {
     "set_verse_limit": _handle_set_verse_limit,
     "set_display_theme": _handle_set_display_theme,
     "set_clear_mode": _handle_set_clear_mode,
+    "set_live": _handle_set_live,
     "set_auto_mode": _handle_set_auto_mode,
     "set_follow_auto": _handle_set_follow_auto,
     "display_reference": _handle_display_reference,

@@ -114,8 +114,9 @@ describe('LIVE panel', () => {
     // The citation is on the monitor, under the verses, as on the projector; the
     // card's header carries only its label.
     expect(screen.getByText('Psalms 23:1-5')).toBeInTheDocument()
-    // The ON DISPLAY label is the only status; no chip repeats it.
-    expect(screen.queryByText('Live')).not.toBeInTheDocument()
+    // The ON DISPLAY label is the only status; no chip repeats it (the only 'Live'
+    // is the live switch's button).
+    expect(screen.getAllByText('Live').every(el => el.closest('button'))).toBe(true)
   })
 
   it('labels the preview as a group that still exposes the verse text', () => {
