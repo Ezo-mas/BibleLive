@@ -150,6 +150,11 @@ export interface OperatorState {
   setDisplayBackground: (next: DisplayTheme) => void
   setDisplayClearMode: (next: ClearMode) => void
 
+  /** Whether the audience display is on air, as the server last confirmed it. */
+  live: boolean
+  /** Ask the server to put the display on air or off; the switch moves on its confirmation. */
+  setLive: (next: boolean) => void
+
   /** Which new detections the server displays without waiting for approval. */
   autoMode: AutoMode
   setAutoApproveMode: (next: AutoMode) => void

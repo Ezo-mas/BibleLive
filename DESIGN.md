@@ -105,8 +105,12 @@ under its 160px floor, below which the column scrolls instead.
 ON DISPLAY and UP NEXT use `.operator-card-head`: one group on the text baseline
 (`.operator-card-title`: the 12px uppercase label, then the reference as 14px bold),
 centred against the card's actions at the right, with free space between. ON DISPLAY
-has only its label; whether it is live is read from the monitor itself and there is
-no Live chip. Text goes below in the muted serif (`.operator-card-verse`, 3 lines).
+has its label and, at the right, the Live / Off air switch (a `.segmented` control,
+`.operator-live-switch`); there is no Live chip. Off air, an `Off air` warning badge sits
+beside the label (its tooltip and screen-reader text say the audience sees a black
+screen) and a `--color-warning` ring is drawn over the monitor's edge
+(`.operator-monitor-wrap.is-off-air`), while the preview keeps showing the whole passage,
+citation included. Text goes below in the muted serif (`.operator-card-verse`, 3 lines).
 Same 12px side padding and 36px (`md`) controls, so the preview and Up Next text share
 a left edge. They are told apart by treatment, not by badges: the preview is a raised
 card; UP NEXT has a recessed fill and a dashed `--color-border-strong` edge with

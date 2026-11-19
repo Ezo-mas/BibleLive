@@ -278,7 +278,8 @@ describe('controls under the display preview', () => {
     openWith()
 
     expect(screen.getByRole('button', { name: 'Clear Display' })).toBeInTheDocument()
-    expect(screen.queryByText('Live')).not.toBeInTheDocument()
+    // The only 'Live' is the live switch's button, not a status chip.
+    expect(screen.getAllByText('Live').every(el => el.closest('button'))).toBe(true)
   })
 })
 

@@ -40,6 +40,7 @@ const ERROR_PREFIX_KEYS: Record<string, MessageKey> = {
   set_verse_limit: 'notice.errVerseLimit',
   set_display_theme: 'notice.errTheme',
   set_clear_mode: 'notice.errClearMode',
+  set_live: 'notice.errLive',
   set_auto_mode: 'notice.errAutoMode',
   set_follow_auto: 'notice.errFollowAuto',
 }
@@ -75,6 +76,7 @@ export function createOperatorState(
     verseLimit,
     theme,
     clearMode: 'idle',
+    live: true,
     autoMode: 'off',
     followAuto: false,
   }
@@ -135,6 +137,8 @@ function displaySettings(data: DisplaySettings) {
     verseLimit: coerceVerseLimit(data.verse_limit),
     theme: coerceDisplayTheme(data.theme),
     clearMode: coerceClearMode(data.clear_mode),
+    // An older server omits it, and an older server is always live.
+    live: data.live !== false,
   }
 }
 
@@ -303,6 +307,10 @@ export function operatorReducer(
       }
       if (changes.length > 0)
         notice('info', { key: 'notice.saved', params: { changes: { join: changes } } })
+      // Its own notice, not one of the saved changes: it is not saved, and it is the
+      // one change the operator must not miss.
+      if (settings.live !== state.confirmed.live)
+        notice('info', { key: settings.live ? 'notice.liveOn' : 'notice.liveOff' })
       break
     }
     case 'auto_mode_confirmed': {
@@ -445,6 +453,9 @@ export function operatorReducer(
       break
     case 'clear_pending':
       effects.push({ type: 'send', action: { action: 'clear_pending' } })
+      break
+    case 'set_live':
+      effects.push({ type: 'send', action: { action: 'set_live', live: event.live } })
       break
     case 'set_setting': {
       const action = event.action

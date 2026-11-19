@@ -38,6 +38,10 @@ frontend/
   after `frontend/src` changes the UI only updates once rebuilt).
 - Display settings include verse limit, theme, idle picture and clear mode
   (`set_clear_mode`: idle picture or blank after clearing; server-confirmed).
+- The live switch (`set_live`, `live` in display settings) is never applied
+  optimistically: the console's switch moves only on `display_settings_confirmed`,
+  so it cannot claim a dark screen the audience still sees. Off air the display
+  renders nothing (`.display-app--off-air`); a missing field means live.
 
 ## Where to look (frontend tasks)
 

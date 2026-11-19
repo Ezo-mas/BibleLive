@@ -231,6 +231,11 @@ export function useOperatorState(): OperatorState {
       dispatch({ type: 'set_setting', action: { action: 'set_clear_mode', clear_mode: next } }),
     [dispatch]
   )
+  // Not optimistic: the switch shows only what the server confirmed (display_settings_confirmed).
+  const setLive = useCallback(
+    (next: boolean) => dispatch({ type: 'set_live', live: next }),
+    [dispatch]
+  )
   // Applied optimistically so the switch feels immediate; the server echoes the
   // accepted mode back in auto_mode_confirmed.
   const setAutoApproveMode = useCallback(
@@ -305,6 +310,8 @@ export function useOperatorState(): OperatorState {
     setDisplayVerseLimit,
     setDisplayBackground,
     setDisplayClearMode,
+    live: state.confirmed.live,
+    setLive,
     autoMode: state.settings.autoMode,
     setAutoApproveMode,
     followAuto: state.settings.followAuto,
