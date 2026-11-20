@@ -662,3 +662,10 @@ def test_window_icon_prefers_the_built_app_then_the_checkout(tmp_path):
     built = tmp_path / "biblelive.ico"
     built.touch()
     assert webui.window_icon(tmp_path) == built
+
+
+def test_pywebview_page_call_threads_do_not_block_exit():
+    util = SimpleNamespace(Thread=threading.Thread)
+    webui._daemon_bridge_threads(SimpleNamespace(util=util))
+    assert util.Thread(target=lambda: None).daemon
+    assert not util.Thread(target=lambda: None, daemon=False).daemon

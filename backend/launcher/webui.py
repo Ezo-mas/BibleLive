@@ -800,6 +800,27 @@ def claim_webview_profile(root: Path | None = None) -> tuple[Path, Any]:
     return profile, lock
 
 
+def _daemon_bridge_threads(webview: Any) -> None:
+    """Run pywebview's page-call threads as daemons, so a closed window cannot block exit.
+
+    pywebview answers each page call to the launcher API on a new thread, which hands the result
+    back with ``evaluate_js``. On macOS that waits for the Cocoa run loop; when the window closes
+    while a call is in flight, the loop is gone, the wait never ends, and Python's exit waits
+    on the (non-daemon) thread forever. Seen as a hung smoke test on CI (2026-11-21). The
+    result is for a page that no longer exists, so nothing is lost by not waiting.
+    """
+    util = getattr(webview, "util", None)
+    if util is None:
+        return
+
+    class _DaemonThread(threading.Thread):
+        def __init__(self, *args: Any, **kwargs: Any) -> None:
+            kwargs.setdefault("daemon", True)
+            super().__init__(*args, **kwargs)
+
+    setattr(util, "Thread", _DaemonThread)  # noqa: B010 (a module attribute, by name)
+
+
 _SMOKE_TIMEOUT_S = 60
 _SERVE_FROM_FILE = sys.platform == "darwin"
 
@@ -831,6 +852,7 @@ def main(*, smoke: bool = False) -> int:
     try:
         import webview  # type: ignore[import-untyped,unused-ignore]
 
+        _daemon_bridge_threads(webview)
         profile, lock = claim_webview_profile()
 
         if sys.platform == "win32":
