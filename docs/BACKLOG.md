@@ -6,15 +6,8 @@ built yet.
 
 ## Follow-ups
 
-### Idle screen picture: check it on a projector
-The operator can upload a picture (Settings → Display → Idle screen), choose Logo or
-Fill screen, and remove it; it is stored beside the settings file and survives a
-restart (`backend/core/server/idle_screen.py`). The server sends its version and fit
-to the displays as the optional `idle_image: {version, fit} | null` field of
-`display_settings` (approved protocol change, in `models.py` and `types.ts`). The
-Logo and Fill CSS (`frontend/src/display/display.css`) has not been seen in a real
-browser or on a projector yet, and the OBS overlay must keep ignoring the picture.
-Small follow-ups found in review (2026-10-22), none urgent:
+### Idle screen picture: small follow-ups
+Found in review (2026-10-22), none urgent:
 - A same-format upload replaces the file before its record is saved
   (`AppState.set_idle_image`). If that save fails, the console gets a 500 but the new
   picture is already on disk, and a reloading display shows it.
@@ -23,17 +16,6 @@ Small follow-ups found in review (2026-10-22), none urgent:
   console until it is reopened.
 - The Settings hint no longer says the picture never shows on the OBS overlay (it
   still does not). Add it back if operators ask.
-
-### Redesigned operator console: check on a real service
-Built on branch `worktree-operator-design-pass` (amber palette, the Original layout
-with the ON DISPLAY preview, one spacing system, `DESIGN.md`, a redesigned Settings
-dialog), merged with the idle-screen work. Checked with Playwright and the test suite,
-not yet seen on a real service, not pushed, and `static/frontend/` is not rebuilt (run
-`npm run build` from `frontend/` first). At the next service look at: the preview's text
-size at 10 and All verses (9 px and 7 px on a 1440x900 window, 7.4 px and 5.4 px at
-1280x720), the left column scrolling by about 66 px at 1280x720, the single-column
-layout below 1024 px (checked in a browser on 2026-11-17, not yet on a device), and the light theme's
-selected segmented fill (1.85:1 against its track; the bold label is the second cue).
 
 ### Small console follow-ups
 - The source label (detected, manual, history) on Up Next is now screen-reader-only, so a
@@ -49,41 +31,6 @@ VRAM it showed was the models at rest; while transcribing they used ~3.15 GB on
 the development PC. Test with OBS streaming and live sound: watch dedicated and
 shared GPU memory in Task Manager and the transcription times in the session
 log. If shared memory climbs or transcription lags, use the CPU tier on that PC.
-
-### Edge pop-ups on a signed-in profile
-The projector window's Edge flags (no sync, no extensions, no implicit sign-in)
-were checked only on a fresh Windows profile. Check once on a PC whose Edge is
-signed in with extensions installed.
-
-### A test service on the Python 3.13 installer
-Since 2026-10-21 everything runs on one Python version, 3.13: the installer's
-bundled Python, CI and development (PR #53). Every pin has a Windows cp313 wheel
-on PyPI, and the suite passes on Linux 3.13 and in CI. On Windows, a 3.13 venv
-with the `gguf` extra installed everything from wheels and passed the full suite
-(2026-10-21, a low-end Ryzen laptop without GPU: 1217 passed, 1 skipped for no
-cached Whisper tokenizer, 1:59), and the "Windows installer" workflow built a
-working installer with the bundled python-build-standalone 3.13 (run
-39638424826). Still to do: one test service with it. Recreate the Windows dev venv with `py -3.13`. Delete this
-entry once the test service went well.
-
-### A phone on the church Wi-Fi opens a page
-Network mode is built (PR #47, merged 2026-10-20): the launcher's "allow other
-devices on this network" option with an operator token, the Windows Firewall
-rule for Private networks, QR codes for both pages, and the `SECURITY.md` /
-`DEPLOYMENT.md` sections. Not yet checked where it matters: many church Wi-Fi
-networks isolate devices from each other. On the church network, open the
-display and the operator page from a phone (scan the QR codes) and note
-whether it works.
-
-### Follow-along speed-up on a real service
-Partial transcripts, the verse-start rule and the auto-show switch are built and
-benchmarked (`benchmarks/BASELINE_NOTES.md`, "Follow-along: partial transcripts"):
-on the 14 recordings a hint comes about 3 s after the verse begins instead of
-9.5 s. Not yet seen live. At the next service, keep auto-show off at first and
-check the session log: the "Partial transcripts" line of the metrics summary
-(count, audio, time) and whether the "Reading now" line shows the verse while it
-is still being read. Then try the switch for a passage that is read straight
-through. English (Whisper) takes no partial transcripts and is unmeasured.
 
 ### macOS: second screen, and the network prompt's wording
 From the first Mac test (M1, 2026-11-17, PR #94). The display opening full
@@ -136,7 +83,7 @@ passage swaps. Respect `prefers-reduced-motion`; nothing moves while text is
 being read.
 
 ### Launcher redesign: simple and advanced views
-In progress (branch `feat/launcher-webview`, 2026-11-20): the launcher window
+Built (PR #111, merged 2026-11-20): the launcher window
 becomes a pywebview page (React, `frontend/src/launcher/`) with Simple and
 Advanced views, an always-on microphone meter before the session, live server
 and audio output in the Advanced console, a no-signal warning and a status strip.
@@ -196,8 +143,7 @@ because Linux Tk's default fonts make the same window ~790 px tall). Full suite
 there: 59 s to 38 s, 20 s without `slow`. No test was clearly meaningless, so
 none was removed. Every test now has a 60 s limit (`pytest-timeout`), so a
 future hang fails one test with a stack dump instead of a whole CI job. The CI
-Python matrix is settled: one version, 3.13 (see "A test service on the
-Python 3.13 installer" above). Left:
+Python matrix is settled: one version, 3.13. Left:
 
 - Windows-only slowness, not measurable on Linux (all under 0.2 s there):
   `test_db_path_resolution.py` (3–4.6 s each on Windows on 2026-10-20; the
