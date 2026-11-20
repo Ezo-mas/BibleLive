@@ -736,9 +736,40 @@ def _solid_title_bar(window: Any) -> None:
         logger.debug("Could not install launcher caption theme", exc_info=True)
 
 
-def webview_profile_dir() -> Path:
-    """The launcher window's browser profile: local (not roaming) app data, beside the models."""
+def webview_profiles_root() -> Path:
+    """Where the launcher window's browser profiles live: local (not roaming) app data."""
     return models_dir().parent / "webview"
+
+
+_PROFILE_LOCK = "in-use.lock"
+
+
+def claim_webview_profile(root: Path | None = None) -> tuple[Path, Any]:
+    """A fresh browser profile for this launch, after removing the ones no launch is using.
+
+    One profile per launch: a shared folder stays locked by WebView2 while another launcher, or
+    a browser process orphaned by a crash, still has it open, and WebView2 then cannot start.
+    pywebview's private mode instead makes a temp profile it often fails to delete on exit.
+    Each launch keeps a lock file open in its profile; the next start removes every profile
+    whose lock file can be deleted (Windows refuses to delete an open file), so the folders
+    clean themselves up. Returns the profile and the open lock file (keep it open until exit).
+    """
+    root = root or webview_profiles_root()
+    root.mkdir(parents=True, exist_ok=True)
+    for old in root.iterdir():
+        if not old.is_dir():
+            continue
+        try:
+            (old / _PROFILE_LOCK).unlink(missing_ok=True)
+        except OSError:
+            continue  # another launcher has it open
+        shutil.rmtree(
+            old, ignore_errors=True
+        )  # files an orphaned browser holds stay till next time
+    profile = root / f"p{os.getpid()}-{time.time_ns()}"
+    profile.mkdir()
+    lock = open(profile / _PROFILE_LOCK, "w")  # noqa: SIM115 (held for the window's lifetime)
+    return profile, lock
 
 
 def main(*, smoke: bool = False) -> int:
@@ -755,8 +786,11 @@ def main(*, smoke: bool = False) -> int:
         url = str(page)
 
     controller = None
+    lock = None
     try:
         import webview  # type: ignore[import-untyped,unused-ignore]
+
+        profile, lock = claim_webview_profile()
 
         if sys.platform == "win32":
             from .gui import _enable_dpi_awareness
@@ -797,11 +831,9 @@ def main(*, smoke: bool = False) -> int:
             window.events.loaded += close_after_load
         webview.start(
             http_server=True,
-            # One reused browser profile beside the models. Private mode would make a new temp
-            # profile per launch and delete it on exit, a delete that can lose a race with the
-            # exiting WebView2 process and leave the folder behind in %TEMP%.
+            # This launch's own profile (see claim_webview_profile), not private mode's temp one.
             private_mode=False,
-            storage_path=str(webview_profile_dir()),
+            storage_path=str(profile),
             gui="edgechromium" if sys.platform == "win32" else None,
         )
     except (Exception, SystemExit):
@@ -810,4 +842,6 @@ def main(*, smoke: bool = False) -> int:
     finally:
         if controller is not None:
             controller.close()
+        if lock is not None:
+            lock.close()  # the next start removes this profile
     return 0

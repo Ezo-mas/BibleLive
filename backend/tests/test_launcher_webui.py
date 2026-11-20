@@ -6,6 +6,7 @@ import subprocess
 import sys
 import threading
 import time
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -545,6 +546,7 @@ def test_webview_main_checks_dev_url_and_registers_closing_handler(
     page.parent.mkdir(parents=True)
     page.touch()
     monkeypatch.setattr(webui, "_default_app_root", lambda: tmp_path)
+    monkeypatch.setattr(webui, "models_dir", lambda: tmp_path / "models")
     monkeypatch.setenv("BIBLELIVE_LAUNCHER_URL", url)
     monkeypatch.setattr(webui, "LauncherController", lambda: controller)
     monkeypatch.setitem(
@@ -556,9 +558,9 @@ def test_webview_main_checks_dev_url_and_registers_closing_handler(
     assert ("Ignoring BIBLELIVE_LAUNCHER_URL" in caplog.text) is not allowed
     assert (observed["width"], observed["height"], observed["min_size"]) == (1120, 600, (760, 480))
     assert observed["http_server"] is True
-    # A reused profile, not a temp one per launch (see webview_profile_dir).
+    # Its own profile under the launcher profiles folder, not a private-mode temp one.
     assert observed["private_mode"] is False
-    assert observed["storage_path"] == str(webui.webview_profile_dir())
+    assert Path(observed["storage_path"]).parent == webui.webview_profiles_root()
     assert observed["gui"] == ("edgechromium" if sys.platform == "win32" else None)
     assert isinstance(observed["js_api"], LauncherApi)
     assert api.start(api.init()["form"])["ok"] is False
@@ -612,9 +614,25 @@ def test_meter_start_superseded_during_lookup_is_off_not_an_error(monkeypatch):
     meter.stop()
 
 
-def test_webview_profile_is_local_app_data_not_a_temp_folder(monkeypatch, tmp_path):
+def test_webview_profiles_live_in_local_app_data(monkeypatch, tmp_path):
     monkeypatch.setattr(webui, "models_dir", lambda: tmp_path / "BibleLive" / "models")
-    assert webui.webview_profile_dir() == tmp_path / "BibleLive" / "webview"
+    assert webui.webview_profiles_root() == tmp_path / "BibleLive" / "webview"
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows refuses to delete an open file")
+def test_each_launch_gets_a_profile_and_unused_ones_are_removed(tmp_path):
+    first, first_lock = webui.claim_webview_profile(tmp_path)
+    second, second_lock = webui.claim_webview_profile(tmp_path)
+    assert first != second
+    assert first.is_dir()  # still in use by the first launch: kept
+    first_lock.close()
+    third, third_lock = webui.claim_webview_profile(tmp_path)
+    try:
+        assert not first.exists()  # its launch ended: removed
+        assert second.is_dir() and third.is_dir()
+    finally:
+        second_lock.close()
+        third_lock.close()
 
 
 def test_meter_asks_dshow_for_small_buffers_and_leaves_other_inputs_alone():
