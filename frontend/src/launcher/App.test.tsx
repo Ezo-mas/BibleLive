@@ -7,17 +7,58 @@ describe('launcher App', () => {
   it('renders Simple and persists the switch to Advanced with its three tabs', async () => {
     const bridge = createDemoBridge()
     const setView = vi.spyOn(bridge, 'set_view')
+    const fitWindow = vi.spyOn(bridge, 'fit_window')
+    const contentHeight = vi.spyOn(HTMLElement.prototype, 'scrollHeight', 'get')
+    contentHeight.mockImplementation(function (this: HTMLElement) {
+      return this.dataset.mode === 'simple' ? 520 : 750
+    })
     render(<App bridge={bridge} />)
 
-    expect(await screen.findByRole('heading', { name: 'Start a session' })).toBeVisible()
-    expect(screen.getByText('Preview mode')).toBeVisible()
-    expect(screen.queryByRole('tab')).not.toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'Advanced' }))
+    try {
+      expect(await screen.findByRole('heading', { name: 'Start a session' })).toBeVisible()
+      expect(screen.getByText('Preview mode')).toBeVisible()
+      expect(screen.queryByRole('tab')).not.toBeInTheDocument()
+      await waitFor(() => expect(fitWindow).toHaveBeenCalledWith(520, window.innerHeight))
+      fireEvent.click(screen.getByRole('button', { name: 'Advanced' }))
 
-    expect(setView).toHaveBeenCalledWith('advanced')
-    for (const name of ['Speech', 'Network', 'Launch']) {
-      expect(screen.getByRole('tab', { name })).toBeVisible()
+      expect(setView).toHaveBeenCalledWith('advanced')
+      for (const name of ['Speech', 'Network', 'Launch']) {
+        expect(screen.getByRole('tab', { name })).toBeVisible()
+      }
+      await waitFor(() => expect(fitWindow).toHaveBeenLastCalledWith(750, window.innerHeight))
+      fireEvent.resize(window)
+      fireEvent.click(screen.getByRole('tab', { name: 'Network' }))
+      fireEvent.click(screen.getByRole('button', { name: 'Simple' }))
+      await waitFor(() => expect(fitWindow).toHaveBeenLastCalledWith(520, window.innerHeight))
+      expect(fitWindow).toHaveBeenCalledTimes(3)
+    } finally {
+      contentHeight.mockRestore()
     }
+  })
+
+  it('drives both mic visuals from the peak of a poll and clears them when the meter stops', async () => {
+    const bridge = createDemoBridge()
+    const poll = bridge.poll
+    let meterOn = true
+    vi.spyOn(bridge, 'poll').mockImplementation(async () => ({
+      ...(await poll()),
+      meter: meterOn ? 'on' : 'off',
+      levels: meterOn ? [0.8, 0.1] : [],
+    }))
+    const { container } = render(<App bridge={bridge} />)
+    const meter = await screen.findByRole('meter', { name: 'Mic level' })
+    const bar = container.querySelector<HTMLElement>('.bl-wave span')!
+
+    await waitFor(() => {
+      expect(Number(meter.getAttribute('aria-valuenow'))).toBeGreaterThan(0.6)
+      expect(Number(bar.style.getPropertyValue('--wave-level'))).toBeGreaterThan(0.5)
+    })
+
+    meterOn = false
+    await waitFor(() => {
+      expect(Number(meter.getAttribute('aria-valuenow'))).toBe(0)
+      expect(bar.style.getPropertyValue('--wave-level')).toBe('0')
+    })
   })
 
   it('uses the same elapsed status in both views and restores the idle microphone meter on stop', async () => {

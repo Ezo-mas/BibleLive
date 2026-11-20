@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef } from 'react'
+import type { CSSProperties, RefObject } from 'react'
 import { useI18n } from '../shared/i18nContext'
 import type { Form, StartError } from './bridge'
 import { Choice } from './Choice'
@@ -13,21 +13,22 @@ const liveWave = [
 ]
 const WAVE_LENGTH = liveWave.length
 
-function Waveform({ data }: { data: LauncherData }) {
-  const live = data.state.session === 'live'
-  const recent = data.meter === 'on' ? data.levels.slice(-WAVE_LENGTH) : []
+function Waveform({ waveRef }: { waveRef: RefObject<HTMLDivElement> }) {
   return (
     <div className="bl-signal" aria-hidden="true">
-      <div className="bl-wave">
+      <div className="bl-wave" ref={waveRef}>
         {liveWave.map((height, index) => {
-          const level = recent[index - (WAVE_LENGTH - recent.length)]?.level ?? 0
+          const profile = (height + liveWave[WAVE_LENGTH - 1 - index]) / 2
           return (
             <span
               key={index}
-              style={{
-                height: live ? `${height * 0.64}%` : `${Math.max(3, level * 82)}%`,
-                opacity: 0.3 + Math.sin((Math.PI * index) / WAVE_LENGTH) * 0.68,
-              }}
+              style={
+                {
+                  '--wave-profile': (profile * 0.85) / 100,
+                  '--wave-live': (height * 0.64) / 100,
+                  opacity: 0.3 + Math.sin((Math.PI * index) / (WAVE_LENGTH - 1)) * 0.68,
+                } as CSSProperties
+              }
             />
           )
         })}
@@ -37,6 +38,7 @@ function Waveform({ data }: { data: LauncherData }) {
 }
 
 interface HeroProps {
+  waveRef: RefObject<HTMLDivElement>
   data: LauncherData
   pending: 'start' | 'stop' | null
   stopped: boolean
@@ -47,6 +49,7 @@ interface HeroProps {
 }
 
 export function Hero({
+  waveRef,
   data,
   pending,
   stopped,
@@ -140,40 +143,35 @@ export function Hero({
           </p>
         )}
       </div>
-      <Waveform data={data} />
+      <Waveform waveRef={waveRef} />
     </section>
   )
 }
 
-function MicMeter({ level, inUse }: { level: number; inUse: boolean }) {
+function MicMeter({ meterRef, inUse }: { meterRef: RefObject<HTMLDivElement>; inUse: boolean }) {
   const { t } = useI18n()
-  // Compare against the previous rendered target to choose the release speed.
-  const previous = useRef(level)
-  const rising = level >= previous.current
-  useLayoutEffect(() => {
-    previous.current = level
-  }, [level])
   const label = t(inUse ? 'launcher.micInUse' : 'launcher.micLevel')
   return (
     <div className="bl-mic-meter" data-in-use={inUse}>
       <span>{label}</span>
       <div
+        ref={meterRef}
         className="bl-meter-track"
         role="meter"
         aria-label={label}
         aria-valuemin={0}
         aria-valuemax={1}
-        aria-valuenow={level}
+        aria-valuenow={0}
       >
-        <span
-          style={{ transform: `scaleX(${level})`, transitionDuration: rising ? '35ms' : '300ms' }}
-        />
+        <span className="bl-meter-fill" />
+        <span className="bl-meter-peak" />
       </div>
     </div>
   )
 }
 
 interface SetupProps {
+  meterRef: RefObject<HTMLDivElement>
   data: LauncherData
   form: Form
   locked: boolean
@@ -186,6 +184,7 @@ interface SetupProps {
 }
 
 export function Setup({
+  meterRef,
   data,
   form,
   locked,
@@ -198,7 +197,6 @@ export function Setup({
 }: SetupProps) {
   const { t } = useI18n()
   const { levels, meter, meterError, now, options } = data
-  const level = meter === 'on' && !locked ? (levels[levels.length - 1]?.level ?? 0) : 0
   const problem = error?.field === 'input_device' ? error.text : null
   return (
     <section className="bl-setup" aria-labelledby="bl-setup-heading">
@@ -233,7 +231,7 @@ export function Setup({
             onChange={onMicrophone}
             errorId={problem ? 'bl-input-error' : undefined}
           />
-          <MicMeter level={level} inUse={locked} />
+          <MicMeter meterRef={meterRef} inUse={locked} />
           {problem && (
             <p id="bl-input-error" className="bl-error" role="alert">
               {problem}

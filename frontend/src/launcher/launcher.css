@@ -25,7 +25,6 @@
 #bl-launcher {
   color: var(--ink);
   background: var(--surface);
-  min-height: 100vh;
   font:
     400 14px/1.45 'Segoe UI Variable Text',
     'Segoe UI',
@@ -64,6 +63,9 @@
 #bl-launcher :focus-visible {
   outline: 2px solid var(--focus);
   outline-offset: 3px;
+}
+#bl-launcher button:focus:not(:focus-visible) {
+  outline: none;
 }
 #bl-launcher svg.bl-icon {
   width: 16px;
@@ -701,6 +703,7 @@ body {
   font-size: 11px;
 }
 #bl-launcher .bl-meter-track {
+  position: relative;
   height: 6px;
   border-radius: 999px;
   background: var(--soft);
@@ -709,22 +712,33 @@ body {
 #bl-launcher .bl-mic-meter[data-in-use='true'] .bl-meter-track {
   opacity: 0.5;
 }
-#bl-launcher .bl-meter-track span {
+#bl-launcher .bl-meter-fill {
   display: block;
   height: 100%;
   background: var(--signal);
   border-radius: inherit;
   transform-origin: left;
-  transition: transform ease-out;
+  transform: scaleX(0);
+}
+#bl-launcher .bl-meter-peak {
+  position: absolute;
+  inset-block: 0;
+  width: 2px;
+  background: var(--ink);
+  transform: translateX(-100%);
+  opacity: 0;
 }
 #bl-launcher .bl-wave span {
   flex: 1 1 0;
   max-width: 4px;
+  height: 100%;
   border-radius: 5px;
   background: linear-gradient(var(--wave-light), var(--wave-dark));
+  transform: scaleY(max(0.03, calc(var(--wave-profile) * var(--wave-level, 0))));
 }
 #bl-launcher[data-status='live'] .bl-wave span {
   background: linear-gradient(var(--wave-live-light), var(--wave-live-dark));
+  transform: scaleY(var(--wave-live));
 }
 #bl-launcher .bl-firewall,
 #bl-launcher .bl-copy-row {
@@ -815,10 +829,5 @@ body {
   }
   #bl-launcher .bl-log li > :last-child {
     grid-column: 1 / -1;
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  #bl-launcher .bl-meter-track span {
-    transition: none;
   }
 }
