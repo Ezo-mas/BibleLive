@@ -801,6 +801,7 @@ def claim_webview_profile(root: Path | None = None) -> tuple[Path, Any]:
 
 
 _SMOKE_TIMEOUT_S = 60
+_SERVE_FROM_FILE = sys.platform == "darwin"
 
 
 def main(*, smoke: bool = False) -> int:
@@ -814,7 +815,11 @@ def main(*, smoke: bool = False) -> int:
         if not page.is_file():
             logger.warning("Launcher page missing at %s", page)
             return FALLBACK
-        url = str(page)
+        # macOS: a file URL, so pywebview starts no local web server. The Mac application
+        # firewall asks to "accept incoming connections" for any listening socket of an app
+        # without a Developer ID signature, even one on 127.0.0.1. WebView2 (Windows) does not
+        # run module scripts from file URLs, so there the page comes from pywebview's server.
+        url = page.as_uri() if _SERVE_FROM_FILE else str(page)
 
     controller = None
     lock = None
@@ -865,7 +870,7 @@ def main(*, smoke: bool = False) -> int:
 
             window.events.loaded += close_after_load
         webview.start(
-            http_server=True,
+            http_server=not _SERVE_FROM_FILE,
             # This launch's own profile (see claim_webview_profile), not private mode's temp one.
             private_mode=False,
             storage_path=str(profile),
