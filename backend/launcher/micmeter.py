@@ -28,6 +28,15 @@ def block_level(block: bytes) -> float:
     return max(0.0, min(1.0, (dbfs + 60) / 60))
 
 
+def meter_input_args(args: list[str]) -> list[str]:
+    """Ask DirectShow for 50 ms buffers: by default it hands over ~500 ms of audio at once,
+    so the meter moved in bursts and one word looked like two sounds. The pipeline keeps
+    its own input arguments."""
+    if args[:2] == ["-f", "dshow"]:
+        return [*args[:2], "-audio_buffer_size", "50", *args[2:]]
+    return args
+
+
 class MicMeter:
     def __init__(
         self,
@@ -113,7 +122,7 @@ class MicMeter:
                     return
             # Windows does not use the supplied child environment to locate the executable.
             ffmpeg = shutil.which("ffmpeg", path=env.get("PATH")) or "ffmpeg"
-            args = ffmpeg_input_args(device, ffmpeg=ffmpeg)
+            args = meter_input_args(ffmpeg_input_args(device, ffmpeg=ffmpeg))
             if self._cancel.is_set() or not can_start():
                 error = None  # superseded (a session is starting or another mic was chosen)
                 return

@@ -615,3 +615,21 @@ def test_meter_start_superseded_during_lookup_is_off_not_an_error(monkeypatch):
 def test_webview_profile_is_local_app_data_not_a_temp_folder(monkeypatch, tmp_path):
     monkeypatch.setattr(webui, "models_dir", lambda: tmp_path / "BibleLive" / "models")
     assert webui.webview_profile_dir() == tmp_path / "BibleLive" / "webview"
+
+
+def test_meter_asks_dshow_for_small_buffers_and_leaves_other_inputs_alone():
+    dshow = ["-f", "dshow", "-i", "audio=Mic A"]
+    assert micmeter.meter_input_args(dshow) == [
+        "-f",
+        "dshow",
+        "-audio_buffer_size",
+        "50",
+        "-i",
+        "audio=Mic A",
+    ]
+    assert micmeter.meter_input_args(["-f", "avfoundation", "-i", ":default"]) == [
+        "-f",
+        "avfoundation",
+        "-i",
+        ":default",
+    ]
