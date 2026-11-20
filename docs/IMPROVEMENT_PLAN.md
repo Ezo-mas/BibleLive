@@ -512,9 +512,7 @@ Uses decisions Q5 to Q7.
 5. **Protocol additions (Q6, Q7), each on its own:** `discard_pending`,
    clear-to-blank, and liveness only if a stale display has been seen. Each
    adds a model, a fixture, a `types.ts` entry and tests; show the owner the
-   message shape first. Also the two small HTTP items from the backlog: CORS
-   methods for PUT and DELETE, and requiring `application/octet-stream` on
-   the idle-screen upload.
+   message shape first. Also add CORS methods for PUT and DELETE.
 
 **Depends on.** M2, so the moved code already includes the restore and
 service-log hooks.
