@@ -31,6 +31,7 @@ COMPUTE_TYPES = ("auto", "float16", "float32", "int8", "int8_float16")
 AUTO_MODES = ("off", "high", "medium_and_up", "all")
 LOG_LEVELS = ("DEBUG", "INFO", "WARNING", "ERROR")
 UI_LANGUAGES = ("auto", "en", "lt")
+LAUNCHER_VIEWS = ("simple", "advanced")
 # Lithuanian speech model (--stt): "auto" = by graphics card, see launcher/speech.py.
 SPEECH_ENGINES = ("auto", "whisper", "kmynas", "kmynas+canary")
 
@@ -42,6 +43,7 @@ _ALLOWED: dict[str, tuple[str, ...]] = {
     "auto_mode": AUTO_MODES,
     "log_level": LOG_LEVELS,
     "ui_language": UI_LANGUAGES,
+    "launcher_view": LAUNCHER_VIEWS,
     "speech_engine": SPEECH_ENGINES,
 }
 
@@ -83,6 +85,7 @@ class LauncherSettings:
     # interfaces and operator actions need network_token (see network.py and process.py).
     allow_network: bool = False
     network_token: str | None = None  # made the first time network mode is on
+    launcher_view: str = "simple"
 
 
 def _coerce(value: Any, default: Any) -> Any:

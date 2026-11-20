@@ -7,6 +7,7 @@ from pathlib import Path
 from . import Browser, Monitor
 from .chromium import build_command as build_command
 from .posix import add_firewall_rule as add_firewall_rule
+from .posix import bring_projector_to_front as bring_projector_to_front
 from .posix import child_process_options as child_process_options
 from .posix import firewall_add_script as firewall_add_script
 from .posix import firewall_applies as firewall_applies

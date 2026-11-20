@@ -106,6 +106,19 @@ below the fold.
   Post-fix full suite: `337 passed`.
 - **Logged:** 2026-10-10
 
+### A hash in the Bible database path breaks the read-only connection
+- **Where:** `backend/core/bible_lookup.py` (`BibleLookup._connect_database`).
+- **Problem:** The read-only connection puts the raw path into a SQLite file URI.
+  SQLite treats `#` as the start of a fragment and ignores the rest of the URI,
+  including `mode=ro`.
+- **Impact:** A database stored under a folder containing `#` can block server
+  startup or open the wrong path without read-only mode.
+- **Evidence:** The backend suite failed during database setup when the Windows
+  sandbox put its temp directory under `#!sandbox…`. A separate SQLite probe
+  with a database under `with#hash` opened the expected table only with an
+  encoded file URI. The raw URI opened a different database without that table.
+- **Logged:** 2026-11-20
+
 ### Stale DB snapshot files sit beside the live database (resolved)
 - **Where:** `bible_data/*.sqlite.bak-*` and `bible_data/*.sqlite.pre-repair-*`
   (one-off snapshots from a 2026-10-11 DB repair).

@@ -136,11 +136,41 @@ passage swaps. Respect `prefers-reduced-motion`; nothing moves while text is
 being read.
 
 ### Launcher redesign: simple and advanced views
-One launcher window for Windows and macOS (the same Tk code runs on both),
-redesigned to look like a real app, with a simple view (start, stop, language,
-microphone, projector) and an advanced view for everything else (speech engine,
-network mode, ports, logs). Its wording needs a pass at the same time, on both
-platforms, including the macOS network prompt above.
+In progress (branch `feat/launcher-webview`, 2026-11-20): the launcher window
+becomes a pywebview page (React, `frontend/src/launcher/`) with Simple and
+Advanced views, an always-on microphone meter before the session, live server
+and audio output in the Advanced console, a no-signal warning and a status strip.
+The Tk window stays as a fallback. Follow-ups, each its own change:
+- **QR codes split by audience.** The audience QR shown on `/display` on demand
+  (from the launcher); the operator QR only under Advanced → Network.
+- **macOS on the new window.** Add the `launcher` extra to the Mac app
+  (regenerate `scripts/macos/requirements-arm64.lock` on the Mac for pyobjc) and
+  test on the M1; until then the Mac keeps the Tk window. Includes the wording
+  pass for the macOS network prompt above.
+- **Input meter in the operator console.** A small live level next to Speech
+  status. Needs a new server message (protocol change: show the shapes first).
+- **Identify screens.** A button by Projector that briefly shows a large number
+  on every monitor, so the operator picks the right one.
+- **Speech checks in Advanced.** Show whether the Lithuanian GGUF models are
+  actually present (today a missing file silently falls back to Whisper), and a
+  "Run GPU self-test" button reusing `--gpu-self-test`.
+- **Diagnostics bundle.** One click zips the logs and settings, with the
+  operator token removed, for support.
+- **Regenerate the operator token.** Revokes access for devices it was shared
+  with. Needs a security review.
+- **Port check before Start.** When the port is taken, name the program using it.
+- **Console quick actions.** A one-click Copy logs button beside Log files, and a
+  "Paused — jump to latest" indicator when the operator scrolls the console up
+  (auto-scroll already stops then, but nothing says so).
+- **Remember the window between launches.** Save the window's position and size
+  per view, the Advanced tab (Speech / Network / Launch) and the console filters
+  (source, minimum level) in `launcher.json`, beside the Simple/Advanced choice that
+  is already saved, so a repeat Sunday setup opens as it was left.
+- **One palette for launcher and pages (undecided).** The launcher uses its own
+  warm palette (`frontend/src/launcher/launcher.css`), not the console's
+  `DESIGN.md` tokens. The owner likes the launcher's better: decide whether to
+  move the operator/display pages to it (update `DESIGN.md` and the token CSS)
+  or bring the launcher onto the existing tokens. Either way, one set of tokens.
 
 ## Maintenance
 

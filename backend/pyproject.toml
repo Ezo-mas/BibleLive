@@ -51,6 +51,11 @@ cuda = [
 gguf = [
     "transcribe-cpp>=0.4,<0.5",
 ]
+# The launcher window: a pywebview page (Edge WebView2 on Windows). Without it the
+# launcher falls back to its Tk window.
+launcher = [
+    "pywebview>=6.2,<7",
+]
 dev = [
     "pytest>=7.0.0",
     "pytest-cov>=4.0.0",

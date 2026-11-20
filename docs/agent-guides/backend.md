@@ -156,16 +156,19 @@ the speech setting to `--stt`, `--kmynas-model`, `--canary-model`, `--cpu-thread
 `--session-log-dir logs\sessions` and `--session-audio`), `cli.py`, `network.py`
 (network mode: the operator token, the LAN address and the Windows Firewall rule;
 `netsh` and `ShellExecuteW` are injectable, so tests never touch the firewall).
-The window's network panel is in `gui.py`, with its row states in `viewmodel.py`.
 Speech setting `speech_engine`: `auto` (Kmynas + Canary on an NVIDIA GPU, Kmynas
 alone otherwise) | `whisper` | `kmynas` | `kmynas+canary`. The GGUF engines run on
 the `device` setting (the audio CLI has one `--device` for Whisper and GGUF), and
 English always goes to Whisper. `session_audio` (default on) records each service
 under `logs\sessions`.
-GUI: `python -m launcher --gui` (default when there is no console, e.g.
-`pythonw`); Tk code is thin in `gui.py`, testable logic in `viewmodel.py`,
-strings in `i18n.py` (en/lt, `ui_language` setting, default from the Windows UI
-language). `monitors.py` finds the projector (first non-primary monitor unless
+GUI runs with `python -m launcher --gui` and by default when there is no console
+(e.g. `pythonw`). The pywebview bridge and session controller live in
+`webui.py`, the idle microphone meter in `micmeter.py`, and the child log tail
+in `logtail.py`. The window loads `<app root>/static/launcher/launcher.html`.
+Set `BIBLELIVE_LAUNCHER_URL` to use a dev server. The Tk window in `gui.py`
+opens if the page or webview is unavailable or if `BIBLELIVE_LAUNCHER_UI=tk`.
+Form and status logic live in `viewmodel.py` and English and Lithuanian strings
+in `i18n.py`. `monitors.py` finds the projector (first non-primary monitor unless
 `projector_monitor` is saved); `projector.py` opens `/display` in an Edge (else
 Chrome) full-screen app window on it (not kiosk mode, so F11 / Alt+F4 still work; Stop
 closes every process on its private profile) and never falls back to the operator's screen.

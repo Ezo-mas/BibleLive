@@ -157,6 +157,7 @@ easy to break by accident.
 4. **No StrictMode in the frontend entry points** — it double-mounts in
    dev and would open two WebSockets. The shared `shared/renderApp.tsx`
    helper documents this; keep both `main.tsx` files using it.
+   The launcher page (`frontend/src/launcher/main.tsx`) boots separately, uses `LauncherI18nProvider`, and requires neither the BibleLive server nor a WebSocket. It also omits StrictMode.
 5. **Frontend is served by the backend**: pages at `/display` and
    `/operator`, built assets under `/static/frontend/` (Vite `base` in
    `frontend/vite.config.ts`, which also proxies `/ws` to the backend in

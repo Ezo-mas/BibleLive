@@ -47,7 +47,7 @@ install-cuda:
 	pip install -e "./$(BACKEND)[audio,cuda]" $(CONSTRAINTS)
 
 install-dev:
-	pip install -e "./$(BACKEND)[dev,audio]" $(CONSTRAINTS)
+	pip install -e "./$(BACKEND)[dev,audio,launcher]" $(CONSTRAINTS)
 
 # Lint/format scope matches CI (.github/workflows/ci.yml): the whole repo.
 # Ruff's extend-exclude in pyproject.toml skips frontend, static, data, bible_data.

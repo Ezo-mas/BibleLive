@@ -8,7 +8,7 @@
   Installs only third-party dependencies into the bundled Python (pinned by backend\constraints.txt);
   the biblelive source stays in app\backend and is put on sys.path by a .pth file.
 
-.PARAMETER SkipFrontendBuild  Reuse an existing static\frontend bundle (no npm ci / build).
+.PARAMETER SkipFrontendBuild  Reuse existing static\frontend and static\launcher bundles (no npm ci / build).
 .PARAMETER BibleDb            Bible SQLite file to ship. Default: <repo>\bible_data\biblelive.sqlite.
 .PARAMETER ExtraBibleDb       More translation files to ship beside it, keeping their names.
                               Default: <repo>\bible_data\bible_ltb.sqlite when it exists (the
@@ -127,7 +127,7 @@ $ffArchive = Get-Verified $Deps.ffmpeg
 # ---- frontend ---------------------------------------------------------------------------
 $FrontendDist = Join-Path $Repo 'static\frontend'
 if ($SkipFrontendBuild) {
-    Step 'Skipping frontend build (reusing static\frontend)'
+    Step 'Skipping frontend build (reusing static\frontend and static\launcher)'
 } else {
     Step 'Building the frontend (npm ci + npm run build)'
     Push-Location (Join-Path $Repo 'frontend')
@@ -141,12 +141,17 @@ foreach ($f in 'display.html', 'operator.html') {
         throw "Frontend bundle is incomplete: $FrontendDist\$f missing"
     }
 }
+# The launcher window's page (npm run build writes it beside the bundle, see vite.launcher.config.ts).
+$LauncherDist = Join-Path $Repo 'static\launcher'
+if (-not (Test-Path (Join-Path $LauncherDist 'launcher.html'))) {
+    throw "Launcher page is missing: $LauncherDist\launcher.html (run npm run build in frontend\)"
+}
 
 # ---- fresh output folder ----------------------------------------------------------------
 # gguf (transcribe.cpp: Kmynas / Canary on the processor, or Vulkan on any GPU) is always bundled;
 # cuda adds the NVIDIA runtime DLLs for Whisper.
-$extras = 'audio,gguf'
-if (-not $SkipCuda) { $extras = 'audio,gguf,cuda' }
+$extras = 'audio,gguf,launcher'
+if (-not $SkipCuda) { $extras = 'audio,gguf,launcher,cuda' }
 # What the bundled python\ folder is built from: if none of it changed, -ReuseDependencies keeps it.
 $fingerprintText = @(
     $Deps.python.sha256, $extras,
@@ -243,6 +248,8 @@ Set-Content -Encoding ASCII (Join-Path $App 'backend\core\build-id.txt') $Stamp
 New-Item -ItemType Directory -Force (Join-Path $App 'static') | Out-Null
 & robocopy.exe $FrontendDist (Join-Path $App 'static\frontend') /E /NFL /NDL /NJH /NJS /NP | Out-Null
 if ($LASTEXITCODE -ge 8) { throw "robocopy failed for the frontend bundle (exit $LASTEXITCODE)" }
+& robocopy.exe $LauncherDist (Join-Path $App 'static\launcher') /E /NFL /NDL /NJH /NJS /NP | Out-Null
+if ($LASTEXITCODE -ge 8) { throw "robocopy failed for the launcher page (exit $LASTEXITCODE)" }
 $global:LASTEXITCODE = 0
 New-Item -ItemType Directory -Force (Join-Path $App 'bible_data') | Out-Null
 Copy-Item $BibleDb (Join-Path $App 'bible_data\biblelive.sqlite')
@@ -334,7 +341,7 @@ try {
         Write-Host '- launcher --dry-run'
         Invoke-Native $Py @('-m', 'launcher', '--dry-run')
         Write-Host '- imports'
-        Invoke-Native $Py @('-c', "import faster_whisper, ctranslate2, webrtcvad, transcribe_cpp, tkinter, core.config as c; print('imports OK, PROJECT_ROOT =', c.PROJECT_ROOT)")
+        Invoke-Native $Py @('-c', "import faster_whisper, ctranslate2, webrtcvad, transcribe_cpp, tkinter, webview, core.config as c; print('imports OK, PROJECT_ROOT =', c.PROJECT_ROOT)")
         Write-Host '- version stamp'
         Invoke-Native $Py @('-c', "from core.version import version_string; s = version_string(); print('version:', s); assert not s.startswith('unknown')")
         Write-Host '- ffmpeg'

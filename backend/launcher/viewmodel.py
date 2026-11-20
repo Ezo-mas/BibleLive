@@ -9,12 +9,13 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass, replace
 
 from .i18n import t
-from .monitors import Monitor
+from .monitors import Monitor, choose_projector
 from .network import operator_url_with_token, qr_png
 from .process import MSG_STARTING_AUDIO, MSG_STARTING_SERVER_PREFIX, RestartMessage, build_plan
 from .settings import (
     AUTO_MODES,
     COMPUTE_TYPES,
+    DEFAULT_MODEL,
     DEVICES,
     LANGUAGES,
     LOG_LEVELS,
@@ -52,6 +53,7 @@ class FormValues:
     open_operator: bool
     speech_engine: str = "auto"
     allow_network: bool = False
+    session_audio: bool = True
 
 
 def form_from_settings(s: LauncherSettings) -> FormValues:
@@ -71,10 +73,13 @@ def form_from_settings(s: LauncherSettings) -> FormValues:
         open_operator=s.open_operator_on_start,
         speech_engine=s.speech_engine,
         allow_network=s.allow_network,
+        session_audio=s.session_audio,
     )
 
 
-def settings_from_form(base: LauncherSettings, form: FormValues) -> LauncherSettings:
+def settings_from_form(
+    base: LauncherSettings, form: FormValues, *, include_session_audio: bool = False
+) -> LauncherSettings:
     """Settings with the form laid over ``base`` (keeps fields the form doesn't show)."""
     try:
         port = int(form.port.strip())
@@ -103,6 +108,8 @@ def settings_from_form(base: LauncherSettings, form: FormValues) -> LauncherSett
         open_operator_on_start=form.open_operator,
         speech_engine=form.speech_engine,
         allow_network=form.allow_network,
+        # The Tk fallback does not show a recording control.
+        session_audio=form.session_audio if include_session_audio else base.session_audio,
     )
 
 
@@ -148,6 +155,22 @@ def plain_options(values: Sequence[str]) -> list[Option]:
     return [(v, v) for v in values]
 
 
+def device_options() -> list[Option]:
+    """Where speech recognition runs, in words (the stored values stay auto/cuda/cpu)."""
+    names = {"auto": "opt.automatic", "cuda": "opt.device_cuda", "cpu": "opt.device_cpu"}
+    return [(v, t(names[v])) for v in DEVICES]
+
+
+def compute_options() -> list[Option]:
+    """Whisper compute types; only "auto" has a word, the rest are CTranslate2's own names."""
+    return [(v, t("opt.automatic") if v == "auto" else v) for v in COMPUTE_TYPES]
+
+
+def model_options() -> list[Option]:
+    """Whisper models, the default one marked as recommended."""
+    return [(v, t("opt.recommended", name=v) if v == DEFAULT_MODEL else v) for v in MODELS]
+
+
 MODEL_OPTIONS = MODELS
 DEVICE_OPTIONS = DEVICES
 COMPUTE_OPTIONS = COMPUTE_TYPES
@@ -165,8 +188,20 @@ def microphone_options(names: Sequence[str], saved: str | None) -> list[Option]:
 
 
 def projector_options(monitors: Sequence[Monitor]) -> list[Option]:
-    """Automatic plus every non-primary monitor (the operator's own screen is excluded)."""
-    opts: list[Option] = [(None, t("projector.automatic"))]
+    """Automatic plus every non-primary monitor (the operator's own screen is excluded).
+
+    Automatic names the screen it will use, so nobody has to guess before going live. An empty
+    list means the screens were not listed (yet, or not on this platform): no claim then.
+    """
+    automatic = t("projector.automatic")
+    if monitors:
+        chosen = choose_projector(monitors)
+        automatic = (
+            t("projector.automatic_to", screen=chosen.label)
+            if chosen
+            else t("projector.automatic_none")
+        )
+    opts: list[Option] = [(None, automatic)]
     opts += [(m.device, m.label) for m in monitors if not m.primary]
     return opts
 
