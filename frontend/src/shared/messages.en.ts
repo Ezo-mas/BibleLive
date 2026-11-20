@@ -370,8 +370,10 @@ export const en = {
   'launcher.microphone': 'Microphone',
   'launcher.micLevel': 'Mic level',
   'launcher.micInUse': 'In use by the session',
-  'launcher.noSignal':
-    'We hear nothing from this microphone. Check that it is plugged in and not muted, or choose another.',
+  'launcher.meterDecibels': '{db} decibels',
+  'launcher.meterSilence': 'Silence',
+  'launcher.noSignal': 'No sound from this microphone',
+  'launcher.noSignalDetails': 'Check that it is plugged in and not muted, or choose another.',
   'launcher.projector': 'Projector',
   'launcher.deviceHint': 'Choose where BibleLive listens and where verses appear.',
   'launcher.projectorUnavailable': 'Start a session first to show the projector.',

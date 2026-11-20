@@ -17,6 +17,12 @@
   --deep-text: #fbf2e3;
   --deep-muted: #d0c1ae;
   --signal: #23734d;
+  --meter-green: #237347;
+  --meter-yellow: #866000;
+  --meter-red: #b2302b;
+  --meter-green-idle: #c9e0cd;
+  --meter-yellow-idle: #eddfa9;
+  --meter-red-idle: #efcdca;
   --danger: #9e362d;
   --focus: #7d510a;
   --accent: #8b5915;
@@ -648,6 +654,12 @@ html {
     --secondary: #bdb2a1;
     --line: #403a32;
     --signal: #81d8a6;
+    --meter-green: #60cf85;
+    --meter-yellow: #f2cc52;
+    --meter-red: #ff7670;
+    --meter-green-idle: #284e35;
+    --meter-yellow-idle: #51441f;
+    --meter-red-idle: #572e2a;
     --danger: #ff9f92;
     --focus: #ffc879;
     --accent: #f7bc62;
@@ -702,31 +714,113 @@ body {
   color: var(--secondary);
   font-size: 11px;
 }
-#bl-launcher .bl-meter-track {
-  position: relative;
-  height: 6px;
-  border-radius: 999px;
-  background: var(--soft);
-  overflow: hidden;
+#bl-launcher .bl-meter-label {
+  display: flex;
+  justify-content: space-between;
+  gap: 4px;
+  min-width: 0;
 }
-#bl-launcher .bl-mic-meter[data-in-use='true'] .bl-meter-track {
+#bl-launcher .bl-meter-caption {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+#bl-launcher .bl-meter-caption > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+#bl-launcher .bl-meter-caption[data-warning='true'] {
+  color: var(--accent);
+}
+#bl-launcher .bl-meter-caption svg.bl-icon {
+  width: 12px;
+  height: 12px;
+  flex-basis: 12px;
+}
+#bl-launcher .bl-meter-readout {
+  color: var(--meter-zone, var(--secondary));
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+#bl-launcher .bl-mic-meter [data-zone='green'] {
+  --meter-zone: var(--meter-green);
+}
+#bl-launcher .bl-mic-meter [data-zone='yellow'] {
+  --meter-zone: var(--meter-yellow);
+}
+#bl-launcher .bl-mic-meter [data-zone='red'] {
+  --meter-zone: var(--meter-red);
+}
+#bl-launcher .bl-meter-track,
+#bl-launcher .bl-meter-scale {
+  position: relative;
+  margin-inline: 8px;
+}
+#bl-launcher .bl-meter-track {
+  height: 6px;
+  overflow: hidden;
+  --meter-segment: calc(100% / 30);
+}
+#bl-launcher .bl-mic-meter[data-in-use='true'] {
   opacity: 0.5;
 }
+#bl-launcher .bl-meter-track::before,
 #bl-launcher .bl-meter-fill {
-  display: block;
-  height: 100%;
-  background: var(--signal);
-  border-radius: inherit;
-  transform-origin: left;
-  transform: scaleX(0);
+  position: absolute;
+  inset: 0;
+  mask-image: repeating-linear-gradient(
+    to right,
+    black 0 calc(var(--meter-segment) - 1px),
+    transparent calc(var(--meter-segment) - 1px) var(--meter-segment)
+  );
+}
+#bl-launcher .bl-meter-track::before {
+  content: '';
+  background: linear-gradient(
+    to right,
+    var(--meter-green-idle) var(--meter-yellow-start),
+    var(--meter-yellow-idle) var(--meter-yellow-start) var(--meter-red-start),
+    var(--meter-red-idle) var(--meter-red-start)
+  );
+}
+#bl-launcher .bl-meter-fill {
+  clip-path: inset(0 100% 0 0);
+  background: linear-gradient(
+    to right,
+    var(--meter-green) var(--meter-yellow-start),
+    var(--meter-yellow) var(--meter-yellow-start) var(--meter-red-start),
+    var(--meter-red) var(--meter-red-start)
+  );
 }
 #bl-launcher .bl-meter-peak {
   position: absolute;
   inset-block: 0;
   width: 2px;
-  background: var(--ink);
+  background: var(--meter-zone);
+  box-shadow: -1px 0 var(--panel);
   transform: translateX(-100%);
   opacity: 0;
+}
+#bl-launcher .bl-meter-scale {
+  height: 11px;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  line-height: 10px;
+}
+#bl-launcher .bl-meter-scale span {
+  position: absolute;
+  top: 0;
+  transform: translateX(-50%);
+}
+#bl-launcher .bl-meter-scale span::before {
+  display: block;
+  width: 1px;
+  height: 2px;
+  margin-inline: auto;
+  background: currentColor;
+  content: '';
 }
 #bl-launcher .bl-wave span {
   flex: 1 1 0;

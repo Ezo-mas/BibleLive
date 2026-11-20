@@ -377,8 +377,11 @@ export const lt: Record<MessageKey, MessageEntry> = {
   'launcher.microphone': 'Mikrofonas',
   'launcher.micLevel': 'Mikrofono signalo lygis',
   'launcher.micInUse': 'Mikrofonas naudojamas seanso metu',
-  'launcher.noSignal':
-    'Iš šio mikrofono negaunama garso. Patikrinkite, ar jis prijungtas ir nenutildytas, arba pasirinkite kitą.',
+  'launcher.meterDecibels': '{db} decibelų',
+  'launcher.meterSilence': 'Tyla',
+  'launcher.noSignal': 'Iš šio mikrofono negaunama garso',
+  'launcher.noSignalDetails':
+    'Patikrinkite, ar jis prijungtas ir nenutildytas, arba pasirinkite kitą.',
   'launcher.projector': 'Projektorius',
   'launcher.deviceHint': 'Pasirinkite mikrofoną ir ekraną, kuriame bus rodomos eilutės.',
   'launcher.projectorUnavailable': 'Norėdami įjungti projektoriaus rodinį, pradėkite seansą.',

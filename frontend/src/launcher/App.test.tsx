@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import { App } from './App'
 import { createDemoBridge } from './demoBridge'
@@ -39,27 +39,76 @@ describe('launcher App', () => {
   it('drives both mic visuals from microphone levels and clears them on meter error', async () => {
     const bridge = createDemoBridge()
     const poll = bridge.poll
+    const meterError = 'Could not open the microphone. Check the selected device and try again.'
     let meterOn = true
     vi.spyOn(bridge, 'poll').mockImplementation(async () => ({
       ...(await poll()),
       meter: meterOn ? 'on' : 'error',
+      meter_error: meterOn ? null : meterError,
       levels: meterOn ? [0.8] : [],
     }))
     const { container } = render(<App bridge={bridge} />)
     const meter = await screen.findByRole('meter', { name: 'Mic level' })
+    const readout = container.querySelector('.bl-meter-readout')
+    const status = screen.getByRole('status')
+    const peak = meter.querySelector('.bl-meter-peak')
     const bars = Array.from(container.querySelectorAll<HTMLElement>('.bl-wave span'))
     const centre = bars[bars.length / 2]
 
+    expect(meter).toHaveAttribute('aria-valuemin', '-60')
+    expect(meter).toHaveAttribute('aria-valuemax', '0')
     await waitFor(() => {
-      expect(Number(meter.getAttribute('aria-valuenow'))).toBeGreaterThan(0.6)
+      const db = Number(meter.getAttribute('aria-valuenow'))
+      expect(db).toBeGreaterThanOrEqual(-20)
+      expect(meter).toHaveAttribute('aria-valuetext', `${db} decibels`)
+      expect(readout).toHaveTextContent(/^-\d+ dB$/)
+      expect(readout).toHaveAttribute('data-zone', 'yellow')
+      expect(peak).toHaveAttribute('data-zone', 'yellow')
       expect(Number(centre.style.getPropertyValue('--wave-level'))).toBeGreaterThan(0.5)
     })
 
     meterOn = false
     await waitFor(() => {
-      expect(Number(meter.getAttribute('aria-valuenow'))).toBe(0)
+      expect(meter).toHaveAttribute('aria-valuenow', '-60')
+      expect(meter).toHaveAttribute('aria-valuetext', 'Silence')
+      expect(readout).toHaveTextContent('-∞')
+      expect(peak).toHaveStyle({ opacity: '0' })
       expect(bars.every(bar => bar.style.getPropertyValue('--wave-level') === '0')).toBe(true)
+      const error = within(status).getByText(meterError)
+      expect(error).toHaveAttribute('title', meterError)
+      expect(status.closest('.bl-meter-label')).toBe(readout?.parentElement)
+      expect(within(status).queryByText('Mic level')).not.toBeInTheDocument()
     })
+  })
+
+  it('replaces the meter caption with a no-sound warning and keeps the readout in the row', async () => {
+    vi.useFakeTimers()
+    const app = render(<App bridge={createDemoBridge()} />)
+    try {
+      await act(() => vi.advanceTimersByTimeAsync(100))
+      const status = screen.getByRole('status')
+      const meter = screen.getByRole('meter', { name: 'Mic level' })
+      const microphone = screen.getByRole('combobox', { name: 'Microphone' })
+      expect(status).toHaveTextContent('Mic level')
+
+      fireEvent.change(microphone, { target: { value: 'built-in' } })
+      await act(() => vi.advanceTimersByTimeAsync(5_500))
+      const warning = within(status).getByText('No sound from this microphone')
+      const details = 'Check that it is plugged in and not muted, or choose another.'
+      expect(warning).toBeVisible()
+      expect(warning).toHaveAttribute('title', details)
+      expect(meter).toHaveAccessibleDescription(details)
+      expect(status.closest('.bl-meter-label')?.querySelector('.bl-meter-readout')).toBeVisible()
+      expect(within(status).queryByText('Mic level')).not.toBeInTheDocument()
+
+      fireEvent.change(microphone, { target: { value: 'usb' } })
+      await act(() => vi.advanceTimersByTimeAsync(100))
+      expect(status).toHaveTextContent('Mic level')
+      expect(meter).not.toHaveAttribute('aria-describedby')
+    } finally {
+      app.unmount()
+      vi.useRealTimers()
+    }
   })
 
   it('uses the same elapsed status in both views and restores the idle microphone meter on stop', async () => {

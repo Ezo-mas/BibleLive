@@ -1,12 +1,52 @@
 import { describe, expect, it } from 'vitest'
 import {
   advanceEnvelope,
+  dbfsToLevel,
+  formatPeak,
+  levelToDbfs,
+  meterZone,
+  METER_TICKS,
   playLevels,
   queueLevels,
   rippleDistance,
   rippleLevel,
   RIPPLE_STEP_MS,
 } from './levelEnvelope'
+
+describe('meter scale', () => {
+  it.each([
+    [0, -60],
+    [0.5, -30],
+    [0.85, -9],
+    [1, 0],
+  ])('converts level %s to %s dBFS and back', (level, db) => {
+    expect(levelToDbfs(level)).toBe(db)
+    expect(dbfsToLevel(db)).toBe(level)
+  })
+
+  it.each([
+    [-20.01, 'green'],
+    [-20, 'yellow'],
+    [-9, 'yellow'],
+    [-8.99, 'red'],
+  ])('colors %s dBFS %s', (db, zone) => {
+    expect(meterZone(db)).toBe(zone)
+  })
+
+  it('rounds the peak and reserves infinity for zero level', () => {
+    expect(formatPeak(dbfsToLevel(-14.4))).toBe('-14 dB')
+    expect(formatPeak(dbfsToLevel(-14.6))).toBe('-15 dB')
+    expect(formatPeak(1)).toBe('0 dB')
+    expect(formatPeak(0.001)).toBe('-60 dB')
+    expect(formatPeak(0)).toBe('-∞')
+  })
+
+  it('places the labeled ticks along the full dB range', () => {
+    expect(METER_TICKS.map(tick => tick.db)).toEqual([-60, -45, -30, -20, -9, -3, 0])
+    const positions = [0, 25, 50, 200 / 3, 85, 95, 100]
+    METER_TICKS.forEach((tick, index) => expect(tick.position).toBeCloseTo(positions[index]))
+  })
+})
 
 describe('level envelope', () => {
   it('moves partway on the first frame and reaches 80% of the step in 60 ms', () => {

@@ -5,6 +5,15 @@ import { Choice } from './Choice'
 import { formatElapsed } from './elapsed'
 import { Icon } from './Icon'
 import type { LauncherData } from './launcherReducer'
+import {
+  dbfsToLevel,
+  formatPeak,
+  MAX_DBFS,
+  METER_TICKS,
+  MIN_DBFS,
+  RED_DBFS,
+  YELLOW_DBFS,
+} from './levelEnvelope'
 import { noSignal } from './noSignal'
 
 const liveWave = [
@@ -148,23 +157,64 @@ export function Hero({
   )
 }
 
-function MicMeter({ meterRef, inUse }: { meterRef: RefObject<HTMLDivElement>; inUse: boolean }) {
+function MicMeter({
+  meterRef,
+  inUse,
+  quiet,
+  meterError,
+}: {
+  meterRef: RefObject<HTMLDivElement>
+  inUse: boolean
+  quiet: boolean
+  meterError: string | null
+}) {
   const { t } = useI18n()
   const label = t(inUse ? 'launcher.micInUse' : 'launcher.micLevel')
+  const warning = quiet ? t('launcher.noSignal') : meterError
+  const details = quiet ? t('launcher.noSignalDetails') : undefined
   return (
-    <div className="bl-mic-meter" data-in-use={inUse}>
-      <span>{label}</span>
+    <div className="bl-mic-meter" data-in-use={inUse} ref={meterRef}>
+      <div className="bl-meter-label">
+        <span className="bl-meter-caption" role="status" data-warning={Boolean(warning)}>
+          {warning && <Icon name="warning" />}
+          <span aria-hidden={!warning} title={details ?? meterError ?? undefined}>
+            {warning || label}
+          </span>
+        </span>
+        <span className="bl-meter-readout" aria-hidden="true" hidden={inUse}>
+          {formatPeak(0)}
+        </span>
+      </div>
+      {details && (
+        <span id="bl-meter-details" hidden>
+          {details}
+        </span>
+      )}
       <div
-        ref={meterRef}
         className="bl-meter-track"
+        style={
+          {
+            '--meter-yellow-start': `${dbfsToLevel(YELLOW_DBFS) * 100}%`,
+            '--meter-red-start': `${dbfsToLevel(RED_DBFS) * 100}%`,
+          } as CSSProperties
+        }
         role="meter"
         aria-label={label}
-        aria-valuemin={0}
-        aria-valuemax={1}
-        aria-valuenow={0}
+        aria-describedby={details ? 'bl-meter-details' : undefined}
+        aria-valuemin={MIN_DBFS}
+        aria-valuemax={MAX_DBFS}
+        aria-valuenow={MIN_DBFS}
+        aria-valuetext={t('launcher.meterSilence')}
       >
         <span className="bl-meter-fill" />
         <span className="bl-meter-peak" />
+      </div>
+      <div className="bl-meter-scale" aria-hidden="true">
+        {METER_TICKS.map(({ db, position }) => (
+          <span key={db} style={{ left: `${position}%` }}>
+            {db}
+          </span>
+        ))}
       </div>
     </div>
   )
@@ -231,20 +281,15 @@ export function Setup({
             onChange={onMicrophone}
             errorId={problem ? 'bl-input-error' : undefined}
           />
-          <MicMeter meterRef={meterRef} inUse={locked} />
+          <MicMeter
+            meterRef={meterRef}
+            inUse={locked}
+            quiet={!locked && noSignal(meter, levels, now)}
+            meterError={meter === 'error' ? meterError : null}
+          />
           {problem && (
             <p id="bl-input-error" className="bl-error" role="alert">
               {problem}
-            </p>
-          )}
-          {meter === 'error' && meterError && (
-            <p className="bl-error" role="status">
-              {meterError}
-            </p>
-          )}
-          {!locked && noSignal(meter, levels, now) && (
-            <p className="bl-muted" role="status">
-              {t('launcher.noSignal')}
             </p>
           )}
         </div>

@@ -6,6 +6,32 @@ const SILENCE = 0.001
 const MAX_QUEUED_LEVELS = 6
 export const RIPPLE_STEP_MS = 50
 
+export const MIN_DBFS = -60
+export const MAX_DBFS = 0
+export const YELLOW_DBFS = -20
+export const RED_DBFS = -9
+export const METER_TICKS = [MIN_DBFS, -45, -30, YELLOW_DBFS, RED_DBFS, -3, MAX_DBFS].map(db => ({
+  db,
+  position: dbfsToLevel(db) * 100,
+}))
+
+export function levelToDbfs(level: number) {
+  return MIN_DBFS + level * (MAX_DBFS - MIN_DBFS)
+}
+
+export function dbfsToLevel(db: number) {
+  return (db - MIN_DBFS) / (MAX_DBFS - MIN_DBFS)
+}
+
+export function meterZone(db: number) {
+  if (db < YELLOW_DBFS) return 'green'
+  return db <= RED_DBFS ? 'yellow' : 'red'
+}
+
+export function formatPeak(level: number) {
+  return level === 0 ? '-∞' : `${Math.round(levelToDbfs(level))} dB`
+}
+
 export function advanceEnvelope(level: number, target: number, elapsed: number) {
   if (elapsed <= 0) return level
   const decay = target > level ? 5 ** (-elapsed / ATTACK_MS) : 3 ** (-elapsed / RELEASE_MS)
