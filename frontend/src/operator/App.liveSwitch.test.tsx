@@ -99,7 +99,9 @@ afterEach(() => {
 
 it('starts live and moves only when the server confirms', () => {
   openWith(settings(true))
-  expect(liveSwitch()).toHaveAttribute('aria-pressed', 'true')
+  expect(liveSwitch()).toHaveAccessibleName('Live')
+  // A plain button: the name carries the state, so no pressed state contradicts it.
+  expect(liveSwitch()).not.toHaveAttribute('aria-pressed')
   expect(ring()).not.toHaveClass('is-off-air')
 
   act(() => {
@@ -107,11 +109,13 @@ it('starts live and moves only when the server confirms', () => {
   })
   expect(sentMessages().at(-1)).toEqual({ action: 'set_live', live: false })
   // Not optimistic: until the server agrees, the console still says live.
-  expect(liveSwitch()).toHaveAttribute('aria-pressed', 'true')
+  expect(liveSwitch()).toHaveAccessibleName('Live')
 
   push(socket, { type: 'display_settings_confirmed', data: settings(false) })
-  expect(liveSwitch()).toHaveAttribute('aria-pressed', 'false')
   expect(liveSwitch()).toHaveAccessibleName('Off air')
+  expect(liveSwitch()).not.toHaveAttribute('aria-pressed')
+  // The title says what pressing does, in both states.
+  expect(liveSwitch()).toHaveAccessibleDescription('Show the display to the audience again')
   expect(liveSwitch()).toHaveTextContent(/^Off air$/)
   // The switch says it; the ring round the preview says it; no badge repeats it.
   expect(ring()).toHaveClass('is-off-air')
@@ -128,7 +132,10 @@ it('starts live and moves only when the server confirms', () => {
   })
   expect(sentMessages().at(-1)).toEqual({ action: 'set_live', live: true })
   push(socket, { type: 'display_settings_confirmed', data: settings(true) })
-  expect(liveSwitch()).toHaveAttribute('aria-pressed', 'true')
+  expect(liveSwitch()).toHaveAccessibleName('Live')
+  expect(liveSwitch()).toHaveAccessibleDescription(
+    'Black out the audience display; this preview keeps working'
+  )
   expect(ring()).not.toHaveClass('is-off-air')
   expect(screen.queryByText('The audience sees a black screen')).not.toBeInTheDocument()
 })
@@ -173,7 +180,7 @@ it('a rejected switch stays where the server left it and says why', () => {
     type: 'error',
     data: { message: 'Invalid live; expected true or false', action: 'set_live' },
   })
-  expect(liveSwitch()).toHaveAttribute('aria-pressed', 'true')
+  expect(liveSwitch()).toHaveAccessibleName('Live')
   expect(screen.getByRole('alert')).toHaveTextContent('Could not switch the display on or off air')
 })
 
@@ -187,8 +194,9 @@ it('is read-only while disconnected', () => {
 
 it('shows off air from the snapshot, as a console that connects mid-blackout must', () => {
   openWith(settings(false))
-  expect(liveSwitch()).toHaveAttribute('aria-pressed', 'false')
+  expect(liveSwitch()).not.toHaveAttribute('aria-pressed')
   expect(liveSwitch()).toHaveAccessibleName('Off air')
+  expect(liveSwitch()).not.toHaveClass('is-live')
   expect(ring()).toHaveClass('is-off-air')
 })
 
@@ -197,12 +205,12 @@ it('marks Live with the on-air dot, filled by CSS only while live', () => {
 
   const dot = liveSwitch().querySelector('.live-dot')
   expect(dot).toHaveAttribute('aria-hidden', 'true')
-  expect(liveSwitch()).toHaveClass('btn-ghost')
+  expect(liveSwitch()).toHaveClass('btn-ghost', 'is-live')
   expect(liveSwitch()).toHaveAccessibleName('Live')
   expect(liveSwitch()).toHaveTextContent(/^Live$/)
 })
 
 it('treats a snapshot without the field, from an older server, as live', () => {
   openWith(settings())
-  expect(liveSwitch()).toHaveAttribute('aria-pressed', 'true')
+  expect(liveSwitch()).toHaveAccessibleName('Live')
 })

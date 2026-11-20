@@ -116,16 +116,18 @@ On display and Plan use the same sentence-case, base-size semibold section
 heading. Their header actions sit at the right. Plan has a count beside its
 heading and a hairline divider over the list.
 
-The On display header holds Clear and the Live / Off air toggle. When the
+The On display header holds Clear and the Live / Off air switch. When the
 connected server confirms zero audience displays, a "No display connected"
-text-only warning chip sits next to the toggle and describes it for screen readers.
+text-only warning chip sits next to the switch and describes it for screen readers.
 Clear uses the subtle neutral button variant, the accessible name "Clear display"
-and the B shortcut. The toggle is a ghost button with a filled amber dot and bold
+and the B shortcut. The switch is a ghost button with a filled amber dot and bold
 label when Live, and a hollow neutral dot and medium label when Off air. It has
 the shared hover fill and focus ring. Off air adds a warning ring (in
 `--color-warning-text`) around the preview, which continues to show the
-passage. Screen readers get "The audience sees a black screen"; the toggle's
-accessible name follows its label, so it is announced as "Off air", not "Live".
+passage. Screen readers get "The audience sees a black screen". The switch is a
+plain state-named button, not an `aria-pressed` toggle: its accessible name is
+"Live" or "Off air", and the hover title names the action, so off air it reads
+"Off air, button, Show the display to the audience again".
 
 ## Panel menus
 

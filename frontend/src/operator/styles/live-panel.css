@@ -197,7 +197,7 @@
   font-weight: var(--weight-medium);
 }
 
-.operator-live-switch[aria-pressed='true'] {
+.operator-live-switch.is-live {
   --btn-fg: var(--color-text);
   font-weight: var(--weight-bold);
 }
@@ -213,7 +213,7 @@
   border-radius: var(--radius-full);
 }
 
-.operator-live-switch[aria-pressed='true'] .live-dot {
+.operator-live-switch.is-live .live-dot {
   border-color: var(--color-primary-edge);
   background: var(--color-primary);
 }

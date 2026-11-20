@@ -91,12 +91,11 @@ export function LivePanel({
               type="button"
               variant="ghost"
               size="sm"
-              className="operator-live-switch"
-              // The name follows the visible label, so off air a screen reader hears
-              // "Off air" rather than "Live, not pressed"; aria-pressed carries the state.
+              className={`operator-live-switch${live ? ' is-live' : ''}`}
+              // A state-named plain button, not an aria-pressed toggle: "Off air,
+              // not pressed" would contradict the label. The title names the action.
               aria-label={t(live ? 'stage.liveOn' : 'stage.liveOff')}
               aria-describedby={displayMissing ? displayWarningId : undefined}
-              aria-pressed={live}
               disabled={liveDisabled}
               title={t(live ? 'stage.liveOffTitle' : 'stage.liveOnTitle')}
               icon={<span className="live-dot" aria-hidden="true" />}
