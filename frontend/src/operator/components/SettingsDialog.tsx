@@ -13,18 +13,15 @@ import type { BibleVersionState } from '../hooks/useBibleVersion'
 import { IdleScreenSettings } from './IdleScreenSettings'
 import type { IdleScreenState } from '../hooks/useIdleScreen'
 import type { Theme } from '../../hooks/useTheme'
-import type { DisplayTheme } from '../../shared/verseText'
+import type { DisplayTheme, VerseLimit } from '../../shared/verseText'
 import type { AutoMode, ClearMode } from '../../shared/types'
-
-/** Which part of the dialog to open on: the display, or the spoken language. */
-export type SettingsSection = 'display' | 'language'
 
 export interface SettingsDialogProps {
   open: boolean
-  /** The section the dialog opens onto. */
-  section: SettingsSection
   onClose: () => void
   displayTheme: DisplayTheme
+  verseLimit: VerseLimit
+  onVerseLimitChange: (next: VerseLimit) => void
   clearMode: ClearMode
   /** Settings are server-owned, so they are read-only while disconnected. */
   disabled: boolean
@@ -79,9 +76,10 @@ function focusableItems(dialog: HTMLElement): HTMLElement[] {
  */
 export function SettingsDialog({
   open,
-  section,
   onClose,
   displayTheme,
+  verseLimit,
+  onVerseLimitChange,
   clearMode,
   disabled,
   onThemeChange,
@@ -103,7 +101,6 @@ export function SettingsDialog({
   const autoSectionId = useId()
   const shortcutsSectionId = useId()
   const dialogRef = useRef<HTMLDivElement>(null)
-  const languageSectionRef = useRef<HTMLElement>(null)
   const { t } = useI18n()
 
   // Move focus into the dialog while it is open and put it back afterwards, so
@@ -111,19 +108,9 @@ export function SettingsDialog({
   useEffect(() => {
     if (!open) return
     const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null
-    const dialog = dialogRef.current
-    const sectionSelector =
-      section === 'language' ? '.operator-dialog-language [aria-pressed="true"]' : null
-    // The control for the section asked for, or the close button when it has
-    // nothing to focus yet (the language buttons are off until the pipeline answers).
-    const target =
-      (sectionSelector ? dialog?.querySelector<HTMLElement>(sectionSelector) : null) ??
-      dialog?.querySelector<HTMLElement>('[data-dialog-close]')
-    target?.focus()
-    // jsdom has no scrollIntoView; the optional call is what keeps the tests honest.
-    if (section === 'language') languageSectionRef.current?.scrollIntoView?.({ block: 'nearest' })
+    dialogRef.current?.querySelector<HTMLElement>('[data-dialog-close]')?.focus()
     return () => previous?.focus()
-  }, [open, section])
+  }, [open])
 
   if (!open) return null
 
@@ -188,6 +175,8 @@ export function SettingsDialog({
             </h3>
             <DisplaySettings
               displayTheme={displayTheme}
+              verseLimit={verseLimit}
+              onVerseLimitChange={onVerseLimitChange}
               clearMode={clearMode}
               disabled={disabled}
               onThemeChange={onThemeChange}
@@ -210,11 +199,7 @@ export function SettingsDialog({
             <InterfaceLanguageSettings />
           </section>
 
-          <section
-            className="operator-dialog-section operator-dialog-language"
-            aria-labelledby={languageSectionId}
-            ref={languageSectionRef}
-          >
+          <section className="operator-dialog-section" aria-labelledby={languageSectionId}>
             <h3 className="operator-dialog-section-title" id={languageSectionId}>
               {t('settings.sectionAudio')}
             </h3>
@@ -258,9 +243,9 @@ export function SettingsDialog({
               </li>
               <li>
                 <span className="operator-dialog-shortcut-keys">
-                  <kbd>Shift</kbd>+<kbd>Enter</kbd>
+                  <kbd>Ctrl</kbd>+<kbd>Enter</kbd>
                 </span>
-                {t('settings.shortcutShift')}
+                {t('settings.shortcutCtrlEnter')}
               </li>
               <li>
                 <span className="operator-dialog-shortcut-keys">

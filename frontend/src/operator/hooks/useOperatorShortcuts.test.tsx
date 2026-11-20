@@ -3,10 +3,10 @@ import { act, render } from '@testing-library/react'
 import { useOperatorShortcuts } from './useOperatorShortcuts'
 
 interface HarnessProps {
-  hasSelection?: boolean
+  canShow?: boolean
   onNext?: () => void
   onPrevious?: () => void
-  onApprove?: () => void
+  onShow?: () => void
   onDeselect?: () => void
   canClearDisplay?: boolean
   onClearDisplay?: () => void
@@ -19,10 +19,10 @@ interface HarnessProps {
 
 /** Minimal host that wires the hook up and optionally renders a control. */
 function Harness({
-  hasSelection = false,
+  canShow = false,
   onNext = () => {},
   onPrevious = () => {},
-  onApprove = () => {},
+  onShow = () => {},
   onDeselect = () => {},
   canClearDisplay = false,
   onClearDisplay = () => {},
@@ -31,11 +31,11 @@ function Harness({
   onCardSelect = () => {},
 }: HarnessProps) {
   useOperatorShortcuts({
-    hasSelection,
+    canShow,
     canClearDisplay,
     onNext,
     onPrevious,
-    onApprove,
+    onShow,
     onDeselect,
     onClearDisplay,
   })
@@ -68,14 +68,14 @@ describe('useOperatorShortcuts', () => {
   it('maps arrow keys, Escape and Enter to their handlers', () => {
     const onNext = vi.fn()
     const onPrevious = vi.fn()
-    const onApprove = vi.fn()
+    const onShow = vi.fn()
     const onDeselect = vi.fn()
     render(
       <Harness
-        hasSelection
+        canShow
         onNext={onNext}
         onPrevious={onPrevious}
-        onApprove={onApprove}
+        onShow={onShow}
         onDeselect={onDeselect}
       />
     )
@@ -87,24 +87,24 @@ describe('useOperatorShortcuts', () => {
 
     expect(onNext).toHaveBeenCalledTimes(1)
     expect(onPrevious).toHaveBeenCalledTimes(1)
-    expect(onApprove).toHaveBeenCalledTimes(1)
+    expect(onShow).toHaveBeenCalledTimes(1)
     expect(onDeselect).toHaveBeenCalledTimes(1)
   })
 
-  it('leaves Enter alone while nothing is selected', () => {
-    const onApprove = vi.fn()
-    render(<Harness onApprove={onApprove} />)
+  it('leaves Enter alone while no visible row is highlighted', () => {
+    const onShow = vi.fn()
+    render(<Harness onShow={onShow} />)
 
     pressOn(window, 'Enter')
 
-    expect(onApprove).not.toHaveBeenCalled()
+    expect(onShow).not.toHaveBeenCalled()
   })
 
   it('ignores shortcuts typed into a text field', () => {
     const onNext = vi.fn()
-    const onApprove = vi.fn()
+    const onShow = vi.fn()
     const { getByLabelText } = render(
-      <Harness hasSelection control="input" onNext={onNext} onApprove={onApprove} />
+      <Harness canShow control="input" onNext={onNext} onShow={onShow} />
     )
     const input = getByLabelText('field')
 
@@ -112,37 +112,61 @@ describe('useOperatorShortcuts', () => {
     pressOn(input, 'Enter')
 
     expect(onNext).not.toHaveBeenCalled()
-    expect(onApprove).not.toHaveBeenCalled()
+    expect(onShow).not.toHaveBeenCalled()
   })
 
-  it('leaves Enter to a focused button instead of approving', () => {
-    const onApprove = vi.fn()
-    const { getByLabelText } = render(
-      <Harness hasSelection control="button" onApprove={onApprove} />
-    )
+  it('leaves Enter to a focused button instead of showing the highlight', () => {
+    const onShow = vi.fn()
+    const { getByLabelText } = render(<Harness canShow control="button" onShow={onShow} />)
 
     pressOn(getByLabelText('action'), 'Enter')
 
-    expect(onApprove).not.toHaveBeenCalled()
+    expect(onShow).not.toHaveBeenCalled()
   })
 
   it('leaves the arrow keys to a focused select', () => {
     const onNext = vi.fn()
-    const { getByLabelText } = render(<Harness hasSelection control="select" onNext={onNext} />)
+    const { getByLabelText } = render(<Harness canShow control="select" onNext={onNext} />)
 
     pressOn(getByLabelText('book'), 'ArrowDown')
 
     expect(onNext).not.toHaveBeenCalled()
   })
 
-  it('still answers Enter from a queue card, which is the console\u2019s own flow', () => {
-    const onApprove = vi.fn()
-    const { getByLabelText } = render(<Harness hasSelection withCard onApprove={onApprove} />)
+  it('still answers Enter from a focused row, which focus highlighted', () => {
+    const onShow = vi.fn()
+    const { getByLabelText } = render(<Harness canShow withCard onShow={onShow} />)
 
     pressOn(getByLabelText('card'), 'Enter')
 
-    expect(onApprove).toHaveBeenCalledTimes(1)
+    expect(onShow).toHaveBeenCalledTimes(1)
   })
+
+  it('shows once for a held Enter, ignoring the key repeats', () => {
+    const onShow = vi.fn()
+    render(<Harness canShow onShow={onShow} />)
+
+    act(() => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', repeat: true }))
+    })
+
+    expect(onShow).toHaveBeenCalledTimes(1)
+  })
+
+  it.each(['ctrlKey', 'shiftKey', 'metaKey', 'altKey'])(
+    'never shows the highlight for a modified Enter (%s)',
+    modifier => {
+      const onShow = vi.fn()
+      render(<Harness canShow onShow={onShow} />)
+
+      act(() => {
+        window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', [modifier]: true }))
+      })
+
+      expect(onShow).not.toHaveBeenCalled()
+    }
+  )
 
   it('stops listening once unmounted', () => {
     const onNext = vi.fn()

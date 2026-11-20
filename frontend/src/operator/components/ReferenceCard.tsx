@@ -8,24 +8,18 @@ import type { BibleReference } from '../../shared/types'
 
 export interface ReferenceCardProps {
   reference: BibleReference
+  /** True when this row holds the keyboard cursor (the highlighted row). */
   selected?: boolean
+  /** Highlight this row (a click or focus on it); nothing is sent. Omitted, the row is not selectable. */
   onSelect?: () => void
   /**
-   * Double-click: do the card's thing at once instead of staging it first. The
-   * click that begins a double-click still selects the card.
+   * Whether the row carries the detection's confidence (a Low row's dashed edge, and
+   * the word for screen readers and the tooltip). History leaves it out: confidence
+   * belongs to a detection, not to something that was shown.
    */
-  onActivate?: () => void
-  /**
-   * What selecting this card does, for screen readers. Without it the accessible
-   * name is the card's whole text (reference, verse text, and meta), which is
-   * long and does not say what pressing it does.
-   */
-  ariaLabel?: string
-  /**
-   * Buttons under the card (Show, Stage). They sit beside the clickable card, not
-   * inside it, so the row never nests one interactive element in another. The
-   * title's id is passed in so each button can be described by the row it is on.
-   */
+  showConfidence?: boolean
+  /** Remove sits beside the timestamp and Show uses the title as its description. */
+  removeAction?: ReactNode
   actions?: (titleId: string) => ReactNode
 }
 
@@ -52,50 +46,88 @@ function arrivalTime(createdAt: string): { label: string; iso: string } | null {
 }
 
 /**
- * A single reference tile. Pass `onSelect` to make it selectable: the pending
- * queue stages an approvable detection that way, and history stages an entry to
- * show again.
+ * A single reference tile. Pass `onSelect` to make it selectable: a pending row
+ * takes the keyboard cursor that way (a click anywhere on the row but its buttons,
+ * or focus, highlights it; Enter shows the highlighted row). History rows are not
+ * selectable; they only have Show.
  *
- * A selectable tile that is selected is the reference staged in Up Next, so the
- * card says so: the queue and the staging panel must never be confused for one
- * another during a live service.
+ * The highlighted row takes a subtle tint and outline and its Show uses amber.
  *
- * A manual passage carries no confidence — it was never a detection — so its
- * badge names its source instead of implying a confidence it does not have. The
- * same goes for a passage follow-along showed by itself ('follow').
+ * Detection confidence is not a chip. A Low detection's row has a dashed edge;
+ * Medium and High look the same. The word itself is the row's accessible description
+ * and its tooltip.
+ * A manual passage carries no confidence — it was never a detection — so its badge
+ * names its source instead. The same goes for a passage follow-along showed by
+ * itself ('follow').
  */
 export function ReferenceCard({
   reference,
   selected = false,
   onSelect,
-  onActivate,
-  ariaLabel,
+  showConfidence = true,
+  removeAction,
   actions,
 }: ReferenceCardProps) {
   const { t } = useI18n()
   const titleId = useId()
+  const confidenceId = useId()
+  const badgesId = useId()
   const selectable = onSelect !== undefined
   const time = arrivalTime(reference.created_at)
+  const detected = reference.source !== 'follow' && reference.source !== 'manual'
+  const confidence =
+    showConfidence && detected && reference.confidence !== null
+      ? `${t('ref.confidenceSr')}${t(CONFIDENCE_LABELS[reference.confidence])}`
+      : null
 
-  // The start of the passage, so a row can be recognised without staging it. A
+  // The source badge: Followed, or Manual for a passage that was never a detection.
+  const sourceBadge =
+    reference.source === 'follow'
+      ? 'follow'
+      : reference.confidence === null || reference.source === 'manual'
+        ? 'manual'
+        : null
+
+  // The start of the passage, so a row can be recognised before it is shown. A
   // detection from an older pipeline may carry only the per-verse list.
   const preview = reference.text || reference.verses?.[0]?.text || ''
+  // The badges (source, Context) and the confidence word describe the row, when shown.
+  const badged = sourceBadge !== null || reference.inferred
+  const describedBy = [badged ? badgesId : null, confidence ? confidenceId : null]
+    .filter(Boolean)
+    .join(' ')
 
   return (
-    <div className={`ref-item ${selected ? 'is-selected' : ''}`}>
+    <div
+      className={`ref-item ${selected ? 'is-selected' : ''}`}
+      data-cursor-row={selectable ? reference.id : undefined}
+      data-confidence={confidence ? (reference.confidence ?? undefined) : undefined}
+      title={confidence ?? undefined}
+      // A click on the row's own buttons is theirs; anywhere else highlights the row.
+      onClick={
+        selectable
+          ? event => {
+              if (!(event.target as Element).closest('button')) onSelect()
+            }
+          : undefined
+      }
+    >
       <div
         className={`ref-card ${selected ? 'ref-card-selected' : ''}`}
-        data-confidence={reference.confidence ?? 'manual'}
         role={selectable ? 'button' : undefined}
         tabIndex={selectable ? 0 : undefined}
         aria-pressed={selectable ? selected : undefined}
-        aria-label={selectable ? ariaLabel : undefined}
-        onClick={onSelect}
-        onDoubleClick={selectable ? onActivate : undefined}
+        aria-label={
+          selectable ? t('row.highlightAria', { ref: formatReference(reference) }) : undefined
+        }
+        aria-describedby={describedBy}
+        // Focus is the keyboard's click: tabbing to a row highlights it, so Enter (the
+        // console's own shortcut) shows the row that has focus.
+        onFocus={onSelect}
         onKeyDown={
           selectable
             ? e => {
-                if (e.key === 'Enter' || e.key === ' ') {
+                if (e.key === ' ') {
                   e.preventDefault()
                   onSelect?.()
                 }
@@ -108,49 +140,50 @@ export function ReferenceCard({
             <h3 className="ref-card-title" id={titleId}>
               {formatReference(reference)}
             </h3>
-            <div className="ref-card-badges">
-              {reference.source === 'follow' ? (
+            <div className="ref-card-badges" id={badgesId}>
+              {sourceBadge === 'follow' ? (
                 <StatusBadge variant="info">
                   <span className="sr-only">{t('ref.sourceSr')}</span>
                   {t('ref.followed')}
                 </StatusBadge>
-              ) : reference.confidence !== null && reference.source !== 'manual' ? (
-                <span className="ref-card-confidence" data-confidence={reference.confidence}>
-                  <span className="sr-only">{t('ref.confidenceSr')}</span>
-                  {t(CONFIDENCE_LABELS[reference.confidence])}
-                </span>
-              ) : (
+              ) : sourceBadge === 'manual' ? (
                 <StatusBadge variant="neutral">
                   <span className="sr-only">{t('ref.sourceSr')}</span>
                   {t('source.manual')}
                 </StatusBadge>
-              )}
+              ) : null}
               {reference.inferred && <StatusBadge variant="info">{t('ref.context')}</StatusBadge>}
             </div>
           </div>
 
-          {preview && <q className="ref-card-text">{preview}</q>}
-
-          {/* Arrival order is the queue's order, and the clock reading on each card
-            is what makes that order readable. Verse count is here too, so the
-            operator knows what the display will be bounded to. `verses` is absent
-            when talking to an older server. */}
-          <div className="ref-card-meta">
-            {time && (
-              <time dateTime={time.iso} className="ref-card-time">
-                {time.label}
-              </time>
-            )}
-            {(reference.verses?.length ?? 0) > 1 && (
-              <span className="ref-card-verse-count">
-                {t('ref.verses', { count: reference.verses.length })}
-              </span>
-            )}
-            {selected && <span className="ref-card-staged">{t('ref.staged')}</span>}
-          </div>
+          {preview && <p className="ref-card-text">{preview}</p>}
+          {confidence && (
+            <span className="sr-only" id={confidenceId}>
+              {confidence}
+            </span>
+          )}
         </div>
       </div>
-      {actions && <div className="ref-item-actions">{actions(titleId)}</div>}
+      {/* Arrival order is the queue's order, and the clock reading on each card is
+          what makes that order readable. Verse count is here too, so the operator
+          knows what the display will be bounded to (`verses` is absent when talking
+          to an older server). The row's buttons share the line, Show right-most. */}
+      <div className="ref-item-foot">
+        <div className="ref-card-meta">
+          {time && (
+            <time dateTime={time.iso} className="ref-card-time">
+              {time.label}
+            </time>
+          )}
+          {removeAction}
+          {(reference.verses?.length ?? 0) > 1 && (
+            <span className="ref-card-verse-count">
+              {t('ref.verses', { count: reference.verses.length })}
+            </span>
+          )}
+        </div>
+        {actions && <div className="ref-item-actions">{actions(titleId)}</div>}
+      </div>
     </div>
   )
 }

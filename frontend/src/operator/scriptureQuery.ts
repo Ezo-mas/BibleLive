@@ -10,8 +10,8 @@ import type { Translator } from '../shared/i18n'
  * socket. It owns no book data: the canon, including each book's abbreviation
  * and the alternative name forms the parser accepts, comes from `/api/books`
  * and is matched by substring/prefix. Nothing in this module talks to the
- * network, and nothing here displays anything — a resolved reference is still
- * staged in Up Next and shown by the operator's own Show action.
+ * network, and nothing here displays anything — a resolved reference is shown
+ * only by the operator's own Show action.
  *
  * Why a parser lives here at all: the server's `core/verse_parser.py` reads
  * *spoken* sermon text, where it deliberately guesses at misspellings and

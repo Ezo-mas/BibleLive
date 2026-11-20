@@ -15,6 +15,11 @@ beforeEach(() => {
   vi.stubGlobal('fetch', () => new Promise<Response>(() => {}))
 })
 
+// jsdom has no layout and no scrollIntoView. The cursor scrolls the row a keyboard
+// move lands on into view, so give it a no-op that tests can spy on. A node-environment
+// test (operatorReducer.test.ts) has no Element at all.
+if (typeof Element !== 'undefined') Element.prototype.scrollIntoView = vi.fn()
+
 // Cleanup after each test
 afterEach(() => {
   cleanup()

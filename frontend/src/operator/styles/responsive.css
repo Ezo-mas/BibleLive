@@ -1,8 +1,7 @@
 /* Responsive */
 /* The two columns hold down to 1024px, where the working column is still 608px wide
-   (the control row's one-line floor is 560px) beside the panel's 368px floor: on a
-   laptop or a tablet held landscape the queue, its footer, Up Next and the preview
-   are all in view at once, as on a desktop. */
+   beside the panel's 368px floor: on a laptop or a tablet held landscape the queue,
+   its footer, the Plan and the preview are all in view at once, as on a desktop. */
 @media (max-width: 1023px) {
   /* One column and a page that scrolls. The frame is the full width and takes its
      height from the 16:9 ratio, so here the miniature is exactly the projector's shape. Flex rather than grid, so
@@ -13,9 +12,11 @@
      tabs, its list and its footer are all in view and the list scrolls inside it, as
      it does beside the workspace on a wide window. */
   .operator-main {
-    /* About three queued rows: on a tall window the end of Up Next, with Show on
-       display, stays in view above the panel when the page is scrolled to the end. */
+    /* About three queued rows: on a tall window the end of the Plan stays in view
+       above the panel when the page is scrolled to the end. */
     --operator-queue-max: 520px;
+    /* About five plan rows; the Plan scrolls inside it, the way the panel does. */
+    --operator-plan-max: 420px;
     /* The tabs, the footer and one queued row. A window shorter than that scrolls the
        page past the panel instead of squeezing the list to nothing. */
     --operator-queue-min: 280px;
@@ -40,6 +41,12 @@
     flex: none;
     aspect-ratio: 16 / 9;
     min-height: 0;
+  }
+
+  /* One fixed height too (the share of the column has nothing to be a share of). */
+  .operator-plan {
+    height: min(var(--operator-plan-max), 100cqh);
+    min-height: var(--operator-queue-min);
   }
 
   /* One fixed height whatever the tab holds, so the footer never moves as
@@ -82,11 +89,6 @@
 }
 
 @media (max-width: 640px) {
-  .operator-display-label,
-  .operator-language-chip-label {
-    display: none;
-  }
-
   .operator-connection-banner,
   .operator-pipeline-banner {
     padding: var(--space-3) var(--space-4);
@@ -95,9 +97,5 @@
   .operator-main {
     padding: var(--space-3);
     gap: var(--space-3);
-  }
-
-  .operator-quick-auto {
-    margin-left: 0;
   }
 }

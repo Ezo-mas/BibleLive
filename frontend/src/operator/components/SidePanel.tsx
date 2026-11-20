@@ -2,38 +2,43 @@ import { useRef } from 'react'
 import type { KeyboardEvent, ReactNode } from 'react'
 import { useI18n } from '../../shared/i18nContext'
 import type { MessageKey } from '../../shared/i18n'
+import type { AutoMode } from '../../shared/types'
 
-/** The sidebar's lists: what was heard, what is planned, what was shown. */
-export type SideTab = 'pending' | 'plan' | 'history'
+/** The right-hand column's lists: what was heard and what was shown. Plan has its own card. */
+export type SideTab = 'pending' | 'history'
 
 const TABS: { id: SideTab; labelKey: MessageKey }[] = [
   { id: 'pending', labelKey: 'queue.title' },
-  { id: 'plan', labelKey: 'plan.title' },
   { id: 'history', labelKey: 'history.title' },
 ]
+
+const ACTIVE_MODE_LABELS: Record<Exclude<AutoMode, 'off'>, MessageKey> = {
+  high: 'quick.autoHigh',
+  medium_and_up: 'quick.autoMedium',
+  all: 'quick.autoAll',
+}
 
 export interface SidePanelProps {
   tab: SideTab
   onTabChange: (tab: SideTab) => void
-  /** Items per tab; history is shown without one, since it is a place to look back. */
-  counts: { pending: number; plan: number }
+  /** Detections waiting; history is shown without a count, since it is a place to look back. */
+  pendingCount: number
+  autoMode: AutoMode
   /** The active tab's body (its list and footer). */
   children: ReactNode
 }
 
 /**
- * The right-hand column: Pending, Plan and History as tabs of one panel.
+ * The right-hand column: Pending and History as tabs of one full-height panel.
  *
- * Only one list needs the operator at a time, and the queue is the one that does
- * during a service, so it opens first. Its tab keeps a count — and turns to the
- * accent colour while it holds detections and is out of view — so a reference
- * heard while the Plan is open is never missed.
+ * The queue is the one that needs the operator during a service, so it opens
+ * first. Its tab keeps a count — and turns to the accent colour while it holds
+ * detections and History is open — so a reference heard meanwhile is never missed.
  */
-export function SidePanel({ tab, onTabChange, counts, children }: SidePanelProps) {
+export function SidePanel({ tab, onTabChange, pendingCount, autoMode, children }: SidePanelProps) {
   const { t } = useI18n()
   const tabRefs = useRef<Record<SideTab, HTMLButtonElement | null>>({
     pending: null,
-    plan: null,
     history: null,
   })
 
@@ -60,7 +65,7 @@ export function SidePanel({ tab, onTabChange, counts, children }: SidePanelProps
     <section className="operator-section operator-pending">
       <div className="operator-tabs" role="tablist" aria-label={t('side.aria')}>
         {TABS.map((entry, index) => {
-          const count = entry.id === 'history' ? null : counts[entry.id]
+          const count = entry.id === 'pending' ? pendingCount : null
           const active = entry.id === tab
           return (
             <button
@@ -85,6 +90,12 @@ export function SidePanel({ tab, onTabChange, counts, children }: SidePanelProps
           )
         })}
       </div>
+
+      {autoMode !== 'off' && (
+        <div className="operator-auto-status" data-testid="auto-mode-label">
+          {t('quick.autoStatus', { mode: t(ACTIVE_MODE_LABELS[autoMode]) })}
+        </div>
+      )}
 
       <div
         id="side-panel"

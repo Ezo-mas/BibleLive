@@ -8,12 +8,17 @@ export function bookDisplayName(ref: { book: string; book_label?: string | null 
   return ref.book_label || ref.book
 }
 
+export type ReferenceCoordinates = Pick<
+  BibleReference,
+  'book' | 'book_label' | 'chapter' | 'verse_start' | 'verse_end'
+>
+
 /**
- * Format a BibleReference for display, e.g. "John 3:16" or "Psalms 23:1-6".
+ * Format a Bible reference for display, e.g. "John 3:16" or "Psalms 23:1-6".
  * Verse numbers are omitted when the reference is chapter-level only.
  * Uses loose null checks since the data comes from unvalidated JSON.
  */
-export function formatReference(ref: BibleReference): string {
+export function formatReference(ref: ReferenceCoordinates): string {
   let out = `${bookDisplayName(ref)} ${ref.chapter}`
   if (ref.verse_start != null) {
     out += `:${ref.verse_start}`

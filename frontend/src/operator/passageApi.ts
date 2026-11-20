@@ -45,8 +45,8 @@ export async function lookupPassage(
 }
 
 /**
- * Shape a lookup result like a reference so Up Next can preview it with the same
- * markup a queued detection uses.
+ * Shape a lookup result like a reference, so the console names it the way it names
+ * a queued detection.
  *
  * The ID is local and derived: the server assigns the real ID if and when the
  * passage is displayed, so nothing here can be mistaken for a queued reference.

@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react'
+import { Button } from '../components'
 import { useTheme } from '../hooks/useTheme'
 import { useOperatorState } from './hooks/useOperatorState'
 import { useOperatorShortcuts } from './hooks/useOperatorShortcuts'
 import { LivePanel } from './components/LivePanel'
-import { NextPanel } from './components/NextPanel'
 import { PendingQueue } from './components/PendingQueue'
 import { PlanPanel } from './components/PlanPanel'
 import { SidePanel } from './components/SidePanel'
@@ -11,12 +11,10 @@ import type { SideTab } from './components/SidePanel'
 import { FollowAlongHint } from './components/FollowAlongHint'
 import { HistoryPanel } from './components/HistoryPanel'
 import { ScriptureSearch } from './components/ScriptureSearch'
-import { DisplayQuickControls } from './components/DisplayQuickControls'
 import { SettingsDialog } from './components/SettingsDialog'
-import type { SettingsSection } from './components/SettingsDialog'
 import { OperatorHeader } from './components/OperatorHeader'
-import { LanguageChip } from './components/LanguageChip'
-import { QueueFooter } from './components/OperatorActions'
+import { LanguageStatus } from './components/LanguageStatus'
+import { QueueFooter } from './components/QueueFooter'
 import { ConnectionBanner } from './components/ConnectionBanner'
 import { PipelineBanner } from './components/PipelineBanner'
 import { FeedbackNotice } from './components/FeedbackNotice'
@@ -29,7 +27,6 @@ import './styles/base.css'
 import './styles/header.css'
 import './styles/layout.css'
 import './styles/live-panel.css'
-import './styles/next-panel.css'
 import './styles/side-panel.css'
 import './styles/settings.css'
 import './styles/scripture-search.css'
@@ -43,26 +40,27 @@ import './styles/responsive.css'
  * components; all server state and actions live in `useOperatorState` and all
  * keyboard handling in `useOperatorShortcuts`.
  *
- * The workspace reads like a switcher: ON DISPLAY is what the audience is looking
- * at and UP NEXT is the scripture being prepared for it (and the one filled button,
- * Show on display, that sends it). The column on the right is one panel with three
- * tabs: the pending queue of detections (the default), the plan of passages lined
- * up in advance, and history. Find Scripture is a command bar in the header, so it
+ * The workspace reads like a switcher. On the left, ON DISPLAY is what the audience
+ * is looking at, with Clear and the Live / Off air toggle,
+ * and, always in view under it, the Plan of passages lined up in advance. On the
+ * right is one full-height panel with two tabs: the pending queue of detections
+ * (the default) and history. Find Scripture is a command bar in the header, so it
  * is one keystroke away from anywhere.
  *
- * Preferences — verses shown, display background, app theme, auto-approve — all
- * live in one settings dialog behind the header's gear. Keeping them out of the
- * page is what gives the stages and the queue their space, and the auto-approve
- * line under ON DISPLAY is the single reminder on screen that the server may be
- * displaying detections on its own.
+ * Preferences live behind the header's gear. The queue menu also offers a quick
+ * Auto-approve toggle.
+ *
+ * There is one keyboard cursor, in Pending or Plan: a click (or focus) highlights
+ * a row and sends nothing; Enter or the row's Show displays it. A new detection
+ * never takes the highlight, and Enter does nothing while the highlighted row's
+ * tab is hidden.
  *
  * Scripture reaches the display by one of two doors, and they stay separate all
  * the way down. A pending reference is approved by ID through the server's
  * approval path; a passage the operator finds by hand — or picks from the plan or
- * history — is staged in UP NEXT and sent as coordinates for the server to resolve
- * itself. Typing in search never reaches the display by itself: the operator's own
- * Enter shows the resolved passage, Ctrl+Enter stages it, and a double-click on a
- * list row is Show on display without the staging step.
+ * history — is sent as coordinates for the server to resolve itself. Typing in
+ * search never reaches the display by itself: the operator's own Enter shows the
+ * resolved passage, and Ctrl+Enter adds it to the plan.
  */
 export default function App() {
   const operator = useOperatorState()
@@ -70,19 +68,20 @@ export default function App() {
   // in the settings dialog's control, so a stored choice is in effect from the
   // first paint instead of waiting for the dialog to be opened.
   const { theme, setTheme } = useTheme()
-  const [settingsSection, setSettingsSection] = useState<SettingsSection>('display')
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [sideTab, setSideTab] = useState<SideTab>('pending')
 
+  const pendingVisible = sideTab === 'pending'
+  const { cursor } = operator
   useOperatorShortcuts({
-    hasSelection: operator.selectedId !== null,
+    canShow: cursor.canShow(pendingVisible),
     canClearDisplay: operator.canClearDisplay,
     // The dialog owns the keyboard while it is open (see useOperatorShortcuts).
     enabled: !settingsOpen,
-    onNext: operator.selectNext,
-    onPrevious: operator.selectPrevious,
-    onApprove: operator.approveSelected,
-    onDeselect: operator.deselect,
+    onNext: () => cursor.move(1, pendingVisible),
+    onPrevious: () => cursor.move(-1, pendingVisible),
+    onShow: () => cursor.show(pendingVisible),
+    onDeselect: cursor.clear,
     onClearDisplay: operator.clearDisplay,
   })
 
@@ -107,11 +106,6 @@ export default function App() {
     if (isConnected) refreshServerLanguage()
   }, [isConnected, refreshServerLanguage])
 
-  function openSettings(section: SettingsSection) {
-    setSettingsSection(section)
-    setSettingsOpen(true)
-  }
-
   if (operator.needsToken) {
     return (
       <TokenPrompt
@@ -127,14 +121,12 @@ export default function App() {
     <div className="operator-app">
       <OperatorHeader
         connectionState={operator.connectionState}
-        displayConnected={operator.displayConnected}
         showLogout={operator.isAuthenticated}
         onLogout={operator.logout}
-        onOpenSettings={() => openSettings('display')}
+        onOpenSettings={() => setSettingsOpen(true)}
         language={
-          <LanguageChip
+          <LanguageStatus
             language={operator.spokenLanguage.language}
-            onOpenSettings={() => openSettings('language')}
             stale={operator.pipeline?.status === 'offline'}
           />
         }
@@ -142,8 +134,7 @@ export default function App() {
           <ScriptureSearch
             search={operator.search}
             disabled={!operator.isConnected}
-            // Enter in the box shows a passage directly; not from behind
-            // the settings modal.
+            // Enter in the box shows a passage; not from behind the settings modal.
             directEnabled={!settingsOpen}
           />
         }
@@ -161,11 +152,27 @@ export default function App() {
         <div className="operator-workspace">
           <LivePanel
             reference={operator.currentDisplay}
+            displayMissing={operator.displayMissing}
             verseLimit={operator.verseLimit}
             displayTheme={operator.displayTheme}
             live={operator.live}
             onLiveChange={operator.setLive}
             liveDisabled={!operator.isConnected}
+            clearAction={
+              <Button
+                type="button"
+                variant="subtle"
+                size="sm"
+                onClick={operator.clearDisplay}
+                disabled={!operator.canClearDisplay}
+                className={operator.flash === 'clear' ? 'btn-flash' : undefined}
+                aria-label={t('stage.clearDisplay')}
+                title={t('quick.clearTitle')}
+                aria-keyshortcuts="B"
+              >
+                {t('stage.clear')}
+              </Button>
+            }
             idleImage={
               operator.clearMode === 'blank' && operator.seenPassage ? null : operator.idleImage
             }
@@ -177,82 +184,70 @@ export default function App() {
                 onShow={operator.showFollowAlong}
               />
             }
-          >
-            <DisplayQuickControls
-              canClearDisplay={operator.canClearDisplay}
-              flash={operator.flash}
-              onClearDisplay={operator.clearDisplay}
-              verseLimit={operator.verseLimit}
-              autoMode={operator.autoMode}
-              disabled={!operator.isConnected}
-              onVerseLimitChange={operator.setDisplayVerseLimit}
-              onAutoModeChange={operator.setAutoApproveMode}
-            />
-          </LivePanel>
+          />
 
-          <NextPanel
-            reference={operator.nextReference}
-            source={operator.nextSource}
-            verseLimit={operator.verseLimit}
-            canShow={operator.canShowNext}
-            flashing={operator.flash === 'approve'}
-            onShow={operator.showNext}
-            onDiscard={operator.clearNext}
+          <PlanPanel
+            items={operator.plan.items}
+            snippets={operator.planSnippets}
+            currentDisplay={operator.currentDisplay}
+            displayConnected={operator.displayConnected}
+            live={operator.live}
+            selectedId={cursor.planCursorId}
+            keyboardMoves={cursor.moves}
+            onSelect={id => cursor.highlight('plan', id)}
+            canShow={operator.isConnected}
+            onShow={operator.showPlanItem}
+            onRemove={operator.plan.remove}
+            onMove={operator.plan.move}
+            onClear={() => {
+              if (window.confirm(t('plan.confirmClear'))) operator.plan.clear()
+            }}
           />
         </div>
 
         <SidePanel
           tab={sideTab}
           onTabChange={setSideTab}
-          counts={{ pending: operator.pendingCount, plan: operator.plan.items.length }}
+          pendingCount={operator.pendingCount}
+          autoMode={operator.autoMode}
         >
-          {sideTab === 'pending' && (
+          {sideTab === 'pending' ? (
             <PendingQueue
               pending={operator.pending}
-              selectedId={operator.selectedId}
-              onSelect={operator.selectPending}
+              selectedId={cursor.pendingCursorId}
+              keyboardMoves={cursor.moves}
+              onSelect={id => cursor.highlight('pending', id)}
               onShow={operator.approvePending}
               onRemove={operator.discardPending}
               discardInFlight={operator.discardInFlight}
               canShow={operator.isConnected}
-            >
-              <QueueFooter
-                canClearPending={operator.canClearPending}
-                flash={operator.flash}
-                onClearPending={operator.clearPendingQueue}
-              />
-            </PendingQueue>
-          )}
-          {sideTab === 'plan' && (
-            <PlanPanel
-              items={operator.plan.items}
-              snippets={operator.planSnippets}
-              canShow={operator.isConnected}
-              onStage={operator.stagePlanItem}
-              onShow={operator.showPlanItem}
-              onRemove={operator.plan.remove}
-              onMove={operator.plan.move}
-              onClear={() => {
-                if (window.confirm(t('plan.confirmClear'))) operator.plan.clear()
-              }}
             />
-          )}
-          {sideTab === 'history' && (
+          ) : (
             <HistoryPanel
               history={operator.history}
-              selectedId={operator.selectedHistoryId}
-              onSelect={operator.selectHistory}
               onShow={operator.showHistory}
+              canShow={operator.isConnected}
             />
           )}
+          <QueueFooter
+            tab={sideTab}
+            hasPending={operator.pending.length > 0}
+            canClearPending={operator.canClearPending}
+            flash={operator.flash === 'clearPending'}
+            onClearPending={operator.clearPendingQueue}
+            autoMode={operator.autoMode}
+            disabled={!operator.isConnected}
+            onAutoModeChange={operator.setAutoApproveMode}
+          />
         </SidePanel>
       </main>
 
       <SettingsDialog
         open={settingsOpen}
-        section={settingsSection}
         onClose={() => setSettingsOpen(false)}
         displayTheme={operator.displayTheme}
+        verseLimit={operator.verseLimit}
+        onVerseLimitChange={operator.setDisplayVerseLimit}
         disabled={!operator.isConnected}
         onThemeChange={operator.setDisplayBackground}
         clearMode={operator.clearMode}

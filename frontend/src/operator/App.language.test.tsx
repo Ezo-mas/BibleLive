@@ -140,18 +140,27 @@ describe('the spoken language in the header', () => {
     language = 'lt'
     openWith()
 
-    const chip = await screen.findByRole('button', {
-      name: 'Spoken language: Lithuanian. Change in settings',
-    })
-    expect(chip).toHaveTextContent('LT')
+    const status = await screen.findByTitle('Speech: Lithuanian')
+    expect(within(status).getByText('LT')).toBeInTheDocument()
     expect(calls('GET')).toHaveLength(1)
+  })
+
+  it('shows the waveform and language code as a read-only status', async () => {
+    openWith()
+
+    const status = await screen.findByTitle('Speech: English')
+    expect(within(status).getByText('EN')).toHaveAttribute('aria-hidden', 'true')
+    expect(within(status).getByText('Speech: English')).toHaveClass('sr-only')
+    expect(status.querySelector('svg')).toHaveAttribute('aria-hidden', 'true')
+    expect(status).not.toHaveAttribute('tabindex')
+    expect(screen.queryByRole('button', { name: /^Speech:/ })).not.toBeInTheDocument()
   })
 
   it('shows nothing, and asks for nothing, before the socket is up', () => {
     render(<App />)
 
     expect(fetchMock).not.toHaveBeenCalled()
-    expect(screen.queryByRole('button', { name: /^Spoken language/ })).not.toBeInTheDocument()
+    expect(screen.queryByTitle(/^Speech:/)).not.toBeInTheDocument()
   })
 
   it('shows no language when the pipeline cannot be reached', async () => {
@@ -160,26 +169,27 @@ describe('the spoken language in the header', () => {
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalled())
     // Nothing is assumed: an unknown language is not drawn as English.
-    expect(screen.queryByRole('button', { name: /^Spoken language/ })).not.toBeInTheDocument()
+    expect(screen.queryByTitle(/^Speech:/)).not.toBeInTheDocument()
   })
 
-  it('opens Settings on the language control when clicked', async () => {
+  it('keeps the language picker in Settings', async () => {
     openWith()
 
-    const chip = await screen.findByRole('button', { name: /^Spoken language: English/ })
+    const status = await screen.findByTitle('Speech: English')
     act(() => {
-      chip.click()
+      status.click()
     })
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
 
-    expect(screen.getByRole('dialog')).toBeInTheDocument()
-    await waitFor(() => expect(languageButton('English')).toHaveFocus())
+    openSettings()
+    await waitFor(() => expect(languageButton('English')).toBeEnabled())
   })
 
   it('sends the operator token with the request', async () => {
     localStorage.setItem('biblelive_operator_token', 'secret-token')
     openWith()
 
-    await screen.findByRole('button', { name: /^Spoken language/ })
+    await screen.findByTitle(/^Speech:/)
     expect(calls('GET')[0][1]?.headers).toEqual({ Authorization: 'Bearer secret-token' })
   })
 })
@@ -188,7 +198,7 @@ describe('switching the spoken language', () => {
   it('shows both languages with the current one pressed', async () => {
     language = 'lt'
     openWith()
-    await screen.findByRole('button', { name: /^Spoken language/ })
+    await screen.findByTitle(/^Speech:/)
 
     openSettings()
 
@@ -201,7 +211,7 @@ describe('switching the spoken language', () => {
   it('switches only when the pipeline confirms, and then says so', async () => {
     hold = true
     openWith()
-    await screen.findByRole('button', { name: /^Spoken language: English/ })
+    await screen.findByTitle('Speech: English')
     openSettings()
     await waitFor(() => expect(languageButton('Lithuanian')).toBeEnabled())
 
@@ -227,14 +237,12 @@ describe('switching the spoken language', () => {
     )
     expect(languageButton('English')).toBeEnabled()
     expect(screen.getByRole('status')).toHaveTextContent('Spoken language: Lithuanian')
-    expect(
-      screen.getByRole('button', { name: 'Spoken language: Lithuanian. Change in settings' })
-    ).toHaveTextContent('LT')
+    expect(within(screen.getByTitle('Speech: Lithuanian')).getByText('LT')).toBeInTheDocument()
   })
 
   it('does not send a request for the language that is already active', async () => {
     openWith()
-    await screen.findByRole('button', { name: /^Spoken language/ })
+    await screen.findByTitle(/^Speech:/)
     openSettings()
     await waitFor(() => expect(languageButton('English')).toBeEnabled())
 
@@ -247,7 +255,7 @@ describe('switching the spoken language', () => {
 
   it('keeps the old language and shows the reason when the pipeline refuses', async () => {
     openWith()
-    await screen.findByRole('button', { name: /^Spoken language: English/ })
+    await screen.findByTitle('Speech: English')
     openSettings()
     await waitFor(() => expect(languageButton('Lithuanian')).toBeEnabled())
     fail = { status: 400, detail: "Unsupported language 'lt'" }
@@ -267,7 +275,7 @@ describe('switching the spoken language', () => {
 
   it('turns the controls off and offers another look when the pipeline stops answering', async () => {
     openWith()
-    await screen.findByRole('button', { name: /^Spoken language: English/ })
+    await screen.findByTitle('Speech: English')
     openSettings()
     await waitFor(() => expect(languageButton('Lithuanian')).toBeEnabled())
     fail = { status: 503, detail: 'The audio pipeline is not reachable.' }
@@ -294,7 +302,7 @@ describe('switching the spoken language', () => {
 describe('reading the language again', () => {
   it('picks up a switch made outside the console when Settings opens', async () => {
     openWith()
-    await screen.findByRole('button', { name: /^Spoken language: English/ })
+    await screen.findByTitle('Speech: English')
 
     // Someone ran the pipeline's curl command.
     language = 'lt'
@@ -303,9 +311,7 @@ describe('reading the language again', () => {
     await waitFor(() =>
       expect(languageButton('Lithuanian')).toHaveAttribute('aria-pressed', 'true')
     )
-    expect(
-      screen.getByRole('button', { name: 'Spoken language: Lithuanian. Change in settings' })
-    ).toBeInTheDocument()
+    expect(screen.getByTitle('Speech: Lithuanian')).toBeInTheDocument()
   })
 
   it('shows what is wrong, with a way to retry, when the first read failed', async () => {
@@ -330,7 +336,7 @@ describe('reading the language again', () => {
 
   it('leaves the controls off while the console is disconnected', async () => {
     openWith()
-    await screen.findByRole('button', { name: /^Spoken language: English/ })
+    await screen.findByTitle('Speech: English')
     openSettings()
     await waitFor(() => expect(languageButton('Lithuanian')).toBeEnabled())
 

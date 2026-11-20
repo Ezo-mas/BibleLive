@@ -1,17 +1,16 @@
 import { EmptyState, ClockIcon } from '../../components'
 import { useI18n } from '../../shared/i18nContext'
 import { ReferenceCard } from './ReferenceCard'
-import { formatReference } from '../../shared/reference'
+import { RowShowButton } from './RowButtons'
 import type { BibleReference } from '../../shared/types'
 
 export interface HistoryPanelProps {
   /** Recent entries, newest first, one per passage. */
   history: BibleReference[]
-  /** The history entry staged in Up Next, or null when none is (or it aged out). */
-  selectedId: string | null
-  onSelect: (reference: BibleReference) => void
-  /** Double-click: show the entry again without staging it first. */
+  /** Show the entry again: coordinates only, for the server to resolve. */
   onShow: (reference: BibleReference) => void
+  /** False while the socket is closed: Show then has nowhere to go. */
+  canShow?: boolean
 }
 
 /**
@@ -19,18 +18,11 @@ export interface HistoryPanelProps {
  *
  * Read-only with respect to the server: the list and its order come from the
  * server's history (one row per passage — showing a passage again moves its row
- * to the top instead of adding another), and selecting an entry here only stages
- * it in Up Next. Showing it again is a separate, server-confirmed action — a
- * double-click is the same request without the staging step — so nothing in this
- * panel can change what the audience is looking at without that request.
- *
- * Entries are identified by their server-assigned ID, never by position, so a
- * selection survives the list shifting underneath it.
- *
- * Renders the body of the sidebar's History tab; rows are kept compact (one line
- * of verse text) because history is a place to look back, not to work in.
+ * to the top instead of adding another). Each row's Show puts the passage on
+ * screen again with the same coordinates-only request Find Scripture sends. Rows
+ * take no keyboard cursor and have no Remove: history is a place to look back.
  */
-export function HistoryPanel({ history, selectedId, onSelect, onShow }: HistoryPanelProps) {
+export function HistoryPanel({ history, onShow, canShow = true }: HistoryPanelProps) {
   const { t } = useI18n()
   return (
     <div className="operator-section-content operator-history">
@@ -46,10 +38,14 @@ export function HistoryPanel({ history, selectedId, onSelect, onShow }: HistoryP
             <ReferenceCard
               key={reference.id}
               reference={reference}
-              selected={reference.id === selectedId}
-              onSelect={() => onSelect(reference)}
-              onActivate={() => onShow(reference)}
-              ariaLabel={t('history.stageAria', { ref: formatReference(reference) })}
+              showConfidence={false}
+              actions={titleId => (
+                <RowShowButton
+                  titleId={titleId}
+                  disabled={!canShow}
+                  onClick={() => onShow(reference)}
+                />
+              )}
             />
           ))}
         </div>

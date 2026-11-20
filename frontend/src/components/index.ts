@@ -7,9 +7,6 @@ export type { StatusBadgeProps, BadgeVariant } from './StatusBadge'
 export { EmptyState } from './EmptyState'
 export type { EmptyStateProps } from './EmptyState'
 
-export { ConnectionIndicator } from './ConnectionIndicator'
-export type { ConnectionIndicatorProps, ConnectionState } from './ConnectionIndicator'
-
 export { SegmentedOption } from './SegmentedOption'
 export type { SegmentedOptionProps } from './SegmentedOption'
 

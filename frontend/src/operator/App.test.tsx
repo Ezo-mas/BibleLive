@@ -219,18 +219,12 @@ describe('auto-approve mode', () => {
       socket?.onopen?.()
     })
 
-    // The main screen carries only the Off / On control; the detailed options live
-    // in the dialog, which is not open here.
-    const auto = within(screen.getByRole('group', { name: 'Auto-approve' }))
-    expect(auto.getByRole('button', { name: 'Off' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.queryByText(/Auto-approve ·/)).not.toBeInTheDocument()
     expect(screen.queryByRole('group', { name: 'Auto-approve mode' })).not.toBeInTheDocument()
 
     push(socket, snapshot('medium_and_up'))
 
-    await waitFor(() =>
-      expect(auto.getByRole('button', { name: 'On' })).toHaveAttribute('aria-pressed', 'true')
-    )
-    expect(auto.getByRole('button', { name: 'On' })).toHaveAttribute('title', 'Med+')
+    expect(await screen.findByText('Auto-approve · Medium and high')).toBeInTheDocument()
   })
 
   it('disables the selector while the socket is not open', () => {

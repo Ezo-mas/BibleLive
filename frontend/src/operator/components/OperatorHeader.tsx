@@ -1,12 +1,10 @@
 import type { ReactNode } from 'react'
-import { BookIcon, Button, ConnectionIndicator, SettingsIcon } from '../../components'
-import type { ConnectionState } from '../../components'
+import { BookIcon, Button, SettingsIcon } from '../../components'
 import { useI18n } from '../../shared/i18nContext'
+import type { ConnectionState } from '../state/operatorHookTypes'
 
 export interface OperatorHeaderProps {
   connectionState: ConnectionState
-  /** True when at least one display page is connected. */
-  displayConnected: boolean
   /** Only offer logout when a token is actually in use. */
   showLogout: boolean
   onLogout: () => void
@@ -14,7 +12,7 @@ export interface OperatorHeaderProps {
   onOpenSettings: () => void
   /** The Find Scripture command bar, rendered in the middle of the bar. */
   search?: ReactNode
-  /** The spoken-language reading, shown beside the connection health. */
+  /** The spoken-language readout beside Settings. */
   language?: ReactNode
   /**
    * Action feedback, which hangs from the bottom edge of the bar.
@@ -26,18 +24,22 @@ export interface OperatorHeaderProps {
   feedback?: ReactNode
 }
 
+const CONNECTION_KEYS = {
+  connected: 'connection.connected',
+  connecting: 'connection.connecting',
+  disconnected: 'connection.disconnected',
+} as const
+
 /**
- * Top bar: identity, the Find Scripture command bar, connection health, display
- * status, settings, logout.
+ * Top bar: identity, the Find Scripture command bar, the spoken language, settings,
+ * logout.
  *
- * One slim row. The theme buttons this used to carry live in the settings dialog
- * with every other preference, so the bar holds only what the operator needs
- * while the service is running: a way to find a passage, that the console is
- * connected, that the projector is live, and one way into the settings.
+ * A small warning chip says "Connecting…" while the operator socket connects.
+ * A closed socket has its own banner below the bar. Screen readers always get
+ * the operator connection state.
  */
 export function OperatorHeader({
   connectionState,
-  displayConnected,
   showLogout,
   onLogout,
   onOpenSettings,
@@ -61,17 +63,19 @@ export function OperatorHeader({
 
       <div className="operator-header-right">
         <div className="operator-status-group">
-          {language}
-          <ConnectionIndicator state={connectionState} />
-          {displayConnected && (
-            <div className="operator-display-status">
-              <span className="operator-display-dot" />
-              <span className="operator-display-label">{t('header.displayActive')}</span>
-            </div>
+          <span className="sr-only">
+            {t('connection.statusSr', { state: t(CONNECTION_KEYS[connectionState]) })}
+          </span>
+          {connectionState === 'connecting' && (
+            <span className="operator-status-chip" data-testid="status-chip-connecting">
+              <span className="operator-status-chip-dot" aria-hidden="true" />
+              {t('header.connecting')}
+            </span>
           )}
+          {language}
         </div>
         <Button
-          variant="secondary"
+          variant="ghost"
           iconOnly
           icon={<SettingsIcon />}
           onClick={onOpenSettings}

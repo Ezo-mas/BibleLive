@@ -9,27 +9,24 @@ import type {
   FollowAlongHint,
   OperatorAction,
   OperatorMessage,
-  Passage,
   VerseLimit,
 } from '../../shared/types'
 
+/** The two lists the keyboard cursor can sit in. History has no cursor: its rows only show. */
+export type CursorList = 'pending' | 'plan'
+
 /**
- * What Up Next is holding: a queued detection the operator selected, a passage
- * they picked by hand, or an entry from display history they want to show again.
- * The source is explicit rather than inferred from timing or which component last
- * rendered, because Show means two different things — approving a reference by
- * ID, or asking the server to display a passage it resolved from coordinates.
- *
- * A history entry is held as its own snapshot, taken when the operator clicked
- * it, rather than as an ID to look up again later. History changes underneath a
- * staged selection (entries age out of the server's window), and Show sends
- * coordinates, so holding the entry itself is what keeps the wrong passage off
- * the display regardless of how the list moves.
+ * The one keyboard cursor: the highlighted row, in Pending or in Plan, whichever the
+ * operator last clicked or focused. Highlighting changes nothing on screen; Enter or the
+ * row's Show displays it through the row's own door (a detection is approved by ID, a
+ * plan entry is sent as coordinates). Held by ID, never by position, so a list moving
+ * underneath it cannot move it to another row, and only the operator ever moves it: a
+ * new detection never takes it.
  */
-export type StagedReference =
-  | { kind: 'pending'; id: string }
-  | { kind: 'manual'; passage: Passage }
-  | { kind: 'history'; reference: BibleReference }
+export interface RowCursor {
+  list: CursorList
+  id: string
+}
 
 export interface OperatorSettings {
   // The display is presentation-only, so this control lives here and the server
@@ -59,9 +56,8 @@ export interface OperatorReducerState {
   // Page-local: after a console reload on a cleared display, the preview shows the
   // picture until the next passage, because the protocol does not track this history.
   seenPassage: boolean
-  // What Up Next holds. One piece of state, so a queued selection and a manual
-  // passage can never both look staged.
-  staged: StagedReference | null
+  // The highlighted row (see RowCursor). Dropped when its detection leaves the queue.
+  cursor: RowCursor | null
   // True between pressing Show and the server's answer. Repeated clicks must not
   // queue the same passage twice, and a confirmation that never comes (the
   // socket dropped) must not leave Show disabled — see the status effect in useOperatorState.
@@ -71,7 +67,10 @@ export interface OperatorReducerState {
   // The latest follow-along hint. Transient: never in a snapshot, and only ever
   // offered while its `display_id` is still the passage on screen.
   followAlongHint: FollowAlongHint | null
-  displayConnected: boolean
+  // Whether any display page is connected; null until the server has said (a snapshot),
+  // and again while the socket is down, so the console never claims a missing display
+  // it has not been told about.
+  displayConnected: boolean | null
   settings: OperatorSettings
   // The last values the server confirmed. Optimistic control changes fall back
   // to these when the server rejects them.
@@ -114,13 +113,16 @@ export type OperatorEffect =
   | { type: 'start_discard_cooldown' }
   | { type: 'clear_discard_timer' }
 
-/** Socket availability and double-click timing are checked by the owning hooks. */
+/** Socket availability is checked by the owning hooks. */
 export type OperatorIntent =
-  | { type: 'stage'; staged: StagedReference | null }
-  | { type: 'select_by'; step: number }
-  | { type: 'show_next' }
+  | { type: 'set_cursor'; cursor: RowCursor | null }
+  /**
+   * Move the cursor `step` rows within `list`, held at either end; from outside the
+   * list it lands on the first row. The plan lives in the browser, not here, so its
+   * row IDs come with the intent; the queue's are the reducer's own.
+   */
+  | { type: 'move_cursor'; list: CursorList; step: number; planIds: readonly string[] }
   | { type: 'show_direct'; request: Omit<DisplayReferenceAction, 'action'> }
-  | { type: 'approve_selected' }
   | { type: 'approve_pending'; id: string }
   | { type: 'discard_pending'; id: string }
   | { type: 'clear_display' }

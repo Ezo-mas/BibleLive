@@ -1,14 +1,17 @@
 import type { ReactNode } from 'react'
-import { DISPLAY_THEME_OPTIONS } from '../../shared/verseText'
-import type { DisplayTheme } from '../../shared/verseText'
+import { DISPLAY_THEME_OPTIONS, VERSE_LIMIT_OPTIONS } from '../../shared/verseText'
+import type { DisplayTheme, VerseLimit } from '../../shared/verseText'
 import type { ClearMode } from '../../shared/types'
 import { SegmentedOption } from '../../components'
 import { useI18n } from '../../shared/i18nContext'
 
 const CLEAR_MODE_OPTIONS = ['idle', 'blank'] as const
+const VERSE_OPTIONS: VerseLimit[] = [...VERSE_LIMIT_OPTIONS, 'all']
 
 export interface DisplaySettingsProps {
   displayTheme: DisplayTheme
+  verseLimit: VerseLimit
+  onVerseLimitChange: (next: VerseLimit) => void
   clearMode: ClearMode
   /** Settings are server-owned, so they are read-only while disconnected. */
   disabled: boolean
@@ -30,6 +33,8 @@ export interface DisplaySettingsProps {
  */
 export function DisplaySettings({
   displayTheme,
+  verseLimit,
+  onVerseLimitChange,
   clearMode,
   disabled,
   onThemeChange,
@@ -39,6 +44,25 @@ export function DisplaySettings({
   const { t } = useI18n()
   return (
     <>
+      <div className="operator-setting">
+        <div className="operator-setting-text">
+          <span className="operator-setting-label">{t('quick.versesAria')}</span>
+          <p className="operator-setting-hint">{t('settings.verseLimitHint')}</p>
+        </div>
+        <div className="segmented" role="group" aria-label={t('quick.versesAria')}>
+          {VERSE_OPTIONS.map(option => (
+            <SegmentedOption
+              key={option}
+              aria-pressed={verseLimit === option}
+              disabled={disabled}
+              onClick={() => onVerseLimitChange(option)}
+            >
+              {option === 'all' ? t('settings.versesAll') : option}
+            </SegmentedOption>
+          ))}
+        </div>
+      </div>
+
       <div className="operator-setting">
         <div className="operator-setting-text">
           <span className="operator-setting-label">{t('settings.background')}</span>

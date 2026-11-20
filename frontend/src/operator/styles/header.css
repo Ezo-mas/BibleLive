@@ -7,7 +7,7 @@
 .operator-header {
   position: relative;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(220px, 520px) minmax(max-content, 1fr);
+  grid-template-columns: minmax(max-content, 1fr) minmax(0, 520px) minmax(max-content, 1fr);
   align-items: center;
   gap: var(--space-5);
   /* A medium control plus a little air above and below it. */
@@ -60,57 +60,55 @@
   gap: var(--space-4);
 }
 
-/* Connection and display health are two plain readings, not two pills: a dot and
-   a word. The dot is neutral while things are fine, so the only coloured dot on
-   the bar is the one that means something is wrong. */
+/* Connection status and Speech controls in the global header. */
 .operator-status-group {
   display: flex;
   white-space: nowrap;
   align-items: center;
-  gap: var(--space-4);
-  font-size: var(--font-size-sm);
-  color: var(--color-text-secondary);
+  gap: var(--space-3);
 }
 
-.operator-header .connection-indicator {
-  padding: 0;
-  background: none;
-  border: none;
-  font-weight: var(--weight-regular);
-}
-
-.operator-header .connection-dot-connected {
-  background-color: var(--color-text-secondary);
-}
-
-.operator-header .connection-indicator-connected .connection-label {
-  color: var(--color-text-secondary);
-}
-
-.operator-display-status {
-  display: flex;
+/* Warning chip used in the global header and the On display card. */
+.operator-status-chip {
+  display: inline-flex;
   align-items: center;
   gap: var(--space-2);
-}
-
-.operator-display-dot {
-  width: 0.5rem;
-  height: 0.5rem;
+  height: var(--space-6);
+  padding: 0 var(--space-3);
+  font-size: var(--font-size-xs);
+  font-weight: var(--weight-semibold);
+  white-space: nowrap;
+  color: var(--color-warning-text);
+  background: var(--color-warning-bg);
+  border: var(--border-width) solid
+    color-mix(in srgb, var(--color-warning-text) 60%, var(--color-warning-bg));
   border-radius: var(--radius-full);
-  background: var(--color-text-secondary);
 }
 
-.operator-display-label {
+.operator-status-chip-dot {
+  flex: none;
+  width: var(--space-2);
+  height: var(--space-2);
+  background: currentColor;
+  border-radius: var(--radius-full);
+}
+
+.operator-language-status {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: var(--font-size-xs);
+  font-weight: var(--weight-semibold);
   color: var(--color-text-secondary);
 }
 
-/* The spoken language beside the connection health is a secondary button (it opens
-   Settings) holding a word and a `.tag` with the code; nothing else is specific to it. */
+.operator-language-status svg {
+  width: var(--icon-sm);
+  height: var(--icon-sm);
+}
 
-/* The pipeline stopped reporting: the language is only what it was last set to,
-   so it reads as a remembered value rather than a live one. */
-.operator-language-chip--stale {
-  opacity: 0.5;
+.operator-language-status--stale {
+  color: var(--color-text-muted);
 }
 
 /* Action feedback hangs from the bottom of the header, under the gear, instead of

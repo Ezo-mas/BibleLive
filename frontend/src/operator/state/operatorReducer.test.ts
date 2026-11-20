@@ -1,13 +1,13 @@
 // @vitest-environment node
 import { describe, expect, it } from 'vitest'
-import type { BibleReference, OperatorMessage, Passage } from '../../shared/types'
+import type { BibleReference, OperatorMessage } from '../../shared/types'
 import { createOperatorState, operatorReducer } from './operatorReducer'
 import type {
   OperatorEvent,
   OperatorReducerState,
   OperatorSettings,
   OptimisticSettingAction,
-  StagedReference,
+  RowCursor,
 } from './operatorTypes'
 
 const fixtures = import.meta.glob<OperatorMessage>(
@@ -23,14 +23,6 @@ function fixture<T extends OperatorMessage['type']>(type: T) {
 
 const queued = fixture('pending_update').data.pending[0]
 const manual = fixture('display_confirmed').data.reference
-const passage: Passage = {
-  book: manual.book,
-  chapter: manual.chapter,
-  verse_start: manual.verse_start!,
-  verse_end: manual.verse_end!,
-  text: manual.text,
-  verses: manual.verses,
-}
 
 function freeze<T>(value: T): T {
   if (value && typeof value === 'object') {
@@ -58,7 +50,7 @@ function populatedState(): OperatorReducerState {
     historyCount: 7,
     currentDisplay: manual,
     seenPassage: true,
-    staged: { kind: 'history', reference: manual },
+    cursor: { list: 'pending', id: queued.id },
     showInFlight: true,
     followAlongHint: fixture('follow_along').data,
   }
@@ -80,7 +72,8 @@ describe('operator protocol transitions', () => {
           followAlongHint: null,
           displayConnected: false,
           seenPassage: true,
-          staged: before.staged,
+          // The highlighted detection is no longer queued.
+          cursor: null,
           showInFlight: true,
         })
         expect(state.settings).toEqual(state.confirmed)
@@ -89,7 +82,7 @@ describe('operator protocol transitions', () => {
       case 'pending_update':
         expect(state.pending).toEqual(message.data.pending)
         expect(state.pendingCount).toBe(message.data.count)
-        expect(state.staged).toEqual(before.staged)
+        expect(state.cursor).toEqual(before.cursor)
         expect(effects).toEqual([])
         break
       case 'approval_confirmed':
@@ -99,7 +92,8 @@ describe('operator protocol transitions', () => {
         expect(state.historyCount).toBe(8)
         expect(state.seenPassage).toBe(true)
         expect(state.showInFlight).toBe(false)
-        expect(state.staged).toEqual(message.type === 'display_confirmed' ? null : before.staged)
+        // Showing something never moves the cursor.
+        expect(state.cursor).toBe(before.cursor)
         expect(effects).toEqual([
           ...(message.type === 'approval_confirmed' ? [{ type: 'flash', target: 'approve' }] : []),
           {
@@ -220,26 +214,36 @@ describe('operator protocol transitions', () => {
   })
 })
 
-describe('staging across server updates', () => {
+describe('the cursor across server updates', () => {
   it.each([
-    { staged: { kind: 'pending', id: queued.id }, pending: [queued], kept: true },
-    { staged: { kind: 'pending', id: queued.id }, pending: [], kept: false },
-    { staged: { kind: 'manual', passage }, pending: [], kept: true },
-    { staged: { kind: 'history', reference: manual }, pending: [], kept: true },
-  ] satisfies { staged: StagedReference; pending: BibleReference[]; kept: boolean }[])(
-    'snapshot preserves $staged.kind when kept=$kept',
-    ({ staged, pending, kept }) => {
+    { cursor: { list: 'pending', id: queued.id }, pending: [queued], kept: true },
+    { cursor: { list: 'pending', id: queued.id }, pending: [], kept: false },
+    { cursor: { list: 'plan', id: 'plan-1' }, pending: [], kept: true },
+  ] satisfies { cursor: RowCursor; pending: BibleReference[]; kept: boolean }[])(
+    'snapshot keeps a $cursor.list cursor when kept=$kept',
+    ({ cursor, pending, kept }) => {
       const snapshot = fixture('state_snapshot')
-      const before = { ...populatedState(), staged }
+      const before = { ...populatedState(), cursor }
       const { state, effects } = reduce(before, {
         ...snapshot,
         data: { ...snapshot.data, pending, pending_count: pending.length },
       })
-      expect(state.staged).toEqual(kept ? staged : null)
+      expect(state.cursor).toEqual(kept ? cursor : null)
       expect(state.followAlongHint).toBeNull()
       expect(effects).toEqual([])
     }
   )
+
+  it('a queue update never moves the cursor to a new detection', () => {
+    const arrived = { ...queued, id: 'arrived' }
+    const update = { ...fixture('pending_update'), data: { pending: [arrived, queued], count: 2 } }
+    expect(reduce(populatedState(), update).state.cursor).toEqual({
+      list: 'pending',
+      id: queued.id,
+    })
+    const none = { ...populatedState(), cursor: null }
+    expect(reduce(none, update).state.cursor).toBeNull()
+  })
 
   it('does not let an automatically followed passage settle the operator request', () => {
     const before = populatedState()
@@ -248,7 +252,7 @@ describe('staging across server updates', () => {
       ...fixture('display_confirmed'),
       data: { reference: followed },
     })
-    expect(state.staged).toBe(before.staged)
+    expect(state.cursor).toBe(before.cursor)
     expect(state.showInFlight).toBe(true)
     expect(state.currentDisplay).toEqual(followed)
     expect(state.history[0]).toEqual(followed)
@@ -262,13 +266,6 @@ describe('staging across server updates', () => {
         },
       },
     ])
-  })
-
-  it('keeps a newly staged passage when an earlier manual request is confirmed', () => {
-    const staged: StagedReference = { kind: 'manual', passage: { ...passage, chapter: 4 } }
-    const { state } = reduce({ ...populatedState(), staged }, fixture('display_confirmed'))
-    expect(state.staged).toBe(staged)
-    expect(state.showInFlight).toBe(false)
   })
 
   it('deduplicates and caps confirmed history at the snapshot window', () => {
@@ -381,7 +378,7 @@ describe('optimistic settings', () => {
 })
 
 describe('operator intents', () => {
-  it('stages and navigates the queue without sending anything', () => {
+  it('moves the cursor through the queue without sending anything', () => {
     const pending = [queued, { ...queued, id: 'second' }]
     let state = { ...createOperatorState(), pending }
     for (const [step, id] of [
@@ -391,43 +388,32 @@ describe('operator intents', () => {
       [-1, queued.id],
       [-1, queued.id],
     ] as const) {
-      const result = reduce(state, { type: 'select_by', step })
-      expect(result.state.staged).toEqual({ kind: 'pending', id })
+      const result = reduce(state, { type: 'move_cursor', list: 'pending', step, planIds: [] })
+      expect(result.state.cursor).toEqual({ list: 'pending', id })
       expect(result.effects).toEqual([])
       state = result.state
     }
-    expect(reduce(state, { type: 'stage', staged: null }).state.staged).toBeNull()
-    expect(reduce(createOperatorState(), { type: 'select_by', step: 1 }).state.staged).toBeNull()
+    expect(reduce(state, { type: 'set_cursor', cursor: null }).state.cursor).toBeNull()
+    const empty = createOperatorState()
+    expect(
+      reduce(empty, { type: 'move_cursor', list: 'pending', step: 1, planIds: [] }).state.cursor
+    ).toBeNull()
   })
 
-  it.each([
-    { kind: 'pending', id: queued.id },
-    { kind: 'manual', passage },
-    { kind: 'history', reference: manual },
-  ] satisfies StagedReference[])('shows a staged $kind with the existing action', staged => {
-    const state = reduce(createOperatorState(), { type: 'stage', staged }).state
-    const result = reduce(state, { type: 'show_next' })
-    expect(result.state.showInFlight).toBe(true)
-    expect(result.state.staged).toEqual(staged)
-    expect(result.effects).toEqual([
-      {
-        type: 'send',
-        action:
-          staged.kind === 'pending'
-            ? { action: 'approve', reference_id: queued.id }
-            : {
-                action: 'display_reference',
-                book: 'John',
-                chapter: 3,
-                verse_start: 16,
-                verse_end: 17,
-              },
-      },
-    ])
-    expect(reduce(result.state, { type: 'show_next' }).effects).toEqual([])
+  it('moves the cursor through the plan by the IDs it is given', () => {
+    const state = { ...createOperatorState(), cursor: { list: 'pending' as const, id: 'x' } }
+    const planIds = ['a', 'b', 'c']
+    // From another list, the first row; then on from there.
+    const first = reduce(state, { type: 'move_cursor', list: 'plan', step: 1, planIds }).state
+    expect(first.cursor).toEqual({ list: 'plan', id: 'a' })
+    const second = reduce(first, { type: 'move_cursor', list: 'plan', step: 1, planIds }).state
+    expect(second.cursor).toEqual({ list: 'plan', id: 'b' })
+    const set = reduce(second, { type: 'set_cursor', cursor: { list: 'plan', id: 'c' } })
+    expect(set.state.cursor).toEqual({ list: 'plan', id: 'c' })
+    expect(set.effects).toEqual([])
   })
 
-  it('shows direct coordinates without changing the staged item and rejects repeats', () => {
+  it('shows direct coordinates without moving the cursor and rejects repeats', () => {
     const before = { ...populatedState(), showInFlight: false }
     const event = {
       type: 'show_direct',
@@ -439,7 +425,7 @@ describe('operator intents', () => {
       },
     } as const
     const { state, effects } = reduce(before, event)
-    expect(state.staged).toBe(before.staged)
+    expect(state.cursor).toBe(before.cursor)
     expect(state.showInFlight).toBe(true)
     expect(effects).toEqual([
       { type: 'send', action: { action: 'display_reference', ...event.request } },
@@ -447,17 +433,13 @@ describe('operator intents', () => {
     expect(reduce(state, event).effects).toEqual([])
   })
 
-  it('approves selected detections by ID and keeps the existing unguarded button semantics', () => {
-    const state = { ...populatedState(), staged: { kind: 'pending' as const, id: queued.id } }
-    expect(reduce(state, { type: 'approve_selected' }).effects).toEqual([
-      { type: 'send', action: { action: 'approve', reference_id: queued.id } },
-    ])
-    expect(reduce(populatedState(), { type: 'approve_selected' }).effects).toEqual([])
+  it('approves a detection by ID once while the request is in flight', () => {
     const approved = reduce(
-      { ...state, showInFlight: false },
+      { ...populatedState(), showInFlight: false },
       { type: 'approve_pending', id: queued.id }
     )
     expect(approved.state.showInFlight).toBe(true)
+    expect(approved.state.cursor).toEqual({ list: 'pending', id: queued.id })
     expect(approved.effects).toEqual([
       { type: 'send', action: { action: 'approve', reference_id: queued.id } },
     ])
@@ -494,14 +476,21 @@ describe('operator intents', () => {
     }
   )
 
-  it('clears guards on disconnect while keeping the staged item', () => {
-    const state = { ...populatedState(), discardId: queued.id, discardCoolingDown: true }
+  it('clears guards on disconnect while keeping the cursor', () => {
+    const state = {
+      ...populatedState(),
+      discardId: queued.id,
+      discardCoolingDown: true,
+      displayConnected: true,
+    }
     const result = reduce(state, { type: 'disconnected' })
+    // Whether a display is connected is unknown again until the next snapshot.
     expect(result.state).toEqual({
       ...state,
       showInFlight: false,
       discardId: null,
       discardCoolingDown: false,
+      displayConnected: null,
     })
     expect(result.effects).toEqual([{ type: 'clear_discard_timer' }])
   })

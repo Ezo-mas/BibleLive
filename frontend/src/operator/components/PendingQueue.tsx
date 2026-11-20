@@ -1,22 +1,27 @@
-import type { ReactNode } from 'react'
-import { BookIcon, Button } from '../../components'
+import { useRef } from 'react'
+import { BookIcon } from '../../components'
 import { useI18n } from '../../shared/i18nContext'
+import { formatReference } from '../../shared/reference'
+import { useCursorFocus } from '../hooks/useRowCursor'
 import { PanelHint } from './PanelHint'
 import { ReferenceCard } from './ReferenceCard'
+import { RowRemoveButton, RowShowButton } from './RowButtons'
 import type { BibleReference } from '../../shared/types'
 
 export interface PendingQueueProps {
   pending: BibleReference[]
+  /** The highlighted detection (the keyboard cursor), or null when it is not in the queue. */
   selectedId: string | null
+  /** The cursor's keyboard moves so far; a move onto a row gives that row focus. */
+  keyboardMoves?: number
+  /** Highlight a row (click or focus); nothing is sent. */
   onSelect: (id: string) => void
-  /** Double-click, or the row's Show button: approve this detection without staging it first. */
+  /** The row's Show: approve this detection by ID. */
   onShow: (id: string) => void
   onRemove: (id: string) => void
   discardInFlight?: boolean
   /** False while the socket is closed: Show then has nowhere to go. */
   canShow?: boolean
-  /** The queue's footer (Clear Queue), pinned under the list. */
-  children?: ReactNode
 }
 
 /**
@@ -24,9 +29,8 @@ export interface PendingQueueProps {
  * waiting for the operator to approve. Order is arrival order and is never
  * re-sorted, because it mirrors the chronological detection stream.
  *
- * When nothing is waiting the queue says so in the same compact form as the LIVE
- * and NEXT panels. An empty queue is the normal state between detections, so it
- * should not reserve a block of screen that the references will need.
+ * A click on a row highlights it; Show (or Enter on the highlight) approves it.
+ * A new detection never takes the highlight.
  *
  * Renders the body of the sidebar's Pending tab; the tabs (and their counts) are
  * in `SidePanel`.
@@ -34,66 +38,50 @@ export interface PendingQueueProps {
 export function PendingQueue({
   pending,
   selectedId,
+  keyboardMoves = 0,
   onSelect,
   onShow,
   onRemove,
   discardInFlight = false,
   canShow = true,
-  children,
 }: PendingQueueProps) {
   const { t } = useI18n()
+  const listRef = useRef<HTMLDivElement>(null)
+  useCursorFocus(listRef, selectedId, keyboardMoves)
   return (
-    <>
-      <div className="operator-section-content">
-        {pending.length === 0 ? (
-          <PanelHint icon={<BookIcon />} title={t('queue.empty')} hint={t('queue.emptyHint')} />
-        ) : (
-          <div className="ref-card-list">
-            {pending.map(reference => (
+    <div className="operator-section-content">
+      {pending.length === 0 ? (
+        <PanelHint icon={<BookIcon />} title={t('queue.empty')} />
+      ) : (
+        <div className="ref-card-list" ref={listRef}>
+          {pending.map(reference => {
+            const selected = reference.id === selectedId
+            return (
               <ReferenceCard
                 key={reference.id}
                 reference={reference}
-                selected={reference.id === selectedId}
+                selected={selected}
                 onSelect={() => onSelect(reference.id)}
-                onActivate={() => onShow(reference.id)}
+                removeAction={
+                  <RowRemoveButton
+                    label={t('queue.remove', { ref: formatReference(reference) })}
+                    disabled={!canShow || discardInFlight}
+                    onClick={() => onRemove(reference.id)}
+                  />
+                }
                 actions={titleId => (
-                  <>
-                    <Button
-                      variant="primary"
-                      size="sm"
-                      aria-describedby={titleId}
-                      disabled={!canShow}
-                      onClick={() => onShow(reference.id)}
-                    >
-                      {t('row.show')}
-                    </Button>
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      className={reference.id === selectedId ? 'is-on' : ''}
-                      aria-describedby={titleId}
-                      onClick={() => onSelect(reference.id)}
-                    >
-                      {t('row.stage')}
-                    </Button>
-                    <Button
-                      variant="danger"
-                      size="sm"
-                      aria-describedby={titleId}
-                      disabled={!canShow || discardInFlight}
-                      onClick={() => onRemove(reference.id)}
-                    >
-                      {t('row.remove')}
-                    </Button>
-                  </>
+                  <RowShowButton
+                    titleId={titleId}
+                    highlighted={selected}
+                    disabled={!canShow}
+                    onClick={() => onShow(reference.id)}
+                  />
                 )}
               />
-            ))}
-          </div>
-        )}
-      </div>
-
-      {children}
-    </>
+            )
+          })}
+        </div>
+      )}
+    </div>
   )
 }

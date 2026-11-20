@@ -114,9 +114,8 @@ easy to break by accident.
    translation is still the active one; it sends nothing (displays get it from
    the normal snapshot) and never restores the pending queue.
    **Show Again** (Phase 4: showing a passage from display history) is
-   that same action, not a third door: the console stages a history entry
-   locally and sends its coordinates, so the server re-validates and
-   re-resolves them. Consequences that are deliberate, not accidents: a
+   that same action, not a third door: the console sends a history entry's
+   coordinates, so the server re-validates and re-resolves them. Consequences that are deliberate, not accidents: a
    replayed passage is recorded as a new `reference_history` entry
    (`source="manual"`, no confidence, new ID) — one entry per display,
    exactly like approving the same detection twice, so history grows

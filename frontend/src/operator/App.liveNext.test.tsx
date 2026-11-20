@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { act, render, screen, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import App from './App'
 import type { BibleReference, VerseLimit } from '../shared/types'
 import { createMockSocket, lastSent, push } from '../test/operatorHarness'
@@ -36,6 +36,7 @@ function reference(id: string, book: string, chapter: number, verses: number[]):
 const psalms = reference('d-1', 'Psalms', 23, [1, 2, 3, 4, 5])
 const john = reference('p-1', 'John', 1, [1])
 const romans = reference('p-2', 'Romans', 8, [28])
+const acts = reference('p-3', 'Acts', 2, [38])
 
 const queue = [john, romans]
 
@@ -45,9 +46,10 @@ function openWith(
     currentDisplay?: BibleReference | null
     verseLimit?: VerseLimit
     pending?: BibleReference[]
+    history?: BibleReference[]
   } = {}
 ) {
-  const { currentDisplay = null, verseLimit = 3, pending = queue } = options
+  const { currentDisplay = null, verseLimit = 3, pending = queue, history = [] } = options
 
   render(<App />)
   act(() => {
@@ -58,9 +60,9 @@ function openWith(
     data: {
       current_display: currentDisplay,
       pending,
-      history: [],
+      history,
       pending_count: pending.length,
-      history_count: 0,
+      history_count: history.length,
       display_connections: 1,
       operator_connections: 1,
       display_settings: { verse_limit: verseLimit, theme: 'dark' },
@@ -68,11 +70,33 @@ function openWith(
   })
 }
 
-/** Select the pending card whose title matches, staging it as NEXT. */
-function selectCard(name: RegExp) {
-  act(() => {
-    screen.getByRole('button', { name }).click()
-  })
+/** The pending row (its highlight handle) whose reference matches. */
+function row(name: RegExp) {
+  const rows = screen
+    .getAllByRole('button', { name })
+    .filter(button => button.getAttribute('aria-label')?.endsWith('— highlight; Enter shows it'))
+  expect(rows).toHaveLength(1)
+  return rows[0]
+}
+
+/** Click a pending row: highlights it. */
+function highlight(name: RegExp) {
+  fireEvent.click(row(name))
+}
+
+/** The Show button on the pending row whose title matches. */
+function showOn(title: string) {
+  return screen
+    .getAllByRole('button', { name: 'Show' })
+    .find(button => button.getAttribute('aria-describedby') === titleId(title)) as HTMLElement
+}
+
+function titleId(title: string) {
+  return screen.getByRole('heading', { name: title }).id
+}
+
+function pressKey(key: string) {
+  fireEvent.keyDown(window, { key })
 }
 
 /** Operator actions sent after the authenticate first-message (empty: no token). */
@@ -111,11 +135,9 @@ describe('LIVE panel', () => {
 
     const verses = within(screen.getByTestId('live-verses'))
     expect(verses.getByText('Psalms 23:1 text')).toBeInTheDocument()
-    // The citation is on the monitor, under the verses, as on the projector; the
-    // card's header carries only its label.
+    // The citation is on the monitor, under the verses, as on the projector.
     expect(screen.getByText('Psalms 23:1-5')).toBeInTheDocument()
-    // The ON DISPLAY label is the only status; no chip repeats it (the only 'Live'
-    // is the live switch's button).
+    // The only 'Live' is the live switch's button.
     expect(screen.getAllByText('Live').every(el => el.closest('button'))).toBe(true)
   })
 
@@ -170,74 +192,261 @@ describe('LIVE panel', () => {
 
     expect(screen.getByTestId('live-stage')).toHaveAttribute('data-theme', 'light')
   })
-})
 
-describe('NEXT panel', () => {
-  it('shows nothing staged until a reference is selected', () => {
+  it('has no Up Next card: staging is gone', () => {
     openWith()
 
-    expect(screen.getByText('Nothing staged')).toBeInTheDocument()
-    expect(screen.queryByTestId('next-preview')).not.toBeInTheDocument()
+    expect(screen.queryByText('Up Next')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Show on display' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Stage/ })).not.toBeInTheDocument()
+  })
+})
+
+describe('the row cursor in Pending', () => {
+  it('shows the navigation hint only while Pending has rows', () => {
+    openWith({ pending: [] })
+    const panel = within(screen.getByRole('tabpanel'))
+    const empty = 'Detected references will appear here.'
+    const hint = '↑ ↓ to move · Enter shows'
+    const options = panel.getByRole('button', { name: 'Pending options' })
+
+    expect(panel.getByText(empty)).toBeInTheDocument()
+    expect(panel.queryByText(hint)).not.toBeInTheDocument()
+    fireEvent.click(options)
+    expect(panel.getByRole('menuitemcheckbox', { name: 'Auto-approve Off' })).toBeEnabled()
+    fireEvent.click(options)
+
+    push(socket, { type: 'pending_update', data: { pending: [john], count: 1 } })
+    expect(panel.queryByText(empty)).not.toBeInTheDocument()
+    expect(panel.getByText(hint)).toBeInTheDocument()
+
+    push(socket, { type: 'pending_update', data: { pending: [], count: 0 } })
+    expect(panel.getByText(empty)).toBeInTheDocument()
+    expect(panel.queryByText(hint)).not.toBeInTheDocument()
+    expect(options).toBeInTheDocument()
   })
 
-  it('stages the selected queue item without touching the display', () => {
+  it('a click highlights a row and sends nothing', () => {
     openWith({ currentDisplay: psalms })
 
-    selectCard(/Romans 8:28/)
+    highlight(/Romans 8:28/)
 
-    const staged = within(screen.getByTestId('next-preview'))
-    expect(staged.getByText('Romans 8:28')).toBeInTheDocument()
-    expect(
-      within(screen.getByTestId('next-verses')).getByText('Romans 8:28 text')
-    ).toBeInTheDocument()
-
-    // LIVE still shows what the projector showed before; nothing was sent.
+    expect(row(/Romans 8:28/)).toHaveAttribute('aria-pressed', 'true')
+    expect(row(/John 1:1/)).toHaveAttribute('aria-pressed', 'false')
+    expect(sentActions()).toEqual([])
+    // The display is untouched.
     expect(
       within(screen.getByTestId('live-verses')).getByText('Psalms 23:1 text')
     ).toBeInTheDocument()
-    expect(screen.queryByText('Nothing staged')).not.toBeInTheDocument()
+  })
+
+  it('names each row for what clicking it does', () => {
+    openWith()
+
+    expect(
+      screen.getByRole('button', { name: 'Romans 8:28 — highlight; Enter shows it' })
+    ).toBeInTheDocument()
+  })
+
+  it("fills the highlighted row's Show with amber and keeps its label compact", () => {
+    openWith()
+
+    highlight(/Romans 8:28/)
+
+    const selected = showOn('Romans 8:28')
+    const unselected = showOn('John 1:1')
+    expect(selected).toHaveClass('btn-primary')
+    expect(unselected).toHaveClass('btn-secondary')
+    expect(selected).toHaveTextContent(/^Show$/)
+    expect(unselected).toHaveTextContent(/^Show$/)
+  })
+
+  it('Enter shows the highlighted detection, approved by its ID', () => {
+    openWith()
+
+    highlight(/Romans 8:28/)
+    pressKey('Enter')
+
+    expect(sentActions()).toEqual([{ action: 'approve', reference_id: 'p-2' }])
+  })
+
+  it('Enter with nothing highlighted does nothing', () => {
+    openWith()
+
+    pressKey('Enter')
+
     expect(sentActions()).toEqual([])
   })
 
-  it('reports verses hidden by the current limit', () => {
-    openWith({ pending: [psalms] })
-    selectCard(/Psalms 23/)
+  it('the arrows move the highlight, starting at the first row, held at the ends', () => {
+    openWith({ pending: [john, romans, acts] })
 
-    expect(screen.getByText('+2 more verses hidden by the current limit')).toBeInTheDocument()
+    pressKey('ArrowDown')
+    expect(row(/John 1:1/)).toHaveAttribute('aria-pressed', 'true')
+    pressKey('ArrowDown')
+    pressKey('ArrowDown')
+    pressKey('ArrowDown')
+    expect(row(/Acts 2:38/)).toHaveAttribute('aria-pressed', 'true')
+    pressKey('ArrowUp')
+    expect(row(/Romans 8:28/)).toHaveAttribute('aria-pressed', 'true')
+    pressKey('Escape')
+    expect(row(/Romans 8:28/)).toHaveAttribute('aria-pressed', 'false')
+    expect(sentActions()).toEqual([])
   })
 
-  it('shows the staged reference on approval and then stages nothing', () => {
+  it('a new detection never takes the highlight', () => {
+    openWith({ pending: [john] })
+    push(socket, { type: 'pending_update', data: { pending: [acts, john], count: 2 } })
+
+    // Nothing was highlighted, and nothing is now.
+    expect(row(/Acts 2:38/)).toHaveAttribute('aria-pressed', 'false')
+    pressKey('Enter')
+    expect(sentActions()).toEqual([])
+
+    highlight(/John 1:1/)
+    push(socket, { type: 'pending_update', data: { pending: [romans, acts, john], count: 3 } })
+    expect(row(/John 1:1/)).toHaveAttribute('aria-pressed', 'true')
+    expect(row(/Romans 8:28/)).toHaveAttribute('aria-pressed', 'false')
+    pressKey('Enter')
+    expect(lastSent(socket)).toEqual({ action: 'approve', reference_id: 'p-1' })
+  })
+
+  it("a double-click on Show approves one detection, not the next row's that slides under it", () => {
     openWith()
 
-    selectCard(/Romans 8:28/)
-    act(() => {
-      screen.getByRole('button', { name: 'Show on display' }).click()
-    })
-    expect(lastSent(socket)).toEqual({ action: 'approve', reference_id: 'p-2' })
+    fireEvent.click(showOn('John 1:1'), { detail: 1 })
+    expect(sentActions()).toEqual([{ action: 'approve', reference_id: 'p-1' }])
+    push(socket, { type: 'approval_confirmed', data: { reference: john } })
+    push(socket, { type: 'pending_update', data: { pending: [romans], count: 1 } })
 
-    // The server confirms the approval, then sends the queue without it.
+    // The second click of the double-click lands on Romans' Show, now in John's place.
+    fireEvent.click(showOn('Romans 8:28'), { detail: 2 })
+    expect(sentActions()).toEqual([{ action: 'approve', reference_id: 'p-1' }])
+
+    // A fresh single click still shows it.
+    fireEvent.click(showOn('Romans 8:28'), { detail: 1 })
+    expect(sentActions().at(-1)).toEqual({ action: 'approve', reference_id: 'p-2' })
+  })
+
+  it('drops the highlight when its detection leaves the queue', () => {
+    openWith()
+    highlight(/Romans 8:28/)
+
+    push(socket, { type: 'pending_update', data: { pending: [john], count: 1 } })
+    pressKey('Enter')
+
+    expect(sentActions()).toEqual([])
+    expect(document.querySelector('.ref-item.is-selected')).toBeNull()
+  })
+
+  it('Enter does nothing while the History tab hides the highlighted row', () => {
+    openWith()
+    highlight(/Romans 8:28/)
+
+    fireEvent.click(screen.getByRole('tab', { name: 'History' }))
+    pressKey('Enter')
+    pressKey('ArrowDown')
+    expect(sentActions()).toEqual([])
+
+    fireEvent.click(screen.getByRole('tab', { name: /Pending/ }))
+    expect(row(/Romans 8:28/)).toHaveAttribute('aria-pressed', 'true')
+    pressKey('Enter')
+    expect(sentActions()).toEqual([{ action: 'approve', reference_id: 'p-2' }])
+  })
+
+  it('focus on a row highlights it, so Enter shows the focused row', () => {
+    openWith()
+
+    act(() => row(/John 1:1/).focus())
+    fireEvent.keyDown(row(/John 1:1/), { key: 'Enter' })
+
+    expect(sentActions()).toEqual([{ action: 'approve', reference_id: 'p-1' }])
+  })
+
+  it('after an arrow moves the highlight past the first row, that row has focus', () => {
+    const scroll = vi.mocked(Element.prototype.scrollIntoView)
+    scroll.mockClear()
+    openWith()
+
+    pressKey('ArrowDown')
+    expect(row(/John 1:1/)).toHaveFocus()
+    pressKey('ArrowDown')
+
+    expect(row(/Romans 8:28/)).toHaveAttribute('aria-pressed', 'true')
+    expect(row(/Romans 8:28/)).toHaveFocus()
+    expect(scroll).toHaveBeenLastCalledWith({ block: 'nearest' })
+    // Focus and the cursor stay together, so Enter shows the row that has focus.
+    pressKey('Enter')
+    expect(sentActions()).toEqual([{ action: 'approve', reference_id: 'p-2' }])
+  })
+
+  it('a server update does not move focus or the highlight', () => {
+    openWith()
+    pressKey('ArrowDown')
+    pressKey('ArrowDown')
+
+    push(socket, { type: 'pending_update', data: { pending: [acts, john, romans], count: 3 } })
+
+    expect(row(/Romans 8:28/)).toHaveFocus()
+    expect(row(/Romans 8:28/)).toHaveAttribute('aria-pressed', 'true')
+    expect(row(/Acts 2:38/)).toHaveAttribute('aria-pressed', 'false')
+  })
+
+  it("a row's Show approves it at once, highlighted or not", () => {
+    openWith()
+
+    fireEvent.click(showOn('John 1:1'))
+
+    expect(sentActions()).toEqual([{ action: 'approve', reference_id: 'p-1' }])
+  })
+
+  it('shows the approved reference once the server confirms it', () => {
+    openWith()
+
+    highlight(/Romans 8:28/)
+    pressKey('Enter')
     push(socket, { type: 'approval_confirmed', data: { reference: romans } })
     push(socket, { type: 'pending_update', data: { pending: [john], count: 1 } })
 
     expect(
       within(screen.getByTestId('live-verses')).getByText('Romans 8:28 text')
     ).toBeInTheDocument()
-    expect(screen.getByText('Nothing staged')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Romans 8:28/ })).not.toBeInTheDocument()
   })
 
-  it('discards the staged reference without touching the display', () => {
-    openWith({ currentDisplay: psalms })
-    selectCard(/Romans 8:28/)
+  it('a second Show while the first is in flight sends nothing more', () => {
+    openWith()
 
-    act(() => {
-      screen.getByRole('button', { name: 'Unstage' }).click()
-    })
+    fireEvent.click(showOn('John 1:1'))
+    fireEvent.click(showOn('Romans 8:28'))
+    highlight(/Romans 8:28/)
+    pressKey('Enter')
+    expect(sentActions()).toEqual([{ action: 'approve', reference_id: 'p-1' }])
 
-    expect(screen.getByText('Nothing staged')).toBeInTheDocument()
-    expect(
-      within(screen.getByTestId('live-verses')).getByText('Psalms 23:1 text')
-    ).toBeInTheDocument()
-    expect(sentActions()).toEqual([])
+    // The confirmation frees the next Show.
+    push(socket, { type: 'approval_confirmed', data: { reference: john } })
+    fireEvent.click(showOn('Romans 8:28'))
+    expect(lastSent(socket)).toEqual({ action: 'approve', reference_id: 'p-2' })
+  })
+
+  it('Remove is an icon button named with its reference, and removes by ID', () => {
+    openWith()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Remove Romans 8:28 from the queue' }))
+
+    expect(sentActions()).toEqual([{ action: 'discard_pending', reference_id: 'p-2' }])
+  })
+
+  it('puts Remove before Show on the time line, Show right-most', () => {
+    openWith()
+
+    const actions = showOn('Romans 8:28').closest('.ref-item-foot') as HTMLElement
+    const buttons = within(actions).getAllByRole('button')
+    expect(buttons.map(button => button.getAttribute('aria-label') ?? button.textContent)).toEqual([
+      'Remove Romans 8:28 from the queue',
+      'Show',
+    ])
+    expect(actions.querySelector('time')?.nextElementSibling).toBe(buttons[0])
   })
 
   it('disables Show while the socket is not open', () => {
@@ -255,8 +464,10 @@ describe('NEXT panel', () => {
         display_settings: { verse_limit: 3, theme: 'dark' },
       },
     })
-    selectCard(/Romans 8:28/)
+    highlight(/Romans 8:28/)
 
-    expect(screen.getByRole('button', { name: 'Show on display' })).toBeDisabled()
+    expect(showOn('Romans 8:28')).toBeDisabled()
+    pressKey('Enter')
+    expect(sentActions()).toEqual([])
   })
 })

@@ -206,7 +206,7 @@ describe('book names from the loaded Bible translation', () => {
     expect(results().queryByRole('button', { name: /Genesis/ })).not.toBeInTheDocument()
   })
 
-  it('stages a search in the translation names but asks the server by canonical name', async () => {
+  it('plans a search in the translation names but asks the server by canonical name', async () => {
     openWith()
 
     type('pradzios 1:3')
@@ -221,14 +221,15 @@ describe('book names from the loaded Bible translation', () => {
       expect(lookup).toBeDefined()
       expect(String(lookup?.[0])).toContain('book=Genesis')
     })
-    // ...while the staged passage reads in the translation's name.
-    await waitFor(() =>
-      expect(screen.getByRole('heading', { name: 'Pradžios 1:3' })).toBeInTheDocument()
-    )
+    // ...while the planned passage reads in the translation's name.
+    const row = await screen.findByRole('button', {
+      name: 'Pradžios 1:3 — highlight; Enter shows it',
+    })
 
     act(() => {
-      screen.getByRole('button', { name: 'Show on display' }).click()
+      fireEvent.click(row)
     })
+    fireEvent.keyDown(window, { key: 'Enter' })
     expect(sentActions().at(-1)).toMatchObject({ action: 'display_reference', book: 'Genesis' })
   })
 

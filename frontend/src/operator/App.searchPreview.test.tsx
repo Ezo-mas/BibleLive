@@ -147,7 +147,7 @@ describe('Find Scripture preview', () => {
 
     type('john 3:16-17')
 
-    const row = await passageRow('John 3:16-17 — stage in Up Next')
+    const row = await passageRow('John 3:16-17 — show on display')
     await waitFor(() => expect(within(row).getByText('John 3:16 text')).toBeInTheDocument())
     expect(row.querySelector('.operator-search-result-preview')).toHaveTextContent('John 3:16 text')
     // The read-only lookup asks for the reference as typed, and nothing else happens.
@@ -163,7 +163,7 @@ describe('Find Scripture preview', () => {
 
     type('john 3:16')
 
-    const row = await passageRow('John 3:16 — stage in Up Next')
+    const row = await passageRow('John 3:16 — show on display')
     await waitFor(() => expect(within(row).getByText('Loading the verse…')).toBeInTheDocument())
 
     await releaseLookups()

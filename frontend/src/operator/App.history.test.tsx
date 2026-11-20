@@ -118,7 +118,7 @@ function openTab(name: string | RegExp) {
   fireEvent.click(screen.getByRole('tab', { name }))
 }
 
-/** The history tab, opened: its list is the only body in the tab panel. */
+/** The History tab, opened. */
 function historyPanel() {
   openTab('History')
   return within(screen.getByRole('tabpanel'))
@@ -137,23 +137,20 @@ function historyTitles() {
     .map(heading => heading.textContent)
 }
 
-/** The selectable history card whose reference matches. */
-function historyCard(name: RegExp) {
-  return historyPanel().getByRole('button', { name })
+/** The history row whose title matches (opening the tab first). */
+function historyRow(name: RegExp) {
+  const rows = historyPanel()
+    .getAllByRole('heading', { level: 3 })
+    .filter(heading => name.test(heading.textContent ?? ''))
+  expect(rows).toHaveLength(1)
+  return rows[0].closest('.ref-item') as HTMLElement
 }
 
-function selectHistory(name: RegExp) {
-  // The card is found (which opens the tab) before the click, so the tab switch is
-  // not left queued inside the act that delivers the click.
-  const card = historyCard(name)
+/** Show on the history row whose title matches. */
+function showAgain(name: RegExp) {
+  const button = within(historyRow(name)).getByRole('button', { name: 'Show' })
   act(() => {
-    card.click()
-  })
-}
-
-function show() {
-  act(() => {
-    screen.getByRole('button', { name: 'Show on display' }).click()
+    button.click()
   })
 }
 
@@ -194,21 +191,47 @@ describe('history list', () => {
   it('identifies an entry by reference, time, and source where the data says so', () => {
     openWith({ history })
 
-    const card = historyCard(/Romans 8:28/)
-    expect(within(card).getByText('Romans 8:28')).toBeInTheDocument()
-    expect(within(card).getByText('Manual')).toBeInTheDocument()
-    const time = within(card).getByText(/\d{1,2}:\d{2}:\d{2}/)
+    const row = within(historyRow(/Romans 8:28/))
+    expect(row.getByText('Romans 8:28')).toBeInTheDocument()
+    expect(row.getByText('Manual')).toBeInTheDocument()
+    const time = row.getByText(/\d{1,2}:\d{2}:\d{2}/)
     expect(time).toHaveAttribute('datetime', '2026-01-01T10:00:00Z')
 
-    // A detected entry keeps its confidence badge instead.
-    expect(within(historyCard(/John 3:16/)).getByText('High')).toBeInTheDocument()
+    // Confidence belongs to a detection, not to something shown: no word, no edge.
+    const detected = historyRow(/John 3:16/)
+    expect(within(detected).queryByText('High')).not.toBeInTheDocument()
+    expect(detected).not.toHaveAttribute('data-confidence')
   })
 
-  it('shows an empty state and no selectable cards when nothing has been shown', () => {
+  it('rows have Show and no Remove, and take no cursor', () => {
+    openWith({ history })
+
+    const row = within(historyRow(/John 3:16/))
+    expect(row.getAllByRole('button').map(button => button.textContent)).toEqual(['Show'])
+    expect(row.queryByRole('button', { name: /highlight/ })).not.toBeInTheDocument()
+
+    // A click on the row selects nothing and sends nothing.
+    fireEvent.click(row.getByText('John 3:16'))
+    expect(historyRow(/John 3:16/)).not.toHaveClass('is-selected')
+    fireEvent.keyDown(window, { key: 'Enter' })
+    expect(sentActions()).toEqual([])
+  })
+
+  it('shows an empty state and no Show buttons when nothing has been shown', () => {
     openWith()
 
     expect(historyPanel().getByText('No history yet')).toBeInTheDocument()
-    expect(historyPanel().queryAllByRole('button')).toHaveLength(0)
+    expect(historyPanel().queryByRole('button', { name: 'Show' })).not.toBeInTheDocument()
+  })
+
+  it.each([
+    { state: 'empty', entries: [] },
+    { state: 'populated', entries: history },
+  ])('has no options menu with an $state list', ({ entries }) => {
+    openWith({ history: entries })
+
+    // History has no options of its own yet, so neither the Pending menu nor any other shows.
+    expect(historyPanel().queryByRole('button', { name: /options/i })).not.toBeInTheDocument()
   })
 
   it('keeps the server window of twenty entries as confirmations arrive', () => {
@@ -237,16 +260,13 @@ describe('one row per passage', () => {
     const older = { ...entry('h-b', 'John', 3, 16), created_at: '2026-01-01T10:00:00Z' }
     openWith({ currentDisplay: live, history: [newest, older] })
 
-    const rows = historyPanel().getAllByRole('button', { name: /John 3:16/ })
-    expect(rows).toHaveLength(1)
     // The row is the newest entry: its time is the newer of the two.
-    expect(within(rows[0]).getByText(/\d{1,2}:\d{2}:\d{2}/)).toHaveAttribute(
+    expect(within(historyRow(/John 3:16/)).getByText(/\d{1,2}:\d{2}:\d{2}/)).toHaveAttribute(
       'datetime',
       '2026-01-01T11:00:00Z'
     )
 
-    selectHistory(/John 3:16/)
-    show()
+    showAgain(/John 3:16/)
     expect(lastSent(socket)).toEqual({
       action: 'display_reference',
       book: 'John',
@@ -259,8 +279,7 @@ describe('one row per passage', () => {
   it('moves a passage shown again to the top without adding a row', () => {
     openWith({ currentDisplay: live, history })
 
-    selectHistory(/Psalms 23:1/)
-    show()
+    showAgain(/Psalms 23:1/)
     push(socket, {
       type: 'display_confirmed',
       data: { reference: entry('m-4', 'Psalms', 23, 1, 'manual') },
@@ -268,79 +287,13 @@ describe('one row per passage', () => {
 
     expect(historyTitles()).toEqual(['Psalms 23:1', 'Romans 8:28', 'John 3:16'])
   })
-
-  it('keeps a staged entry marked after a newer entry for its passage replaces its row', () => {
-    openWith({ currentDisplay: live, history })
-    selectHistory(/John 3:16/)
-
-    // Another detection of the same verse is approved: its row replaces the staged one.
-    push(socket, { type: 'approval_confirmed', data: { reference: entry('h-new', 'John', 3, 16) } })
-
-    const card = historyCard(/John 3:16/)
-    expect(card).toHaveAttribute('aria-pressed', 'true')
-    expect(within(card).getByText('Staged in Up Next')).toBeInTheDocument()
-    expect(historyPanel().getAllByRole('button', { name: /John 3:16/ })).toHaveLength(1)
-    expect(screen.getByTestId('next-preview')).toHaveTextContent('John 3:16')
-    expect(screen.getByText('History', { selector: '.operator-next-badge' })).toBeInTheDocument()
-
-    show()
-    expect(lastSent(socket)).toEqual({
-      action: 'display_reference',
-      book: 'John',
-      chapter: 3,
-      verse_start: 16,
-      verse_end: 16,
-    })
-  })
-})
-
-describe('staging a history entry', () => {
-  it('stages the selected entry in Up Next without touching LIVE or the server', () => {
-    openWith({ currentDisplay: live, history })
-
-    selectHistory(/John 3:16/)
-
-    expect(screen.getByTestId('next-preview')).toHaveTextContent('John 3:16')
-    expect(
-      within(screen.getByTestId('next-verses')).getByText('John 3:16 text')
-    ).toBeInTheDocument()
-    expect(screen.getByText('History', { selector: '.operator-next-badge' })).toBeInTheDocument()
-    expect(
-      screen.getByText('Staged: John 3:16 — press Show to display it again')
-    ).toBeInTheDocument()
-    expect(historyCard(/John 3:16/)).toHaveAttribute('aria-pressed', 'true')
-
-    // LIVE is what the projector is showing, and staging is client-side only.
-    expect(
-      within(screen.getByTestId('live-verses')).getByText('Luke 2:11 text')
-    ).toBeInTheDocument()
-    expect(screen.queryByText(/^Shown:/)).not.toBeInTheDocument()
-    expect(sentActions()).toEqual([])
-  })
-
-  it('discards the staged entry without touching LIVE', () => {
-    openWith({ currentDisplay: live, history })
-    selectHistory(/John 3:16/)
-
-    act(() => {
-      screen.getByRole('button', { name: 'Unstage' }).click()
-    })
-
-    expect(screen.getByText('Nothing staged')).toBeInTheDocument()
-    expect(
-      within(screen.getByTestId('live-verses')).getByText('Luke 2:11 text')
-    ).toBeInTheDocument()
-    expect(historyCard(/John 3:16/)).toHaveAttribute('aria-pressed', 'false')
-    expect(sentActions()).toEqual([])
-  })
 })
 
 describe('Show again', () => {
   it('sends coordinates only and waits for the server to confirm', () => {
     openWith({ currentDisplay: live, history })
-    selectHistory(/John 3:16/)
 
-    show()
+    showAgain(/John 3:16/)
 
     expect(lastSent(socket)).toEqual({
       action: 'display_reference',
@@ -355,7 +308,6 @@ describe('Show again', () => {
       within(screen.getByTestId('live-verses')).getByText('Luke 2:11 text')
     ).toBeInTheDocument()
     expect(screen.queryByText(/^Shown:/)).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Show on display' })).toBeDisabled()
 
     push(socket, {
       type: 'display_confirmed',
@@ -365,20 +317,17 @@ describe('Show again', () => {
     expect(
       within(screen.getByTestId('live-verses')).getByText('John 3:16 text')
     ).toBeInTheDocument()
-    expect(screen.getByText('Nothing staged')).toBeInTheDocument()
     expect(screen.getByText('Shown: John 3:16 (manual)')).toBeInTheDocument()
   })
 
-  it('clears a staged entry the server confirms as the same single verse', () => {
-    // A detection that named one verse reaches history with `verse_end: null`,
-    // while the server states that passage as `verse_start === verse_end` when it
-    // resolves a display request. Both name the same verse, so the confirmation
-    // has to clear the staging it belongs to.
+  it('sends a detected single verse as it was detected', () => {
+    // A detection that named one verse reaches history with `verse_end: null`; the
+    // server resolves that as the one verse.
     const detectedVerse = { ...entry('h-n', 'John', 3, 16), verse_end: null }
     openWith({ currentDisplay: live, history: [detectedVerse] })
-    selectHistory(/John 3:16/)
 
-    show()
+    showAgain(/John 3:16/)
+
     expect(lastSent(socket)).toEqual({
       action: 'display_reference',
       book: 'John',
@@ -386,108 +335,51 @@ describe('Show again', () => {
       verse_start: 16,
       verse_end: null,
     })
-
-    push(socket, {
-      type: 'display_confirmed',
-      data: { reference: entry('m-3', 'John', 3, 16, 'manual') },
-    })
-
-    expect(screen.getByText('Nothing staged')).toBeInTheDocument()
-    expect(
-      within(screen.getByTestId('live-verses')).getByText('John 3:16 text')
-    ).toBeInTheDocument()
   })
 
   it('ignores a second Show while the first is still in flight', () => {
     openWith({ history })
-    selectHistory(/John 3:16/)
 
-    show()
-    show()
+    showAgain(/John 3:16/)
+    showAgain(/Romans 8:28/)
 
     expect(sentActions()).toHaveLength(1)
   })
 
-  it('reports a rejected Show and leaves the display and the staged entry alone', () => {
+  it('reports a rejected Show and lets the operator try again', () => {
     openWith({ currentDisplay: live, history })
-    selectHistory(/John 3:16/)
-    show()
+    showAgain(/John 3:16/)
 
     push(socket, {
       type: 'error',
       data: { action: 'display_reference', message: 'John 3:16 is not in the Bible text' },
     })
 
-    expect(screen.getByRole('alert')).toHaveTextContent(
-      'Could not show that passage: John 3:16 is not in the Bible text'
-    )
+    expect(
+      screen.getByText('Could not show that passage: John 3:16 is not in the Bible text')
+    ).toBeInTheDocument()
     expect(
       within(screen.getByTestId('live-verses')).getByText('Luke 2:11 text')
     ).toBeInTheDocument()
-    expect(screen.queryByText(/^Shown:/)).not.toBeInTheDocument()
-    // Still staged, so the operator can retry or discard it deliberately.
-    expect(screen.getByTestId('next-preview')).toHaveTextContent('John 3:16')
-    expect(screen.getByRole('button', { name: 'Show on display' })).toBeEnabled()
+    showAgain(/John 3:16/)
+    expect(sentActions()).toHaveLength(2)
   })
 
-  it('does not clear a different entry staged while the request was in flight', () => {
-    openWith({ currentDisplay: live, history })
-    selectHistory(/John 3:16/)
-    show()
-
-    // The operator keeps working: a second entry is staged before the answer to
-    // the first request arrives.
-    selectHistory(/Romans 8:28/)
-
-    push(socket, {
-      type: 'display_confirmed',
-      data: { reference: entry('m-1', 'John', 3, 16, 'manual') },
-    })
-
-    expect(
-      within(screen.getByTestId('live-verses')).getByText('John 3:16 text')
-    ).toBeInTheDocument()
-    expect(screen.getByText('Shown: John 3:16 (manual)')).toBeInTheDocument()
-    // The confirmation was about John 3:16, so Romans 8:28 is still staged.
-    expect(screen.getByTestId('next-preview')).toHaveTextContent('Romans 8:28')
-  })
-
-  it('keeps a staged entry that the next snapshot no longer lists', () => {
-    openWith({ currentDisplay: live, history })
-    selectHistory(/John 3:16/)
-
-    // A reconnect or a long service: the entry ages out of the server's window.
-    openWithSnapshot({ currentDisplay: live, entries: [romans] })
-
-    expect(screen.getByTestId('next-preview')).toHaveTextContent('John 3:16')
-    expect(screen.getByText('History', { selector: '.operator-next-badge' })).toBeInTheDocument()
-    expect(
-      within(screen.getByTestId('live-verses')).getByText('Luke 2:11 text')
-    ).toBeInTheDocument()
-    expect(historyPanel().queryByRole('button', { name: /John 3:16/ })).not.toBeInTheDocument()
-
-    // Show re-resolves the coordinates on the server, so ageing out changes nothing.
-    show()
-    expect(lastSent(socket)).toEqual({
-      action: 'display_reference',
-      book: 'John',
-      chapter: 3,
-      verse_start: 16,
-      verse_end: 16,
-    })
-  })
-
-  it('keeps the staged entry across a dropped socket and re-enables Show on reconnect', () => {
-    openWith({ currentDisplay: live, history })
-    selectHistory(/John 3:16/)
-
+  it('is disabled while the socket is closed', () => {
+    openWith({ history })
     act(() => {
       socket?.onclose?.({ code: 1006 })
     })
 
-    expect(screen.getByText(/Not connected to the server/)).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Show on display' })).toBeDisabled()
-    expect(screen.getByTestId('next-preview')).toHaveTextContent('John 3:16')
+    expect(within(historyRow(/John 3:16/)).getByRole('button', { name: 'Show' })).toBeDisabled()
+  })
+
+  it('works again after a dropped socket reconnects', () => {
+    openWith({ currentDisplay: live, history })
+    showAgain(/John 3:16/)
+    act(() => {
+      socket?.onclose?.({ code: 1006 })
+    })
 
     act(() => {
       screen.getByRole('button', { name: 'Reconnect' }).click()
@@ -496,9 +388,8 @@ describe('Show again', () => {
       socket?.onopen?.()
     })
     openWithSnapshot({ currentDisplay: live, entries: history })
-
-    expect(screen.getByRole('button', { name: 'Show on display' })).toBeEnabled()
-    expect(screen.getByTestId('next-preview')).toHaveTextContent('John 3:16')
+    showAgain(/Romans 8:28/)
+    expect(lastSent(socket)).toMatchObject({ action: 'display_reference', book: 'Romans' })
   })
 })
 
@@ -507,8 +398,7 @@ describe('switching between the lists', () => {
     const pending = [entry('p-1', 'John', 1, 1)]
     openWith({ currentDisplay: live, history, pending })
 
-    selectHistory(/Romans 8:28/)
-    show()
+    showAgain(/Romans 8:28/)
     expect(lastSent(socket)).toEqual({
       action: 'display_reference',
       book: 'Romans',
@@ -517,31 +407,25 @@ describe('switching between the lists', () => {
       verse_end: 28,
     })
     push(socket, { type: 'display_confirmed', data: { reference: roman } })
-    expect(screen.getByText('Nothing staged')).toBeInTheDocument()
 
-    const queuedCard = pendingPanel().getByRole('button', { name: /John 1:1/ })
+    const show = pendingPanel()
+      .getAllByRole('button', { name: 'Show' })
+      .find(button => button.closest('.ref-item')?.textContent?.includes('John 1:1'))
     act(() => {
-      queuedCard.click()
+      show?.click()
     })
-    expect(screen.getByText('Detected')).toBeInTheDocument()
-    show()
     expect(lastSent(socket)).toEqual({ action: 'approve', reference_id: 'p-1' })
   })
 
   it('never puts a history entry in the pending queue', () => {
     const pending = [entry('p-1', 'John', 1, 1)]
     openWith({ currentDisplay: live, history, pending })
-    selectHistory(/Romans 8:28/)
+    historyRow(/Romans 8:28/)
 
-    // The queue still holds exactly its own detection: a history entry is never
-    // queued, so it has nothing to approve and nothing to clear.
     const queued = pendingPanel()
       .getAllByRole('heading', { level: 3 })
       .map(heading => heading.textContent)
     expect(queued).toEqual(['John 1:1'])
-    // It appears in Up Next and as a history entry, and nowhere else.
-    expect(screen.getByTestId('next-preview')).toHaveTextContent('Romans 8:28')
-    expect(historyCard(/Romans 8:28/)).toBeInTheDocument()
     expect(sentActions()).toEqual([])
   })
 })

@@ -1,15 +1,16 @@
 /* Main content: two columns inside the page gutter (16px, the only side space on
-   any window). The tabbed panel (Pending, Plan, History) is pinned to the right edge
-   at a width in proportion to the window (`--operator-side-w`); the workspace takes
-   every pixel it does not, so there is never empty space beside either column.
+   any window). The tabbed panel (Pending, History) is pinned to the right edge at a
+   width in proportion to the window (`--operator-side-w`); the workspace takes every
+   pixel it does not, so there is never empty space beside either column.
 
    The workspace is a flex column of the full height. ON DISPLAY takes all the height
-   UP NEXT leaves (`flex: 1`); UP NEXT is one fixed height whatever it holds, and
-   follow-along lies over the preview. So the column's last card always ends where the
-   panel ends, and the miniature changes size only when the window does. */
+   the Plan leaves (`flex: 1`); the Plan is a share of the column (48%, between 216px
+   and 380px) whatever it holds, and follow-along lies over the preview. So the
+   column's last card always ends where the panel ends, and the miniature changes size
+   only when the window does. */
 .operator-main {
-  /* The floor (reached below 1082px) keeps each of the three tabs about 122px wide,
-     room for the Lithuanian "Laukiančios" and its count with a little air. */
+  /* The floor keeps the panel's tabs, footer and a row's buttons comfortable, with
+     room for the Lithuanian "Laukiančios" and its count. */
   --operator-side-w: clamp(368px, 34vw, 560px);
   /* The least height the monitor frame keeps; a window shorter than that scrolls the
      column instead of squeezing the preview to nothing. */
@@ -32,21 +33,19 @@
   overflow-y: auto;
 }
 
-/* ON DISPLAY: a card with a slim label row, the monitor frame, and the control
-   row. It takes every pixel of height the column has left. No `overflow`, so its
-   minimum height is its content's (the frame's floor plus the rows) and it never
-   shrinks over the control row. */
+/* On display takes the remaining height, with a floor set by the header and preview. */
 .operator-live {
   display: flex;
   flex-direction: column;
   flex: 1 1 0;
+  padding-bottom: var(--card-pad);
   background: var(--card-bg);
   border: var(--border-width) solid var(--color-border);
   border-radius: var(--radius-card);
 }
 
-/* One anatomy for the three cards in the workspace (ON DISPLAY, UP NEXT and
-   follow-along): a header row (the uppercase label, the reference as plain bold
+/* One anatomy for the cards in the workspace (ON DISPLAY, Plan and the follow-along
+   strip): a header row (the uppercase label, the reference as plain bold
    text, free space, then the card's actions at the right), optional text below,
    all on the same 12px side padding with 36px controls. */
 .operator-card-head {
@@ -115,10 +114,8 @@
   color: var(--color-text-muted);
 }
 
-/* The overline style: small, uppercase, tracked, muted. Stage and control-row
-   labels use it, and nothing else in the console is uppercase. */
-.operator-stage-title,
-.operator-quick-label {
+/* The small overline in the follow-along strip. The card headings use section titles. */
+.operator-stage-title {
   margin: 0;
   white-space: nowrap;
   font-size: var(--font-size-xs);

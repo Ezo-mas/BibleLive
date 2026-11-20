@@ -151,17 +151,17 @@ describe('speech detection status', () => {
     statuses = [pipeline({ status: 'offline', seconds_since_report: 30 }), pipeline({})]
     await renderConnected()
 
-    const stale = screen.getByRole('button', { name: /^Spoken language/ })
-    expect(stale).toHaveClass('operator-language-chip--stale')
-    expect(stale).toHaveAccessibleName(/speech detection is not running/)
+    const stale = screen.getByTitle(/speech detection is not running/i)
+    expect(stale).toHaveClass('operator-language-status--stale')
+    expect(stale.querySelector('.sr-only')).toHaveTextContent(/speech detection is not running/i)
 
     await act(async () => {
       await vi.advanceTimersByTimeAsync(PIPELINE_POLL_MS)
     })
 
-    const live = screen.getByRole('button', { name: /^Spoken language/ })
-    expect(live).not.toHaveClass('operator-language-chip--stale')
-    expect(live).toHaveAccessibleName('Spoken language: English. Change in settings')
+    const live = screen.getByTitle('Speech: English')
+    expect(live).not.toHaveClass('operator-language-status--stale')
+    expect(live.querySelector('.sr-only')).toHaveTextContent('Speech: English')
   })
 
   it('drops a pipeline warning when the server connection drops', async () => {

@@ -106,15 +106,19 @@ function openHistory() {
   fireEvent.click(screen.getByRole('tab', { name: 'History' }))
 }
 
-/** Click a history card, which stages it in Up Next and sends nothing. */
-function stageFromHistory(name: RegExp) {
+/** The history row (its `.ref-item`) with this title, on the History tab. */
+function historyRow(title: string) {
   openHistory()
-  act(() => {
-    screen.getByRole('button', { name }).click()
-  })
+  return screen.getByRole('heading', { name: title }).closest('.ref-item') as HTMLElement
 }
 
-const showButton = () => screen.getByRole('button', { name: 'Show on display' })
+/** Show on a history row: coordinates only. */
+function showFromHistory(title: string) {
+  const button = within(historyRow(title)).getByRole('button', { name: 'Show' })
+  act(() => {
+    button.click()
+  })
+}
 
 beforeEach(() => {
   window.localStorage.clear()
@@ -271,10 +275,9 @@ describe('auto-followed passages', () => {
     const shown = followed('f-1', [13, 14, 15])
     openWith({ currentDisplay: shown, history: [shown] })
 
-    openHistory()
-    const card = screen.getByRole('button', { name: /Stage Luke 16:13-15 from history/ })
-    expect(within(card).getByText('Auto-followed')).toBeInTheDocument()
-    expect(within(card).queryByText('Manual')).not.toBeInTheDocument()
+    const row = within(historyRow('Luke 16:13-15'))
+    expect(row.getByText('Auto-followed')).toBeInTheDocument()
+    expect(row.queryByText('Manual')).not.toBeInTheDocument()
   })
 
   it('leaves a manually shown passage untagged', () => {
@@ -297,11 +300,10 @@ describe('auto-followed passages', () => {
     const shown = followed('f-1', [13, 14, 15])
     openWith({ currentDisplay: shown, history: [shown] })
 
-    openHistory()
-    const card = screen.getByRole('button', { name: /Stage Luke 16:13-15 from history/ })
-    // No detection confidence on the card, so nothing reads it as a detection.
-    expect(card).toHaveAttribute('data-confidence', 'manual')
-    expect(card.querySelector('.ref-card-confidence')).toBeNull()
+    const row = historyRow('Luke 16:13-15')
+    // No detection confidence on the row, so nothing reads it as a detection.
+    expect(row).not.toHaveAttribute('data-confidence')
+    expect(row).not.toHaveAttribute('title')
   })
 })
 
@@ -311,10 +313,7 @@ describe('an auto-followed passage and a Show from this console', () => {
     const nextUp = manual('m-2', [22])
     openWith({ history: [nextUp, ownChoice] })
 
-    stageFromHistory(/Stage Luke 16:20-21 from history/)
-    act(() => {
-      showButton().click()
-    })
+    showFromHistory('Luke 16:20-21')
     expect(sentMessages()).toContainEqual({
       action: 'display_reference',
       book: 'Luke',
@@ -322,33 +321,20 @@ describe('an auto-followed passage and a Show from this console', () => {
       verse_start: 20,
       verse_end: 21,
     })
-    // A second passage is staged while the first request is out. Once the follow
-    // confirmation has come in, Show must still be disabled although Up Next has a passage.
-    stageFromHistory(/Stage Luke 16:22 from history/)
-    expect(showButton()).toBeDisabled()
+    const sent = sentMessages().length
 
     push(socket, { type: 'display_confirmed', data: { reference: followed('f-1', [13, 14, 15]) } })
 
-    // The follow confirmation answers no Show of this console: it is still pending.
-    expect(showButton()).toBeDisabled()
-    expect(screen.getByTestId('next-preview')).toHaveTextContent('Luke 16:22')
+    // The follow confirmation answers no Show of this console: it is still pending,
+    // so another Show sends nothing yet.
+    showFromHistory('Luke 16:22')
+    expect(sentMessages()).toHaveLength(sent)
 
     push(socket, { type: 'display_confirmed', data: { reference: manual('m-3', [20, 21]) } })
 
-    // Its own confirmation ends the Show, so Show is available for what is staged next.
-    expect(showButton()).toBeEnabled()
-    expect(screen.getByTestId('next-preview')).toHaveTextContent('Luke 16:22')
-  })
-
-  it('leaves a staged passage in place when the follow confirmation has its coordinates', () => {
-    openWith({ history: [manual('m-1', [13, 14, 15])] })
-    stageFromHistory(/Stage Luke 16:13-15 from history/)
-
-    push(socket, { type: 'display_confirmed', data: { reference: followed('f-1', [13, 14, 15]) } })
-
-    // This console did not ask for the followed passage, so what it staged stays staged.
-    expect(screen.getByTestId('next-preview')).toHaveTextContent('Luke 16:13-15')
-    expect(screen.queryByText('Nothing staged')).not.toBeInTheDocument()
-    expect(screen.getByText('History', { selector: '.operator-next-badge' })).toBeInTheDocument()
+    // Its own confirmation ends the Show, so the next one goes out.
+    showFromHistory('Luke 16:22')
+    expect(sentMessages()).toHaveLength(sent + 1)
+    expect(sentMessages()[sent]).toMatchObject({ action: 'display_reference', verse_start: 22 })
   })
 })

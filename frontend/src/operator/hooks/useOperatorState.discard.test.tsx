@@ -37,7 +37,7 @@ afterEach(() => {
 })
 
 describe('discardPending', () => {
-  it('sends the action and waits for pending_update to remove the staged row', () => {
+  it('sends the action and waits for pending_update to remove the highlighted row', () => {
     const ref: BibleReference = {
       id: 'pending-1',
       book: 'John',
@@ -52,7 +52,7 @@ describe('discardPending', () => {
     }
     const { result } = renderHook(() => useOperatorState())
     act(() => socket.handler({ type: 'pending_update', data: { pending: [ref], count: 1 } }))
-    act(() => result.current.selectPending(ref.id))
+    act(() => result.current.cursor.highlight('pending', ref.id))
     act(() => result.current.discardPending(ref.id))
     expect(result.current.discardInFlight).toBe(true)
     expect(socket.send).toHaveBeenCalledExactlyOnceWith({
@@ -60,11 +60,11 @@ describe('discardPending', () => {
       reference_id: ref.id,
     })
     expect(result.current.pending).toEqual([ref])
-    expect(result.current.selectedId).toBe(ref.id)
+    expect(result.current.cursor.pendingCursorId).toBe(ref.id)
     act(() => socket.handler({ type: 'pending_update', data: { pending: [], count: 0 } }))
     expect(result.current.pending).toEqual([])
     expect(result.current.pendingCount).toBe(0)
-    expect(result.current.selectedId).toBeNull()
+    expect(result.current.cursor.pendingCursorId).toBeNull()
     expect(result.current.currentDisplay).toBeNull()
     expect(result.current.discardInFlight).toBe(true)
     act(() => vi.advanceTimersByTime(500))
