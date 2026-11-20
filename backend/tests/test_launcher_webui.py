@@ -669,3 +669,20 @@ def test_pywebview_page_call_threads_do_not_block_exit():
     webui._daemon_bridge_threads(SimpleNamespace(util=util))
     assert util.Thread(target=lambda: None).daemon
     assert not util.Thread(target=lambda: None, daemon=False).daemon
+
+
+@pytest.mark.parametrize("platform_name", ["darwin", "win32"])
+def test_closing_the_window_lets_main_clean_up(monkeypatch, platform_name):
+    # macOS Cmd-Q would otherwise end the process before webview.start() returns, leaving the
+    # server and the pipeline running: there the close is cancelled and the window closed.
+    monkeypatch.setattr(webui.sys, "platform", platform_name)
+    calls = []
+    window = SimpleNamespace(destroy=lambda: calls.append("destroy"))
+    controller = SimpleNamespace(request_close=lambda: calls.append("request_close"))
+    result = webui._on_closing(window, controller)
+    if platform_name == "darwin":
+        assert result is False
+        assert calls == ["request_close", "destroy"]
+    else:
+        assert result is None
+        assert calls == ["request_close"]

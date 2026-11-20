@@ -821,6 +821,23 @@ def _daemon_bridge_threads(webview: Any) -> None:
     setattr(util, "Thread", _DaemonThread)  # noqa: B010 (a module attribute, by name)
 
 
+def _on_closing(window: Any, controller: LauncherController) -> bool | None:
+    """The window is closing: from its close button, or (macOS) Cmd-Q / Dock > Quit.
+
+    On macOS, Quit runs Cocoa's terminate:, which ends the process before webview.start()
+    returns, so main()'s cleanup would never stop the server, the pipeline and their ffmpeg
+    (each in its own session; they kept running after Cmd-Q on the M1, 2026-11-21). So the
+    close is cancelled there and the window closed instead: closing the last window ends
+    webview.start() the way the close button does, and the cleanup runs. Returning False
+    cancels; NSWindow.close does not ask again.
+    """
+    controller.request_close()
+    if sys.platform == "darwin":
+        window.destroy()
+        return False
+    return None
+
+
 _SMOKE_TIMEOUT_S = 60
 _SERVE_FROM_FILE = sys.platform == "darwin"
 
@@ -885,7 +902,7 @@ def main(*, smoke: bool = False) -> int:
         )
         window.events.before_show += _solid_title_bar
         # Let the native window close before the finally block waits for cleanup.
-        window.events.closing += controller.request_close
+        window.events.closing += lambda: _on_closing(window, controller)
         if smoke:
 
             def close_after_load() -> None:
