@@ -806,6 +806,11 @@ _SERVE_FROM_FILE = sys.platform == "darwin"
 
 def main(*, smoke: bool = False) -> int:
     logging.basicConfig(level=logging.WARNING)
+    if smoke:
+        # A launcher that hangs (starting up, never loading its page, or shutting down) would
+        # hang a build's smoke test: print every thread's stack and exit instead. Left armed
+        # until the process exits.
+        faulthandler.dump_traceback_later(_SMOKE_TIMEOUT_S, exit=True)
     url = os.environ.get("BIBLELIVE_LAUNCHER_URL")
     if url and not _is_loopback_url(url):
         logger.warning("Ignoring BIBLELIVE_LAUNCHER_URL: expected a loopback HTTP(S) URL")
@@ -860,9 +865,6 @@ def main(*, smoke: bool = False) -> int:
         # Let the native window close before the finally block waits for cleanup.
         window.events.closing += controller.request_close
         if smoke:
-            # A window that never loads would hang a build's smoke test: print every thread's
-            # stack and exit instead.
-            faulthandler.dump_traceback_later(_SMOKE_TIMEOUT_S, exit=True)
 
             def close_after_load() -> None:
                 time.sleep(1)
@@ -883,8 +885,6 @@ def main(*, smoke: bool = False) -> int:
     finally:
         if controller is not None:
             controller.close()
-        if smoke:
-            faulthandler.cancel_dump_traceback_later()
         if lock is not None:
             lock.close()  # the next start removes this profile
     return 0
