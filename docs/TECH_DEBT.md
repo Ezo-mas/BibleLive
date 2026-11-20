@@ -305,3 +305,13 @@ below the fold.
   lifespan so per-test shutdown no longer closes its database, and every CI job has
   `timeout-minutes`.
 
+### LTB uses soft hyphens in place of punctuation
+
+- **Where** The imported LTB text in `bible_data/bible_ltb.sqlite`.
+- **Problem** Psalm 23:1 and Ephesians 2:8 contain U+00AD where a dash belongs.
+  A browser hides a soft hyphen inside an unbroken line.
+- **Impact** The audience display can join adjacent words and omit punctuation.
+- **Evidence** A read-only query on 2026-11-19 confirmed both examples and found
+  soft hyphens in 2,346 verse rows. Review affected passages individually because
+  a soft hyphen can be intentional within a word.
+
