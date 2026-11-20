@@ -560,6 +560,8 @@ class App:
             return
         if result == "browser_fallback":
             self._log(t("warn.browser_fallback"), "warning")
+        elif result == "already_open":
+            self._log(t("log.projector_already_open"), "info")
         elif monitor is not None:
             self._log(t("log.projector_opened", detail=monitor.label), "info")
 

@@ -2,6 +2,7 @@
 
 import logging
 import subprocess
+import threading
 import webbrowser
 from collections.abc import Callable, Mapping
 from pathlib import Path
@@ -52,6 +53,10 @@ def kill_pid_tree(pid: int) -> None:
     platform.current().kill_pid_tree(pid)
 
 
+def bring_to_front(profile_dir: Path) -> bool:
+    return platform.current().bring_projector_to_front(profile_dir)
+
+
 class ProjectorBrowser:
     """Owns the kiosk browser process so it can be closed again."""
 
@@ -64,6 +69,7 @@ class ProjectorBrowser:
         profile_dir: Path | None = None,
         find_stale: Callable[[Path], list[int]] = find_profile_processes,
         kill_pid: Callable[[int], None] = kill_pid_tree,
+        raise_window: Callable[[Path], bool] = bring_to_front,
     ) -> None:
         self._find_stale = find_stale
         self._kill_pid = kill_pid
@@ -71,18 +77,35 @@ class ProjectorBrowser:
         self._popen = popen
         self._open_default = open_default
         self._profile_dir = profile_dir
+        self._raise_window = raise_window
+        self._lock = threading.Lock()
         self._proc: subprocess.Popen[bytes] | None = None
 
     def open(self, port: int, monitor: Monitor | None) -> str | None:
-        """Open the display on ``monitor``.
+        """Raise a running display, or open a new display on ``monitor``.
 
-        Raises ``ProjectorError("no_monitor")`` if ``monitor`` is None (never falls back
-        to the operator's screen). Returns "browser_fallback" if only the default browser
-        could be used, else None.
+        Returns "already_open" for a running display, "browser_fallback" if only the
+        default browser could be used, or None for a new projector window. A new display
+        requires a monitor, otherwise raises ``ProjectorError("no_monitor")``.
         """
+        previous_proc = self._proc
+        with self._lock:
+            if self._proc is not None:
+                # A caller that waited for a new launch may arrive before its window exists.
+                running = self._proc is not previous_proc or self._proc.poll() is None
+                found_window = False
+                try:
+                    found_window = self._raise_window(self._profile_dir or default_profile_dir())
+                except OSError as exc:
+                    logger.debug("Could not bring the display to the front: %s", exc)
+                if running or found_window:
+                    return "already_open"
+            return self._launch(port, monitor)
+
+    def _launch(self, port: int, monitor: Monitor | None) -> str | None:
         if monitor is None:
             raise ProjectorError("no_monitor")
-        self.close()
+        self._proc = None
         url = display_url(port)
         browser = self._find()
         if browser is None:
@@ -103,12 +126,13 @@ class ProjectorBrowser:
         return None
 
     def close(self) -> None:
-        proc, self._proc = self._proc, None
-        if proc is None:
-            return
-        kill_tree(proc)
-        # Edge and Chrome often hand the window to another browser process that is not a
-        # child of the one started, so killing that tree can leave the display open. Every
-        # process on our private profile is ours (the user's normal browser never is).
-        for pid in self._find_stale(self._profile_dir or default_profile_dir()):
-            self._kill_pid(pid)
+        with self._lock:
+            proc, self._proc = self._proc, None
+            if proc is None:
+                return
+            kill_tree(proc)
+            # Edge and Chrome often hand the window to another browser process that is not a
+            # child of the one started, so killing that tree can leave the display open. Every
+            # process on our private profile is ours (the user's normal browser never is).
+            for pid in self._find_stale(self._profile_dir or default_profile_dir()):
+                self._kill_pid(pid)

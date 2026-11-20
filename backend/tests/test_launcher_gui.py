@@ -5,6 +5,7 @@ import os
 import subprocess
 import sys
 import threading
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import pytest
@@ -312,6 +313,64 @@ def test_projector_default_browser_fallback_warns():
     assert opened == ["http://127.0.0.1:8000/display"]
 
 
+@pytest.mark.parametrize(("exit_code", "window_found"), [(None, False), (0, True)])
+def test_projector_raises_open_display(tmp_path, monkeypatch, exit_code, window_found):
+    proc = _FakeProc()
+    calls: list[str] = []
+    profile = tmp_path / "prof"
+    monkeypatch.setattr("launcher.projector.kill_tree", lambda _proc: calls.append("close"))
+    raised: list[Path] = []
+    pb = ProjectorBrowser(
+        find=lambda: Browser("e.exe", "edge"),
+        popen=lambda cmd, **kw: calls.append("popen") or proc,
+        profile_dir=profile,
+        find_stale=lambda _profile: [11],
+        kill_pid=lambda _pid: calls.append("kill"),
+        raise_window=lambda path: raised.append(path) or window_found,
+    )
+    assert pb.open(8000, SECOND) is None
+    proc.code = exit_code
+    assert pb.open(8000, SECOND) == "already_open"
+    assert raised == [profile]
+    assert calls == ["kill", "popen"]
+
+
+def test_projector_serializes_concurrent_opens(tmp_path, monkeypatch):
+    launching = threading.Event()
+    second_opening = threading.Event()
+    finish_launch = threading.Event()
+    calls: list[str] = []
+    monkeypatch.setattr("launcher.projector.kill_tree", lambda _proc: calls.append("close"))
+
+    def popen(cmd, **kw):
+        calls.append("popen")
+        launching.set()
+        assert finish_launch.wait(timeout=5)
+        return _FakeProc()
+
+    pb = ProjectorBrowser(
+        find=lambda: Browser("e.exe", "edge"),
+        popen=popen,
+        profile_dir=tmp_path / "prof",
+        find_stale=lambda _profile: [],
+        raise_window=lambda _profile: calls.append("raise") or False,
+    )
+
+    def open_again():
+        second_opening.set()
+        return pb.open(8000, SECOND)
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        first = pool.submit(pb.open, 8000, SECOND)
+        assert launching.wait(timeout=5)
+        second = pool.submit(open_again)
+        assert second_opening.wait(timeout=5)
+        finish_launch.set()
+        assert first.result(timeout=5) is None
+        assert second.result(timeout=5) == "already_open"
+    assert calls == ["popen", "raise"]
+
+
 # --- view-model -----------------------------------------------------------------------
 
 
@@ -429,16 +488,22 @@ def test_apply_overrides_still_works():
 def test_projector_kills_stale_profile_browsers_before_launch(tmp_path):
     killed: list[int] = []
     order: list[str] = []
+    proc = _FakeProc()
     pb = ProjectorBrowser(
         find=lambda: Browser("e.exe", "edge"),
-        popen=lambda cmd, **kw: order.append("popen") or _FakeProc(),
+        popen=lambda cmd, **kw: order.append("popen") or proc,
         profile_dir=tmp_path / "prof",
         find_stale=lambda profile: order.append(f"find:{profile.name}") or [11, 22],
         kill_pid=lambda pid: killed.append(pid) or order.append("kill"),
+        raise_window=lambda _profile: False,
     )
     assert pb.open(8000, SECOND) is None
     assert killed == [11, 22]
     assert order == ["find:prof", "kill", "kill", "popen"]
+    proc.code = 1
+    assert pb.open(8000, SECOND) is None
+    assert killed == [11, 22, 11, 22]
+    assert order == ["find:prof", "kill", "kill", "popen"] * 2
 
 
 def test_find_profile_processes_is_noop_off_windows(monkeypatch, tmp_path):

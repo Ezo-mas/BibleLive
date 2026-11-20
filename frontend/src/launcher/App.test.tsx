@@ -127,7 +127,7 @@ describe('launcher App', () => {
     const showProjector = vi.spyOn(bridge, 'show_projector')
     render(<App bridge={bridge} />)
     const projector = await screen.findByRole('combobox', { name: 'Projector' })
-    const show = screen.getByRole('button', { name: 'Show projector' })
+    const show = screen.getByRole('button', { name: 'Show on projector' })
     expect(projector).toHaveAttribute('title', automatic)
     expect(show).toBeDisabled()
     expect(show).toHaveAttribute('title', 'Start a session first to show the projector.')
@@ -143,7 +143,10 @@ describe('launcher App', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Start session' }))
     await waitFor(() => expect(show).toBeEnabled(), { timeout: 3000 })
     expect(open).toBeEnabled()
-    expect(show).toHaveAttribute('title', 'Show projector')
+    expect(show).toHaveAttribute(
+      'title',
+      'Opens the audience display full-screen on the projector, or brings it back to the front if it is already open'
+    )
     fireEvent.click(show)
     expect(showProjector).toHaveBeenCalledOnce()
   })

@@ -376,7 +376,9 @@ export const en = {
   'launcher.noSignalDetails': 'Check that it is plugged in and not muted, or choose another.',
   'launcher.projector': 'Projector',
   'launcher.projectorUnavailable': 'Start a session first to show the projector.',
-  'launcher.showProjector': 'Show projector',
+  'launcher.showProjector': 'Show on projector',
+  'launcher.showProjectorHint':
+    'Opens the audience display full-screen on the projector, or brings it back to the front if it is already open',
   'launcher.networkDetails': 'Network connection details',
   'launcher.displayUrl': 'Audience display URL',
   'launcher.operatorUrl': 'Operator URL',

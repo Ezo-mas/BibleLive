@@ -551,6 +551,8 @@ class LauncherController:
             else:
                 if result == "browser_fallback":
                     self._log.append("launcher", "WARNING", t("warn.browser_fallback"))
+                elif result == "already_open":
+                    self._log.append("launcher", "INFO", t("log.projector_already_open"))
                 elif monitor is not None:
                     self._log.append(
                         "launcher", "INFO", t("log.projector_opened", detail=monitor.label)

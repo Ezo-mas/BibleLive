@@ -12,6 +12,11 @@ from . import Browser, Monitor, RunFn, ShellExecuteFn
 from .chromium import build_command
 
 
+def bring_projector_to_front(profile_dir: Path) -> bool:
+    del profile_dir
+    return False
+
+
 def open_projector(
     browser: Browser,
     url: str,

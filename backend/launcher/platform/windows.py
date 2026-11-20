@@ -98,6 +98,41 @@ def open_projector(
     )
 
 
+def bring_projector_to_front(profile_dir: Path) -> bool:
+    """Restore and focus a visible window on the private display profile."""
+    if sys.platform != "win32":
+        return False
+    from ctypes import wintypes
+
+    pids = set(find_profile_processes(profile_dir))
+    if not pids:
+        return False
+    user32 = ctypes.windll.user32  # type: ignore[attr-defined,unused-ignore]
+    callback_type = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+    user32.EnumWindows.argtypes = [callback_type, wintypes.LPARAM]
+    user32.GetWindowThreadProcessId.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.DWORD)]
+    user32.IsWindowVisible.argtypes = [wintypes.HWND]
+    user32.IsIconic.argtypes = [wintypes.HWND]
+    user32.ShowWindow.argtypes = [wintypes.HWND, ctypes.c_int]
+    user32.SetForegroundWindow.argtypes = [wintypes.HWND]
+    found = False
+
+    def _cb(hwnd: int, _lparam: int) -> bool:
+        nonlocal found
+        if user32.IsWindowVisible(hwnd):
+            pid = wintypes.DWORD()
+            user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+            if pid.value in pids:
+                if user32.IsIconic(hwnd):
+                    user32.ShowWindow(hwnd, 9)  # SW_RESTORE
+                user32.SetForegroundWindow(hwnd)
+                found = True
+        return not found
+
+    user32.EnumWindows(callback_type(_cb), 0)
+    return found
+
+
 def enumerate_monitors() -> list[Monitor]:
     """All attached monitors (primary first); empty off Windows or if the query fails."""
     if sys.platform != "win32":

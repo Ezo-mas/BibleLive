@@ -385,6 +385,8 @@ export const lt: Record<MessageKey, MessageEntry> = {
   'launcher.projector': 'Projektorius',
   'launcher.projectorUnavailable': 'Norėdami įjungti projektoriaus rodinį, pradėkite seansą.',
   'launcher.showProjector': 'Rodyti projektoriuje',
+  'launcher.showProjectorHint':
+    'Atidaro vaizdą žiūrovams per visą projektoriaus ekraną. Jei langas jau atidarytas, iškelia jį į priekį',
   'launcher.networkDetails': 'Prisijungimo tinkle duomenys',
   'launcher.displayUrl': 'Auditorijos ekrano adresas',
   'launcher.operatorUrl': 'Operatoriaus lango adresas',

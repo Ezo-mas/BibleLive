@@ -333,7 +333,7 @@ export function Setup({
             className="bl-button"
             disabled={!canProject}
             aria-label={t('launcher.showProjector')}
-            title={t(canProject ? 'launcher.showProjector' : 'launcher.projectorUnavailable')}
+            title={t(canProject ? 'launcher.showProjectorHint' : 'launcher.projectorUnavailable')}
             onClick={onProjector}
           >
             <Icon name="monitor" />
