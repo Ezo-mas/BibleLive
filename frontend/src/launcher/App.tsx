@@ -11,6 +11,7 @@ import { LEVEL_INTERVAL } from './noSignal'
 import { Hero, Setup } from './Session'
 import { Settings } from './Settings'
 import type { SettingsTab } from './Settings'
+import { useLevelEnvelope } from './useLevelEnvelope'
 
 interface Connection {
   bridge: Bridge
@@ -69,12 +70,22 @@ function Launcher({ bridge, initial }: Connection) {
   const portRef = useRef<HTMLInputElement>(null)
   const argsRef = useRef<HTMLInputElement>(null)
   const logRef = useRef<HTMLDivElement>(null)
+  const rootRef = useRef<HTMLElement>(null)
   const languageRequest = useRef(Promise.resolve())
   const sessionRequest = useRef<{ readyForPoll: boolean } | null>(null)
 
   const { state } = data
   const locked = state.session !== 'idle' || pending !== null
   const canProject = state.session === 'live' && pending !== 'stop'
+  const { waveRef, meterRef, acceptLevels } = useLevelEnvelope(data.meter === 'on' && !locked)
+
+  useLayoutEffect(() => {
+    const frame = window.requestAnimationFrame(() => {
+      const root = rootRef.current
+      if (root) void bridge.fit_window(root.scrollHeight, window.innerHeight).catch(() => {})
+    })
+    return () => window.cancelAnimationFrame(frame)
+  }, [bridge, view])
 
   useEffect(() => {
     let active = true
@@ -86,6 +97,11 @@ function Launcher({ bridge, initial }: Connection) {
       try {
         const result = await bridge.poll()
         if (active) {
+          acceptLevels(
+            result.meter === 'on' && result.state.session === 'idle' && (!request || releasePending)
+              ? result.levels
+              : null
+          )
           dispatch({ type: 'poll', result, now: Date.now() })
           setPollFailed(false)
           if (releasePending && sessionRequest.current === request) {
@@ -108,7 +124,7 @@ function Launcher({ bridge, initial }: Connection) {
       active = false
       window.clearTimeout(timer)
     }
-  }, [bridge])
+  }, [acceptLevels, bridge])
 
   useLayoutEffect(() => {
     if (focus === 'port') portRef.current?.focus()
@@ -191,6 +207,7 @@ function Launcher({ bridge, initial }: Connection) {
   return (
     <LauncherI18nProvider language={language}>
       <LauncherFrame
+        rootRef={rootRef}
         view={view}
         session={state.session}
         chooseView={chooseView}
@@ -198,6 +215,7 @@ function Launcher({ bridge, initial }: Connection) {
         bridgeFailed={pollFailed || actionFailed}
       >
         <Hero
+          waveRef={waveRef}
           data={data}
           pending={pending}
           stopped={data.sessionStopped}
@@ -210,6 +228,7 @@ function Launcher({ bridge, initial }: Connection) {
           }}
         />
         <Setup
+          meterRef={meterRef}
           data={data}
           form={form}
           locked={locked}
@@ -254,6 +273,7 @@ function Launcher({ bridge, initial }: Connection) {
 }
 
 function LauncherFrame({
+  rootRef,
   view,
   session,
   chooseView,
@@ -261,6 +281,7 @@ function LauncherFrame({
   bridgeFailed,
   children,
 }: {
+  rootRef: React.RefObject<HTMLElement>
   view: View
   session: InitResult['state']['session']
   chooseView: (view: View) => void
@@ -270,7 +291,7 @@ function LauncherFrame({
 }) {
   const { t } = useI18n()
   return (
-    <main id="bl-launcher" data-mode={view} data-status={session}>
+    <main ref={rootRef} id="bl-launcher" data-mode={view} data-status={session}>
       <header className="bl-header">
         <div className="bl-identity">
           <span className="bl-mark">

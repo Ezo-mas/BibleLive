@@ -2,6 +2,7 @@
 
 import contextlib
 import logging
+import math
 import os
 import re
 import shutil
@@ -72,6 +73,7 @@ from .viewmodel import (
 
 logger = logging.getLogger(__name__)
 FALLBACK = 2
+_MIN_WINDOW_SIZE = (760, 480)
 _ERROR_FIELDS = {
     "invalid_port": "port",
     "invalid_args": "extra_args",
@@ -145,6 +147,7 @@ class LauncherController:
         self._clock = clock
         self._access = access
         self._copy = copy
+        self._fit_window: Callable[[float, float], None] | None = None
         self._projector = (
             projector if projector is not None else ProjectorBrowser(open_default=open_browser)
         )
@@ -333,6 +336,24 @@ class LauncherController:
         with self._lock:
             if view in LAUNCHER_VIEWS and not self._closed:
                 self._persist(replace(self._settings, launcher_view=view))
+
+    @property
+    def view(self) -> str:
+        return self._settings.launcher_view
+
+    def attach_window(self, fit: Callable[[float, float], None]) -> None:
+        self._fit_window = fit
+
+    def fit_window(self, content_height: float, viewport_height: float) -> None:
+        if (
+            self._fit_window is not None
+            and not self._closed
+            and math.isfinite(content_height)
+            and math.isfinite(viewport_height)
+            and content_height > 0
+            and viewport_height > 0
+        ):
+            self._fit_window(content_height, viewport_height)
 
     def set_ui_language(self, code: str) -> dict[str, Any]:
         with self._lock:
@@ -625,6 +646,9 @@ class LauncherApi:
     def set_view(self, view: str) -> None:
         self._controller.set_view(view)
 
+    def fit_window(self, content_height: float, viewport_height: float) -> None:
+        self._controller.fit_window(content_height, viewport_height)
+
     def copy_text(self, text: str) -> None:
         self._controller.copy_text(text)
 
@@ -646,6 +670,69 @@ def _is_loopback_url(url: str) -> bool:
         )
     except ValueError:
         return False
+
+
+def _fit_window(window: Any, content: float, viewport: float, max_height: int | None) -> None:
+    native = window.native
+    if native is None or window.maximized or window.fullscreen:
+        return
+    if sys.platform == "win32":
+        expanded = native.is_fullscreen or str(native.WindowState) == "Maximized"
+    elif sys.platform == "darwin":
+        expanded = native.isZoomed() or native.styleMask() & (
+            1 << 14
+        )  # NSWindowStyleMaskFullScreen
+    elif hasattr(native, "isMaximized"):  # Qt
+        expanded = native.isMaximized() or native.isFullScreen()
+    else:  # GTK
+        state = native.get_window().get_state()
+        expanded = state & (state.MAXIMIZED | state.FULLSCREEN)
+    if expanded:
+        return
+    current_height = window.height
+    height = round(current_height + (content - viewport))
+    if max_height is not None:
+        height = min(height, max_height)
+    height = max(height, _MIN_WINDOW_SIZE[1])
+    if height != current_height:
+        window.resize(window.width, height)
+
+
+def _colorref(color: str) -> int:
+    red, green, blue = bytes.fromhex(color.removeprefix("#"))
+    return red | (green << 8) | (blue << 16)
+
+
+def _solid_title_bar(window: Any) -> None:
+    if sys.platform != "win32":
+        return
+    try:
+        from webview.platforms.winforms import DwmSetWindowAttribute
+
+        form = window.native
+        update_theme = form.update_title_bar_theme
+
+        def apply_caption() -> None:
+            try:
+                hwnd = form.Handle.ToInt32()
+                # Match the header's --surface in launcher.css.
+                color = _colorref("#1c1b19" if form.is_dark_theme() else "#faf8f4")
+                backdrop = DwmSetWindowAttribute(hwnd, 38, 1)  # DWMSBT_NONE
+                caption = DwmSetWindowAttribute(hwnd, 35, color)  # DWMWA_CAPTION_COLOR
+                if backdrop < 0 or caption < 0:
+                    logger.debug("Launcher caption attributes rejected: %s, %s", backdrop, caption)
+            except Exception:
+                logger.debug("Could not set launcher caption attributes", exc_info=True)
+
+        def update_solid_theme() -> None:
+            with contextlib.suppress(Exception):
+                update_theme()
+            apply_caption()
+
+        form.update_title_bar_theme = update_solid_theme
+        apply_caption()
+    except Exception:
+        logger.debug("Could not install launcher caption theme", exc_info=True)
 
 
 def main(*, smoke: bool = False) -> int:
@@ -674,18 +761,25 @@ def main(*, smoke: bool = False) -> int:
         primary = next(
             (s for s in screens if s.x == 0 and s.y == 0), screens[0] if screens else None
         )
-        height = min(800, primary.height - 60) if primary is not None else 800
+        max_height = primary.height - 60 if primary is not None else None
         controller = LauncherController()
+        height = 600 if controller.view == "simple" else 800
+        if max_height is not None:
+            height = max(_MIN_WINDOW_SIZE[1], min(height, max_height))
         window = webview.create_window(
             t("app.title"),
             url,
             js_api=LauncherApi(controller),
             width=1120,
             height=height,
-            min_size=(760, 600),
+            min_size=_MIN_WINDOW_SIZE,
         )
         if window is None:
             return FALLBACK
+        controller.attach_window(
+            lambda content, viewport: _fit_window(window, content, viewport, max_height)
+        )
+        window.events.before_show += _solid_title_bar
         # Let the native window close before the finally block waits for cleanup.
         window.events.closing += controller.request_close
         if smoke:

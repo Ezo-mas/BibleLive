@@ -430,8 +430,71 @@ def test_api_exposes_only_contract_methods(bridge):
         "allow_firewall",
         "set_ui_language",
         "set_view",
+        "fit_window",
         "copy_text",
     }
+
+
+def test_fit_window_keeps_width_clamps_height_and_skips_expanded_window(bridge, monkeypatch):
+    api, _, _, _ = bridge
+    assert api.fit_window(580, 760) is None
+    monkeypatch.setattr(sys, "platform", "win32")
+    native = SimpleNamespace(is_fullscreen=False, WindowState="Normal")
+    sizes = []
+    window = SimpleNamespace(
+        width=1120,
+        height=800,
+        maximized=False,
+        fullscreen=False,
+        native=native,
+        resize=lambda width, height: sizes.append((width, height)),
+    )
+    api._controller.attach_window(
+        lambda content, view: webui._fit_window(window, content, view, 900)
+    )
+    assert api.fit_window(580, 760) is None
+    api.fit_window(400, 760)
+    api.fit_window(1000, 760)
+    api.fit_window(760, 760)
+    api.fit_window(float("nan"), 760)
+    native.WindowState = "Maximized"
+    api.fit_window(580, 760)
+    native.WindowState = "Normal"
+    native.is_fullscreen = True
+    api.fit_window(580, 760)
+    assert sizes == [(1120, 620), (1120, 480), (1120, 900)]
+
+
+@pytest.mark.parametrize(("color", "expected"), [("#faf8f4", 0xF4F8FA), ("#1c1b19", 0x191B1C)])
+def test_caption_colorref(color, expected):
+    assert webui._colorref(color) == expected
+
+
+def test_solid_title_bar_is_noop_off_windows(monkeypatch):
+    monkeypatch.setattr(sys, "platform", "darwin")
+    assert webui._solid_title_bar(None) is None
+
+
+def test_solid_title_bar_reapplies_caption_after_theme_change(monkeypatch):
+    monkeypatch.setattr(sys, "platform", "win32")
+    calls = []
+
+    def set_attribute(hwnd, attribute, value):
+        calls.append((hwnd, attribute, value))
+        return 0
+
+    monkeypatch.setitem(
+        sys.modules,
+        "webview.platforms.winforms",
+        SimpleNamespace(DwmSetWindowAttribute=set_attribute),
+    )
+    form = SimpleNamespace(Handle=SimpleNamespace(ToInt32=lambda: 42), dark=True)
+    form.is_dark_theme = lambda: form.dark
+    form.update_title_bar_theme = lambda: calls.append("original")
+    webui._solid_title_bar(SimpleNamespace(native=form))
+    form.dark = False
+    form.update_title_bar_theme()
+    assert calls == [(42, 38, 1), (42, 35, 0x191B1C), "original", (42, 38, 1), (42, 35, 0xF4F8FA)]
 
 
 @pytest.mark.parametrize(
@@ -465,7 +528,7 @@ def test_webview_main_checks_dev_url_and_registers_closing_handler(
 
     def create_window(title, url, **options):
         observed.update(title=title, url=url, **options)
-        return SimpleNamespace(events=SimpleNamespace(closing=closing))
+        return SimpleNamespace(events=SimpleNamespace(closing=closing, before_show=Closing()))
 
     def start(**options):
         observed.update(options)
@@ -491,7 +554,7 @@ def test_webview_main_checks_dev_url_and_registers_closing_handler(
     assert observed["title"] == i18n.t("app.title")
     assert observed["url"] == (url if allowed else str(page))
     assert ("Ignoring BIBLELIVE_LAUNCHER_URL" in caplog.text) is not allowed
-    assert (observed["width"], observed["height"], observed["min_size"]) == (1120, 708, (760, 600))
+    assert (observed["width"], observed["height"], observed["min_size"]) == (1120, 600, (760, 480))
     assert observed["http_server"] is observed["private_mode"] is True
     assert observed["gui"] == ("edgechromium" if sys.platform == "win32" else None)
     assert isinstance(observed["js_api"], LauncherApi)

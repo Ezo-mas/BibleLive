@@ -201,6 +201,9 @@ export function createDemoBridge(): Bridge {
       view = next
       return null
     },
+    async fit_window() {
+      return null
+    },
     async set_ui_language(code) {
       form = { ...form, ui_language: code }
       language =

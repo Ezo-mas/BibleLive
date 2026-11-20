@@ -106,6 +106,7 @@ export interface Bridge {
   allow_firewall(): Promise<null>
   set_ui_language(code: UILanguage): Promise<{ language: Language; options: Options }>
   set_view(view: View): Promise<null>
+  fit_window(contentHeight: number, viewportHeight: number): Promise<null>
   copy_text(text: string): Promise<null>
 }
 
