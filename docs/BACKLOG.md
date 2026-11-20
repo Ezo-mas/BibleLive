@@ -1,46 +1,9 @@
 # Backlog
 
-Features and checks planned for later, with rough size and the risks known so
-far. Defects go in [`TECH_DEBT.md`](TECH_DEBT.md); this file is for things not
-built yet.
+Open features, verification checks, maintenance, and experiments. Confirmed
+defects are tracked in [`TECH_DEBT.md`](TECH_DEBT.md).
 
 ## Follow-ups
-
-### Idle screen picture: check it on a projector
-The operator can upload a picture (Settings → Display → Idle screen), choose Logo or
-Fill screen, and remove it; it is stored beside the settings file and survives a
-restart (`backend/core/server/idle_screen.py`). The server sends its version and fit
-to the displays as the optional `idle_image: {version, fit} | null` field of
-`display_settings` (approved protocol change, in `models.py` and `types.ts`). The
-Logo and Fill CSS (`frontend/src/display/display.css`) has not been seen in a real
-browser or on a projector yet, and the OBS overlay must keep ignoring the picture.
-Small follow-ups found in review (2026-10-22), none urgent:
-- A same-format upload replaces the file before its record is saved
-  (`AppState.set_idle_image`). If that save fails, the console gets a 500 but the new
-  picture is already on disk, and a reloading display shows it.
-- A file chosen in the native picker while a refresh is running is silently ignored
-  (`useIdleScreen`), and an open Settings dialog does not see a change made on another
-  console until it is reopened.
-- The Settings hint no longer says the picture never shows on the OBS overlay (it
-  still does not). Add it back if operators ask.
-
-### Redesigned operator console: check on a real service
-Built on branch `worktree-operator-design-pass` (amber palette, the Original layout
-with the ON DISPLAY preview, one spacing system, `DESIGN.md`, a redesigned Settings
-dialog), merged with the idle-screen work. Checked with Playwright and the test suite,
-not yet seen on a real service, not pushed, and `static/frontend/` is not rebuilt (run
-`npm run build` from `frontend/` first). At the next service look at: the preview's text
-size at 10 and All verses (9 px and 7 px on a 1440x900 window, 7.4 px and 5.4 px at
-1280x720), the left column scrolling by about 66 px at 1280x720, the single-column
-layout below 1024 px (checked in a browser on 2026-11-17, not yet on a device), and the light theme's
-selected segmented fill (1.85:1 against its track; the bold label is the second cue).
-
-### Small console follow-ups
-- The source label (detected, manual, history) on Up Next is now screen-reader-only, so a
-  sighted operator cannot see whether Show approves a queued detection or re-shows
-  coordinates. Show it again if that matters.
-- Up Next has a 1.5 px dashed border and the other cards 1 px, so their text edges differ
-  by half a pixel (kept on purpose so Up Next reads as queued).
 
 ### Two-model speech on a 4 GB GPU with OBS running
 Kmynas + Canary has not been run with real audio on a 4 GB card next to OBS. The
@@ -49,41 +12,6 @@ VRAM it showed was the models at rest; while transcribing they used ~3.15 GB on
 the development PC. Test with OBS streaming and live sound: watch dedicated and
 shared GPU memory in Task Manager and the transcription times in the session
 log. If shared memory climbs or transcription lags, use the CPU tier on that PC.
-
-### Edge pop-ups on a signed-in profile
-The projector window's Edge flags (no sync, no extensions, no implicit sign-in)
-were checked only on a fresh Windows profile. Check once on a PC whose Edge is
-signed in with extensions installed.
-
-### A test service on the Python 3.13 installer
-Since 2026-10-21 everything runs on one Python version, 3.13: the installer's
-bundled Python, CI and development (PR #53). Every pin has a Windows cp313 wheel
-on PyPI, and the suite passes on Linux 3.13 and in CI. On Windows, a 3.13 venv
-with the `gguf` extra installed everything from wheels and passed the full suite
-(2026-10-21, a low-end Ryzen laptop without GPU: 1217 passed, 1 skipped for no
-cached Whisper tokenizer, 1:59), and the "Windows installer" workflow built a
-working installer with the bundled python-build-standalone 3.13 (run
-39638424826). Still to do: one test service with it. Recreate the Windows dev venv with `py -3.13`. Delete this
-entry once the test service went well.
-
-### A phone on the church Wi-Fi opens a page
-Network mode is built (PR #47, merged 2026-10-20): the launcher's "allow other
-devices on this network" option with an operator token, the Windows Firewall
-rule for Private networks, QR codes for both pages, and the `SECURITY.md` /
-`DEPLOYMENT.md` sections. Not yet checked where it matters: many church Wi-Fi
-networks isolate devices from each other. On the church network, open the
-display and the operator page from a phone (scan the QR codes) and note
-whether it works.
-
-### Follow-along speed-up on a real service
-Partial transcripts, the verse-start rule and the auto-show switch are built and
-benchmarked (`benchmarks/BASELINE_NOTES.md`, "Follow-along: partial transcripts"):
-on the 14 recordings a hint comes about 3 s after the verse begins instead of
-9.5 s. Not yet seen live. At the next service, keep auto-show off at first and
-check the session log: the "Partial transcripts" line of the metrics summary
-(count, audio, time) and whether the "Reading now" line shows the verse while it
-is still being read. Then try the switch for a passage that is read straight
-through. English (Whisper) takes no partial transcripts and is unmeasured.
 
 ### macOS: second screen, and the network prompt's wording
 From the first Mac test (M1, 2026-11-17, PR #94). The display opening full
@@ -96,57 +24,28 @@ it in the launcher's network wording and in `docs/macos-install.md` (or run the
 server under a BibleLive-named binary). Also unchecked: whether macOS asks for
 the microphone again after a re-downloaded update.
 
-## Planned console and display features (owner notes, 2026-11-17)
+### Follow-along rolling window at a service
+Check that the text size stays steady and that the next verse is offered
+promptly after a rolled passage goes up. The three-verse window shipped in
+[PR #103](https://github.com/Ezo-mas/BibleLive/pull/103).
 
-To start after the improvement plan (M7), apart from what is blocked waiting
-for new service recordings. Each changes how the operator works, so each gets a
-plan and review before it is built.
+## Planned console and display features
 
-### Remove staging; Plan always in view
-Staging (Up Next) has gone practically unused at real services: Plan already
-covers "what comes next", and the Live switch below covers "check it before the
-audience sees it". Remove staging and redesign the console so Plan is always
-visible, with the queue (pending) and History beside it. Rework every flow and
-shortcut that stages today: arrow-key selection then Show, Ctrl+Enter in Find
-Scripture, double-click restore, Show on a history row, and the Up Next card.
-Large: layout (designer + `DESIGN.md`), `useStaging`/reducer, many App tests.
-Mock the layout first and get it approved before building.
+### Expand a follow-along passage
+Optional console button that adds one verse per press, using the same
+three-verse window as Show and auto-show.
 
-### Live / not-live switch
-A console button. While not live the audience display shows nothing at all: a
-blank screen, no idle picture or logo, as if disconnected. Going live shows the
-current passage again. The state is the server's, so a reconnecting display
-obeys it. This is a protocol change (new action and confirmation, a field in the
-snapshot and `display_settings`): show the message shapes to the owner before
-building. Open: whether auto-approve keeps showing references while not live.
-Pairs with removing staging; build them as one milestone.
+### Idle logo animation
+Add subtle motion to the idle logo and respect `prefers-reduced-motion`.
 
-### Follow-along adds verses (rolling window)
-Built (2026-11-18), not yet seen live. As the speaker reads on, Show and
-auto-show grow the passage to three verses, then roll (10, 10-11, 10-12,
-11-13 ...), whatever the verse limit; a hint now names only the verse being
-read. At a service, check that the text size stays steady and that the next
-verse is still offered promptly after a rolled passage goes up.
-Optional follow-up: a console "expand" button that adds one verse per press,
-sharing the same window rule.
+## Launcher follow-ups
 
-### Animations
-Subtle motion where it helps: the logo, the OBS overlay's show/hide, display
-passage swaps. Respect `prefers-reduced-motion`; nothing moves while text is
-being read.
-
-### Launcher redesign: simple and advanced views
-In progress (branch `feat/launcher-webview`, 2026-11-20): the launcher window
-becomes a pywebview page (React, `frontend/src/launcher/`) with Simple and
-Advanced views, an always-on microphone meter before the session, live server
-and audio output in the Advanced console, a no-signal warning and a status strip.
-The Tk window stays as a fallback. Follow-ups, each its own change:
 - **QR codes split by audience.** The audience QR shown on `/display` on demand
   (from the launcher); the operator QR only under Advanced → Network.
 - **macOS on the new window.** Add the `launcher` extra to the Mac app
   (regenerate `scripts/macos/requirements-arm64.lock` on the Mac for pyobjc) and
-  test on the M1; until then the Mac keeps the Tk window. Includes the wording
-  pass for the macOS network prompt above.
+  test on the M1. The network prompt wording is tracked in the macOS follow-up
+  above.
 - **Input meter in the operator console.** A small live level next to Speech
   status. Needs a new server message (protocol change: show the shapes first).
 - **Identify screens.** A button by Projector that briefly shows a large number
@@ -182,34 +81,15 @@ reproduced in an empty project); 5.0.5 installs. `package.json` allows
 `^5.0.5`, so only `package-lock.json` holds it at 5.0.5: before an
 `npm update` that moves vitest, check that it installs, or upgrade npm first.
 
-### Test suite audit
-Size: small, what is left. Not urgent.
+### Profile slow tests on Windows
+Run `pytest --durations=15` on Windows to recheck these audit findings:
 
-First pass done 2026-10-21 on the Fedora box (Python 3.13): the two-socket
-WebSocket hang is fixed (`TECH_DEBT.md`, resolved), every CI job has
-`timeout-minutes`, the control-server and language-proxy tests no longer wait
-0.5 s per server stop, the three real-ffmpeg `test_live_path.py` tests are
-marked `slow` (`-m "not slow"` for a quick local run; CI runs everything), and
-the Linux-only launcher window failures are fixed (the tests saved settings to
-the Windows `%APPDATA%` layout; the 1366x768 height test is now Windows-only,
-because Linux Tk's default fonts make the same window ~790 px tall). Full suite
-there: 59 s to 38 s, 20 s without `slow`. No test was clearly meaningless, so
-none was removed. Every test now has a 60 s limit (`pytest-timeout`), so a
-future hang fails one test with a stack dump instead of a whole CI job. The CI
-Python matrix is settled: one version, 3.13 (see "A test service on the
-Python 3.13 installer" above). Left:
-
-- Windows-only slowness, not measurable on Linux (all under 0.2 s there):
-  `test_db_path_resolution.py` (3–4.6 s each on Windows on 2026-10-20; the
-  tests import a tiny 66-book canon in-process, no subprocess, so likely
-  SQLite or antivirus file cost) and `test_launcher_process.py` (1.5–2.5 s).
-  Profile them on Windows with `pytest --durations=15` (the Windows 3.13 test
-  run is a good moment).
+- `test_db_path_resolution.py` (3–4.6 s per test on Windows on 2026-10-20)
+  and `test_launcher_process.py` (1.5–2.5 s). Both were under 0.2 s per test
+  on Linux.
 - `test_capture_recovery.py::test_vad_loop_resumes_after_ffmpeg_dies` takes
-  ~2.2 s on Windows (0.5 s on Linux), spent in thread joins, not in the frame
-  wait (now patched to 0.05 s). The transcript sender's 0.2 s queue poll is
-  done: a constant (`QUEUE_POLL_S`) patched to 0.01 s in tests, so a sender
-  stop costs ~0.02 s instead of ~0.2 s (2026-11-18).
+  ~2.2 s on Windows (0.5 s on Linux), mostly in thread joins. The frame wait
+  is already patched to 0.05 s in this test.
 
 ## Experiments
 
