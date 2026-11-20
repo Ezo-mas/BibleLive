@@ -1,20 +1,23 @@
 import { useEffect } from 'react'
 
 interface UseOperatorShortcutsOptions {
-  /** Enter only acts (and is swallowed) while a pending item is selected. */
-  hasSelection: boolean
+  /**
+   * Enter only acts (and is swallowed) while a row is highlighted in a list that is
+   * on screen: a highlight in Pending does nothing while the History tab covers it.
+   */
+  canShow: boolean
   /** B only clears (and is swallowed) while something is on the display. */
   canClearDisplay: boolean
   /**
-   * False while a modal owns the page (the settings dialog). Approving the
-   * staged reference from behind a dialog — or clearing the selection with the
+   * False while a modal owns the page (the settings dialog). Showing the
+   * highlighted row from behind a dialog — or clearing the highlight with the
    * Escape that closed it — is exactly the kind of surprise the shortcuts must
    * not cause.
    */
   enabled?: boolean
   onNext: () => void
   onPrevious: () => void
-  onApprove: () => void
+  onShow: () => void
   onDeselect: () => void
   onClearDisplay: () => void
 }
@@ -23,9 +26,9 @@ interface UseOperatorShortcutsOptions {
  * Whether the focused element already acts on Enter and the arrow keys itself.
  *
  * A shortcut that fires on top of the focused control does the wrong thing
- * twice over: Enter on "Clear Display" would also approve the selected
- * reference, and the arrow keys inside the book picker would move the pending
- * selection instead of the select's own value.
+ * twice over: Enter on "Clear Display" would also show the highlighted
+ * reference, and the arrow keys inside the book picker would move the
+ * highlight instead of the select's own value.
  */
 function handlesItsOwnKeys(target: EventTarget | null): boolean {
   return (
@@ -53,12 +56,12 @@ function takesLetters(target: EventTarget | null): boolean {
 /**
  * Wire the operator console's global keyboard shortcuts.
  *
- * Shortcuts stay inert while a text field has focus so typing a token or a
- * search term never moves the pending selection, and while a button, link, or
- * select has focus so those controls answer the key themselves. A queue card is
- * a div with `role="button"`, so it is deliberately not in that list: Enter on
- * a focused card stages it, and Enter again approves the staged reference — the
- * console's own flow.
+ * ↑ / ↓ move the highlight (the one keyboard cursor, in Pending or Plan), Enter
+ * shows the highlighted row, Escape drops the highlight. They stay inert while a
+ * text field has focus, so typing a token or a search term never moves the
+ * highlight, and while a button, link, or select has focus, so those controls
+ * answer the key themselves. A row is a div with `role="button"`, so it is
+ * deliberately not in that list: focus on a row highlights it, and Enter shows it.
  *
  * B ("blank", as in a PowerPoint slideshow) clears the display. It is a plain
  * letter, so it stays a letter wherever one is typed (a text field, or a select that
@@ -67,15 +70,33 @@ function takesLetters(target: EventTarget | null): boolean {
  * the operator reaches for is often Clear.
  */
 export function useOperatorShortcuts({
-  hasSelection,
+  canShow,
   canClearDisplay,
   enabled = true,
   onNext,
   onPrevious,
-  onApprove,
+  onShow,
   onDeselect,
   onClearDisplay,
 }: UseOperatorShortcutsOptions): void {
+  useEffect(() => {
+    function preventRepeatedActivation(event: KeyboardEvent) {
+      if (
+        event.key === 'Enter' &&
+        event.repeat &&
+        event.target instanceof Element &&
+        event.target.matches(
+          'button, [role="button"], [role="menuitem"], [role="menuitemcheckbox"]'
+        )
+      ) {
+        event.preventDefault()
+      }
+    }
+
+    window.addEventListener('keydown', preventRepeatedActivation, true)
+    return () => window.removeEventListener('keydown', preventRepeatedActivation, true)
+  }, [])
+
   useEffect(() => {
     if (!enabled) return
 
@@ -102,9 +123,11 @@ export function useOperatorShortcuts({
           onPrevious()
           break
         case 'Enter':
-          if (hasSelection) {
+          // A held key repeats: one Enter is one Show. Only a plain Enter shows: Ctrl/Shift+Enter
+          // means "add to the plan" in Find Scripture, so a stray one must never go on air.
+          if (canShow && !e.repeat && !e.ctrlKey && !e.metaKey && !e.shiftKey && !e.altKey) {
             e.preventDefault()
-            onApprove()
+            onShow()
           }
           break
         case 'Escape':
@@ -116,14 +139,5 @@ export function useOperatorShortcuts({
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [
-    hasSelection,
-    canClearDisplay,
-    enabled,
-    onNext,
-    onPrevious,
-    onApprove,
-    onDeselect,
-    onClearDisplay,
-  ])
+  }, [canShow, canClearDisplay, enabled, onNext, onPrevious, onShow, onDeselect, onClearDisplay])
 }

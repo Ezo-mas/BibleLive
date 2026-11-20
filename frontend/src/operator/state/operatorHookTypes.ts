@@ -15,14 +15,16 @@ import type { ScriptureSearchState } from '../hooks/useScriptureSearch'
 import type { BibleVersionState } from '../hooks/useBibleVersion'
 import type { IdleScreenState } from '../hooks/useIdleScreen'
 import type { SpokenLanguageState } from '../hooks/useSpokenLanguage'
-import type { ConnectionState } from '../../components'
 import type { FlashTarget, OperatorNotice } from '../hooks/useNotices'
-import type { NextSource } from '../hooks/useStaging'
+import type { RowCursorState } from '../hooks/useRowCursor'
+
+/** The socket as the header reads it: a chip only while it is not connected. */
+export type ConnectionState = 'connected' | 'connecting' | 'disconnected'
 
 export interface OperatorState {
   /** Raw WebSocket status, for callers that need the exact socket state. */
   status: WsStatus
-  /** WebSocket status mapped to the shared ConnectionIndicator vocabulary. */
+  /** WebSocket status in the header's vocabulary. */
   connectionState: ConnectionState
   /** True while the socket is open and actions can be sent. */
   isConnected: boolean
@@ -49,23 +51,18 @@ export interface OperatorState {
   seenPassage: boolean
   hasDisplayContent: boolean
   displayConnected: boolean
+  /**
+   * True only when the server has said no display page is connected (and the socket
+   * is up): the On display warning chip. Unknown (before the snapshot, while
+   * reconnecting) is not missing.
+   */
+  displayMissing: boolean
   /** Audio pipeline health; null while disconnected or before the first answer. */
   pipeline: PipelineStatus | null
   /**
-   * NEXT: the scripture staged for the projector, whether it came from the
-   * pending queue or from a manual selection. Client-side only — staging
-   * previews a passage and never touches the display.
-   */
-  nextReference: BibleReference | null
-  nextSource: NextSource
-  showNext: () => void
-  clearNext: () => void
-  canShowNext: boolean
-  /**
-   * Send a resolved manual passage straight to the display without staging it.
-   * The same `display_reference` request `showNext` sends for a staged passage —
-   * coordinates only, for the server to resolve — used by Enter in Find
-   * Scripture. Nothing is staged and Up Next is untouched.
+   * Send a manual passage to the display: coordinates only, for the server to
+   * resolve (`display_reference`). Used by Find Scripture, Plan, History and
+   * follow-along; does nothing while disconnected.
    */
   showManualDirect: (request: PassageQuery) => void
 
@@ -102,41 +99,26 @@ export interface OperatorState {
   /** The picture shown while the display is idle. Read and changed over HTTP. */
   idleScreen: IdleScreenState
 
-  /** Reference ID of the selected pending item, or null when nothing is selected. */
-  selectedId: string | null
-  selectPending: (id: string) => void
-  /** Stage a history entry for a repeat display; nothing is sent. */
-  selectHistory: (reference: BibleReference) => void
-  /** Show a history entry again at once (double-click), skipping Up Next. */
-  showHistory: (reference: BibleReference) => void
-  /** Approve a queued detection at once (double-click), skipping Up Next. */
+  /** Show a queued detection: approved by ID (the row's Show, or Enter on its highlight). */
   approvePending: (id: string) => void
+  /** Show a history entry again: coordinates only. */
+  showHistory: (reference: BibleReference) => void
   discardPending: (id: string) => void
   discardInFlight: boolean
 
   /** Passages lined up in advance, kept in this browser. */
   plan: PlanState
-  /** Looked-up text for plan items saved without any, by item id. */
+  /** Refreshed Plan excerpts, by item id. */
   planSnippets: Record<string, string>
   /** The text the follow-along hint points at, once looked up; null until then. */
   followAlongText: string | null
-  /** Stage a planned passage in Up Next (looked up fresh); nothing is sent to the display. */
-  stagePlanItem: (item: PlanItem) => void
-  /** Show a planned passage at once (double-click), skipping Up Next. */
+  /** Show a planned passage: coordinates only. */
   showPlanItem: (item: PlanItem) => void
-  /**
-   * The history entry staged in Up Next, but only while it is still in the list;
-   * a staged entry that has aged out stays staged and just stops being marked.
-   */
-  selectedHistoryId: string | null
-  selectNext: () => void
-  selectPrevious: () => void
-  deselect: () => void
+  /** The one keyboard cursor (highlighted row) in Pending or Plan. */
+  cursor: RowCursorState
 
-  approveSelected: () => void
   clearDisplay: () => void
   clearPendingQueue: () => void
-  canApprove: boolean
   canClearDisplay: boolean
   canClearPending: boolean
   flash: FlashTarget | null

@@ -6,6 +6,13 @@ built yet.
 
 ## Follow-ups
 
+### Clear display history from the operator console
+
+Add a three-dot menu to the History tab with **Clear history**. It needs a
+server-side action that updates connected consoles and the saved history,
+while preserving the passage currently on display. Review the WebSocket
+contract before implementing it.
+
 ### Idle screen picture: check it on a projector
 The operator can upload a picture (Settings → Display → Idle screen), choose Logo or
 Fill screen, and remove it; it is stored beside the settings file and survives a

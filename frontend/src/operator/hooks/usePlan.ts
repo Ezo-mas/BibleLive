@@ -5,13 +5,17 @@ import { samePassage } from '../passageKey'
 /** localStorage key for the operator's planned passages. */
 export const PLAN_STORAGE_KEY = 'biblelive_operator_plan'
 
-/** The most characters of verse text kept per item: enough to recognise it, small to store. */
-const SNIPPET_CHARS = 200
+/** Keep the saved excerpt compact. CSS handles truncation to the row's actual width. */
+const SNIPPET_CHARS = 600
+
+export function planExcerpt(passage: Passage): string {
+  const text = (passage.text || passage.verses.map(verse => verse.text).join(' ')).trim()
+  return text.length > SNIPPET_CHARS ? `${text.slice(0, SNIPPET_CHARS - 1).trimEnd()}…` : text
+}
 
 /**
  * One planned passage: coordinates, plus the start of its text so the list is
- * recognisable at a glance. The text is a memory aid only — staging an item looks
- * the passage up again, and showing it sends coordinates for the server to resolve.
+ * recognisable at a glance. Showing it sends coordinates for the server to resolve.
  */
 export interface PlanItem {
   id: string
@@ -21,6 +25,8 @@ export interface PlanItem {
   verse_start: number
   verse_end: number
   snippet: string
+  /** Older items have a first-verse snippet and no format marker. */
+  snippetFormat?: 'passage'
 }
 
 export interface PlanState {
@@ -67,7 +73,8 @@ function toItem(passage: Passage): PlanItem {
     chapter: passage.chapter,
     verse_start: passage.verse_start,
     verse_end: passage.verse_end,
-    snippet: (passage.verses[0]?.text ?? passage.text).slice(0, SNIPPET_CHARS),
+    snippet: planExcerpt(passage),
+    snippetFormat: 'passage',
   }
 }
 

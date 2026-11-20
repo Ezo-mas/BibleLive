@@ -42,23 +42,18 @@ function highlighted(result: ScriptureResult): ReactNode {
  *
  * Results list the resolved passage first, or the matching books while the text
  * is still a name — with the verbatim input echoed into "No book matches", so a
- * misspelling is answered rather than guessed at. Picking a passage stages it in
- * Up Next (nothing is displayed: Show is a separate, server-confirmed action);
- * picking a book fills the box with its canonical name so the chapter can be
- * typed next.
+ * misspelling is answered rather than guessed at. Picking a book fills the box
+ * with its canonical name so the chapter can be typed next.
  *
- * Enter on a resolved passage shows it on the display: no staging, one
- * `display_reference` request, the same one Show sends. The preview of how the
- * verse begins is what makes that safe — the operator sees it is the right
- * passage before pressing the key. On a book row Enter completes the name instead,
- * so the chapter can be typed next. Shift+Enter (or the Plan button) adds the
- * passage to the plan, for the operator lining verses up ahead of time; Ctrl+Enter
- * stages it in Up Next to preview it before Show. The global shortcuts stand down
- * while a text field has focus, so none of these can approve a queue item by
- * accident.
- *
- * A resolved passage shows how its first verse begins, looked up as the reference
- * becomes complete, so a wrong book or verse is seen before anything is staged.
+ * Enter (or a click on the passage row) shows the resolved passage on the
+ * display: one coordinates-only `display_reference` request, the same one every
+ * manual Show sends. The preview of how the verse begins is what makes that safe —
+ * the operator sees it is the right passage before pressing the key. On a book row
+ * Enter completes the name instead. Ctrl+Enter (or the Plan button) adds the
+ * passage to the plan, for the operator lining verses up ahead of time; Shift+Enter
+ * does the same, so the old plan key can never put a passage on screen. The global
+ * shortcuts stand down while a text field has focus, so none of these can approve
+ * a queue item by accident.
  */
 export function ScriptureSearch({ search, disabled, directEnabled = true }: ScriptureSearchProps) {
   const { t } = useI18n()
@@ -97,39 +92,38 @@ export function ScriptureSearch({ search, disabled, directEnabled = true }: Scri
   }, [input])
 
   function pick(result: ScriptureResult) {
-    if (result.kind === 'book') refocusRef.current = true
-    choose(result)
+    if (result.kind === 'book') {
+      refocusRef.current = true
+      choose(result)
+      return
+    }
+    // A passage row shows it: not from a disconnected box or from behind Settings.
+    if (!disabled && directEnabled) choose(result)
   }
 
   function handleKeyDown(event: KeyboardEvent<HTMLInputElement>) {
     if (event.key !== 'Enter') return
     // Enter is the fast path through the whole interaction, so it never submits
-    // or bubbles anywhere else.
+    // or bubbles anywhere else: stopped as well as prevented, so no global handler
+    // can turn one keypress into two actions.
     event.preventDefault()
+    event.stopPropagation()
+    // A held key repeats: the first press acts, and its repeats send nothing more.
+    if (event.repeat) return
     // The row for what is in the box now, not for what it said a debounce ago.
     const best = resolveNow()[0]
-    if (event.shiftKey) {
-      // Shift+Enter plans the resolved passage; a book row or no result does nothing.
-      event.stopPropagation()
-      if (disabled || !best) return
-      planResult(best)
-      return
-    }
-    if (event.ctrlKey || event.metaKey) {
-      // Ctrl+Enter stages in Up Next (or completes a book name), as Enter once did.
-      event.stopPropagation()
-      if (best) pick(best)
-      return
-    }
     if (!best) return
     if (best.kind === 'book') {
       pick(best)
       return
     }
-    // Enter shows the resolved passage directly: no staging, one request. Stopped
-    // as well as prevented, so no global handler can turn one keypress into two
-    // actions. The box disconnected or Settings open — sends nothing.
-    event.stopPropagation()
+    if (event.ctrlKey || event.metaKey || event.shiftKey) {
+      // Ctrl+Enter plans the resolved passage (Shift+Enter, the old plan key, too).
+      if (!disabled) planResult(best)
+      return
+    }
+    // Enter shows the resolved passage. The box disconnected or Settings open —
+    // sends nothing.
     if (disabled || !directEnabled) return
     displayDirect(best)
   }
@@ -194,7 +188,27 @@ export function ScriptureSearch({ search, disabled, directEnabled = true }: Scri
                         className={`btn btn-secondary operator-search-result is-${result.kind}${
                           result.kind === 'reference' ? ' is-on' : ''
                         }`}
-                        onClick={() => pick(result)}
+                        onClick={event => {
+                          // The second click of a double-click is not a second Show.
+                          if (result.kind === 'reference' && event.detail > 1) return
+                          pick(result)
+                        }}
+                        onKeyDown={event => {
+                          if (
+                            result.kind !== 'reference' ||
+                            event.defaultPrevented ||
+                            event.key !== 'Enter' ||
+                            !(event.ctrlKey || event.metaKey || event.shiftKey)
+                          ) {
+                            return
+                          }
+                          event.preventDefault()
+                          event.stopPropagation()
+                          if (!disabled) planResult(result)
+                          // This row goes once the passage is planned: keep focus in the box,
+                          // not on the page, where the next key would reach the global shortcuts.
+                          inputRef.current?.focus()
+                        }}
                         disabled={disabled}
                         // Both rows name what picking them does. The book row needs
                         // the label more than it looks: its name is split by the
@@ -203,7 +217,7 @@ export function ScriptureSearch({ search, disabled, directEnabled = true }: Scri
                         // match), so the label states the whole name instead.
                         aria-label={
                           result.kind === 'reference'
-                            ? t('search.stageAria', { label: result.label })
+                            ? t('search.showAria', { label: result.label })
                             : t('search.bookAria', {
                                 name: `${result.label}${result.detail ? `, ${result.detail}` : ''}`,
                               })

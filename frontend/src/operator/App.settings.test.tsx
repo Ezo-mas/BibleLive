@@ -49,13 +49,9 @@ function gear() {
   return screen.getByRole('button', { name: 'Settings' })
 }
 
-/** The Off / On control for auto-approve under the display preview. */
 function autoQuick() {
-  const group = within(screen.getByRole('group', { name: 'Auto-approve' }))
-  return {
-    off: group.getByRole('button', { name: 'Off' }),
-    on: group.getByRole('button', { name: 'On' }),
-  }
+  fireEvent.click(screen.getByRole('button', { name: 'Pending options' }))
+  return screen.getByRole('menuitemcheckbox', { name: /^Auto-approve/ })
 }
 
 function dialog() {
@@ -106,14 +102,16 @@ describe('settings dialog', () => {
 
     // Preferences are not on the page: only the way in and the mode chip are.
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
-    expect(screen.queryByRole('group', { name: 'Verses shown on display' })).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('group', { name: 'Verses shown on the display' })
+    ).not.toBeInTheDocument()
 
     openSettings()
 
     expect(dialog()).toHaveAccessibleName('Settings')
     expect(
-      within(dialog()).queryByRole('group', { name: 'Verses shown on display' })
-    ).not.toBeInTheDocument()
+      within(dialog()).getByRole('group', { name: 'Verses shown on the display' })
+    ).toBeInTheDocument()
     expect(within(dialog()).getByRole('group', { name: 'Auto-approve mode' })).toBeInTheDocument()
 
     act(() => {
@@ -236,52 +234,61 @@ describe('display preferences in settings', () => {
 })
 
 describe('auto-approve in settings', () => {
-  it('turns auto-approve on and off from the Off / On control under the preview', () => {
+  it('toggles auto-approve from the Pending menu', () => {
     openWith()
-    expect(autoQuick().off).toHaveAttribute('aria-pressed', 'true')
-    expect(autoQuick().on).toHaveAttribute('aria-pressed', 'false')
+    const off = autoQuick()
+    expect(off).toHaveAttribute('aria-checked', 'false')
+    expect(off).toHaveTextContent('Off')
+    fireEvent.click(off)
 
-    act(() => {
-      autoQuick().on.click()
-    })
-
-    // On is the most conservative mode until the operator has chosen another.
     expect(sentMessages()).toContainEqual({ action: 'set_auto_mode', auto_mode: 'high' })
-    expect(autoQuick().on).toHaveAttribute('aria-pressed', 'true')
-
-    act(() => {
-      autoQuick().off.click()
-    })
+    const on = autoQuick()
+    expect(on).toHaveAttribute('aria-checked', 'true')
+    expect(on).toHaveTextContent('On')
+    fireEvent.click(on)
 
     expect(sentMessages().at(-1)).toEqual({ action: 'set_auto_mode', auto_mode: 'off' })
-    expect(autoQuick().off).toHaveAttribute('aria-pressed', 'true')
+    expect(autoQuick()).toHaveAttribute('aria-checked', 'false')
   })
 
-  it('turns On back on to the last mode that was on', () => {
+  it('restores the last active mode', () => {
     openWith()
     push(socket, { type: 'auto_mode_confirmed', data: { auto_mode: 'medium_and_up' } })
-    expect(autoQuick().on).toHaveAttribute('aria-pressed', 'true')
-
-    act(() => {
-      autoQuick().off.click()
-    })
+    fireEvent.click(autoQuick())
     expect(sentMessages().at(-1)).toEqual({ action: 'set_auto_mode', auto_mode: 'off' })
 
-    act(() => {
-      autoQuick().on.click()
-    })
+    fireEvent.click(autoQuick())
     expect(sentMessages().at(-1)).toEqual({ action: 'set_auto_mode', auto_mode: 'medium_and_up' })
   })
 
-  it('does not resend a mode that is already set', () => {
+  it('holding Enter on Pending options opens the menu without enabling auto-approve', () => {
     openWith()
-    const before = sentMessages().length
+    const trigger = screen.getByRole('button', { name: 'Pending options' })
+    act(() => trigger.focus())
+    const messagesBeforeEnter = sentMessages()
 
-    act(() => {
-      autoQuick().off.click()
-    })
+    // jsdom does not synthesize the click for an uncanceled Enter keydown.
+    if (fireEvent.keyDown(trigger, { key: 'Enter' })) fireEvent.click(trigger)
+    const auto = screen.getByRole('menuitemcheckbox', { name: 'Auto-approve Off' })
+    expect(auto).toHaveFocus()
+    if (fireEvent.keyDown(auto, { key: 'Enter', repeat: true })) fireEvent.click(auto)
 
-    expect(sentMessages()).toHaveLength(before)
+    expect(sentMessages()).toEqual(messagesBeforeEnter)
+  })
+
+  it('uses arrow keys in the Pending menu and restores focus on Escape', () => {
+    openWith()
+    const trigger = screen.getByRole('button', { name: 'Pending options' })
+    fireEvent.keyDown(trigger, { key: 'ArrowDown' })
+    const auto = screen.getByRole('menuitemcheckbox', { name: 'Auto-approve Off' })
+    expect(auto).toHaveFocus()
+    fireEvent.keyDown(auto, { key: 'ArrowDown' })
+    const clear = screen.getByRole('menuitem', { name: 'Clear queue' })
+    expect(clear).toHaveFocus()
+    expect(clear).toHaveAttribute('aria-disabled', 'true')
+    fireEvent.keyDown(clear, { key: 'Escape' })
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+    expect(trigger).toHaveFocus()
   })
 
   it('keeps the Off / On control and the dialog on the same mode, with the same semantics', () => {
@@ -306,8 +313,7 @@ describe('auto-approve in settings', () => {
     })
 
     // With the settings closed the console still says what the server is doing.
-    expect(autoQuick().on).toHaveAttribute('aria-pressed', 'true')
-    expect(autoQuick().on).toHaveAttribute('title', 'Med+')
+    expect(screen.getByText('Auto-approve · Medium and high')).toBeInTheDocument()
   })
 
   it('follows the mode the server confirms, in both places', () => {
@@ -325,21 +331,53 @@ describe('auto-approve in settings', () => {
       within(dialog()).getByRole('button', { name: 'Close settings' }).click()
     })
 
-    expect(autoQuick().on).toHaveAttribute('aria-pressed', 'true')
-    expect(autoQuick().on).toHaveAttribute('title', 'All')
+    expect(screen.getByText('Auto-approve · All')).toBeInTheDocument()
   })
 
   it('shows the mode the snapshot reported, before anything is touched', () => {
     openWith('high')
 
-    expect(autoQuick().on).toHaveAttribute('aria-pressed', 'true')
-    expect(autoQuick().on).toHaveAttribute('title', 'High')
+    expect(screen.getByText('Auto-approve · High only')).toBeInTheDocument()
 
     openSettings()
     expect(autoOptions().getByRole('button', { name: 'High' })).toHaveAttribute(
       'aria-pressed',
       'true'
     )
+  })
+})
+
+describe('the auto-approve mode beside the label', () => {
+  /** The quiet mode text after the row's label, or null while auto-approve is off. */
+  function modeLabel() {
+    return screen.queryByTestId('auto-mode-label')
+  }
+
+  it('says nothing more while auto-approve is off', () => {
+    openWith('off')
+
+    expect(modeLabel()).toBeNull()
+    expect(autoQuick()).toHaveAttribute('aria-checked', 'false')
+  })
+
+  it('names the active mode below the tabs in Pending and History', () => {
+    openWith('high')
+    expect(modeLabel()).toHaveTextContent('Auto-approve · High only')
+    fireEvent.click(screen.getByRole('tab', { name: 'History' }))
+    expect(modeLabel()).toHaveTextContent('Auto-approve · High only')
+  })
+
+  it('follows the mode the server confirms, and goes when it is turned off', () => {
+    openWith('high')
+
+    push(socket, { type: 'auto_mode_confirmed', data: { auto_mode: 'medium_and_up' } })
+    expect(modeLabel()).toHaveTextContent('· Medium and high')
+
+    push(socket, { type: 'auto_mode_confirmed', data: { auto_mode: 'all' } })
+    expect(modeLabel()).toHaveTextContent('· All')
+
+    push(socket, { type: 'auto_mode_confirmed', data: { auto_mode: 'off' } })
+    expect(modeLabel()).toBeNull()
   })
 })
 
@@ -360,9 +398,10 @@ describe('keyboard shortcuts in settings', () => {
     if (!list) throw new Error('shortcuts section not found')
     const text = within(list as HTMLElement)
     // Every supported shortcut, with its actual behavior.
-    expect(text.getByText('Move the pending selection')).toBeInTheDocument()
-    expect(text.getByText(/Show the staged reference/)).toBeInTheDocument()
-    expect(text.getByText(/show the resolved passage directly/)).toBeInTheDocument()
+    expect(text.getByText('Move the highlight in Pending or Plan')).toBeInTheDocument()
+    expect(text.getByText(/Show the highlighted row/)).toBeInTheDocument()
+    expect(text.getByText('In Find Scripture, add the passage to the plan')).toBeInTheDocument()
+    expect(text.getByText('Ctrl')).toBeInTheDocument()
     expect(text.getByText(/close this dialog when it is open/)).toBeInTheDocument()
   })
 })

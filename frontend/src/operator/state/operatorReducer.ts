@@ -5,7 +5,7 @@ import { formatReference } from '../../shared/reference'
 import type { BibleReference, DisplaySettings } from '../../shared/types'
 import { coerceDisplayTheme, coerceVerseLimit } from '../../shared/verseText'
 import { autoModeOption, coerceAutoMode } from '../autoMode'
-import { dedupeHistory, samePassage } from '../passageKey'
+import { dedupeHistory } from '../passageKey'
 import type {
   NoticeMessage,
   OperatorEffect,
@@ -14,7 +14,7 @@ import type {
   OperatorSettings,
   OperatorTransition,
   OptimisticSettingAction,
-  StagedReference,
+  RowCursor,
 } from './operatorTypes'
 
 /**
@@ -87,12 +87,12 @@ export function createOperatorState(
     historyCount: 0,
     currentDisplay: null,
     seenPassage: false,
-    staged: null,
+    cursor: null,
     showInFlight: false,
     discardId: null,
     discardCoolingDown: false,
     followAlongHint: null,
-    displayConnected: false,
+    displayConnected: null,
     settings,
     confirmed: { ...settings },
     idleImage: null,
@@ -100,36 +100,17 @@ export function createOperatorState(
 }
 
 /**
- * Keep a staged reference across a queue update when it is still queued.
+ * Keep the cursor across a queue update while its detection is still queued.
  *
- * Detections arrive while an operator is deciding, and a new arrival used to
- * wipe the staged selection mid-approval. The reference is only ever approved
- * by ID, so holding on to it cannot show the wrong passage — and letting go
- * when its ID leaves the queue keeps the button in step with the list.
- *
- * A manually staged passage and a history entry are deliberately unaffected:
- * they never enter the queue, so an arriving detection must not discard them.
+ * Detections arrive while an operator is deciding, so an arrival must not move the
+ * highlight; a detection that has left the queue (shown, removed, or approved by
+ * another console) takes the highlight with it, so Enter can never act on a row that
+ * is gone. A plan row is unaffected: the plan is not the queue.
  */
-function keepStagedReference(staged: StagedReference | null, pending: BibleReference[]) {
-  return staged?.kind === 'pending' && !pending.some(reference => reference.id === staged.id)
+function keepCursor(cursor: RowCursor | null, pending: BibleReference[]) {
+  return cursor?.list === 'pending' && !pending.some(reference => reference.id === cursor.id)
     ? null
-    : staged
-}
-
-/**
- * Whether a confirmation is about the passage currently staged.
- *
- * A manual passage and a history entry are both identified by their coordinates:
- * neither ever entered the queue and the server assigns the reference ID only
- * when it displays the passage, so coordinates are what the request and the
- * confirmation have in common. This is what stops a late confirmation for one
- * passage from clearing a different one the operator staged in the meantime.
- * A queued selection is matched by the queue update that follows an approval,
- * never by coordinates.
- */
-function isStagedPassage(staged: StagedReference, shown: BibleReference): boolean {
-  if (staged.kind === 'pending') return false
-  return samePassage(staged.kind === 'manual' ? staged.passage : staged.reference, shown)
+    : cursor
 }
 
 function displaySettings(data: DisplaySettings) {
@@ -190,9 +171,9 @@ export function operatorReducer(
         settings,
         confirmed,
         idleImage: data.display_settings ? readIdleImage(data.display_settings) : state.idleImage,
-        // A reconnect can land while something is staged; keep it if the queue
+        // A reconnect can land while a row is highlighted; keep it if the queue
         // still holds it so a dropped socket does not undo the operator's work.
-        staged: keepStagedReference(state.staged, data.pending),
+        cursor: keepCursor(state.cursor, data.pending),
       }
       break
     }
@@ -205,7 +186,7 @@ export function operatorReducer(
         ...state,
         pending: event.data.pending,
         pendingCount: event.data.count,
-        staged: keepStagedReference(state.staged, event.data.pending),
+        cursor: keepCursor(state.cursor, event.data.pending),
         discardCoolingDown: state.discardCoolingDown || startCooldown,
       }
       if (startCooldown) effects.push({ type: 'start_discard_cooldown' })
@@ -220,7 +201,7 @@ export function operatorReducer(
       // on screen. The reference comes back server-built: manual, with no confidence.
       const shown = event.data.reference
       // A passage follow-along showed by itself answers no Show of this console:
-      // the operator's own request stays in flight and Up Next stays as it is.
+      // the operator's own request stays in flight.
       const followed = event.type === 'display_confirmed' && shown.source === 'follow'
       next = {
         ...state,
@@ -229,16 +210,6 @@ export function operatorReducer(
         currentDisplay: shown,
         seenPassage: true,
         showInFlight: followed ? state.showInFlight : false,
-        // It is on screen now, so it is no longer waiting in Up Next — unless the
-        // operator staged something else while this request was in flight, which
-        // is why the confirmation has to name the passage it belongs to.
-        staged:
-          event.type === 'display_confirmed' &&
-          !followed &&
-          state.staged &&
-          isStagedPassage(state.staged, shown)
-            ? null
-            : state.staged,
       }
       if (event.type === 'approval_confirmed') effects.push({ type: 'flash', target: 'approve' })
       // A passage follow-along showed by itself is not one the operator picked.
@@ -378,60 +349,29 @@ export function operatorReducer(
       }
       break
     }
-    case 'stage':
-      next = { ...state, staged: event.staged }
+    case 'set_cursor':
+      next = { ...state, cursor: event.cursor }
       break
-    // Up and down the queue: the staged detection moves by `step`, held at either end.
-    case 'select_by': {
-      const id = state.staged?.kind === 'pending' ? state.staged.id : null
-      const index = state.pending.findIndex(reference => reference.id === id)
-      const target =
-        index === -1 ? 0 : Math.min(Math.max(index + event.step, 0), state.pending.length - 1)
-      next = {
-        ...state,
-        staged:
-          state.pending.length === 0 ? null : { kind: 'pending', id: state.pending[target].id },
-      }
+    // Up and down a list: the cursor moves by `step`, held at either end; from
+    // another list (or none) it lands on the first row.
+    case 'move_cursor': {
+      const ids =
+        event.list === 'pending' ? state.pending.map(reference => reference.id) : event.planIds
+      if (ids.length === 0) break
+      const index = state.cursor?.list === event.list ? ids.indexOf(state.cursor.id) : -1
+      const target = index === -1 ? 0 : Math.min(Math.max(index + event.step, 0), ids.length - 1)
+      next = { ...state, cursor: { list: event.list, id: ids[target] } }
       break
     }
-    // Show is the one place the sources diverge, and they stay separate on the
-    // wire: a queued reference is approved by ID as before, while a passage the
-    // operator chose — by hand or from history — is sent as coordinates for the
-    // server to resolve itself. A history entry carries no ID that means anything
-    // to the server (nothing is queued), so showing it again is the same request
-    // the search panel makes; only the coordinates travel.
-    case 'show_next': {
-      if (!state.staged || state.showInFlight) break
-      next = { ...state, showInFlight: true }
-      if (state.staged.kind === 'pending') {
-        effects.push({ type: 'send', action: { action: 'approve', reference_id: state.staged.id } })
-      } else {
-        const reference =
-          state.staged.kind === 'manual' ? state.staged.passage : state.staged.reference
-        effects.push({
-          type: 'send',
-          action: {
-            action: 'display_reference',
-            book: reference.book,
-            chapter: reference.chapter,
-            verse_start: reference.verse_start,
-            verse_end: reference.verse_end,
-          },
-        })
-      }
-      break
-    }
+    // Every display request is one of two doors, and they stay separate on the
+    // wire: a queued detection is approved by ID (approve_pending), while a passage
+    // the operator chose — by hand, from the plan or from history — is sent as
+    // coordinates for the server to resolve itself.
     case 'show_direct':
       if (!state.showInFlight) {
         next = { ...state, showInFlight: true }
         effects.push({ type: 'send', action: { action: 'display_reference', ...event.request } })
       }
-      break
-    // The queue's Approve button approves a staged *detection*. A manual passage is
-    // shown from Up Next instead, so this stays off until a queued item is staged.
-    case 'approve_selected':
-      if (state.staged?.kind === 'pending')
-        effects.push({ type: 'send', action: { action: 'approve', reference_id: state.staged.id } })
       break
     case 'approve_pending':
       if (!state.showInFlight) {
@@ -485,8 +425,15 @@ export function operatorReducer(
       effects.push(...storeSetting(settings, action.action), { type: 'send', action })
       break
     }
+    // Until the next snapshot, whether a display is connected is not known.
     case 'disconnected':
-      next = { ...state, showInFlight: false, discardId: null, discardCoolingDown: false }
+      next = {
+        ...state,
+        showInFlight: false,
+        discardId: null,
+        discardCoolingDown: false,
+        displayConnected: null,
+      }
       effects.push({ type: 'clear_discard_timer' })
       break
     case 'discard_settled':

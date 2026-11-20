@@ -210,7 +210,7 @@ function queueSection() {
   return within(screen.getByRole('tabpanel'))
 }
 
-/** The /api/lookup requests made so far (the preview's and any staging lookup's). */
+/** The /api/lookup requests made so far (the preview's and any plan lookup's). */
 function lookupCalls() {
   return fetchMock.mock.calls.filter(([url]) => String(url).startsWith('/api/lookup'))
 }
@@ -222,7 +222,7 @@ function pressEnter() {
   })
 }
 
-/** Press Ctrl+Enter in the search box: stage the best match in Up Next. */
+/** Press Ctrl+Enter in the search box: add the best match to the plan. */
 function pressCtrlEnter() {
   act(() => {
     fireEvent.keyDown(searchBox(), { key: 'Enter', ctrlKey: true })
@@ -238,12 +238,6 @@ function settingsGear() {
 function clickResult(name: string | RegExp) {
   act(() => {
     results().getByRole('button', { name }).click()
-  })
-}
-
-function showNext() {
-  act(() => {
-    screen.getByRole('button', { name: 'Show on display' }).click()
   })
 }
 
@@ -368,7 +362,7 @@ describe('Find Scripture', () => {
 
     await waitFor(() =>
       expect(
-        screen.getByRole('button', { name: 'Genesis 1:1 — stage in Up Next' })
+        screen.getByRole('button', { name: 'Genesis 1:1 — show on display' })
       ).toBeInTheDocument()
     )
     // A complete reference is the whole answer: no book list under it. Its only
@@ -384,7 +378,7 @@ describe('Find Scripture', () => {
 
     await waitFor(() =>
       expect(
-        screen.getByRole('button', { name: 'Genesis 1:1-3 — stage in Up Next' })
+        screen.getByRole('button', { name: 'Genesis 1:1-3 — show on display' })
       ).toBeInTheDocument()
     )
   })
@@ -395,7 +389,7 @@ describe('Find Scripture', () => {
     type('john 3:16')
     await waitFor(() =>
       expect(
-        screen.getByRole('button', { name: 'John 3:16 — stage in Up Next' })
+        screen.getByRole('button', { name: 'John 3:16 — show on display' })
       ).toBeInTheDocument()
     )
 
@@ -404,7 +398,7 @@ describe('Find Scripture', () => {
     type('ps 23')
     await waitFor(() =>
       expect(
-        screen.getByRole('button', { name: 'Psalms 23 — stage in Up Next' })
+        screen.getByRole('button', { name: 'Psalms 23 — show on display' })
       ).toBeInTheDocument()
     )
     expect(results().getByText(/Whole chapter/)).toBeInTheDocument()
@@ -417,7 +411,7 @@ describe('Find Scripture', () => {
 
     await waitFor(() =>
       expect(
-        screen.getByRole('button', { name: 'John 3:16 — stage in Up Next' })
+        screen.getByRole('button', { name: 'John 3:16 — show on display' })
       ).toBeInTheDocument()
     )
     expect(screen.queryByRole('button', { name: /1 John/ })).not.toBeInTheDocument()
@@ -446,7 +440,7 @@ describe('Find Scripture', () => {
     expect(fetchMock.mock.calls.filter(([url]) => String(url).startsWith('/api/lookup'))).toEqual(
       []
     )
-    expect(screen.getByText('Nothing staged')).toBeInTheDocument()
+    expect(sentActions()).toEqual([])
   })
 
   it('reports a reversed verse range', async () => {
@@ -459,7 +453,7 @@ describe('Find Scripture', () => {
         'The verse range must start at or before its end.'
       )
     )
-    expect(screen.queryByTestId('next-preview')).not.toBeInTheDocument()
+    expect(sentActions()).toEqual([])
   })
 
   it('shows the server’s rejection of a verse that is not in its text', async () => {
@@ -470,70 +464,118 @@ describe('Find Scripture', () => {
     type('john 3:999')
     await waitFor(() =>
       expect(
-        screen.getByRole('button', { name: 'John 3:999 — stage in Up Next' })
+        screen.getByRole('button', { name: 'John 3:999 — show on display' })
       ).toBeInTheDocument()
     )
 
-    clickResult('John 3:999 — stage in Up Next')
-
+    // The preview's own read-only lookup is refused, before anything is shown.
     await waitFor(() =>
       expect(screen.getByRole('alert')).toHaveTextContent(
         'John 3:999 is not in the Bible text available on this server.'
       )
     )
-    expect(screen.queryByTestId('next-preview')).not.toBeInTheDocument()
     expect(sentActions()).toEqual([])
   })
 
-  it('stages a clicked passage in Up Next with its verse text', async () => {
+  it('a click on the passage row shows it: coordinates only, confirmed by the server', async () => {
     openWith({ currentDisplay: romans })
 
     type('john 3:16-17')
     await waitFor(() =>
       expect(
-        screen.getByRole('button', { name: 'John 3:16-17 — stage in Up Next' })
+        screen.getByRole('button', { name: 'John 3:16-17 — show on display' })
       ).toBeInTheDocument()
     )
-    clickResult('John 3:16-17 — stage in Up Next')
-    await waitFor(() => expect(screen.getByTestId('next-preview')).toBeInTheDocument())
+    clickResult('John 3:16-17 — show on display')
 
-    const staged = within(screen.getByTestId('next-preview'))
-    expect(staged.getByText('John 3:16-17')).toBeInTheDocument()
+    expect(sentActions()).toEqual([
+      { action: 'display_reference', book: 'John', chapter: 3, verse_start: 16, verse_end: 17 },
+    ])
+    // Sent is not shown: LIVE still holds what the projector had.
     expect(
-      within(screen.getByTestId('next-verses')).getByText('John 3:16 text')
+      within(screen.getByTestId('live-verses')).getByText('Romans 8:28 text')
     ).toBeInTheDocument()
-    expect(screen.getByText('Staged: John 3:16-17 — press Show to display')).toBeInTheDocument()
 
-    // The lookup carried the parsed coordinates and nothing else.
-    const lookupCall = fetchMock.mock.calls.find(([url]) => String(url).startsWith('/api/lookup'))
-    expect(String(lookupCall?.[0])).toBe(
-      '/api/lookup?book=John&chapter=3&verse_start=16&verse_end=17'
+    push(socket, {
+      type: 'display_confirmed',
+      data: { reference: manualReference('John', 3, 16, 17) },
+    })
+
+    expect(
+      within(screen.getByTestId('live-verses')).getByText('John 3:16 text')
+    ).toBeInTheDocument()
+    expect(screen.getByText('Shown: John 3:16-17 (manual)')).toBeInTheDocument()
+  })
+
+  it('adds the best result to the plan on Ctrl+Enter, and shows nothing', async () => {
+    openWith({ currentDisplay: romans })
+
+    type('ge 1 1')
+    await waitFor(() =>
+      expect(
+        screen.getByRole('button', { name: 'Genesis 1:1 — show on display' })
+      ).toBeInTheDocument()
     )
 
-    // Staging is local: the display is untouched and nothing was sent.
+    pressCtrlEnter()
+
+    await waitFor(() =>
+      expect(screen.getByText('Added to the plan: Genesis 1:1')).toBeInTheDocument()
+    )
     expect(
       within(screen.getByTestId('live-verses')).getByText('Romans 8:28 text')
     ).toBeInTheDocument()
     expect(sentActions()).toEqual([])
   })
 
-  it('stages the best result on Ctrl+Enter', async () => {
+  it.each([
+    ['Shift', 'shiftKey'],
+    ['Ctrl', 'ctrlKey'],
+    ['Meta', 'metaKey'],
+  ])('adds the focused result to the plan on %s+Enter without showing it', async (_, modifier) => {
+    openWith()
+    type('ge 1 1')
+    const result = await screen.findByRole('button', { name: 'Genesis 1:1 — show on display' })
+    act(() => result.focus())
+    expect(result).toHaveFocus()
+
+    expect(fireEvent.keyDown(result, { key: 'Enter', [modifier]: true })).toBe(false)
+
+    await waitFor(() =>
+      expect(screen.getByText('Added to the plan: Genesis 1:1')).toBeInTheDocument()
+    )
+    expect(sentActions()).toEqual([])
+    // Focus stays in the box, not on the page where the next key reaches the shortcuts.
+    expect(searchBox()).toHaveFocus()
+  })
+
+  it('the second click of a double-click on a result is not a second Show', async () => {
+    openWith()
+    type('ge 1 1')
+    const result = await screen.findByRole('button', { name: 'Genesis 1:1 — show on display' })
+
+    fireEvent.click(result, { detail: 2 })
+
+    expect(sentActions()).toEqual([])
+  })
+
+  it('a repeated Enter or Ctrl+Enter from a held key sends and adds nothing', async () => {
     openWith({ currentDisplay: romans })
 
     type('ge 1 1')
     await waitFor(() =>
       expect(
-        screen.getByRole('button', { name: 'Genesis 1:1 — stage in Up Next' })
+        screen.getByRole('button', { name: 'Genesis 1:1 — show on display' })
       ).toBeInTheDocument()
     )
 
-    pressCtrlEnter()
+    act(() => {
+      fireEvent.keyDown(searchBox(), { key: 'Enter', repeat: true })
+      fireEvent.keyDown(searchBox(), { key: 'Enter', ctrlKey: true, repeat: true })
+    })
 
-    await waitFor(() => expect(screen.getByTestId('next-preview')).toHaveTextContent('Genesis 1:1'))
-    expect(
-      within(screen.getByTestId('live-verses')).getByText('Romans 8:28 text')
-    ).toBeInTheDocument()
     expect(sentActions()).toEqual([])
+    expect(screen.queryByText('Added to the plan: Genesis 1:1')).not.toBeInTheDocument()
   })
 
   it('completes the text when Enter picks a book, and stages nothing', async () => {
@@ -551,7 +593,7 @@ describe('Find Scripture', () => {
     expect(fetchMock.mock.calls.filter(([url]) => String(url).startsWith('/api/lookup'))).toEqual(
       []
     )
-    expect(screen.getByText('Nothing staged')).toBeInTheDocument()
+    expect(sentActions()).toEqual([])
   })
 
   it('never puts a manual passage in the pending queue', async () => {
@@ -560,89 +602,31 @@ describe('Find Scripture', () => {
     type('john 3:16-17')
     await waitFor(() =>
       expect(
-        screen.getByRole('button', { name: 'John 3:16-17 — stage in Up Next' })
+        screen.getByRole('button', { name: 'John 3:16-17 — show on display' })
       ).toBeInTheDocument()
     )
-    clickResult('John 3:16-17 — stage in Up Next')
-    await waitFor(() => expect(screen.getByTestId('next-preview')).toBeInTheDocument())
+    clickResult('John 3:16-17 — show on display')
 
-    // It appears in Up Next and nowhere else: the queue still holds the one
-    // detection that was already there, and the lookups sent nothing.
+    // It is sent as a manual display, never queued: the queue still holds the one
+    // detection that was already there.
     const queue = queueSection()
     expect(queue.getAllByRole('heading', { level: 3 })).toHaveLength(1)
     expect(queue.getByText('Romans 8:28')).toBeInTheDocument()
-    expect(within(screen.getByTestId('next-preview')).getByText('John 3:16-17')).toBeInTheDocument()
-    expect(screen.getByText('Manual')).toBeInTheDocument()
-    expect(sentActions()).toEqual([])
+    expect(sentActions()).toEqual([
+      { action: 'display_reference', book: 'John', chapter: 3, verse_start: 16, verse_end: 17 },
+    ])
   })
 
-  it('reports verses the display limit hides', async () => {
-    openWith()
-
-    type('gen 1 1-5')
-    await waitFor(() =>
-      expect(
-        screen.getByRole('button', { name: 'Genesis 1:1-5 — stage in Up Next' })
-      ).toBeInTheDocument()
-    )
-    clickResult('Genesis 1:1-5 — stage in Up Next')
-    await waitFor(() => expect(screen.getByTestId('next-preview')).toBeInTheDocument())
-
-    expect(screen.getByText('+2 more verses hidden by the current limit')).toBeInTheDocument()
-  })
-
-  it('sends the passage coordinates on Show and waits for the server to confirm', async () => {
+  it('reports a rejected Show and leaves the display unchanged', async () => {
     openWith({ currentDisplay: romans })
 
     type('john 3:16-17')
     await waitFor(() =>
       expect(
-        screen.getByRole('button', { name: 'John 3:16-17 — stage in Up Next' })
+        screen.getByRole('button', { name: 'John 3:16-17 — show on display' })
       ).toBeInTheDocument()
     )
-    clickResult('John 3:16-17 — stage in Up Next')
-    await waitFor(() => expect(screen.getByTestId('next-preview')).toBeInTheDocument())
-
-    showNext()
-
-    expect(lastSent(socket)).toEqual({
-      action: 'display_reference',
-      book: 'John',
-      chapter: 3,
-      verse_start: 16,
-      verse_end: 17,
-    })
-    // Sent is not shown: LIVE still holds what the projector had.
-    expect(
-      within(screen.getByTestId('live-verses')).getByText('Romans 8:28 text')
-    ).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Show on display' })).toBeDisabled()
-
-    push(socket, {
-      type: 'display_confirmed',
-      data: { reference: manualReference('John', 3, 16, 17) },
-    })
-
-    expect(
-      within(screen.getByTestId('live-verses')).getByText('John 3:16 text')
-    ).toBeInTheDocument()
-    expect(screen.getByText('Nothing staged')).toBeInTheDocument()
-    expect(screen.getByText('Shown: John 3:16-17 (manual)')).toBeInTheDocument()
-  })
-
-  it('keeps the passage staged and the display unchanged when Show is rejected', async () => {
-    openWith({ currentDisplay: romans })
-
-    type('john 3:16-17')
-    await waitFor(() =>
-      expect(
-        screen.getByRole('button', { name: 'John 3:16-17 — stage in Up Next' })
-      ).toBeInTheDocument()
-    )
-    clickResult('John 3:16-17 — stage in Up Next')
-    await waitFor(() => expect(screen.getByTestId('next-preview')).toBeInTheDocument())
-
-    showNext()
+    pressEnter()
     push(socket, {
       type: 'error',
       data: { action: 'display_reference', message: 'Genesis 1:60 is not in the Bible text' },
@@ -654,34 +638,9 @@ describe('Find Scripture', () => {
     expect(
       within(screen.getByTestId('live-verses')).getByText('Romans 8:28 text')
     ).toBeInTheDocument()
-    // Still staged, so the operator can fix the passage or retry.
-    expect(within(screen.getByTestId('next-preview')).getByText('John 3:16-17')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Show on display' })).toBeEnabled()
-  })
-
-  it('returns to a queue selection when a pending reference is chosen instead', async () => {
-    openWith({ pending: [romans] })
-
-    type('john 3:16-17')
-    await waitFor(() =>
-      expect(
-        screen.getByRole('button', { name: 'John 3:16-17 — stage in Up Next' })
-      ).toBeInTheDocument()
-    )
-    clickResult('John 3:16-17 — stage in Up Next')
-    await waitFor(() => expect(screen.getByText('Manual')).toBeInTheDocument())
-
-    act(() => {
-      screen.getByRole('button', { name: /Romans 8:28/ }).click()
-    })
-
-    expect(screen.queryByText('Manual')).not.toBeInTheDocument()
-    expect(screen.getByText('Detected')).toBeInTheDocument()
-    expect(within(screen.getByTestId('next-preview')).getByText('Romans 8:28')).toBeInTheDocument()
-
-    // Show now means the ordinary approval, by ID.
-    showNext()
-    expect(lastSent(socket)).toEqual({ action: 'approve', reference_id: 'p-1' })
+    // The request is over, so Enter can try again.
+    pressEnter()
+    expect(sentActions()).toHaveLength(2)
   })
 
   it('offers a retry when the book list cannot be loaded', async () => {
@@ -711,7 +670,7 @@ describe('Find Scripture', () => {
     type('john 3:16')
     await waitFor(() =>
       expect(
-        screen.getByRole('button', { name: 'John 3:16 — stage in Up Next' })
+        screen.getByRole('button', { name: 'John 3:16 — show on display' })
       ).toBeInTheDocument()
     )
 
@@ -746,28 +705,28 @@ describe('Find Scripture', () => {
   })
 })
 
-describe('Enter direct display', () => {
-  it('sends the resolved passage straight to the display without staging it', async () => {
+describe('Enter shows the passage', () => {
+  it('sends the resolved passage straight to the display', async () => {
     openWith({ currentDisplay: romans })
 
     type('john 3:16-17')
     await waitFor(() =>
       expect(
-        screen.getByRole('button', { name: 'John 3:16-17 — stage in Up Next' })
+        screen.getByRole('button', { name: 'John 3:16-17 — show on display' })
       ).toBeInTheDocument()
     )
 
-    // Wait for the preview's read-only lookup to land; Shift+Enter must add none.
+    // Wait for the preview's read-only lookup to land; Enter must add none.
     await waitFor(() =>
       expect(
-        screen.getByRole('button', { name: 'John 3:16-17 — stage in Up Next' })
+        screen.getByRole('button', { name: 'John 3:16-17 — show on display' })
       ).toHaveTextContent('John 3:16 text')
     )
     const lookupsBefore = lookupCalls().length
     pressEnter()
 
-    // One request with the parsed coordinates — the same action Show sends —
-    // and no lookup, no staging, nothing else.
+    // One request with the parsed coordinates — the same action every manual Show
+    // sends — and no lookup, nothing else.
     expect(sentActions()).toHaveLength(1)
     expect(lastSent(socket)).toEqual({
       action: 'display_reference',
@@ -777,7 +736,6 @@ describe('Enter direct display', () => {
       verse_end: 17,
     })
     expect(lookupCalls()).toHaveLength(lookupsBefore)
-    expect(screen.getByText('Nothing staged')).toBeInTheDocument()
     expect(
       within(screen.getByTestId('live-verses')).getByText('Romans 8:28 text')
     ).toBeInTheDocument()
@@ -789,7 +747,7 @@ describe('Enter direct display', () => {
     type('john 3:16-17')
     await waitFor(() =>
       expect(
-        screen.getByRole('button', { name: 'John 3:16-17 — stage in Up Next' })
+        screen.getByRole('button', { name: 'John 3:16-17 — show on display' })
       ).toBeInTheDocument()
     )
 
@@ -803,8 +761,6 @@ describe('Enter direct display', () => {
       within(screen.getByTestId('live-verses')).getByText('John 3:16 text')
     ).toBeInTheDocument()
     expect(screen.getByText('Shown: John 3:16-17 (manual)')).toBeInTheDocument()
-    // Still nothing staged: the direct path never touched Up Next.
-    expect(screen.getByText('Nothing staged')).toBeInTheDocument()
   })
 
   it('sends nothing for a book row or an invalid reference', async () => {
@@ -877,7 +833,7 @@ describe('Enter direct display', () => {
     type('john 3:16')
     await waitFor(() =>
       expect(
-        screen.getByRole('button', { name: 'John 3:16 — stage in Up Next' })
+        screen.getByRole('button', { name: 'John 3:16 — show on display' })
       ).toBeInTheDocument()
     )
 
@@ -888,5 +844,19 @@ describe('Enter direct display', () => {
 
     pressEnter()
     expect(sentActions()).toEqual([])
+  })
+})
+
+describe('the Find Scripture hint', () => {
+  it('names Enter and Ctrl+Enter for a resolved passage', async () => {
+    openWith()
+
+    type('john 3:16')
+
+    await waitFor(() =>
+      expect(
+        screen.getByText('Enter – Show on screen, Ctrl+Enter – Add to plan')
+      ).toBeInTheDocument()
+    )
   })
 })

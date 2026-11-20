@@ -123,6 +123,7 @@ function planItem(
     verse_start: verseStart,
     verse_end: verseEnd,
     snippet: `${book} ${chapter}:${verseStart} text`,
+    snippetFormat: 'passage',
   }
 }
 
@@ -164,34 +165,41 @@ function openWith({ currentDisplay = null }: { currentDisplay?: BibleReference |
   return view
 }
 
-/** Open a tab of the sidebar, the way the operator does. */
-function openTab(name: string | RegExp) {
-  fireEvent.click(screen.getByRole('tab', { name }))
-}
-
-/** The Plan tab, opened: its list is the only body in the tab panel. */
+/** The Plan card: always on the page, under ON DISPLAY. */
 function planPanel() {
-  openTab(/^Plan/)
-  return within(screen.getByRole('tabpanel'))
+  return within(screen.getByRole('region', { name: 'Plan' }))
 }
 
 /** The plan rows' titles, top to bottom. */
 function planTitles() {
-  return within(screen.getByRole('tabpanel'))
+  return planPanel()
     .queryAllByRole('listitem')
     .map(row => row.querySelector('.plan-row-title')?.textContent)
 }
 
 /** The number each plan row shows, top to bottom. */
 function planNumbers() {
-  return within(screen.getByRole('tabpanel'))
+  return planPanel()
     .queryAllByRole('listitem')
     .map(row => row.querySelector('.plan-row-number')?.textContent)
 }
 
-/** A plan row's main button: a click stages it, a double-click shows it. */
-function stageButton(label: string) {
-  return screen.getByRole('button', { name: `Stage ${label} from the plan in Up Next` })
+/** A plan row's handle: a click (or focus) highlights it. */
+function rowHandle(label: string) {
+  return screen.getByRole('button', { name: `${label} — highlight; Enter shows it` })
+}
+
+/** The plan row for a passage, found by its title. */
+function planRow(label: string) {
+  const row = planPanel()
+    .getAllByRole('listitem')
+    .find(item => item.querySelector('.plan-row-title')?.textContent === label)
+  if (!row) throw new Error(`no plan row for ${label}`)
+  return row
+}
+
+function pressKey(key: string) {
+  fireEvent.keyDown(window, { key })
 }
 
 function searchBox() {
@@ -203,10 +211,10 @@ function type(text: string) {
   fireEvent.change(searchBox(), { target: { value: text } })
 }
 
-/** Shift+Enter in the search box: add the best match to the plan. */
-function pressShiftEnter() {
+/** Ctrl+Enter (or another modifier) in the search box: add the best match to the plan. */
+function pressPlanKey(modifier: 'ctrlKey' | 'metaKey' | 'shiftKey' = 'ctrlKey') {
   act(() => {
-    fireEvent.keyDown(searchBox(), { key: 'Enter', shiftKey: true })
+    fireEvent.keyDown(searchBox(), { key: 'Enter', [modifier]: true })
   })
 }
 
@@ -253,28 +261,47 @@ afterEach(() => {
   socket = null
 })
 
-describe('the plan panel', () => {
-  it('lists the planned passages in order, numbered', () => {
+describe('the plan card', () => {
+  it('lists the planned passages in order, numbered, always in view', () => {
     seedPlan(seeded)
     openWith()
-    planPanel()
 
     expect(planTitles()).toEqual(['John 3:16', 'Romans 8:28', 'Psalms 23:1-6'])
     expect(planNumbers()).toEqual(['1', '2', '3'])
+    // Plan is not a tab any more; the side panel has Pending and History only.
+    expect(screen.getAllByRole('tab').map(tab => tab.textContent)).toEqual([
+      expect.stringMatching(/^Pending/),
+      'History',
+    ])
+    // Still in view with the History tab open.
+    fireEvent.click(screen.getByRole('tab', { name: 'History' }))
+    expect(planTitles()).toHaveLength(3)
+  })
+
+  it('counts its passages in its head', () => {
+    seedPlan(seeded)
+    openWith()
+
+    const region = screen.getByRole('region', { name: 'Plan' })
+    expect(region.querySelector('.operator-card-head .operator-section-count')).toHaveTextContent(
+      '3'
+    )
   })
 
   it('says so when nothing is planned, and offers no Clear', () => {
     openWith()
-    planPanel()
 
     expect(screen.getByText('Nothing planned')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Clear plan' })).toBeDisabled()
+    fireEvent.click(screen.getByRole('button', { name: 'Plan options' }))
+    expect(screen.getByRole('menuitem', { name: 'Clear plan' })).toHaveAttribute(
+      'aria-disabled',
+      'true'
+    )
   })
 
   it('moves an item up or down, and the numbers and the stored order follow', () => {
     seedPlan(seeded)
     openWith()
-    planPanel()
 
     fireEvent.click(screen.getByRole('button', { name: 'Move Romans 8:28 up' }))
 
@@ -293,27 +320,28 @@ describe('the plan panel', () => {
   it('removes an item and keeps the others in order', () => {
     seedPlan(seeded)
     openWith()
-    planPanel()
 
     fireEvent.click(screen.getByRole('button', { name: 'Remove Romans 8:28 from the plan' }))
 
     expect(planTitles()).toEqual(['John 3:16', 'Psalms 23:1-6'])
     expect(planNumbers()).toEqual(['1', '2'])
     expect(storedIds()).toEqual(['a', 'c'])
+    expect(sentActions()).toEqual([])
   })
 
   it('clears the plan only once the operator confirms', () => {
     seedPlan(seeded)
     const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
     openWith()
-    planPanel()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Clear plan' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Plan options' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Clear plan' }))
     expect(confirm).toHaveBeenCalledWith('Remove every passage from the plan?')
     expect(planTitles()).toHaveLength(3)
 
     confirm.mockReturnValue(true)
-    fireEvent.click(screen.getByRole('button', { name: 'Clear plan' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Plan options' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Clear plan' }))
 
     expect(screen.getByText('Nothing planned')).toBeInTheDocument()
     expect(storedIds()).toEqual([])
@@ -322,43 +350,210 @@ describe('the plan panel', () => {
   it('keeps the plan and its order across a reload', () => {
     seedPlan(seeded)
     const first = openWith()
-    planPanel()
     fireEvent.click(screen.getByRole('button', { name: 'Move Romans 8:28 up' }))
     first.unmount()
 
     openWith()
-    planPanel()
 
     expect(planTitles()).toEqual(['Romans 8:28', 'John 3:16', 'Psalms 23:1-6'])
   })
+})
 
-  it('a click stages the passage in Up Next after a fresh lookup, and sends nothing', async () => {
+describe('the cursor in the plan', () => {
+  it('a click highlights the row, and sends and looks up nothing', () => {
     seedPlan(seeded)
     openWith()
-    planPanel()
 
-    fireEvent.click(stageButton('Romans 8:28'))
+    fireEvent.click(rowHandle('Romans 8:28'))
 
-    await waitFor(() => expect(screen.getByTestId('next-preview')).toHaveTextContent('Romans 8:28'))
-    expect(
-      within(screen.getByTestId('next-verses')).getByText('Romans 8:28 text')
-    ).toBeInTheDocument()
-    expect(lookupCalls().map(([url]) => String(url))).toEqual([
-      '/api/lookup?book=Romans&chapter=8&verse_start=28&verse_end=28',
-    ])
+    expect(rowHandle('Romans 8:28')).toHaveAttribute('aria-pressed', 'true')
+    expect(planRow('Romans 8:28')).toHaveClass('is-selected')
     expect(sentActions()).toEqual([])
-    // Staging does not take the passage out of the plan.
-    expect(planTitles()).toHaveLength(3)
+    expect(lookupCalls()).toEqual([])
   })
 
-  it('a double-click shows the passage at once, with no staging and no lookup', () => {
+  it('a click on the row text highlights it too; a click on its buttons does not', () => {
     seedPlan(seeded)
     openWith()
-    planPanel()
 
-    fireEvent.doubleClick(stageButton('John 3:16'))
+    fireEvent.click(within(planRow('John 3:16')).getByText('John 3:16 text'))
+    expect(rowHandle('John 3:16')).toHaveAttribute('aria-pressed', 'true')
 
-    expect(sentActions()).toHaveLength(1)
+    fireEvent.click(screen.getByRole('button', { name: 'Move Romans 8:28 up' }))
+    expect(rowHandle('John 3:16')).toHaveAttribute('aria-pressed', 'true')
+    expect(rowHandle('Romans 8:28')).toHaveAttribute('aria-pressed', 'false')
+  })
+
+  it('Enter shows the highlighted passage as coordinates, with no lookup', () => {
+    seedPlan(seeded)
+    openWith()
+
+    fireEvent.click(rowHandle('Psalms 23:1-6'))
+    pressKey('Enter')
+
+    expect(sentActions()).toEqual([
+      { action: 'display_reference', book: 'Psalms', chapter: 23, verse_start: 1, verse_end: 6 },
+    ])
+    expect(lookupCalls()).toEqual([])
+    // A verse is often read twice, so a shown item stays in the plan, still highlighted.
+    expect(planTitles()).toHaveLength(3)
+    expect(rowHandle('Psalms 23:1-6')).toHaveAttribute('aria-pressed', 'true')
+  })
+
+  it('keeps Show compact on a highlighted Plan row', () => {
+    seedPlan(seeded)
+    openWith()
+
+    fireEvent.click(rowHandle('John 3:16'))
+
+    const show = within(planRow('John 3:16')).getByRole('button', { name: 'Show' })
+    expect(show).toHaveClass('btn-primary')
+    expect(show).toHaveTextContent(/^Show$/)
+
+    pressKey('Escape')
+    expect(show).toHaveClass('btn-secondary')
+    expect(show).toHaveTextContent(/^Show$/)
+  })
+
+  it('the arrows move through the plan once the cursor is there', () => {
+    seedPlan(seeded)
+    openWith()
+
+    fireEvent.click(rowHandle('John 3:16'))
+    pressKey('ArrowDown')
+    expect(rowHandle('Romans 8:28')).toHaveAttribute('aria-pressed', 'true')
+    pressKey('ArrowDown')
+    pressKey('ArrowDown')
+    expect(rowHandle('Psalms 23:1-6')).toHaveAttribute('aria-pressed', 'true')
+    pressKey('ArrowUp')
+    pressKey('Enter')
+
+    expect(sentActions()).toEqual([
+      { action: 'display_reference', book: 'Romans', chapter: 8, verse_start: 28, verse_end: 28 },
+    ])
+  })
+
+  it('with an empty queue the arrows start in the plan', () => {
+    seedPlan(seeded)
+    openWith()
+
+    pressKey('ArrowDown')
+
+    expect(rowHandle('John 3:16')).toHaveAttribute('aria-pressed', 'true')
+  })
+
+  it('after an arrow move, the highlighted plan row has focus', () => {
+    seedPlan(seeded)
+    openWith()
+
+    fireEvent.click(rowHandle('John 3:16'))
+    pressKey('ArrowDown')
+
+    expect(rowHandle('Romans 8:28')).toHaveFocus()
+    // A server update leaves the focus where the operator put it.
+    push(socket, { type: 'display_confirmed', data: { reference: manualReference('John', 3, 16) } })
+    expect(rowHandle('Romans 8:28')).toHaveFocus()
+  })
+
+  it('Enter works from the plan while the History tab is open: the plan is always in view', () => {
+    seedPlan(seeded)
+    openWith()
+    fireEvent.click(screen.getByRole('tab', { name: 'History' }))
+
+    fireEvent.click(rowHandle('John 3:16'))
+    pressKey('Enter')
+
+    expect(lastSent(socket)).toMatchObject({ action: 'display_reference', book: 'John' })
+  })
+
+  it('one cursor: highlighting a plan row takes it from the queue', () => {
+    seedPlan(seeded)
+    render(<App />)
+    act(() => {
+      socket?.onopen?.()
+    })
+    const queued = { ...manualReference('Acts', 2, 38), id: 'p-1', source: 'detected' as const }
+    push(socket, {
+      type: 'state_snapshot',
+      data: {
+        current_display: null,
+        pending: [{ ...queued, confidence: 'high' }],
+        history: [],
+        pending_count: 1,
+        history_count: 0,
+        display_connections: 1,
+        operator_connections: 1,
+        display_settings: { verse_limit: 3, theme: 'dark' },
+      },
+    })
+    fireEvent.click(rowHandle('Acts 2:38'))
+    fireEvent.click(rowHandle('John 3:16'))
+
+    expect(rowHandle('Acts 2:38')).toHaveAttribute('aria-pressed', 'false')
+    pressKey('Enter')
+    expect(sentActions()).toEqual([
+      { action: 'display_reference', book: 'John', chapter: 3, verse_start: 16, verse_end: 16 },
+    ])
+  })
+
+  it('removing the highlighted row leaves nothing for Enter to show', () => {
+    seedPlan(seeded)
+    openWith()
+
+    fireEvent.click(rowHandle('John 3:16'))
+    fireEvent.click(screen.getByRole('button', { name: 'Remove John 3:16 from the plan' }))
+    pressKey('Enter')
+
+    expect(sentActions()).toEqual([])
+  })
+
+  it('moves to Pending after the only highlighted Plan row is removed', () => {
+    seedPlan([seeded[0]])
+    openWith()
+    const queued = {
+      ...manualReference('Acts', 2, 38),
+      source: 'detected' as const,
+      confidence: 'high' as const,
+    }
+    push(socket, { type: 'pending_update', data: { pending: [queued], count: 1 } })
+
+    fireEvent.click(rowHandle('John 3:16'))
+    expect(rowHandle('John 3:16')).toHaveAttribute('aria-pressed', 'true')
+    fireEvent.click(screen.getByRole('button', { name: 'Remove John 3:16 from the plan' }))
+    pressKey('ArrowDown')
+
+    expect(rowHandle('Acts 2:38')).toHaveAttribute('aria-pressed', 'true')
+    expect(rowHandle('Acts 2:38')).toHaveFocus()
+  })
+})
+
+describe('plan row actions', () => {
+  it('each row has Remove, the reorder arrows and Show, in that order, Show right-most', () => {
+    seedPlan(seeded)
+    openWith()
+
+    const buttons = within(planRow('Romans 8:28'))
+      .getAllByRole('button')
+      .filter(button => button.tagName === 'BUTTON')
+    expect(buttons.map(button => button.getAttribute('aria-label') ?? button.textContent)).toEqual([
+      'Remove Romans 8:28 from the plan',
+      'Move Romans 8:28 up',
+      'Move Romans 8:28 down',
+      'Show',
+    ])
+    // Remove is an icon: its name is in the label and the tooltip, not on the button.
+    const remove = buttons[0]
+    expect(remove).toHaveAttribute('title', 'Remove Romans 8:28 from the plan')
+    expect(remove).toHaveClass('btn-ghost', 'btn-square')
+    expect(remove.textContent).toBe('')
+  })
+
+  it('Show sends the passage as coordinates at once, without a lookup', () => {
+    seedPlan(seeded)
+    openWith()
+
+    fireEvent.click(within(planRow('John 3:16')).getByRole('button', { name: 'Show' }))
+
     expect(lastSent(socket)).toEqual({
       action: 'display_reference',
       book: 'John',
@@ -366,132 +561,142 @@ describe('the plan panel', () => {
       verse_start: 16,
       verse_end: 16,
     })
-    expect(screen.getByText('Nothing staged')).toBeInTheDocument()
     expect(lookupCalls()).toEqual([])
-    // A verse is often read twice, so a shown item stays in the plan.
     expect(planTitles()).toHaveLength(3)
 
     push(socket, { type: 'display_confirmed', data: { reference: manualReference('John', 3, 16) } })
     expect(screen.getByText('Shown: John 3:16 (manual)')).toBeInTheDocument()
   })
 
-  it('a lookup started by the clicks before a double-click never stages the passage', async () => {
+  it('a second Show while the first is in flight is ignored', () => {
     seedPlan(seeded)
-    deferLookups = true
     openWith()
-    planPanel()
 
-    fireEvent.click(stageButton('John 3:16'))
-    fireEvent.click(stageButton('John 3:16'))
-    fireEvent.doubleClick(stageButton('John 3:16'))
+    fireEvent.click(within(planRow('John 3:16')).getByRole('button', { name: 'Show' }))
+    fireEvent.click(within(planRow('Romans 8:28')).getByRole('button', { name: 'Show' }))
+
     expect(sentActions()).toHaveLength(1)
-
-    // The lookups the clicks started answer only now, after the display has the passage.
-    await releaseLookups()
-
-    expect(screen.getByText('Nothing staged')).toBeInTheDocument()
-    expect(screen.queryByTestId('next-preview')).not.toBeInTheDocument()
-    expect(sentActions()).toHaveLength(1)
-  })
-})
-
-describe('plan row actions', () => {
-  /** The plan row for a passage, found by its title. */
-  function planRow(label: string) {
-    const row = within(screen.getByRole('tabpanel'))
-      .getAllByRole('listitem')
-      .find(item => item.querySelector('.plan-row-title')?.textContent === label)
-    if (!row) throw new Error(`no plan row for ${label}`)
-    return within(row)
-  }
-
-  it('each row has Show, Stage and Remove, like a pending row has Show and Stage', () => {
-    seedPlan(seeded)
-    openWith()
-    planPanel()
-
-    const row = planRow('Romans 8:28')
-    expect(row.getByRole('button', { name: 'Show' })).toBeInTheDocument()
-    expect(row.getByRole('button', { name: 'Stage' })).toBeInTheDocument()
-    expect(row.getByRole('button', { name: 'Remove Romans 8:28 from the plan' })).toHaveTextContent(
-      'Remove'
-    )
+    expect(lastSent(socket)).toMatchObject({ action: 'display_reference', book: 'John' })
   })
 
-  it('Show sends the passage as coordinates at once, without staging or a lookup', () => {
-    seedPlan(seeded)
-    openWith()
-    planPanel()
-
-    fireEvent.click(planRow('John 3:16').getByRole('button', { name: 'Show' }))
-
-    expect(lastSent(socket)).toEqual({
-      action: 'display_reference',
-      book: 'John',
-      chapter: 3,
-      verse_start: 16,
-      verse_end: 16,
-    })
-    expect(lookupCalls()).toEqual([])
-    expect(screen.getByText('Nothing staged')).toBeInTheDocument()
-    // A shown item stays in the plan: a verse is often read twice.
-    expect(planTitles()).toHaveLength(3)
-  })
-
-  it('Stage looks the passage up and stages it in Up Next, sending nothing', async () => {
-    seedPlan(seeded)
-    openWith()
-    planPanel()
-
-    fireEvent.click(planRow('Romans 8:28').getByRole('button', { name: 'Stage' }))
-
-    await waitFor(() => expect(screen.getByTestId('next-preview')).toHaveTextContent('Romans 8:28'))
-    expect(sentActions()).toEqual([])
-  })
-
-  it('Remove takes the row out of the plan', () => {
-    seedPlan(seeded)
-    openWith()
-    planPanel()
-
-    fireEvent.click(planRow('Romans 8:28').getByRole('button', { name: /^Remove Romans 8:28/ }))
-
-    expect(planTitles()).toEqual(['John 3:16', 'Psalms 23:1-6'])
-    expect(sentActions()).toEqual([])
-  })
-})
-
-describe('plan row Show while disconnected', () => {
-  it('is disabled while the socket is closed, as a pending row is; Stage and Remove are not', () => {
+  it('is disabled while the socket is closed; Remove is not', () => {
     seedPlan(seeded)
     render(<App />)
-    const panel = planPanel()
-    const row = within(panel.getAllByRole('listitem')[0])
+    const row = within(planPanel().getAllByRole('listitem')[0])
 
     expect(row.getByRole('button', { name: 'Show' })).toBeDisabled()
-    expect(row.getByRole('button', { name: 'Stage' })).toBeEnabled()
     expect(row.getByRole('button', { name: /^Remove / })).toBeEnabled()
+  })
+
+  it('a dropped socket sends nothing for Enter on a highlighted row', () => {
+    seedPlan(seeded)
+    openWith()
+    fireEvent.click(rowHandle('John 3:16'))
+    act(() => {
+      socket?.onclose?.({ code: 1006 })
+    })
+
+    pressKey('Enter')
+
+    expect(sentActions()).toEqual([])
+  })
+})
+
+describe('the current passage tag', () => {
+  it('marks the entry whose passage is on the display, by coordinates', () => {
+    seedPlan(seeded)
+    openWith({ currentDisplay: manualReference('Romans', 8, 28) })
+
+    expect(within(planRow('Romans 8:28')).getByText('On screen')).toHaveClass('tag')
+    // The row's name carries the tag too, for a screen reader.
+    expect(rowHandle('Romans 8:28')).toHaveAccessibleDescription('On screen')
+    expect(rowHandle('John 3:16')).not.toHaveAccessibleDescription()
+    expect(within(planRow('John 3:16')).queryByText('On screen')).not.toBeInTheDocument()
+    expect(planPanel().getAllByText('On screen')).toHaveLength(1)
+  })
+
+  it('shows the badge only while an audience display is connected', () => {
+    seedPlan(seeded)
+    openWith({ currentDisplay: manualReference('Romans', 8, 28) })
+    const currentRow = planRow('Romans 8:28')
+
+    push(socket, { type: 'connection_status', data: { display: 0, operator: 1 } })
+    expect(currentRow.querySelector('.tag')).toBeNull()
+
+    push(socket, { type: 'connection_status', data: { display: 1, operator: 1 } })
+    expect(within(currentRow).getByText('On screen')).toBeInTheDocument()
+  })
+
+  it('hides the tag and accessible description while the display is confirmed off air', () => {
+    seedPlan(seeded)
+    openWith({ currentDisplay: manualReference('Romans', 8, 28) })
+    const currentRow = within(planRow('Romans 8:28'))
+    const handle = rowHandle('Romans 8:28')
+    expect(currentRow.getByText('On screen')).toBeInTheDocument()
+    expect(handle).toHaveAccessibleDescription('On screen')
+
+    push(socket, {
+      type: 'display_settings_confirmed',
+      data: { verse_limit: 3, theme: 'dark', live: false },
+    })
+    expect(currentRow.queryByText('On screen')).not.toBeInTheDocument()
+    expect(handle).not.toHaveAccessibleDescription()
+
+    push(socket, {
+      type: 'display_settings_confirmed',
+      data: { verse_limit: 3, theme: 'dark', live: true },
+    })
+    expect(currentRow.getByText('On screen')).toBeInTheDocument()
+    expect(handle).toHaveAccessibleDescription('On screen')
+  })
+
+  it('moves with the display and goes when it is cleared', () => {
+    seedPlan(seeded)
+    openWith({ currentDisplay: manualReference('Romans', 8, 28) })
+
+    push(socket, { type: 'display_confirmed', data: { reference: manualReference('John', 3, 16) } })
+    expect(within(planRow('John 3:16')).getByText('On screen')).toBeInTheDocument()
+    expect(within(planRow('Romans 8:28')).queryByText('On screen')).not.toBeInTheDocument()
+
+    push(socket, { type: 'clear_confirmed', data: {} })
+    expect(planPanel().queryByText('On screen')).not.toBeInTheDocument()
+  })
+
+  it('needs the same verses: a passage inside a planned range is not it', () => {
+    seedPlan(seeded)
+    openWith({ currentDisplay: manualReference('Psalms', 23, 1) })
+
+    expect(planPanel().queryByText('On screen')).not.toBeInTheDocument()
   })
 })
 
 describe('the start of the text on plan rows', () => {
-  it('shows the remembered text under the reference', () => {
+  it('shows the remembered text beside the reference', () => {
     seedPlan(seeded)
     openWith()
-    const panel = planPanel()
 
-    expect(panel.getByText('John 3:16 text')).toBeInTheDocument()
+    expect(planPanel().getByText('John 3:16 text')).toBeInTheDocument()
   })
 
   it('looks the text up for an item saved without any, and shows it when it lands', async () => {
     seedPlan([{ ...planItem('a', 'John', 3, 16), snippet: '' }])
     openWith()
-    const panel = planPanel()
 
-    await waitFor(() => expect(panel.getByText('John 3:16 text')).toBeInTheDocument())
+    await waitFor(() => expect(planPanel().getByText('John 3:16 text')).toBeInTheDocument())
     expect(lookupCalls().map(([url]) => String(url))).toEqual([
       '/api/lookup?book=John&chapter=3&verse_start=16&verse_end=16',
     ])
+    expect(sentActions()).toEqual([])
+  })
+
+  it('fills out an older saved range while keeping its excerpt visible during the lookup', async () => {
+    seedPlan([{ ...planItem('a', 'John', 3, 16, 17), snippetFormat: undefined }])
+    deferLookups = true
+    openWith()
+
+    expect(planPanel().getByText('John 3:16 text')).toBeInTheDocument()
+    await releaseLookups()
+    expect(planPanel().getByText('John 3:16 text John 3:17 text')).toBeInTheDocument()
     expect(sentActions()).toEqual([])
   })
 
@@ -499,49 +704,63 @@ describe('the start of the text on plan rows', () => {
     seedPlan([{ ...planItem('a', 'John', 3, 16), snippet: '' }])
     deferLookups = true
     openWith()
-    const panel = planPanel()
 
-    expect(panel.getByText('John 3:16')).toBeInTheDocument()
-    expect(panel.queryByText('John 3:16 text')).not.toBeInTheDocument()
+    expect(planPanel().getByText('John 3:16')).toBeInTheDocument()
+    expect(planPanel().queryByText('John 3:16 text')).not.toBeInTheDocument()
 
     await releaseLookups()
-    expect(panel.getByText('John 3:16 text')).toBeInTheDocument()
+    expect(planPanel().getByText('John 3:16 text')).toBeInTheDocument()
   })
 
   it('keeps the row working when the lookup fails', async () => {
     seedPlan([{ ...planItem('a', 'John', 3, 16), snippet: '' }])
     lookupFailure = 'No such passage'
     openWith()
-    const panel = planPanel()
 
     await waitFor(() => expect(lookupCalls()).toHaveLength(1))
-    expect(panel.getByText('John 3:16')).toBeInTheDocument()
-    expect(panel.getByRole('button', { name: 'Show' })).toBeEnabled()
+    expect(planPanel().getByText('John 3:16')).toBeInTheDocument()
+    expect(planPanel().getByRole('button', { name: 'Show' })).toBeEnabled()
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
 })
 
 describe('adding a passage to the plan from Find Scripture', () => {
-  it('Shift+Enter adds the best match, clears the box, and sends nothing', async () => {
+  it('Ctrl+Enter adds the best match, clears the box, and sends nothing', async () => {
     openWith()
 
     type('john 3:16-17')
     await waitFor(() =>
       expect(
-        screen.getByRole('button', { name: 'John 3:16-17 — stage in Up Next' })
+        screen.getByRole('button', { name: 'John 3:16-17 — show on display' })
       ).toBeInTheDocument()
     )
-    pressShiftEnter()
+    pressPlanKey('ctrlKey')
 
     await waitFor(() => expect(searchBox()).toHaveValue(''))
     expect(screen.getByText('Added to the plan: John 3:16-17')).toBeInTheDocument()
     expect(sentActions()).toEqual([])
-    expect(screen.queryByTestId('next-preview')).not.toBeInTheDocument()
-
-    planPanel()
     expect(planTitles()).toEqual(['John 3:16-17'])
+    expect(planPanel().getByText('John 3:16 text John 3:17 text')).toBeInTheDocument()
     expect(storedIds()).toHaveLength(1)
   })
+
+  it.each(['metaKey', 'shiftKey'] as const)(
+    '%s+Enter plans too, and never shows the passage',
+    async modifier => {
+      openWith()
+
+      type('john 3:16-17')
+      await waitFor(() =>
+        expect(
+          screen.getByRole('button', { name: 'John 3:16-17 — show on display' })
+        ).toBeInTheDocument()
+      )
+      pressPlanKey(modifier)
+
+      await waitFor(() => expect(planTitles()).toEqual(['John 3:16-17']))
+      expect(sentActions()).toEqual([])
+    }
+  )
 
   it('the Plan button adds the passage the same way', async () => {
     openWith()
@@ -557,7 +776,6 @@ describe('adding a passage to the plan from Find Scripture', () => {
     await waitFor(() => expect(searchBox()).toHaveValue(''))
     expect(screen.getByText('Added to the plan: John 3:16-17')).toBeInTheDocument()
     expect(sentActions()).toEqual([])
-    planPanel()
     expect(planTitles()).toEqual(['John 3:16-17'])
   })
 
@@ -576,59 +794,15 @@ describe('adding a passage to the plan from Find Scripture', () => {
     type('john 3:16-17')
     await waitFor(() =>
       expect(
-        screen.getByRole('button', { name: 'John 3:16-17 — stage in Up Next' })
+        screen.getByRole('button', { name: 'John 3:16-17 — show on display' })
       ).toBeInTheDocument()
     )
-    pressShiftEnter()
+    pressPlanKey()
 
     await waitFor(() =>
       expect(screen.getByText('John 3:16-17 is already in the plan')).toBeInTheDocument()
     )
-    planPanel()
     expect(planTitles()).toEqual(['John 3:16-17'])
     expect(sentActions()).toEqual([])
-  })
-})
-
-describe('plan rows when a lookup fails or the socket is closed', () => {
-  it('a click whose lookup is refused says why in a notice, and stages nothing', async () => {
-    seedPlan(seeded)
-    lookupFailure = 'Romans 8:28 is not in the Bible text available on this server.'
-    openWith()
-    planPanel()
-
-    fireEvent.click(stageButton('Romans 8:28'))
-
-    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent(lookupFailure ?? ''))
-    expect(screen.queryByTestId('next-preview')).not.toBeInTheDocument()
-    expect(sentActions()).toEqual([])
-  })
-
-  it('a double-click while the socket is closed sends nothing', () => {
-    seedPlan(seeded)
-    openWith()
-    planPanel()
-    act(() => {
-      socket?.onclose?.({ code: 1006 })
-    })
-
-    fireEvent.doubleClick(stageButton('John 3:16'))
-
-    expect(sentActions()).toEqual([])
-    expect(planTitles()).toHaveLength(3)
-  })
-})
-
-describe('double-clicks on the plan share one in-flight guard', () => {
-  it('a second double-click while the first is in flight is ignored', () => {
-    seedPlan(seeded)
-    openWith()
-    planPanel()
-
-    fireEvent.doubleClick(stageButton('John 3:16'))
-    fireEvent.doubleClick(stageButton('Romans 8:28'))
-
-    expect(sentActions()).toHaveLength(1)
-    expect(lastSent(socket)).toMatchObject({ action: 'display_reference', book: 'John' })
   })
 })

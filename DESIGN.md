@@ -13,8 +13,9 @@ shared class instead of writing a one-off. Display page styling is separate
 | Tokens: scale, radius roles, control heights, weights, and **all colours** (light, dark, and the console palette at the bottom) | `frontend/src/styles/tokens.css` |
 | Buttons (`.btn` + variant + size) | `frontend/src/components/Button.css`, `Button.tsx` |
 | Segmented control (`.segmented`), text field (`.input`), tag (`.tag`) | `frontend/src/styles/controls.css` |
-| Badges, connection dot, empty state | `frontend/src/components/*.css` |
-| Layout and the console's own parts (header, the three cards, panels, rows, dialog, search, settings rows) | `frontend/src/operator/styles/*.css` (base, header, layout, live-panel, next-panel, side-panel, settings, scripture-search, settings-dialog, responsive) |
+| Badges, empty state | `frontend/src/components/*.css` |
+| Row buttons (Show and icon-only Remove) | `frontend/src/operator/components/RowButtons.tsx` |
+| Layout and the console's own parts (header and its chips, the two cards, the panel, rows, dialog, search, settings rows) | `frontend/src/operator/styles/*.css` (base, header, layout, live-panel, side-panel, settings, scripture-search, settings-dialog, responsive) |
 
 ## Token-only rule
 
@@ -27,8 +28,9 @@ shared class instead of writing a one-off. Display page styling is separate
   widths, card min-heights, breakpoints).
 - A new palette is a swap of the values in `tokens.css`: the light and dark theme
   blocks plus the two console blocks (`.operator-app`, dark variant) at the end.
-  The console is amber on warm grey; amber is the primary action, the staged row
-  and the follow-along tint, and nothing else is a hue except the danger Remove.
+  The console is amber on warm grey; amber is the primary action, the highlighted row
+  (the keyboard cursor), the follow-along tint and the On screen tag, and nothing else
+  is a hue except the danger Remove and the warning chips and ring.
 - Every change must work in light and dark (`useTheme`, `data-theme`). Check both.
 - WCAG AA contrast, visible focus (the global `:focus-visible` ring, drawn in
   `--color-border-focus`), `aria-label` on icon-only buttons, and
@@ -38,45 +40,36 @@ shared class instead of writing a one-off. Display page styling is separate
 
 Two columns inside the 16px page gutter, which is the only space at the window's
 sides: nothing is centred and nothing has a maximum width. Right: one tabbed panel
-(Pending, Plan, History) pinned to the right edge at `clamp(368px, 34vw, 560px)`
-(`--operator-side-w`; the floor keeps each tab about 122px wide, room for the Lithuanian
-"Laukiančios" and its count), filling the height. Left, top to bottom: the ON DISPLAY preview
-with its control row in the same card, then UP NEXT (follow-along is a strip laid over
-the top of the preview, not a card of its own); the column takes every
-pixel of width the panel does not (`flex: 1`, `min-width: 0`). The gear in the
-header opens Settings, which holds everything not needed mid-service (language, Bible
-version, interface language, follow-along switch, the auto-approve modes, display
-background).
+(Pending, History) pinned to the right edge at `clamp(368px, 34vw, 560px)`
+(`--operator-side-w`), filling the height. Left, top to bottom: the ON DISPLAY card
+(the preview with its controls in the same card; follow-along is a strip laid over the
+top of the preview, not a card of its own), then the Plan card, always in view. The
+column takes every pixel of width the panel does not (`flex: 1`, `min-width: 0`). The
+gear in the header opens Settings, which holds everything not needed mid-service
+(language, Bible version, interface language, follow-along switch, the auto-approve
+modes, display verse limit and background).
 
 **Stacked layout.** The two columns hold down to 1024px (the left column is then
-608px, above the control row's 560px one-line floor), so a laptop or a tablet held
-landscape keeps the queue, its footer, Up Next and the preview in view together.
-Below 1024px it is one column in the order above, the page scrolls, and the preview
-takes its height from 16:9. The tabbed panel comes last and is one fixed height,
-`min(520px, the visible height of the page)` with a 280px floor (the tabs, the footer
-and one row): scrolled down to, its tabs, list and footer are all on screen at once and
-the list scrolls inside it, the way it does beside the workspace. On a tall window the
-cap leaves the end of Up Next, with Show on display, in view above it; on a short one
-(a phone held landscape, an on-screen keyboard) the panel shrinks to what the window
-shows instead of running past its bottom edge. Its height never depends on how many
-rows it holds, so the page does not change length as detections arrive. The scrolling
+608px), so a laptop or a tablet held landscape keeps the queue, its footer, the Plan
+and the preview in view together. Below 1024px it is one column in the order ON
+DISPLAY, Plan, Pending / History; the page scrolls, and the preview takes its height
+from 16:9. The Plan and the tabbed panel are each one fixed height there: the Plan
+`min(420px, the visible height of the page)`, the panel `min(520px, the visible
+height)`, both with a 280px floor, so each list scrolls inside its card and the page
+does not change length as detections arrive or passages are planned. The scrolling
 column is a size container (`cqh`) and positioned, so nothing in it lengthens the
 document behind it.
 
-**Heights.** The left column is a flex column of the full height. ON DISPLAY takes
-all the height the others leave (`flex: 1`, with a floor of `--operator-frame-min`,
-160px, for the monitor frame: a window shorter than that scrolls the column). The
-control row is `flex: none`, its natural height. UP NEXT is `flex: none` and one fixed
-height whatever it holds: its body is always four lines of its 16px text tall, staged
-or empty, so its buttons never move and the miniature never resizes as passages are
-staged and shown; only a window resize changes the preview's size. So the left
-column's last card ends exactly where the right panel ends. There is no measured
-constant to keep in step with the cards.
+**Heights.** The left column is a flex column of the full height. The Plan is a share
+of it, `clamp(216px, 48%, 380px)`, whatever it holds (its rows scroll inside it); ON
+DISPLAY takes all the height left (`flex: 1`, with a floor of `--operator-frame-min`,
+160px, for the monitor frame: a window shorter than that scrolls the column).
+The left column's last card ends at the same height as the right panel.
 
 **The preview.** Inside ON DISPLAY, the monitor frame (`.operator-monitor-wrap`)
-spans the card's inner width, the control row's own left and right edges (12px inset),
-and fills the leftover height. The miniature of the audience screen, drawn in the
-display's own theme (`data-theme`) with its own 1px border, fills the frame edge to
+spans the card's inner width (12px inset) and fills the leftover height. The
+miniature of the audience screen uses the display's theme (`data-theme`) and
+its own 1px border. It fills the frame edge to
 edge: no bars around it, at the cost of not always being the projector's 16:9 (on a
 two-column window it is usually wider; in the one-column layout the frame is 16:9, so
 it is exact). It is a size container, and everything inside scales with the tighter
@@ -93,48 +86,69 @@ empty message when no picture is set. It is presentational only.
 absolutely inside the monitor frame, 8px from its top and sides: label, reference, the
 start of the verse on one line, Show at the right (a 36px control, so the strip is
 48px tall). It takes no space, so when it appears or goes nothing in the page moves or
-resizes: the control row, Up Next, the miniature and the tabs panel stay exactly
+resizes: the controls, the Plan, the miniature and the tabs panel stay exactly
 where they are. The cost is that it covers the top of the miniature while it shows
 (about 56px of it, usually padding, but the first line of a passage that fills the
 screen). It is a neutral raised surface with a trace of the accent and a shadow, so it
 reads as laid over the preview, and it takes no keyboard shortcut. The frame never goes
 under its 160px floor, below which the column scrolls instead.
 
+## Header
+
+One slim bar: the brand, the Find Scripture command bar, then at the right the
+Connecting warning, Speech and Settings (and Logout when a token is in use).
+The brand and right controls keep their intrinsic width while Find Scripture
+shrinks. At 800px and below, search moves to its own row.
+
+- **Operator connection.** The warning chip says "Connecting…" during the first
+  connection or a manual Reconnect. The banner below the bar reports a closed
+  socket. Screen readers get the connection state through a visually hidden
+  "Connection status: …" message.
+- **Speech** is a read-only status with a waveform and a muted language code
+  such as "EN" or "LT". Screen readers and the tooltip get the full language
+  name and the offline status when applicable.
+- **Settings** uses a 36px ghost button with the shared hover fill and keyboard
+  focus ring. The spoken-language picker lives under Audio in the dialog.
+
 ## Cards share one anatomy
 
-ON DISPLAY and UP NEXT use `.operator-card-head`: one group on the text baseline
-(`.operator-card-title`: the 12px uppercase label, then the reference as 14px bold),
-centred against the card's actions at the right, with free space between. ON DISPLAY
-has its label and, at the right, the Live / Off air switch (a `.segmented` control,
-`.operator-live-switch`); there is no Live chip. Off air, an `Off air` warning badge sits
-beside the label (its tooltip and screen-reader text say the audience sees a black
-screen) and a `--color-warning` ring is drawn over the monitor's edge
-(`.operator-monitor-wrap.is-off-air`), while the preview keeps showing the whole passage,
-citation included. Text goes below in the muted serif (`.operator-card-verse`, 3 lines).
-Same 12px side padding and 36px (`md`) controls, so the preview and Up Next text share
-a left edge. They are told apart by treatment, not by badges: the preview is a raised
-card; UP NEXT has a recessed fill and a dashed `--color-border-strong` edge with
-extra space above it ("queued, not live") and Unstage then Show on display in its
-header. Follow-along is not a card: it is the strip laid over the preview (see
-Layout), with the same label-and-reference group and a 36px Show. The control row under the
-monitor is three groups, each a caption over one 36px control on one baseline: Screen
-(Clear display), Verses (3, 5, 10, All: the values the server accepts) and Auto-approve
-(Off / On). The captions are short on purpose (Lithuanian uses "Automatinis" over the
-control; the group's accessible name is the full phrase), and the row stays on one line
-down to a 560px-wide column in both languages. An empty preview centres its message
-on both axes inside the miniature, not the frame.
+On display and Plan use the same sentence-case, base-size semibold section
+heading. Their header actions sit at the right. Plan has a count beside its
+heading and a hairline divider over the list.
+
+The On display header holds Clear and the Live / Off air switch. When the
+connected server confirms zero audience displays, a "No display connected"
+text-only warning chip sits next to the switch and describes it for screen readers.
+Clear uses the subtle neutral button variant, the accessible name "Clear display"
+and the B shortcut. The switch is a ghost button with a filled amber dot and bold
+label when Live, and a hollow neutral dot and medium label when Off air. It has
+the shared hover fill and focus ring. Off air adds a warning ring (in
+`--color-warning-text`) around the preview, which continues to show the
+passage. Screen readers get "The audience sees a black screen". The switch is a
+plain state-named button, not an `aria-pressed` toggle: its accessible name is
+"Live" or "Off air", and the hover title names the action, so off air it reads
+"Off air, button, Show the display to the audience again".
+
+## Panel menus
+
+Plan opens its three-dot menu beside the trigger, within the header and above
+the row controls. The Pending trigger sits at the footer's left edge and opens
+upward; History has no footer and no menu. Both use
+a ghost trigger, a raised surface, and the shared focus ring. Clear plan and
+Clear queue use an × and danger text inside their menus. The Pending menu
+also shows the Auto-approve toggle and its On or Off state. Turning it back
+on restores the last active mode from the current console session, defaulting
+to High only. While active, the mode appears in a left-aligned text line
+directly below the tabs, including in History. The Pending footer shows the
+navigation hint when the queue has rows and keeps its menu available when empty.
 
 ## One spacing system
 
-Defined once in `tokens.css` and used by every card and row: `--card-pad` (12px) on
-all four sides, a header row exactly one control tall (36px, so 48px with the top
-padding, with or without actions), `--card-gap` (8px) from the header to the body and
-between a row's parts, 12px under the last element, and 12px between stacked cards.
-Cards differ only in text size and line count. The three left-column cards and the
-side panel's rows use it; the control row under the preview is padded the same 12px,
-with 36px controls. Up Next is `flex: none` and a fixed height, never squeezed (ON DISPLAY is
-the one card that gives and takes height, and only with the window, see Layout); the column scrolls instead. The tab bar is also 48px, so the two columns' headers line up, and its tabs
-share the whole bar equally with no outer padding or gaps.
+Card padding uses `--card-pad` (12px) and `--card-gap` (8px) from
+`tokens.css`. The tab bar and card headers align across columns. Tabs
+share the bar equally. List rows use tighter spacing so several entries
+and their actions fit on a short screen. The Pending and Plan empty states
+center the icon vertically beside the message. Pending uses a single sentence.
 
 ## Buttons
 
@@ -143,53 +157,69 @@ change colours, so every button in a row has the same size.
 
 | Variant | Look | Use |
 | --- | --- | --- |
-| `primary` | filled `--color-primary`, edge `--color-primary-edge` (a darker mix) | The main action of a card or row: Show on display, Show, Connect |
-| `secondary` | `--color-surface-raised`, border `--color-border-strong` | Default for any action: Unstage (Up Next), Clear display, Stage, Clear queue, Reconnect, gear, Logout |
-| `danger` | secondary box, danger border and text | Removing a Pending or Plan row |
-| `ghost` | no box until hovered | Only inside something that already frames it: dialog close, toast dismiss, reorder arrows |
+| `primary` | amber fill and darker edge | Show on the keyboard-selected row, Connect |
+| `secondary` | raised surface and neutral outline | Other Show buttons, Reconnect, Logout |
+| `subtle` | neutral fill and transparent border | Clear display |
+| `danger` | raised surface with danger border and text | Remove the idle picture |
+| `ghost` | transparent at rest with hover fill | Settings, Live toggle, panel menus, row trash and reorder buttons, dialog close, toast dismiss |
 
-`is-on` on a secondary button marks an active state (the staged row's Stage button);
+`is-on` on a secondary button marks an active state (the resolved search result);
 it uses `--color-primary-subtle` and a primary border. `iconOnly` gives a square
 button and needs an `aria-label`. Sizes (`--control-h-*`): `sm` 30px for dense rows
 (list-row buttons, banners, popover); `md` 36px is the default (header, the cards,
 dialogs); `lg` 44px for bars and the sign-in button. Use `<Button>`; only list-style
 buttons with custom inner layout (search results) use the classes directly.
 
-## Rows in the side panel
+## Rows: Pending, History and Plan
 
-Pending, Plan and History rows share `.ref-item`: a boxed item (hairline border,
-`--card-bg`, `--radius-control`) holding the reference, the start of its text as a
-muted quote clamped to two lines, and, for Pending and Plan, the row's buttons
-(`.ref-item-actions`). Pending: Show (primary), Stage and Remove (danger). Plan: Show, Stage and
-Remove (danger), with the reorder arrows at the top right; a click on the title
-stages, a double-click shows. History is read-only (click stages, double-click
-shows). The staged row takes the accent border and fill all round. Plan text comes
-from what was saved with the item, or one read-only lookup when it is missing; the
-row shows the reference alone until it loads. No row has a coloured side stripe, and
-none is allowed.
+**One keyboard cursor.** A click on a row (anywhere but its buttons), or focus on it,
+highlights it and sends nothing; Enter, or the row's Show, displays it. There is one
+highlighted row, in Pending or in Plan, whichever was last clicked or focused; ↑ ↓
+move it within that list, and focus moves with it so the row scrolls into view; Esc
+drops it. A new detection never takes it, and Enter does nothing while the highlighted
+row's tab is hidden (History open). History rows take no cursor. The highlighted row
+uses a light amber tint and an amber edge (`--color-primary-edge`); in dark mode the
+tint is fainter, so the row's muted text keeps its contrast.
+Its Show button uses an amber fill, and the other Show buttons use the thin
+neutral outline. The button label and size stay the same as the highlight moves.
 
-**Detection confidence** is a chip with the word only, on one amber-and-grey ramp
-told apart by fill weight: High is `--color-primary-subtle` with accent text and an
-amber border; Medium is transparent with `--color-text-secondary` and a strong
-outline; Low is a muted fill, muted text and a dashed border.
+**Pending and History** use boxed rows with a reference, source or Context badge
+where applicable, and a muted excerpt clamped to two lines. Excerpts use the
+translation's punctuation. The footer puts the
+timestamp at the left and Show at the far right. Pending puts the trash icon beside
+the timestamp. Row trash buttons are neutral at rest and take the danger colour
+on hover.
+
+**Detection confidence** appears as a dashed edge for Low, including while
+selected. Medium and High use the regular row treatment. The word remains in the
+accessible description and tooltip. The Context badge still appears where
+applicable.
+
+**Plan** uses thin separators and 8px of horizontal padding on every row.
+Each position number sits on a neutral circle. The title sits above a one-line
+excerpt. The matching passage gets an On screen tag when the server reports
+an audience display connected.
+The excerpt can continue across verse boundaries and ends with an ellipsis when
+it runs out of room. The trash, reorder arrows and compact Show button form a
+right-aligned group with equal spacing. The group drops below the excerpt on
+narrow cards. The controls stay in place as selection moves.
 
 ## Radius by element kind
 
 | Kind | Token | Used for |
 | --- | --- | --- |
-| Control | `--radius-control` (8px) | buttons, inputs, segmented controls, list items, follow-along strip |
-| Card | `--radius-card` (12px) | the three cards, side panel, popover, toast |
+| Control | `--radius-control` (8px) | buttons, inputs, segmented controls, list items, menu popovers, follow-along strip |
+| Card | `--radius-card` (12px) | preview, Plan, side panel, toast |
 | Dialog | `--radius-dialog` (12px) | settings dialog, sign-in card |
 | Tag | `--radius-tag` (4px) | tags, status badges, keycaps, search highlight |
-| Pill | `--radius-full` | confidence chips, counts, dots, switch |
+| Pill | `--radius-full` | header status chips, counts, dots, switch |
 
 ## Borders and elevation
 
-- `--border-width` is always 1px (the active tab underline is 2px; UP NEXT's dashed
-  edge is 1.5px).
-- A control you can act on is outlined with `--color-border-strong` at rest.
-  `--color-primary` marks the selected or focused thing. Never use `none` on an
-  action button.
+- `--border-width` is always 1px (the active tab underline is 3px). A Low-confidence
+  row's edge is dashed, the only dashed edge in the console.
+- Secondary buttons use the strong neutral border. Subtle and ghost buttons
+  have transparent borders at rest. All variants use the shared focus ring.
 - Panel edges, dividers and floating surfaces use the hairline `--color-border`.
 - Elevation is only `--shadow-*`, on floating surfaces (popover, toast, dialog,
   sign-in card). No coloured side stripes or inset-shadow accents anywhere.
@@ -228,11 +258,7 @@ One design for the whole dialog (`SettingsDialog.tsx`, styles in
   hidden bold copy of itself (`SegmentedOption`), so selecting never changes a track's
   width. The focus ring is the normal ring on unselected options and the inverse text
   colour inside the selected fill, so it contrasts with both. State comes from
-  `aria-pressed` or `aria-checked`. Auto-approve under the
-  preview is an Off / On segmented control: On restores the last mode that was on (High
-  until one has been chosen, in memory only), Off sends `off`. A caption over a
-  control aligns the control to its start, and the Auto-approve group at the right edge
-  aligns to the end, so a column's default never stretches the track.
+  `aria-pressed` or `aria-checked`.
 - **Idle screen** is three rows in the same anatomy: the picture (Upload / Replace as
   secondary, Remove as danger, 36px), the fit (a segmented Logo / Fill screen), and a
   16:9 preview in its own row with the monitor's border and corners, the current state
@@ -242,24 +268,17 @@ One design for the whole dialog (`SettingsDialog.tsx`, styles in
 
 - Sizes `--font-size-xs|sm|base|lg`; weights `--weight-regular|medium|semibold|bold`
   only. Body and controls are sentence case.
-- The overline style (xs, semibold, uppercase, `--tracking-caps`, muted) is for card
-  labels and the control-row labels. Nothing else is uppercase.
+- Settings and the follow-along label use the small, muted uppercase overline.
 - Spacing only from `--space-*` (4px grid, plus `--space-0-5` for 2px gaps).
 - Icons are `--icon-sm` (16px) beside text and `--icon-md` (18px) in controls,
   banners and toasts.
 
 ## Verify in English and Lithuanian
 
-Every layout is verified in English and in Lithuanian, in light and dark, before it is
-called done: Lithuanian labels are routinely 30 to 60% longer. Switch the language
-through the real setting (Settings, Interface language) and measure in a browser, not
-by eye: no wrapped row or stray line (the control row is one line down to a 560px-wide
-column), no horizontal overflow, a label column that never drops under 200px, and
-the same alignment as English. A new string is checked for width where it sits: the
-control row's captions and Off / On labels are pinned by a unit test
-(`shared/quickRow.test.ts`), and a longer translation there needs a conscious choice and
-a browser check. Layouts that depend on the length of text wrap or shrink (`flex-wrap`,
-`minmax`), they never assume English.
+Check both themes and interface languages in a browser. Verify that longer
+Lithuanian labels fit beside the display controls and under the tabs, that
+Find Scripture leaves room for the title and status controls, and that verse
+ranges stay on one line in Plan and the queue.
 
 ## Adding something new
 

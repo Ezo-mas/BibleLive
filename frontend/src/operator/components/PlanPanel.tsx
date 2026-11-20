@@ -1,137 +1,183 @@
-import { BookIcon, Button } from '../../components'
+import { useId, useRef } from 'react'
+import type { MouseEvent } from 'react'
+import { ArrowDownIcon, ArrowUpIcon, BookIcon, Button, XIcon } from '../../components'
 import { useI18n } from '../../shared/i18nContext'
 import { formatReference } from '../../shared/reference'
+import type { BibleReference } from '../../shared/types'
 import { PanelHint } from './PanelHint'
-import { passageToReference } from '../passageApi'
+import { PanelMenu } from './PanelMenu'
+import { RowRemoveButton, RowShowButton } from './RowButtons'
+import { samePassage } from '../passageKey'
+import { useCursorFocus } from '../hooks/useRowCursor'
 import type { PlanItem } from '../hooks/usePlan'
 
 export interface PlanPanelProps {
   items: PlanItem[]
-  /** Text looked up for items that were saved without any, by item id. */
+  /** Refreshed excerpts, by item id. */
   snippets?: Record<string, string>
-  /** False while the socket is closed: Show then has nowhere to go (Stage still looks up). */
+  /** The passage in the display preview, to mark its matching Plan entry. */
+  currentDisplay?: BibleReference | null
+  displayConnected: boolean
+  live: boolean
+  /** The highlighted entry (the keyboard cursor), or null when it is not in the plan. */
+  selectedId?: string | null
+  /** The cursor's keyboard moves so far; a move onto an entry gives that entry focus. */
+  keyboardMoves?: number
+  /** Highlight an entry (click or focus); nothing is sent. */
+  onSelect: (id: string) => void
+  /** False while the socket is closed: Show then has nowhere to go. */
   canShow?: boolean
-  /** Click: look the passage up and stage it in Up Next. */
-  onStage: (item: PlanItem) => void
-  /** Double-click: show it at once, without staging. */
+  /** Show the entry: coordinates only, for the server to resolve. */
   onShow: (item: PlanItem) => void
   onRemove: (id: string) => void
   onMove: (id: string, direction: -1 | 1) => void
   onClear: () => void
 }
 
-/** How a planned passage reads, in the book name it was added under. */
-function itemLabel(item: PlanItem): string {
-  return formatReference(
-    passageToReference({ ...item, verses: [], text: item.snippet, book_label: item.book_label })
-  )
+/** A click on a row's own button is that button's; anywhere else on the row highlights it. */
+function onRowClick(event: MouseEvent, select: () => void) {
+  if (!(event.target as Element).closest('button')) select()
 }
 
 /**
  * The plan: passages the operator lined up before the service, in the order they
- * expect to need them.
+ * expect to need them. Always in view, under ON DISPLAY.
  *
  * It is the pending queue's counterpart — the queue holds what was heard, the
- * plan holds what is expected — and it reaches the display by the same two doors
- * a searched passage does: a click stages the passage in Up Next (looked up
- * fresh), a double-click sends it as coordinates for the server to resolve. The
- * plan never touches the queue, and items stay in it after they are shown, since
- * a verse is often read twice.
- *
- * Renders the body of the sidebar's Plan tab.
+ * plan holds what is expected. A row shows its number, reference, excerpt, and
+ * an "On screen" tag when it matches the passage on a connected, live display. Remove, reorder,
+ * and Show sit at the right. A click highlights the row (the keyboard cursor); Show, or
+ * Enter on the highlight, sends its coordinates for the server to resolve. The plan
+ * never touches the queue, and entries stay after they are shown, since a verse is
+ * often read twice.
  */
 export function PlanPanel({
   items,
   snippets = {},
+  currentDisplay = null,
+  displayConnected,
+  live,
+  selectedId = null,
+  keyboardMoves = 0,
+  onSelect,
   canShow = true,
-  onStage,
   onShow,
   onRemove,
   onMove,
   onClear,
 }: PlanPanelProps) {
   const { t } = useI18n()
+  const headingId = useId()
+  const listRef = useRef<HTMLOListElement>(null)
+  useCursorFocus(listRef, selectedId, keyboardMoves)
   return (
-    <>
+    <section className="operator-section operator-plan" aria-labelledby={headingId}>
+      <div className="operator-card-head">
+        <div className="operator-card-title">
+          <h2 className="operator-section-title" id={headingId}>
+            {t('plan.title')}
+          </h2>
+          <span className="operator-section-count">{items.length}</span>
+        </div>
+        <span className="operator-card-grow" />
+        <PanelMenu
+          label={t('plan.options')}
+          placement="beside"
+          items={[
+            {
+              label: t('plan.clear'),
+              icon: <XIcon />,
+              onSelect: onClear,
+              disabled: items.length === 0,
+              destructive: true,
+            },
+          ]}
+        />
+      </div>
+
       <div className="operator-section-content">
         {items.length === 0 ? (
           <PanelHint icon={<BookIcon />} title={t('plan.empty')} hint={t('plan.emptyHint')} />
         ) : (
-          <ol className="plan-list">
+          <ol className="plan-list" ref={listRef}>
             {items.map((item, index) => {
-              const label = itemLabel(item)
+              const label = formatReference(item)
               const titleId = `${item.id}-title`
+              const onScreenId = `${item.id}-onscreen`
+              const selected = item.id === selectedId
+              const onScreen =
+                live &&
+                displayConnected &&
+                currentDisplay !== null &&
+                samePassage(item, currentDisplay)
               // Text looked up since (in the current translation), else the remembered start.
               const preview = snippets[item.id] || item.snippet || ''
               return (
-                <li key={item.id} className="ref-item plan-item">
-                  <div className="plan-item-head">
-                    <button
-                      type="button"
+                <li
+                  key={item.id}
+                  data-cursor-row={item.id}
+                  className={`ref-item plan-item${selected ? ' is-selected' : ''}`}
+                  onClick={event => onRowClick(event, () => onSelect(item.id))}
+                >
+                  <span className="plan-row-number" aria-hidden="true">
+                    {index + 1}
+                  </span>
+                  <div className="plan-row-details">
+                    <div
                       className="plan-row-main"
-                      aria-label={t('plan.stageAria', { ref: label })}
-                      onClick={() => onStage(item)}
-                      onDoubleClick={() => onShow(item)}
+                      role="button"
+                      tabIndex={0}
+                      aria-pressed={selected}
+                      aria-label={t('row.highlightAria', { ref: label })}
+                      aria-describedby={onScreen ? onScreenId : undefined}
+                      onFocus={() => onSelect(item.id)}
+                      onKeyDown={event => {
+                        if (event.key === ' ') {
+                          event.preventDefault()
+                          onSelect(item.id)
+                        }
+                      }}
                     >
-                      <span className="plan-row-number" aria-hidden="true">
-                        {index + 1}
+                      <span className="plan-row-title" id={titleId}>
+                        {label}
                       </span>
-                      <span className="plan-row-body">
-                        <span className="plan-row-title" id={titleId}>
-                          {label}
+                      {onScreen && (
+                        <span className="tag plan-row-onscreen" id={onScreenId}>
+                          {t('plan.onScreen')}
                         </span>
-                        {preview && <q className="ref-card-text">{preview}</q>}
-                      </span>
-                    </button>
-                    <div className="plan-row-reorder">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        iconOnly
-                        aria-label={t('plan.moveUp', { ref: label })}
-                        disabled={index === 0}
-                        onClick={() => onMove(item.id, -1)}
-                      >
-                        ↑
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        iconOnly
-                        aria-label={t('plan.moveDown', { ref: label })}
-                        disabled={index === items.length - 1}
-                        onClick={() => onMove(item.id, 1)}
-                      >
-                        ↓
-                      </Button>
+                      )}
                     </div>
+                    {preview && <p className="ref-card-text plan-row-text">{preview}</p>}
                   </div>
-                  <div className="ref-item-actions">
+                  <div className="plan-row-tools">
+                    <RowRemoveButton
+                      label={t('plan.remove', { ref: label })}
+                      onClick={() => onRemove(item.id)}
+                    />
                     <Button
-                      variant="primary"
+                      variant="ghost"
                       size="sm"
-                      aria-describedby={titleId}
+                      iconOnly
+                      icon={<ArrowUpIcon />}
+                      aria-label={t('plan.moveUp', { ref: label })}
+                      disabled={index === 0}
+                      onClick={() => onMove(item.id, -1)}
+                    />
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      iconOnly
+                      icon={<ArrowDownIcon />}
+                      aria-label={t('plan.moveDown', { ref: label })}
+                      disabled={index === items.length - 1}
+                      onClick={() => onMove(item.id, 1)}
+                    />
+                    <RowShowButton
+                      titleId={titleId}
+                      highlighted={selected}
                       disabled={!canShow}
                       onClick={() => onShow(item)}
-                    >
-                      {t('row.show')}
-                    </Button>
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      aria-describedby={titleId}
-                      onClick={() => onStage(item)}
-                    >
-                      {t('row.stage')}
-                    </Button>
-                    <Button
-                      variant="danger"
-                      size="sm"
-                      aria-label={t('plan.remove', { ref: label })}
-                      onClick={() => onRemove(item.id)}
-                    >
-                      {t('row.remove')}
-                    </Button>
+                    />
                   </div>
                 </li>
               )
@@ -139,13 +185,6 @@ export function PlanPanel({
           </ol>
         )}
       </div>
-
-      <div className="operator-queue-footer">
-        <Button variant="secondary" size="sm" onClick={onClear} disabled={items.length === 0}>
-          {t('plan.clear')}
-        </Button>
-        <span className="operator-queue-hint">{t('plan.hint')}</span>
-      </div>
-    </>
+    </section>
   )
 }

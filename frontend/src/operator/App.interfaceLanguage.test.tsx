@@ -103,31 +103,32 @@ afterEach(() => {
 describe('console language', () => {
   it('switches the whole console to Lithuanian from Settings, and remembers the choice', async () => {
     await renderConnected()
-    expect(screen.getByRole('heading', { name: 'On Display' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'On display' })).toBeInTheDocument()
 
     fireEvent.click(gear())
     fireEvent.click(interfaceChoices().getByRole('button', { name: 'Lietuvių' }))
 
     expect(await screen.findByRole('heading', { name: 'Ekrane' })).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: 'Toliau' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Planas' })).toBeInTheDocument()
     // The sidebar's tabs are named in Lithuanian too (a count may follow the name).
     expect(screen.getByRole('tab', { name: /^Laukiančios/ })).toBeInTheDocument()
-    expect(screen.getByRole('tab', { name: /^Planas/ })).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: 'Istorija' })).toBeInTheDocument()
     // The settings dialog itself is in Lithuanian too.
     expect(screen.getByRole('dialog', { name: 'Nustatymai' })).toBeInTheDocument()
     expect(window.localStorage.getItem(LANGUAGE_STORAGE_KEY)).toBe('lt')
   })
 
-  it('names the control row under the preview in Lithuanian, with the short caption', async () => {
+  it('translates the display header and Pending menu controls', async () => {
     window.localStorage.setItem(LANGUAGE_STORAGE_KEY, 'lt')
     await renderConnected()
 
-    const captions = [...document.querySelectorAll('.operator-quick-label')].map(e => e.textContent)
-    expect(captions).toEqual(['Ekranas', 'Eilutės', 'Automatinis'])
-    // The short caption is only a caption: the group keeps its full name.
-    expect(screen.getByRole('group', { name: 'Automatinis patvirtinimas' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Išj.' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: 'Išvalyti ekraną' })).toHaveTextContent(/^Išvalyti$/)
+    expect(screen.getByRole('button', { name: 'Eteryje' })).toHaveTextContent(/^Eteryje$/)
+    fireEvent.click(screen.getByRole('button', { name: 'Eilės parinktys' }))
+    expect(
+      screen.getByRole('menuitemcheckbox', { name: 'Automatinis patvirtinimas Išjungta' })
+    ).toHaveAttribute('aria-checked', 'false')
+    expect(screen.getByRole('menuitem', { name: 'Išvalyti eilę' })).toBeInTheDocument()
   })
 
   it('uses the launcher setting when the operator has not chosen', async () => {
@@ -142,7 +143,7 @@ describe('console language', () => {
     window.localStorage.setItem(LANGUAGE_STORAGE_KEY, 'en')
     await renderConnected()
     await waitFor(() => expect(fetch).toHaveBeenCalledWith('/api/ui-language'))
-    expect(screen.getByRole('heading', { name: 'On Display' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'On display' })).toBeInTheDocument()
   })
 
   it('Auto clears the operator choice, so the launcher setting applies again', async () => {
@@ -152,7 +153,7 @@ describe('console language', () => {
 
     fireEvent.click(gear())
     fireEvent.click(interfaceChoices().getByRole('button', { name: 'English' }))
-    expect(await screen.findByRole('heading', { name: 'On Display' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'On display' })).toBeInTheDocument()
     expect(window.localStorage.getItem(LANGUAGE_STORAGE_KEY)).toBe('en')
 
     fireEvent.click(interfaceChoices().getByRole('button', { name: 'Auto' }))

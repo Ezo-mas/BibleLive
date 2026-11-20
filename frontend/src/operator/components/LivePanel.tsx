@@ -1,6 +1,6 @@
-import { useRef, useState } from 'react'
+import { useId, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
-import { MonitorIcon, SegmentedOption, StatusBadge } from '../../components'
+import { Button, MonitorIcon, StatusBadge } from '../../components'
 import { useI18n } from '../../shared/i18nContext'
 import { PanelHint } from './PanelHint'
 import { usePreviewFit } from '../hooks/usePreviewFit'
@@ -14,12 +14,13 @@ import type { IdleImage } from '../../shared/idleScreen'
 export interface LivePanelProps {
   /** What the server reports is on the projector right now. */
   reference: BibleReference | null
+  /** True when the server confirms zero audience displays. */
+  displayMissing?: boolean
   verseLimit: VerseLimit
   displayTheme: DisplayTheme
   /** The picture the display shows while idle, shown here too while nothing is on screen. */
   idleImage?: IdleImage | null
-  /** The row of controls under the preview (Clear display, verses, auto-approve). */
-  children?: ReactNode
+  clearAction?: ReactNode
   /** Laid over the top of the preview frame, taking no space (the follow-along strip). */
   overlay?: ReactNode
   /** Whether the audience display is on air; off air the preview keeps showing the passage. */
@@ -42,16 +43,18 @@ export interface LivePanelProps {
  */
 export function LivePanel({
   reference,
+  displayMissing = false,
   verseLimit,
   displayTheme,
   idleImage = null,
-  children,
+  clearAction,
   overlay,
   live = true,
   onLiveChange,
   liveDisabled = false,
 }: LivePanelProps) {
   const { t } = useI18n()
+  const displayWarningId = useId()
   // A picture the browser could not load falls back to the empty message, as the
   // display falls back to a blank screen; a new upload is a new version and a new try.
   const [brokenIdleVersion, setBrokenIdleVersion] = useState<string | null>(null)
@@ -74,45 +77,49 @@ export function LivePanel({
   return (
     <section className="operator-stage-panel operator-live" aria-label={t('stage.onDisplayAria')}>
       <div className="operator-card-head">
-        <h2 className="operator-stage-title">{t('stage.onDisplay')}</h2>
+        <h2 className="operator-section-title">{t('stage.onDisplay')}</h2>
         {/* Shown by the server itself for follow-along, not picked by the operator. */}
         {reference?.source === 'follow' && (
           <StatusBadge variant="info" className="operator-live-tag">
             {t('ref.followed')}
           </StatusBadge>
         )}
-        {!live && (
-          <span title={t('stage.offAirNote')} data-testid="off-air-badge">
-            <StatusBadge variant="warning" className="operator-live-tag">
-              {t('stage.offAirBadge')}
-              <span className="sr-only">: {t('stage.offAirNote')}</span>
-            </StatusBadge>
-          </span>
-        )}
-        {onLiveChange && (
-          <div
-            className="segmented operator-live-switch"
-            role="group"
-            aria-label={t('stage.liveGroup')}
-          >
-            <SegmentedOption
-              aria-pressed={live}
+        <div className="operator-live-actions">
+          {clearAction}
+          {onLiveChange && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className={`operator-live-switch${live ? ' is-live' : ''}`}
+              // A state-named plain button, not an aria-pressed toggle: "Off air,
+              // not pressed" would contradict the label. The title names the action.
+              aria-label={t(live ? 'stage.liveOn' : 'stage.liveOff')}
+              aria-describedby={displayMissing ? displayWarningId : undefined}
               disabled={liveDisabled}
-              title={t('stage.liveOnTitle')}
-              onClick={() => !live && onLiveChange(true)}
+              title={t(live ? 'stage.liveOffTitle' : 'stage.liveOnTitle')}
+              icon={<span className="live-dot" aria-hidden="true" />}
+              onClick={event => {
+                // A double-click is one switch: once the server confirms the first click,
+                // a second would flip it straight back (and re-show the passage).
+                if (event.detail > 1) return
+                onLiveChange(!live)
+              }}
             >
-              {t('stage.liveOn')}
-            </SegmentedOption>
-            <SegmentedOption
-              aria-pressed={!live}
-              disabled={liveDisabled}
-              title={t('stage.liveOffTitle')}
-              onClick={() => live && onLiveChange(false)}
+              {t(live ? 'stage.liveOn' : 'stage.liveOff')}
+            </Button>
+          )}
+          {displayMissing && (
+            <span
+              id={displayWarningId}
+              className="operator-status-chip"
+              data-testid="status-chip-no-display"
             >
-              {t('stage.liveOff')}
-            </SegmentedOption>
-          </div>
-        )}
+              {t('stage.noDisplay')}
+            </span>
+          )}
+        </div>
+        {!live && <span className="sr-only">{t('stage.offAirNote')}</span>}
       </div>
 
       <div className={`operator-monitor-wrap${live ? '' : ' is-off-air'}`}>
@@ -183,8 +190,6 @@ export function LivePanel({
         )}
         {overlay}
       </div>
-
-      {children}
     </section>
   )
 }

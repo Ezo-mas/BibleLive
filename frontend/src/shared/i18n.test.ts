@@ -73,7 +73,7 @@ describe('translatorFor', () => {
   })
 
   it('uses the default translator in English', () => {
-    expect(defaultTranslator('queue.empty')).toBe('No pending references')
+    expect(defaultTranslator('queue.empty')).toBe('Detected references will appear here.')
   })
 
   it('renders the new health issues with their parameters in both languages', () => {

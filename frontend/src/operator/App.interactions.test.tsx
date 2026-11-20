@@ -75,8 +75,14 @@ function press(key: string) {
   })
 }
 
-function approveButton() {
-  return screen.getByRole('button', { name: 'Show on display' })
+/** The title of the highlighted row (the keyboard cursor), or null when there is none. */
+function highlighted() {
+  return document.querySelector('.ref-item.is-selected h3')?.textContent ?? null
+}
+
+/** A pending row's handle, by its reference. */
+function card(ref: string) {
+  return screen.getByRole('button', { name: `${ref} — highlight; Enter shows it` })
 }
 
 /**
@@ -120,80 +126,77 @@ afterEach(() => {
   socket = null
 })
 
-describe('pending selection and approval', () => {
-  it('selects down/up the queue and approves the selected item by reference ID', () => {
+describe('pending highlight and approval', () => {
+  it('moves the highlight down/up the queue and approves the highlighted item by ID', () => {
     openWith()
-    expect(approveButton()).toBeDisabled()
+    expect(highlighted()).toBeNull()
 
     press('ArrowDown')
     press('ArrowDown')
-    expect(approveButton()).toBeEnabled()
+    expect(highlighted()).toBe('Romans 8:28')
 
     press('Enter')
     expect(lastSent(socket)).toEqual({ action: 'approve', reference_id: 'p-2' })
   })
 
-  it('selects the first item when arrowing up or down from no selection', () => {
+  it('highlights the first item when arrowing up or down from no highlight', () => {
     openWith()
     press('ArrowUp')
     press('Enter')
     expect(lastSent(socket)).toEqual({ action: 'approve', reference_id: 'p-1' })
   })
 
-  it('deselects on Escape and stops approving', () => {
+  it('drops the highlight on Escape and stops approving', () => {
     openWith()
     press('ArrowDown')
-    expect(approveButton()).toBeEnabled()
+    expect(highlighted()).toBe('John 1:1')
 
     press('Escape')
-    expect(approveButton()).toBeDisabled()
+    expect(highlighted()).toBeNull()
 
     press('Enter')
     expect(sentActions()).toEqual([])
   })
 
-  it('selects a pending card by clicking it', () => {
+  it('highlights a pending card by clicking it', () => {
     openWith()
-    const card = screen.getByRole('button', { name: /Romans 8:28/ })
     act(() => {
-      card.click()
+      card('Romans 8:28').click()
     })
-    expect(card).toHaveAttribute('aria-pressed', 'true')
+    expect(card('Romans 8:28')).toHaveAttribute('aria-pressed', 'true')
+    expect(sentActions()).toEqual([])
 
     press('Enter')
     expect(lastSent(socket)).toEqual({ action: 'approve', reference_id: 'p-2' })
   })
 
-  it('keeps the staged selection when a queue update still holds it', () => {
+  it('keeps the highlight when a queue update still holds it', () => {
     openWith()
     press('ArrowDown')
-    expect(approveButton()).toBeEnabled()
 
-    // A detection arriving mid-decision must not snatch the staged reference
-    // away. Approval goes by ID, so keeping it cannot show the wrong passage.
-    const grown = [...pending, reference('p-4', 'Acts', 2, 1)]
+    // A detection arriving mid-decision must not snatch the highlight away.
+    // Approval goes by ID, so keeping it cannot show the wrong passage.
+    const grown = [reference('p-4', 'Acts', 2, 1), ...pending]
     push(socket, { type: 'pending_update', data: { pending: grown, count: grown.length } })
 
-    expect(approveButton()).toBeEnabled()
-    expect(screen.getByTestId('next-preview')).toHaveTextContent('John 1:1')
+    expect(highlighted()).toBe('John 1:1')
 
     press('Enter')
     expect(lastSent(socket)).toEqual({ action: 'approve', reference_id: 'p-1' })
   })
 
-  it('drops the selection when the queue update no longer holds it', () => {
+  it('drops the highlight when the queue update no longer holds it', () => {
     openWith()
     press('ArrowDown')
-    expect(approveButton()).toBeEnabled()
 
     push(socket, {
       type: 'pending_update',
       data: { pending: [reference('p-9', 'Acts', 2, 1)], count: 1 },
     })
-    expect(approveButton()).toBeDisabled()
+    expect(highlighted()).toBeNull()
   })
 
-  it('approves nothing when a resumed queue no longer holds the selected ID', () => {
+  it('approves nothing when a resumed queue no longer holds the highlighted ID', () => {
     openWith()
     press('ArrowDown')
     press('ArrowDown')
@@ -207,9 +210,9 @@ describe('pending selection and approval', () => {
 })
 
 describe('pending row buttons', () => {
-  it('Show approves that detection by ID without staging it first', () => {
+  it('Show approves that detection by ID at once, highlighted or not', () => {
     openWith()
-    const row = screen.getByRole('button', { name: /Romans 8:28/ }).closest('.ref-item')
+    const row = card('Romans 8:28').closest('.ref-item')
     if (!(row instanceof HTMLElement)) throw new Error('row not found')
 
     act(() => {
@@ -219,35 +222,31 @@ describe('pending row buttons', () => {
     expect(lastSent(socket)).toEqual({ action: 'approve', reference_id: 'p-2' })
   })
 
-  it('Stage puts that detection in Up Next and sends nothing', () => {
+  it('has no Stage button and no double-click shortcut', () => {
     openWith()
-    const card = screen.getByRole('button', { name: /Romans 8:28/ })
-    const row = card.closest('.ref-item')
-    if (!(row instanceof HTMLElement)) throw new Error('row not found')
 
-    act(() => {
-      within(row).getByRole('button', { name: 'Stage' }).click()
-    })
-
-    expect(card).toHaveAttribute('aria-pressed', 'true')
-    expect(screen.getByTestId('next-preview')).toHaveTextContent('Romans 8:28')
+    expect(screen.queryByRole('button', { name: 'Stage' })).not.toBeInTheDocument()
+    fireEvent.doubleClick(card('Romans 8:28'))
     expect(sentActions()).toEqual([])
   })
 
-  it('shows the confidence as a coloured word, with no glyph', () => {
+  it('shows no confidence word: a row is told apart by its edge, only when Low', () => {
     openWith()
-    const card = screen.getByRole('button', { name: /John 1:1/ })
-    const chip = card.querySelector('.ref-card-confidence')
+    const row = card('John 1:1').closest('.ref-item')
 
-    expect(chip).toHaveAttribute('data-confidence', 'high')
-    expect(chip).toHaveTextContent('High')
-    expect(chip).not.toHaveTextContent('●')
+    expect(row?.querySelector('.ref-card-confidence')).toBeNull()
+    expect(within(row as HTMLElement).queryByText('High')).not.toBeInTheDocument()
+    expect(row).toHaveAttribute('data-confidence', 'high')
   })
 })
 
-describe('controls under the display preview', () => {
-  it('sends the verse limit the server already accepts, from the row under the preview', () => {
+describe('display card controls', () => {
+  it('offers the verse limit in Settings and sends the existing action', () => {
     openWith()
+    expect(
+      screen.queryByRole('group', { name: 'Verses shown on the display' })
+    ).not.toBeInTheDocument()
+    openSettings()
     const group = within(screen.getByRole('group', { name: 'Verses shown on the display' }))
 
     act(() => {
@@ -258,46 +257,34 @@ describe('controls under the display preview', () => {
     expect(group.getByRole('button', { name: '10' })).toHaveAttribute('aria-pressed', 'true')
   })
 
-  it('gives every control in the row a caption, Clear display included', () => {
-    const { container } = render(<App />)
-    act(() => {
-      socket?.onopen?.()
-    })
-
-    const groups = [...container.querySelectorAll('.operator-quick > .operator-quick-group')]
-    expect(groups.map(group => group.querySelector('.operator-quick-label')?.textContent)).toEqual([
-      'Screen',
-      'Verses',
-      'Auto-approve',
-    ])
-    // Each group is a caption over one control, so they share one anatomy.
-    expect(groups[0].querySelector('button')).toHaveTextContent('Clear Display')
-  })
-
-  it('has Clear display in the same row, and no live-status chip next to ON DISPLAY', () => {
+  it('puts Clear beside the single live toggle in the card header', () => {
     openWith()
-
-    expect(screen.getByRole('button', { name: 'Clear Display' })).toBeInTheDocument()
-    // The only 'Live' is the live switch's button, not a status chip.
-    expect(screen.getAllByText('Live').every(el => el.closest('button'))).toBe(true)
+    const clear = screen.getByRole('button', { name: 'Clear display' })
+    const toggle = screen.getByRole('button', { name: 'Live' })
+    expect(clear).toHaveTextContent(/^Clear$/)
+    expect(clear).toHaveClass('btn-subtle', 'btn-sm')
+    expect(clear.nextElementSibling).toBe(toggle)
+    expect(toggle.closest('.operator-card-head')).toContainElement(
+      screen.getByRole('heading', { name: 'On display' })
+    )
   })
 })
 
 describe('keyboard shortcuts while Settings is open', () => {
-  it('does not approve the staged reference on Enter until Settings is closed', () => {
+  it('does not approve the highlighted reference on Enter until Settings is closed', () => {
     openWith()
     press('ArrowDown')
-    expect(approveButton()).toBeEnabled()
+    expect(highlighted()).toBe('John 1:1')
 
     openSettings()
 
     // The dialog owns the keyboard while it is open: a keypress sent from
-    // behind it must neither reach the server nor move the staged selection.
+    // behind it must neither reach the server nor move the highlight.
     press('Enter')
     expect(sentActions()).toEqual([])
-    expect(screen.getByRole('button', { name: /John 1:1/ })).toHaveAttribute('aria-pressed', 'true')
+    expect(card('John 1:1')).toHaveAttribute('aria-pressed', 'true')
 
-    // Closed, the same keypress approves the staged reference again by ID — the
+    // Closed, the same keypress approves the highlighted reference by ID — the
     // dialog stood the shortcut down, it did not break it.
     act(() => {
       within(screen.getByRole('dialog')).getByRole('button', { name: 'Close settings' }).click()
@@ -330,19 +317,19 @@ describe('clear actions', () => {
 
   it('clears the queue only after the operator confirms', () => {
     openWith()
-    const clearQueue = screen.getByRole('button', { name: /clear queue/i })
+    const options = screen.getByRole('button', { name: 'Pending options' })
+    function clearQueue() {
+      fireEvent.click(options)
+      fireEvent.click(screen.getByRole('menuitem', { name: 'Clear queue' }))
+    }
     const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
 
-    act(() => {
-      clearQueue.click()
-    })
+    clearQueue()
     expect(confirm).toHaveBeenCalled()
     expect(sentActions()).toEqual([])
 
     confirm.mockReturnValue(true)
-    act(() => {
-      clearQueue.click()
-    })
+    clearQueue()
     expect(lastSent(socket)).toEqual({ action: 'clear_pending' })
   })
 })

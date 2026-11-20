@@ -33,15 +33,15 @@ export interface ScriptureSearchState {
   hiddenCount: number
   showMore: () => void
   /**
-   * Pick a row: a passage is looked up and staged in Up Next, a book completes
-   * the text so its chapter can be typed. Nothing is ever displayed from here.
+   * Pick a row: a passage is shown on the display (`displayDirect`), a book
+   * completes the text so its chapter can be typed.
    */
   choose: (result: ScriptureResult) => void
   /**
-   * Send a resolved passage row straight to the display without staging it.
-   * Only reference rows carry coordinates; calling it with a book row is a
-   * no-op. The caller decides when this is allowed (valid input, dialog
-   * closed); the request itself is the same `display_reference` Show sends.
+   * Send a resolved passage row to the display. Only reference rows carry
+   * coordinates; calling it with a book row is a no-op. The caller decides when
+   * this is allowed (valid input, dialog closed); the request itself is the same
+   * coordinates-only `display_reference` every manual Show sends.
    */
   displayDirect: (result: ScriptureResult) => void
   /**
@@ -50,19 +50,11 @@ export interface ScriptureSearchState {
    */
   planResult: (result: ScriptureResult) => void
   /**
-   * Look a passage up and stage it in Up Next, for callers that already have
-   * coordinates. With `notify`, a failure goes to `onLookupError` (a notice)
-   * instead of the search box, for callers that are not looking at it.
-   */
-  stagePassage: (request: PassageQuery, notify?: boolean) => void
-  /**
    * The rows for what is in the box right now. Results follow the debounced text,
    * so a key that acts on a row (Enter shows it) must read this instead, or it
    * could act on what was typed a moment ago.
    */
   resolveNow: () => ScriptureResult[]
-  /** Drop any lookup still in flight, so a late answer cannot stage over a newer action. */
-  cancelLookup: () => void
   /**
    * The start of the top row's verse, so the operator can tell it is the right
    * passage before choosing it. Null while the top row is a book or has no
@@ -75,13 +67,13 @@ export interface ScriptureSearchState {
 }
 
 /**
- * Text search over the server's canon, and the lookup that stages a passage.
+ * Text search over the server's canon, and the lookup that plans a passage.
  *
- * This is the door to the manual side of the console, and it is deliberately a
- * read-only one: both requests are GETs, and a successful lookup only tells the
- * caller what the passage is — staging it is the caller's decision, and showing
- * it is a separate, server-confirmed action. Nothing here touches the pending
- * queue or the display.
+ * This is the door to the manual side of the console. Its own requests are GETs:
+ * a lookup only tells the caller what the passage is (to preview it, or to add it
+ * to the plan). Showing a passage is the caller's `onDirectDisplay`, a
+ * server-confirmed request with coordinates only. Nothing here touches the
+ * pending queue.
  *
  * The book list is fetched the first time the operator types something, so a
  * console that never searches makes no extra request; matching then happens
@@ -92,11 +84,9 @@ export interface ScriptureSearchState {
  */
 export function useScriptureSearch(
   token: string | null,
-  onPassage: (passage: Passage) => void,
   onDirectDisplay: (request: PassageQuery) => void,
   bibleVersion: string | null = null,
-  onPlan: (passage: Passage) => void = () => {},
-  onLookupError: (message: string) => void = () => {}
+  onPlan: (passage: Passage) => void = () => {}
 ): ScriptureSearchState {
   const { t } = useI18n()
   const [input, setInputState] = useState('')
@@ -113,17 +103,12 @@ export function useScriptureSearch(
     error: string | null
   } | null>(null)
 
-  // Latest callback without re-running the book load every render.
-  const onPassageRef = useRef(onPassage)
-  onPassageRef.current = onPassage
-  // The direct-display path, held the same way: the search panel fires it from
-  // a key handler, which must not re-subscribe anything to do so.
+  // The display path, held in a ref: the search panel fires it from a key handler,
+  // which must not re-subscribe anything to do so.
   const onDirectDisplayRef = useRef(onDirectDisplay)
   onDirectDisplayRef.current = onDirectDisplay
   const onPlanRef = useRef(onPlan)
   onPlanRef.current = onPlan
-  const onLookupErrorRef = useRef(onLookupError)
-  onLookupErrorRef.current = onLookupError
   // Identifies the newest request of each kind; anything older is ignored when
   // it lands.
   const lookupIdRef = useRef(0)
@@ -224,7 +209,7 @@ export function useScriptureSearch(
   )
 
   // The top row's passage, looked up as soon as it is a complete reference, so the
-  // operator sees how the verse begins before staging or showing it. Read-only,
+  // operator sees how the verse begins before showing or planning it. Read-only,
   // and superseded the same way a lookup is.
   const top = results[0]
   const previewId =
@@ -273,7 +258,7 @@ export function useScriptureSearch(
   }, [previewId, token, t, bibleVersion])
 
   const findPassage = useCallback(
-    (request: PassageQuery, deliver: (passage: Passage) => void, notify = false) => {
+    (request: PassageQuery, deliver: (passage: Passage) => void) => {
       const requestId = ++lookupIdRef.current
       setLookupError(null)
       setIsLookingUp(true)
@@ -287,9 +272,7 @@ export function useScriptureSearch(
           deliver(label ? { ...passage, book_label: label } : passage)
         } catch (error) {
           if (requestId !== lookupIdRef.current) return
-          const message = error instanceof Error ? error.message : t('search.lookupFailed')
-          if (notify) onLookupErrorRef.current(message)
-          else setLookupError(message)
+          setLookupError(error instanceof Error ? error.message : t('search.lookupFailed'))
         } finally {
           if (requestId === lookupIdRef.current) setIsLookingUp(false)
         }
@@ -298,35 +281,33 @@ export function useScriptureSearch(
     [token, t]
   )
 
-  const stagePassage = useCallback(
-    (request: PassageQuery, notify = false) =>
-      findPassage(request, passage => onPassageRef.current(passage), notify),
-    [findPassage]
-  )
-
-  const cancelLookup = useCallback(() => {
-    lookupIdRef.current += 1
-    setIsLookingUp(false)
+  // Enter in the search box, or a click on the passage row: no lookup, the resolved
+  // coordinates go to the display path. A book row has no coordinates, so there is
+  // nothing to send and this does nothing.
+  const displayDirect = useCallback((result: ScriptureResult) => {
+    if (result.kind === 'reference' && result.coordinates) {
+      onDirectDisplayRef.current({
+        book: result.book.name,
+        chapter: result.coordinates.chapter,
+        verseStart: result.coordinates.verseStart,
+        verseEnd: result.coordinates.verseEnd,
+      })
+    }
   }, [])
 
   const choose = useCallback(
     (result: ScriptureResult) => {
-      if (result.kind === 'reference' && result.coordinates) {
-        stagePassage({
-          book: result.book.name,
-          chapter: result.coordinates.chapter,
-          verseStart: result.coordinates.verseStart,
-          verseEnd: result.coordinates.verseEnd,
-        })
+      if (result.kind === 'reference') {
+        displayDirect(result)
         return
       }
       // A book is not a passage: picking one completes the text so its chapter
-      // can be typed. Nothing is looked up, staged, or sent.
+      // can be typed. Nothing is looked up or sent.
       setInputState(`${bookLabel(result.book)} `)
       setShowAllBooks(false)
       setLookupError(null)
     },
-    [stagePassage]
+    [displayDirect]
   )
 
   // Adding to the plan resolves the passage first, so only a real one is planned,
@@ -351,20 +332,6 @@ export function useScriptureSearch(
     [findPassage]
   )
 
-  // Enter in the search box: skip the lookup and the staging entirely and
-  // hand the resolved coordinates to the display path. A book row has no
-  // coordinates, so there is nothing to send and this does nothing.
-  const displayDirect = useCallback((result: ScriptureResult) => {
-    if (result.kind === 'reference' && result.coordinates) {
-      onDirectDisplayRef.current({
-        book: result.book.name,
-        chapter: result.coordinates.chapter,
-        verseStart: result.coordinates.verseStart,
-        verseEnd: result.coordinates.verseEnd,
-      })
-    }
-  }, [])
-
   return {
     input,
     setInput,
@@ -380,8 +347,6 @@ export function useScriptureSearch(
     displayDirect,
     planResult,
     resolveNow,
-    stagePassage,
-    cancelLookup,
     preview:
       previewState && previewState.id === previewId && !previewState.error
         ? { id: previewState.id, text: previewState.text }

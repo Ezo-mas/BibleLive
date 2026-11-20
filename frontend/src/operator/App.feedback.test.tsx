@@ -96,10 +96,7 @@ describe('server-confirmed feedback', () => {
     openWith()
 
     act(() => {
-      screen.getByRole('button', { name: /John 1:1/ }).click()
-    })
-    act(() => {
-      screen.getByRole('button', { name: 'Show on display' }).click()
+      screen.getByRole('button', { name: 'Show' }).click()
     })
 
     // The request is on the wire but nothing has come back: no success yet.
@@ -286,18 +283,20 @@ describe('settings confirmations', () => {
 })
 
 describe('pending card clarity', () => {
-  it('marks the staged card and shows when the detection arrived', () => {
+  it('marks the highlighted card and shows when the detection arrived', () => {
     openWith()
+    const card = screen.getByRole('button', { name: 'John 1:1 — highlight; Enter shows it' })
 
     act(() => {
-      screen.getByRole('button', { name: /John 1:1/ }).click()
+      card.click()
     })
 
-    const card = screen.getByRole('button', { name: /John 1:1/ })
-    expect(within(card).getByText('Staged in Up Next')).toBeInTheDocument()
-    expect(card).toHaveAttribute('data-confidence', 'high')
+    const row = card.closest('.ref-item') as HTMLElement
+    expect(row).toHaveClass('is-selected')
+    expect(card).toHaveAttribute('aria-pressed', 'true')
+    expect(row).toHaveAttribute('data-confidence', 'high')
 
-    const time = within(card).getByText(/\d{1,2}:\d{2}:\d{2}/)
+    const time = within(row).getByText(/\d{1,2}:\d{2}:\d{2}/)
     expect(time).toHaveAttribute('datetime', '2026-01-01T10:00:00Z')
   })
 })

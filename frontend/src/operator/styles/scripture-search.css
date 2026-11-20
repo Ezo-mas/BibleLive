@@ -143,7 +143,7 @@
   width: auto;
 }
 
-/* How the verse begins, so a wrong passage is seen before it is staged. */
+/* How the verse begins, so a wrong passage is seen before it is shown. */
 .operator-search-result-preview {
   flex-basis: 100%;
   display: -webkit-box;

@@ -1,18 +1,15 @@
 import { useEffect, useRef, useState } from 'react'
 import { lookupPassage } from '../passageApi'
 import { useI18n } from '../../shared/i18nContext'
+import { planExcerpt } from './usePlan'
 import type { PlanItem } from './usePlan'
 
-/** The most characters of looked-up text kept per item, as when an item is added. */
-const SNIPPET_CHARS = 200
-
 /**
- * Text for plan items that were saved without any.
+ * Text for plan items missing a passage excerpt.
  *
  * Items normally carry the start of their passage from the moment they are
- * planned, but an older saved plan or a failed lookup can leave one empty. This
- * asks the existing read-only lookup (the one behind the search verse-start
- * preview) while the console is connected, and returns the results by item id.
+ * planned. Older ranges saved only the first verse. This fills out those excerpts
+ * and empty ones using the existing read-only lookup while connected.
  * Failed lookups retry once. A confirmed translation change starts fresh and
  * looks up every item again, including those saved with text, so no row keeps
  * the old translation; the looked-up text then wins over the saved one.
@@ -52,7 +49,9 @@ export function usePlanSnippets(
   useEffect(() => {
     if (!enabled) return
     for (const item of items) {
-      if ((item.snippet && !refetchSaved.current) || asked.current.has(item.id)) continue
+      const hasExcerpt =
+        item.snippet && (item.verse_start === item.verse_end || item.snippetFormat === 'passage')
+      if ((hasExcerpt && !refetchSaved.current) || asked.current.has(item.id)) continue
       asked.current.add(item.id)
       const currentGeneration = generation.current
       const lookup = () =>
@@ -72,11 +71,11 @@ export function usePlanSnippets(
         })
         .then(passage => {
           if (!passage || currentGeneration !== generation.current) return
-          const text = (passage.verses[0]?.text ?? passage.text ?? '').slice(0, SNIPPET_CHARS)
+          const text = planExcerpt(passage)
           if (text) setSnippets(prev => ({ ...prev, [item.id]: text }))
         })
         .catch(() => {
-          // The reference stands on its own until the text arrives.
+          // The row can use its saved text or show just the reference.
         })
     }
   }, [items, token, enabled, t, version])

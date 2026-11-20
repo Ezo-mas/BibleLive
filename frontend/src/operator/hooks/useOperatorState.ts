@@ -1,6 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useI18n } from '../../shared/i18nContext'
-import type { AuthenticateAction, AutoMode, ClearMode, OperatorMessage } from '../../shared/types'
+import { formatReference } from '../../shared/reference'
+import type {
+  AuthenticateAction,
+  AutoMode,
+  BibleReference,
+  ClearMode,
+  OperatorMessage,
+  Passage,
+} from '../../shared/types'
 import { useWebSocket } from '../../shared/useWebSocket'
 import {
   coerceDisplayTheme,
@@ -11,6 +19,8 @@ import {
   writeStoredVerseLimit,
 } from '../../shared/verseText'
 import type { DisplayTheme, VerseLimit } from '../../shared/verseText'
+import { passageToReference } from '../passageApi'
+import type { PassageQuery } from '../passageApi'
 import { createOperatorState, operatorReducer } from '../state/operatorReducer'
 import type { OperatorState } from '../state/operatorHookTypes'
 import type { OperatorEffect, OperatorEvent } from '../state/operatorTypes'
@@ -20,14 +30,16 @@ import { useNotices } from './useNotices'
 import { useOperatorToken } from './useOperatorToken'
 import { usePassageText } from './usePassageText'
 import { usePipelineStatus } from './usePipelineStatus'
+import { usePlan } from './usePlan'
+import type { PlanItem } from './usePlan'
 import { usePlanSnippets } from './usePlanSnippets'
+import { useRowCursor } from './useRowCursor'
+import { useScriptureSearch } from './useScriptureSearch'
 import { useSpokenLanguage } from './useSpokenLanguage'
-import { useStaging } from './useStaging'
 
 export type { OperatorState } from '../state/operatorHookTypes'
-export type { StagedReference } from '../state/operatorTypes'
+export type { RowCursor } from '../state/operatorTypes'
 export type { FlashTarget, NoticeTone, OperatorNotice } from './useNotices'
-export type { NextSource } from './useStaging'
 
 /** Keep a second click from removing the row that moves under the pointer. */
 const DISCARD_COOLDOWN_MS = 500
@@ -55,7 +67,7 @@ export function useOperatorState(): OperatorState {
     )
   )
   // State advances synchronously so two intents in one React batch see each other:
-  // a second Show is a no-op; staging then Show approves the newly staged item.
+  // a second Show is a no-op while the first is in flight.
   const stateRef = useRef(state)
   // Filled in once the socket and hooks below exist; dispatch is declared before them.
   const effectsRef = useRef<(effects: OperatorEffect[]) => void>(() => {})
@@ -104,7 +116,7 @@ export function useOperatorState(): OperatorState {
     if (status === 'open') setHasConnected(true)
   }, [status])
   // A show request only exists while the socket is open. If it dropped, the
-  // confirmation is not coming and the staged passage is still theirs to show.
+  // confirmation is not coming, so Show must not stay blocked.
   useEffect(() => {
     if (status !== 'open') dispatch({ type: 'disconnected' })
   }, [status, dispatch])
@@ -163,8 +175,67 @@ export function useOperatorState(): OperatorState {
     }
   }
 
-  const staging = useStaging(state, dispatch, token, isConnected, bibleVersion.version, showNotice)
-  const planSnippets = usePlanSnippets(staging.plan.items, token, isConnected, bibleVersion.version)
+  // A manual passage reaches the display one way only: its coordinates, for the
+  // server to resolve itself (`display_reference`). Find Scripture, the plan, history
+  // and follow-along all use it; the in-flight guard is shared with approvals, so a
+  // confirmation or rejection settles it the same way.
+  const showManualDirect = useCallback(
+    (request: PassageQuery) => {
+      if (!isConnected) return
+      dispatch({
+        type: 'show_direct',
+        request: {
+          book: request.book,
+          chapter: request.chapter,
+          verse_start: request.verseStart,
+          verse_end: request.verseEnd,
+        },
+      })
+    },
+    [isConnected, dispatch]
+  )
+  // A queued detection is approved by ID, never by position.
+  const approvePending = useCallback(
+    (id: string) => {
+      if (isConnected) dispatch({ type: 'approve_pending', id })
+    },
+    [isConnected, dispatch]
+  )
+  const showHistory = useCallback(
+    (reference: BibleReference) =>
+      showManualDirect({
+        book: reference.book,
+        chapter: reference.chapter,
+        verseStart: reference.verse_start,
+        verseEnd: reference.verse_end,
+      }),
+    [showManualDirect]
+  )
+  const showPlanItem = useCallback(
+    (item: PlanItem) =>
+      showManualDirect({
+        book: item.book,
+        chapter: item.chapter,
+        verseStart: item.verse_start,
+        verseEnd: item.verse_end,
+      }),
+    [showManualDirect]
+  )
+
+  const plan = usePlan()
+  const addToPlan = plan.add
+  const planPassage = useCallback(
+    (passage: Passage) => {
+      const ref = formatReference(passageToReference(passage))
+      if (addToPlan(passage)) showNotice('success', t('notice.planned', { ref }))
+      else showNotice('info', t('notice.alreadyPlanned', { ref }))
+    },
+    [addToPlan, showNotice, t]
+  )
+  // Search names books as the loaded Bible translation does, so it follows a switch.
+  const search = useScriptureSearch(token, showManualDirect, bibleVersion.version, planPassage)
+  const cursor = useRowCursor(state, dispatch, plan.items, approvePending, showPlanItem)
+  const planSnippets = usePlanSnippets(plan.items, token, isConnected, bibleVersion.version)
   const { currentDisplay, followAlongHint, showInFlight } = state
   // A hint is only meaningful next to the passage it follows on from. Comparing
   // ids here, not when the hint arrives, means a display that changed or was
@@ -188,7 +259,6 @@ export function useOperatorState(): OperatorState {
     token,
     isConnected
   )
-  const { showManualDirect } = staging
   // Show on a hint is the manual door, nothing newer: the same request Find
   // Scripture sends with Enter, coordinates only, re-resolved by the server.
   const showFollowAlong = useCallback(() => {
@@ -203,7 +273,6 @@ export function useOperatorState(): OperatorState {
   // Speech detection health, asked of the server only while it is reachable.
   const pipeline = usePipelineStatus(token, isConnected)
 
-  const approveSelected = useCallback(() => dispatch({ type: 'approve_selected' }), [dispatch])
   const discardPending = useCallback(
     (id: string) => {
       if (isConnected) dispatch({ type: 'discard_pending', id })
@@ -281,11 +350,16 @@ export function useOperatorState(): OperatorState {
     currentDisplay,
     seenPassage: state.seenPassage,
     hasDisplayContent: currentDisplay !== null,
-    displayConnected: state.displayConnected,
+    displayConnected: state.displayConnected === true,
+    displayMissing: isConnected && state.displayConnected === false,
     pipeline,
-    ...staging,
-    clearNext: staging.deselect,
-    canShowNext: staging.nextReference !== null && isConnected && !showInFlight,
+    plan,
+    search,
+    cursor,
+    showManualDirect,
+    approvePending,
+    showHistory,
+    showPlanItem,
     followAlong,
     showFollowAlong,
     canShowFollowAlong: followAlong !== null && isConnected && !showInFlight,
@@ -296,10 +370,8 @@ export function useOperatorState(): OperatorState {
     followAlongText,
     discardPending,
     discardInFlight: state.discardId !== null,
-    approveSelected,
     clearDisplay,
     clearPendingQueue,
-    canApprove: state.staged?.kind === 'pending' && isConnected,
     canClearDisplay: currentDisplay !== null && isConnected,
     canClearPending: state.pending.length > 0 && isConnected,
     flash,

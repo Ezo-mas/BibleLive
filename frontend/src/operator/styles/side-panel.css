@@ -1,4 +1,4 @@
-/* Panels: the pending queue and the history list. */
+/* Panels: the Plan card, and the Pending / History panel. */
 .operator-section {
   display: flex;
   flex-direction: column;
@@ -33,7 +33,7 @@
   min-width: var(--space-5);
   height: var(--space-5);
   padding: 0 var(--space-2);
-  background: var(--card-bg);
+  background: var(--color-surface-muted);
   border-radius: var(--radius-full);
   font-size: var(--font-size-xs);
   font-weight: var(--weight-bold);
@@ -56,6 +56,10 @@
   min-height: 0;
 }
 
+.operator-pending .operator-section-content {
+  padding: var(--card-gap);
+}
+
 .operator-queue-footer {
   display: flex;
   align-items: center;
@@ -72,7 +76,80 @@
   color: var(--color-text-muted);
 }
 
-/* The sidebar's tabs: Pending, Plan and History share one panel. */
+.operator-auto-status {
+  flex: none;
+  padding: var(--space-1) var(--card-pad);
+  border-bottom: var(--border-width) solid var(--color-border);
+  font-size: var(--font-size-xs);
+  font-weight: var(--weight-semibold);
+  color: var(--accent-text);
+}
+
+.operator-panel-menu {
+  position: relative;
+}
+
+.operator-panel-menu > .btn[aria-expanded='true'] {
+  background: var(--color-surface-muted);
+}
+
+.operator-panel-menu-popover {
+  position: absolute;
+  z-index: var(--z-popover);
+  display: grid;
+  gap: var(--space-0-5);
+  width: max-content;
+  max-width: calc(100vw - 4 * var(--card-pad));
+  padding: var(--space-1);
+  background: var(--card-bg);
+  border: var(--border-width) solid var(--color-border);
+  border-radius: var(--radius-control);
+  box-shadow: var(--shadow-md);
+}
+
+.operator-panel-menu--beside .operator-panel-menu-popover {
+  top: 50%;
+  inset-inline-end: calc(100% + var(--space-2));
+  transform: translateY(-50%);
+}
+
+.operator-panel-menu--above .operator-panel-menu-popover {
+  bottom: calc(100% + var(--space-0-5));
+  left: 0;
+}
+
+.operator-panel-menu-item {
+  justify-content: flex-start;
+  text-align: left;
+}
+
+.operator-panel-menu-item .btn-content {
+  flex: 1;
+}
+
+.operator-panel-menu-status {
+  margin-left: auto;
+  padding-left: var(--space-4);
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+}
+
+.operator-panel-menu-item[aria-disabled='true'] {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.operator-panel-menu-item.is-destructive {
+  color: var(--color-danger-text);
+}
+
+.operator-panel-menu-item.is-destructive:hover,
+.operator-row-remove:hover:not(:disabled) {
+  color: var(--color-danger-text);
+  background: var(--color-danger-bg);
+}
+
+/* The sidebar's tabs: Pending and History share one panel. */
 /* The tabs share the whole bar equally, with no outer padding or gaps, and the bar is
    as tall as a card's header row (control height plus the card padding) so the two
    columns' headers line up. */
@@ -138,26 +215,30 @@
 }
 
 /* Rows in Pending, Plan and History share one look: a boxed item holding the
-   reference, the start of its text, and (Pending, Plan) the row's buttons. Nothing
-   marks an edge with a coloured stripe: the staged row takes the accent border
-   and fill all round. */
+   reference, the start of its text, and the row's buttons. Nothing marks an edge with
+   a coloured stripe: the highlighted row (the keyboard cursor) takes an amber edge
+   (--color-primary-edge) and a tint of the primary colour all round, and that amber
+   edge means nothing else. */
 .ref-card-list,
 .plan-list {
   display: flex;
   flex-direction: column;
-  gap: var(--card-pad);
   margin: 0;
   padding: 0;
   list-style: none;
+}
+
+.ref-card-list {
+  gap: var(--card-gap);
 }
 
 .ref-item {
   display: flex;
   flex: none;
   flex-direction: column;
-  gap: var(--card-gap);
+  gap: var(--space-1);
   min-width: 0;
-  padding: var(--card-pad);
+  padding: var(--card-gap);
   background: var(--card-bg);
   border: var(--border-width) solid var(--color-border);
   border-radius: var(--radius-control);
@@ -168,21 +249,46 @@
   border-color: var(--color-border-strong);
 }
 
+/* A click anywhere on a selectable row but its buttons highlights it. */
+.ref-item:has(> [role='button']) {
+  cursor: pointer;
+}
+
+/* A Low-confidence detection: the row's edge is dashed, the look the Low chip had.
+   Medium and High rows look the same; the word is the row's accessible description
+   and its tooltip. The dashed edge stays when highlighted. */
+.ref-item[data-confidence='low'] {
+  border-style: dashed;
+  border-color: var(--color-border-strong);
+}
+
 .ref-item.is-selected {
-  background: var(--color-primary-subtle);
-  border-color: var(--color-primary);
+  background: color-mix(in srgb, var(--color-primary) 14%, var(--card-bg));
+  border-color: var(--color-primary-edge);
+}
+
+/* Dark: the tint stays faint, so the row's muted text keeps 4.5:1 on it. */
+[data-theme='dark'] .ref-item.is-selected {
+  background: color-mix(in srgb, var(--color-primary) 6%, var(--card-bg));
+}
+
+/* Timestamp, Remove and verse count at the left, Show at the far right. */
+.ref-item-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--card-gap);
+}
+
+.ref-item-foot .ref-card-meta {
+  flex: 1 1 auto;
 }
 
 .ref-item-actions {
   display: flex;
-  flex-wrap: wrap;
-  gap: var(--card-gap);
-}
-
-/* History is a place to look back, so its rows drop the confidence chip: it is a
-   property of a detection, not of something that was shown. */
-.operator-history .ref-card-confidence {
-  display: none;
+  align-items: center;
+  gap: var(--space-3);
+  margin-left: auto;
 }
 
 .ref-card {
@@ -202,7 +308,7 @@
   display: flex;
   flex-direction: column;
   flex: 1;
-  gap: var(--card-gap);
+  gap: var(--space-1);
   min-width: 0;
 }
 
@@ -214,10 +320,13 @@
 }
 
 .ref-card-title {
+  min-width: 0;
   margin: 0;
+  overflow: hidden;
   font-size: var(--font-size-base);
   font-weight: var(--weight-semibold);
-  overflow-wrap: anywhere;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   color: var(--color-text);
 }
 
@@ -228,43 +337,7 @@
   flex-shrink: 0;
 }
 
-/* Detection confidence: one amber-and-grey ramp told apart by fill weight, with
-   the word and nothing else. High is the accent fill and edge, Medium an outline,
-   Low a muted fill with a dashed edge. */
-.ref-card-confidence {
-  display: inline-flex;
-  align-items: center;
-  height: var(--space-5);
-  padding: 0 var(--space-3);
-  font-size: var(--font-size-xs);
-  font-weight: var(--weight-bold);
-  white-space: nowrap;
-  border: var(--border-width) solid transparent;
-  border-radius: var(--radius-full);
-}
-
-.ref-card-confidence[data-confidence='high'] {
-  color: var(--accent-text);
-  background: var(--color-primary-subtle);
-  border-color: color-mix(in srgb, var(--color-primary) 55%, transparent);
-}
-
-.ref-card-confidence[data-confidence='medium'] {
-  color: var(--color-text-secondary);
-  background: transparent;
-  border-color: var(--color-border-strong);
-}
-
-.ref-card-confidence[data-confidence='low'] {
-  font-weight: var(--weight-semibold);
-  color: var(--color-text-muted);
-  background: var(--color-surface-muted);
-  border-style: dashed;
-  border-color: var(--color-border-strong);
-}
-
-/* The start of the passage, in a muted quote: enough to recognise it, two lines at
-   most. The full text is in Up Next once the row is staged. */
+/* Muted passage excerpt, clamped to two lines by default. */
 .ref-card-text {
   display: -webkit-box;
   margin: 0;
@@ -280,42 +353,74 @@
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 0 var(--space-3);
+  gap: 0 var(--space-1);
   font-size: var(--font-size-xs);
   font-variant-numeric: tabular-nums;
   color: var(--color-text-muted);
 }
 
-/* Which pending row is the one staged in Up Next — the queue and the staging
-   panel must never be mistaken for each other. */
-.ref-card-staged {
-  margin-left: auto;
-  font-weight: var(--weight-semibold);
-  color: var(--accent-text);
+/* The Plan card, under On display, with a scrollable list below its header. */
+.operator-plan {
+  flex: none;
+  height: clamp(216px, 48%, 380px);
+  min-height: 0;
 }
 
-/* The plan: a numbered title (a button that stages it; double-click shows it), the
-   reorder arrows, then the row's own buttons. */
-.plan-item-head {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--space-2);
+.operator-plan .operator-card-title {
+  align-items: center;
 }
 
+.operator-plan .operator-card-head {
+  padding-top: var(--space-2);
+  padding-bottom: var(--space-2);
+  border-bottom: var(--border-width) solid var(--color-border);
+}
+
+.operator-plan .operator-section-content:has(.plan-list) {
+  padding-block: 0;
+}
+
+.plan-list {
+  container-type: inline-size;
+}
+
+.plan-item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-areas:
+    'number details'
+    '. tools';
+  align-items: center;
+  gap: var(--space-1) var(--card-gap);
+  padding: var(--space-1) var(--card-gap);
+  cursor: pointer;
+}
+
+.plan-item:not(.is-selected) {
+  background: transparent;
+  border-color: transparent;
+  border-bottom-color: var(--color-border);
+  border-radius: 0;
+}
+
+.plan-item:not(.is-selected):last-child {
+  border-bottom-color: transparent;
+}
+
+.plan-row-details {
+  grid-area: details;
+  min-width: 0;
+}
+
+/* The reference is the row's keyboard handle. */
 .plan-row-main {
   display: flex;
-  align-items: flex-start;
-  flex: 1;
-  gap: var(--space-3);
+  align-items: center;
+  gap: var(--space-1);
   min-width: 0;
-  padding: 0;
-  font-family: var(--font-sans);
-  text-align: left;
+  line-height: var(--leading-tight);
   color: var(--color-text);
-  background: none;
-  border: none;
   border-radius: var(--radius-tag);
-  cursor: pointer;
 }
 
 .plan-row-main:focus-visible {
@@ -323,29 +428,56 @@
 }
 
 .plan-row-number {
-  flex-shrink: 0;
-  min-width: 1.5em;
+  grid-area: number;
+  display: grid;
+  place-items: center;
+  min-width: var(--space-5);
+  height: var(--space-5);
+  padding-inline: var(--space-1);
+  border-radius: var(--radius-full);
+  background: var(--color-surface-muted);
   font-size: var(--font-size-xs);
   font-weight: var(--weight-bold);
   font-variant-numeric: tabular-nums;
-  line-height: 1.6;
   color: var(--color-text-muted);
 }
 
-.plan-row-body {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  gap: var(--card-gap);
-}
-
 .plan-row-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-size: var(--font-size-base);
   font-weight: var(--weight-semibold);
 }
 
-.plan-row-reorder {
+/* One line of text, cut with an ellipsis. */
+.plan-row-text {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.plan-row-tools {
+  grid-area: tools;
   display: flex;
-  flex-shrink: 0;
   align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-0-5);
+}
+
+.plan-row-onscreen {
+  flex: none;
+  white-space: nowrap;
+  color: var(--accent-text);
+  background: var(--color-primary-subtle);
+}
+
+@container (min-width: 440px) {
+  .plan-item {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-areas: 'number details tools';
+  }
 }
