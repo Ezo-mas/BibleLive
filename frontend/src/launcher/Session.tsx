@@ -111,16 +111,16 @@ export function Hero({
             type="button"
             className="bl-button bl-primary"
             onClick={onSession}
-            disabled={starting || stopping}
+            disabled={stopping || (pending === 'start' && state.session === 'idle')}
           >
             <span className="bl-play" aria-hidden="true" />
             {t(
               stopping
                 ? 'launcher.stopping'
-                : starting
-                  ? 'launcher.starting'
-                  : live
-                    ? 'launcher.stop'
+                : live || state.session === 'starting'
+                  ? 'launcher.stop'
+                  : starting
+                    ? 'launcher.starting'
                     : 'launcher.start'
             )}
           </button>

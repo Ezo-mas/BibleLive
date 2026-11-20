@@ -46,27 +46,35 @@ class MicMeter:
         self._state = "off"
         self._error: str | None = None
 
-    def start(self, device: str | None, *, env: dict[str, str] | None = None) -> None:
+    def start(
+        self,
+        device: str | None,
+        *,
+        env: dict[str, str],
+        can_start: Callable[[], bool],
+        restart: bool = False,
+    ) -> None:
         with self._lifecycle:
-            if self._thread is None or not self._thread.is_alive():
-                self._start(device, env)
-
-    def switch(self, device: str | None, *, env: dict[str, str] | None = None) -> None:
-        with self._lifecycle:
-            self._stop()
-            self._start(device, env)
+            if restart and can_start():
+                self._stop()
+            if (self._thread is None or not self._thread.is_alive()) and can_start():
+                self._start(device, env, can_start)
 
     def stop(self) -> None:
         with self._lifecycle:
             self._stop()
 
-    def _start(self, device: str | None, env: dict[str, str] | None) -> None:
+    def _start(
+        self, device: str | None, env: dict[str, str], can_start: Callable[[], bool]
+    ) -> None:
         self._cancel.clear()
         with self._lock:
             self._state = "starting"
             self._error = None
             self._levels.clear()
-        self._thread = threading.Thread(target=self._read, args=(device, env), daemon=True)
+        self._thread = threading.Thread(
+            target=self._read, args=(device, env, can_start), daemon=True
+        )
         self._thread.start()
 
     def _stop(self) -> None:
@@ -93,7 +101,7 @@ class MicMeter:
             self._levels.clear()
             return self._state, t(self._error) if self._error else None, levels
 
-    def _read(self, device: str | None, env: dict[str, str] | None) -> None:
+    def _read(self, device: str | None, env: dict[str, str], can_start: Callable[[], bool]) -> None:
         error = "meter.device_failed"
         try:
             if sys.platform == "darwin":
@@ -104,20 +112,19 @@ class MicMeter:
                     error = "warn.mic_denied"
                     return
             # Windows does not use the supplied child environment to locate the executable.
-            path = env.get("PATH") if env is not None else None
-            ffmpeg = shutil.which("ffmpeg", path=path) or "ffmpeg"
+            ffmpeg = shutil.which("ffmpeg", path=env.get("PATH")) or "ffmpeg"
             args = ffmpeg_input_args(device, ffmpeg=ffmpeg)
+            if self._cancel.is_set() or not can_start():
+                return
+            proc = self._popen(
+                [ffmpeg, *args, "-ac", "1", "-ar", "16000", "-f", "s16le", "-"],
+                env=env,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+                **platform.current().child_process_options(),
+            )
             with self._lock:
-                if self._cancel.is_set():
-                    return
-                proc = self._popen(
-                    [ffmpeg, *args, "-ac", "1", "-ar", "16000", "-f", "s16le", "-"],
-                    env=env,
-                    stdin=subprocess.DEVNULL,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.DEVNULL,
-                    **platform.current().child_process_options(),
-                )
                 self._process = proc
             assert proc.stdout is not None
             with proc.stdout:
@@ -130,7 +137,7 @@ class MicMeter:
                         self._levels.append(block_level(block))
         except FileNotFoundError:
             error = "meter.ffmpeg_missing"
-        except (OSError, RuntimeError, ValueError) as exc:
+        except (OSError, RuntimeError, ValueError, subprocess.TimeoutExpired) as exc:
             if isinstance(exc.__context__, FileNotFoundError):
                 error = "meter.ffmpeg_missing"
         finally:

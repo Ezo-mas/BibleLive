@@ -112,6 +112,8 @@ export interface Bridge {
 declare global {
   interface Window {
     pywebview?: { api?: Bridge }
+    chrome?: { webview?: unknown }
+    webkit?: { messageHandlers?: { jsBridge?: unknown } }
   }
 }
 
@@ -119,22 +121,28 @@ let connection: Promise<Bridge> | undefined
 
 export function getBridge(): Promise<Bridge> {
   return (connection ??= new Promise(resolve => {
-    if (window.pywebview?.api) {
-      resolve(window.pywebview.api)
+    if (new URLSearchParams(window.location.search).has('demo')) {
+      resolve(createDemoBridge())
       return
     }
-    function finish(bridge: Bridge) {
-      window.clearTimeout(timeout)
-      window.removeEventListener('pywebviewready', onReady)
-      resolve(bridge)
-    }
     function onReady() {
-      if (window.pywebview?.api) finish(window.pywebview.api)
+      const api = window.pywebview?.api
+      if (typeof api?.init === 'function' && typeof api.poll === 'function') {
+        window.removeEventListener('pywebviewready', onReady)
+        resolve(api)
+      }
     }
-    const timeout = window.setTimeout(
-      () => finish(window.pywebview?.api ?? createDemoBridge()),
-      300
-    )
+    // Native hosts expose their message transport before pywebview injects its API.
+    if (
+      import.meta.env.DEV &&
+      !window.pywebview &&
+      !window.chrome?.webview &&
+      !window.webkit?.messageHandlers?.jsBridge
+    ) {
+      resolve(createDemoBridge())
+      return
+    }
     window.addEventListener('pywebviewready', onReady)
+    onReady()
   }))
 }

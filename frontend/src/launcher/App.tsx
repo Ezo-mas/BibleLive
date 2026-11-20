@@ -17,6 +17,8 @@ interface Connection {
   initial: InitResult
 }
 
+const BRIDGE_WAIT_MS = 15_000
+
 export function App({ bridge }: { bridge?: Bridge }) {
   const { t } = useI18n()
   const [connection, setConnection] = useState<Connection | null>(null)
@@ -24,9 +26,12 @@ export function App({ bridge }: { bridge?: Bridge }) {
 
   useEffect(() => {
     let active = true
+    setFailed(false)
+    const timeout = bridge ? undefined : window.setTimeout(() => setFailed(true), BRIDGE_WAIT_MS)
     async function connect() {
       try {
         const api = bridge ?? (await getBridge())
+        window.clearTimeout(timeout)
         if (!active) return
         const initial = await api.init()
         if (active) setConnection({ bridge: api, initial })
@@ -37,6 +42,7 @@ export function App({ bridge }: { bridge?: Bridge }) {
     void connect()
     return () => {
       active = false
+      window.clearTimeout(timeout)
     }
   }, [bridge])
 
@@ -64,7 +70,7 @@ function Launcher({ bridge, initial }: Connection) {
   const argsRef = useRef<HTMLInputElement>(null)
   const logRef = useRef<HTMLDivElement>(null)
   const languageRequest = useRef(Promise.resolve())
-  const waitForPoll = useRef(false)
+  const sessionRequest = useRef<{ readyForPoll: boolean } | null>(null)
 
   const { state } = data
   const locked = state.session !== 'idle' || pending !== null
@@ -75,14 +81,15 @@ function Launcher({ bridge, initial }: Connection) {
     let timer: number
     async function poll() {
       const started = performance.now()
-      const releasePending = waitForPoll.current
+      const request = sessionRequest.current
+      const releasePending = request?.readyForPoll
       try {
         const result = await bridge.poll()
         if (active) {
           dispatch({ type: 'poll', result, now: Date.now() })
           setPollFailed(false)
-          if (releasePending) {
-            waitForPoll.current = false
+          if (releasePending && sessionRequest.current === request) {
+            sessionRequest.current = null
             setPending(null)
           }
         }
@@ -147,24 +154,24 @@ function Launcher({ bridge, initial }: Connection) {
   }
 
   async function toggleSession() {
-    if (pending) return
-    if (state.session === 'live') {
-      setPending('stop')
-      await runAction(async () => {
-        await bridge.stop()
-        waitForPoll.current = true
-      })
-      if (!waitForPoll.current) setPending(null)
-      return
-    }
-    if (state.session !== 'idle') return
-    setError(null)
-    setPending('start')
+    const stopping = state.session === 'live' || state.session === 'starting'
+    if (pending === 'stop' || (!stopping && (pending || state.session !== 'idle'))) return
+
+    const request = { readyForPoll: false }
+    sessionRequest.current = request
+    setPending(stopping ? 'stop' : 'start')
     await runAction(async () => {
+      if (stopping) {
+        await bridge.stop()
+        request.readyForPoll = true
+        return
+      }
+      setError(null)
       const result = await bridge.start(form)
       if (result.ok) {
-        waitForPoll.current = true
-      } else {
+        request.readyForPoll = true
+      } else if (sessionRequest.current === request) {
+        sessionRequest.current = null
         setPending(null)
         setError(result.error)
         const field = result.error.field
@@ -175,7 +182,10 @@ function Launcher({ bridge, initial }: Connection) {
         }
       }
     })
-    if (!waitForPoll.current) setPending(null)
+    if (!request.readyForPoll && sessionRequest.current === request) {
+      sessionRequest.current = null
+      setPending(null)
+    }
   }
 
   return (

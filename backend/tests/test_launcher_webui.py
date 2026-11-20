@@ -2,13 +2,14 @@
 
 import json
 import struct
+import subprocess
 import sys
 import threading
 import time
 from types import SimpleNamespace
 
 import pytest
-from launcher import cli, i18n, webui
+from launcher import cli, i18n, micmeter, webui
 from launcher.logtail import LogBuffer, LogTail
 from launcher.micmeter import BLOCK_SAMPLES, block_level
 from launcher.process import LaunchPlan
@@ -42,12 +43,16 @@ def bridge(tmp_path, monkeypatch):
     trace = []
     session = SimpleNamespace(
         running=threading.Event(),
+        launch_entered=threading.Event(),
+        allow_ready=threading.Event(),
+        stopped=threading.Event(),
         finish=threading.Event(),
         meter_exit=threading.Event(),
         launches=[],
         processes=[],
     )
     session.meter_exit.set()
+    session.allow_ready.set()
 
     class MeterProcess:
         def __init__(self):
@@ -107,6 +112,10 @@ def bridge(tmp_path, monkeypatch):
 
         def run(self):
             trace.append("launcher running")
+            session.launch_entered.set()
+            assert session.allow_ready.wait(3)
+            if session.finish.is_set():
+                return 0
             for warning in self.plan.warnings:
                 self.emit("warning", warning)
             self.emit("ready", self.plan.base_url)
@@ -117,7 +126,9 @@ def bridge(tmp_path, monkeypatch):
             return 0
 
         def stop(self):
+            session.stopped.set()
             session.finish.set()
+            session.allow_ready.set()
 
     controller = LauncherController(
         load=lambda: load_settings(settings_path),
@@ -139,6 +150,7 @@ def bridge(tmp_path, monkeypatch):
     finally:
         session.meter_exit.set()
         session.finish.set()
+        session.allow_ready.set()
         controller.close()
         i18n.set_language(original_language)
 
@@ -196,6 +208,125 @@ def test_meter_waits_for_ffmpeg_exit_then_resumes(bridge):
     assert trace == ["meter started", "meter exited", "launcher running", "meter started"]
     assert not load_settings(settings_path).session_audio
     assert api.init()["form"]["session_audio"] is False
+
+
+def test_start_during_microphone_switch_waits_for_meter_exit(bridge):
+    api, _, trace, session = bridge
+    form = api.init()["form"]
+    wait_for(lambda: session.processes)
+    session.meter_exit.clear()
+    switch = threading.Thread(target=api.set_microphone, args=("Mic B",))
+    switch.start()
+    try:
+        assert session.processes[0].exit.wait(3)
+        assert api.poll()["state"]["session"] == "idle"
+        assert api.start({**form, "input_device": "Mic B"}) == {"ok": True}
+        assert not session.launch_entered.is_set()
+    finally:
+        session.meter_exit.set()
+        switch.join(3)
+    assert not switch.is_alive()
+    assert session.running.wait(3)
+    assert trace == ["meter started", "meter exited", "launcher running"]
+
+
+def test_start_during_meter_device_lookup_prevents_spawn(bridge, monkeypatch):
+    api, _, trace, session = bridge
+    lookup = threading.Event()
+    release = threading.Event()
+    input_args = micmeter.ffmpeg_input_args
+
+    def blocked_lookup(*args, **kwargs):
+        lookup.set()
+        assert release.wait(3)
+        return input_args(*args, **kwargs)
+
+    monkeypatch.setattr(micmeter, "ffmpeg_input_args", blocked_lookup)
+    form = api.init()["form"]
+    try:
+        assert lookup.wait(3)
+        assert api.start(form) == {"ok": True}
+        assert not session.launch_entered.is_set()
+    finally:
+        release.set()
+    assert session.running.wait(3)
+    assert trace == ["launcher running"]
+
+
+def test_meter_device_lookup_timeout_is_reported(bridge, monkeypatch):
+    api, _, _, session = bridge
+    uncaught = []
+
+    def timeout(*args, **kwargs):
+        raise subprocess.TimeoutExpired("ffmpeg", 10)
+
+    monkeypatch.setattr(threading, "excepthook", uncaught.append)
+    monkeypatch.setattr(micmeter, "ffmpeg_input_args", timeout)
+    api.init()
+
+    def meter_error():
+        snapshot = api.poll()
+        if snapshot["meter"] == "error":
+            return snapshot["meter_error"]
+        return None
+
+    assert wait_for(meter_error) == i18n.t("meter.device_failed")
+    assert not session.processes
+    assert not uncaught
+
+
+@pytest.mark.parametrize("phase", ["starting", "live"])
+def test_close_stops_launcher_and_joins_worker_without_restarting_meter(bridge, phase):
+    api, _, trace, session = bridge
+    controller = api._controller
+    if phase == "starting":
+        session.allow_ready.clear()
+    form = api.init()["form"]
+    wait_for(lambda: session.processes)
+    assert api.start(form) == {"ok": True}
+    ready = session.launch_entered if phase == "starting" else session.running
+    assert ready.wait(3)
+    assert api.poll()["state"]["session"] == phase
+    worker = controller._worker
+    assert worker is not None and worker.is_alive()
+
+    controller.request_close()
+    assert not session.stopped.is_set()
+    assert worker.is_alive()
+    controller.close()
+
+    assert session.stopped.is_set()
+    assert not worker.is_alive()
+    assert api.poll()["state"]["session"] == "idle"
+    assert trace == ["meter started", "meter exited", "launcher running"]
+
+
+def test_stop_while_building_plan_returns_to_idle_and_resumes_meter(bridge, monkeypatch):
+    api, _, trace, session = bridge
+    controller = api._controller
+    building = threading.Event()
+    release = threading.Event()
+    build = controller._build_plan
+
+    def blocked_build(settings):
+        building.set()
+        assert release.wait(3)
+        return build(settings)
+
+    form = api.init()["form"]
+    wait_for(lambda: session.processes)
+    monkeypatch.setattr(controller, "_build_plan", blocked_build)
+    assert api.start(form) == {"ok": True}
+    try:
+        assert building.wait(3)
+        assert not session.launches
+        assert api.stop() is None
+        assert api.poll()["state"]["session"] == "stopping"
+    finally:
+        release.set()
+    wait_for(lambda: len(session.processes) == 2)
+    assert api.poll()["state"]["session"] == "idle"
+    assert trace == ["meter started", "meter exited", "meter started"]
 
 
 def test_view_and_ui_language(bridge):
@@ -303,7 +434,24 @@ def test_api_exposes_only_contract_methods(bridge):
     }
 
 
-def test_webview_main_uses_dev_url_and_closing_handler(bridge, monkeypatch):
+@pytest.mark.parametrize(
+    ("url", "allowed"),
+    [
+        ("http://127.0.0.1:5173/launcher.html", True),
+        ("https://LOCALHOST/launcher.html?demo", True),
+        ("http://[::1]:5173/launcher.html", True),
+        ("https://example.com/launcher.html", False),
+        ("http://localhost.example.com/launcher.html", False),
+        ("http://localhost@example.com/launcher.html", False),
+        ("http://example.com\\@localhost/launcher.html", False),
+        ("http://[::1]example.com/launcher.html", False),
+        ("file://localhost/launcher.html", False),
+        ("//localhost/launcher.html", False),
+    ],
+)
+def test_webview_main_checks_dev_url_and_registers_closing_handler(
+    bridge, monkeypatch, tmp_path, caplog, url, allowed
+):
     api, _, _, _ = bridge
     controller = api._controller
     observed = {}
@@ -322,6 +470,7 @@ def test_webview_main_uses_dev_url_and_closing_handler(bridge, monkeypatch):
     def start(**options):
         observed.update(options)
         closing.handler()
+        assert api.start(api.init()["form"])["ok"] is False
 
     fake_webview = SimpleNamespace(
         create_window=create_window,
@@ -329,14 +478,19 @@ def test_webview_main_uses_dev_url_and_closing_handler(bridge, monkeypatch):
         screens=[SimpleNamespace(x=0, y=0, height=768)],
     )
     monkeypatch.setitem(sys.modules, "webview", fake_webview)
-    monkeypatch.setenv("BIBLELIVE_LAUNCHER_URL", "http://127.0.0.1:5173/launcher.html")
+    page = tmp_path / "static" / "launcher" / "launcher.html"
+    page.parent.mkdir(parents=True)
+    page.touch()
+    monkeypatch.setattr(webui, "_default_app_root", lambda: tmp_path)
+    monkeypatch.setenv("BIBLELIVE_LAUNCHER_URL", url)
     monkeypatch.setattr(webui, "LauncherController", lambda: controller)
     monkeypatch.setitem(
         sys.modules, "launcher.gui", SimpleNamespace(_enable_dpi_awareness=lambda: None)
     )
     assert webui.main() == 0
     assert observed["title"] == i18n.t("app.title")
-    assert observed["url"] == "http://127.0.0.1:5173/launcher.html"
+    assert observed["url"] == (url if allowed else str(page))
+    assert ("Ignoring BIBLELIVE_LAUNCHER_URL" in caplog.text) is not allowed
     assert (observed["width"], observed["height"], observed["min_size"]) == (1120, 708, (760, 600))
     assert observed["http_server"] is observed["private_mode"] is True
     assert observed["gui"] == ("edgechromium" if sys.platform == "win32" else None)
@@ -369,6 +523,11 @@ def test_whisper_on_the_processor_is_reported_once_per_session(bridge):
     assert session.running.wait(3)
     no_gpu = i18n.t("warn.no_gpu")
     lines = []
-    wait_for(lambda: lines.extend(api.poll()["log"]) or api.poll()["state"]["session"] == "live")
-    lines += api.poll()["log"]
+
+    def is_live():
+        snapshot = api.poll()
+        lines.extend(snapshot["log"])
+        return snapshot["state"]["session"] == "live"
+
+    wait_for(is_live)
     assert [line["text"] for line in lines].count(no_gpu) == 1

@@ -3,6 +3,7 @@
 import contextlib
 import logging
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -13,6 +14,7 @@ from collections.abc import Callable
 from dataclasses import asdict, replace
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 from . import i18n, platform
 from .i18n import t
@@ -282,7 +284,7 @@ class LauncherController:
                 self._options_changed = True
                 if error:
                     self._log.append("launcher", "WARNING", error)
-                self._start_meter()
+        self._start_meter()
 
     def _probe_speech(self, settings: LauncherSettings) -> None:
         try:
@@ -293,21 +295,34 @@ class LauncherController:
         with self._lock:
             if not self._closed:
                 self._probe_plan = plan
-                self._start_meter()
+        self._start_meter()
 
-    def _start_meter(self) -> None:
-        plan = self._plan or self._probe_plan
-        if self._initialized and not self._closed and self._session == "idle" and plan:
-            self._meter.start(self._selected_mic, env=plan.env)
+    def _start_meter(self, *, restart: bool = False) -> None:
+        with self._lock:
+            plan = self._plan or self._probe_plan
+            device = self._selected_mic
+        if plan is None:
+            return
+
+        def can_start() -> bool:
+            with self._lock:
+                return (
+                    self._initialized
+                    and not self._closed
+                    and self._session == "idle"
+                    and device == self._selected_mic
+                    and plan is (self._plan or self._probe_plan)
+                )
+
+        # Meter operations can join a reader that is still checking the device.
+        self._meter.start(device, env=plan.env, can_start=can_start, restart=restart)
 
     def set_microphone(self, device: str | None) -> None:
         with self._lock:
             if self._closed or self._session != "idle":
                 return
             self._selected_mic = device
-            plan = self._plan or self._probe_plan
-            if plan is not None:
-                self._meter.switch(device, env=plan.env)
+        self._start_meter(restart=True)
 
     def _persist(self, settings: LauncherSettings) -> None:
         self._settings = settings
@@ -388,7 +403,7 @@ class LauncherController:
                 self._close_session_resources()
                 self._session = "idle"
                 self._started_at = None
-                self._start_meter()
+            self._start_meter()
 
     def _ask_microphone(self) -> None:
         status = self._access(ask=False)
@@ -550,10 +565,14 @@ class LauncherController:
             self._tail.stop()
             self._tail = None
 
-    def close(self) -> None:
+    def request_close(self) -> None:
         with self._lock:
             self._closed = True
             self._cancel.set()
+
+    def close(self) -> None:
+        self.request_close()
+        with self._lock:
             worker, launcher = self._worker, self._launcher
         if launcher is not None:
             launcher.stop()
@@ -610,9 +629,31 @@ class LauncherApi:
         self._controller.copy_text(text)
 
 
+def _is_loopback_url(url: str) -> bool:
+    if re.search(r"[\x00-\x20\x7f\\]", url):
+        return False
+    try:
+        parsed = urlsplit(url)
+        _ = parsed.port  # Validate the port if one was supplied.
+        return (
+            parsed.scheme in {"http", "https"}
+            and re.fullmatch(
+                r"(?:localhost|127\.0\.0\.1|\[::1\])(?::[0-9]+)?",
+                parsed.netloc,
+                re.IGNORECASE | re.ASCII,
+            )
+            is not None
+        )
+    except ValueError:
+        return False
+
+
 def main(*, smoke: bool = False) -> int:
     logging.basicConfig(level=logging.WARNING)
     url = os.environ.get("BIBLELIVE_LAUNCHER_URL")
+    if url and not _is_loopback_url(url):
+        logger.warning("Ignoring BIBLELIVE_LAUNCHER_URL: expected a loopback HTTP(S) URL")
+        url = None
     if not url:
         page = _default_app_root() / "static" / "launcher" / "launcher.html"
         if not page.is_file():
@@ -645,7 +686,8 @@ def main(*, smoke: bool = False) -> int:
         )
         if window is None:
             return FALLBACK
-        window.events.closing += controller.close
+        # Let the native window close before the finally block waits for cleanup.
+        window.events.closing += controller.request_close
         if smoke:
 
             def close_after_load() -> None:
