@@ -92,8 +92,9 @@ export function LivePanel({
               variant="ghost"
               size="sm"
               className="operator-live-switch"
-              // A toggle is named by what it switches; aria-pressed says whether it is on.
-              aria-label={t('stage.liveOn')}
+              // The name follows the visible label, so off air a screen reader hears
+              // "Off air" rather than "Live, not pressed"; aria-pressed carries the state.
+              aria-label={t(live ? 'stage.liveOn' : 'stage.liveOff')}
               aria-describedby={displayMissing ? displayWarningId : undefined}
               aria-pressed={live}
               disabled={liveDisabled}

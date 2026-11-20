@@ -124,7 +124,8 @@ and the B shortcut. The toggle is a ghost button with a filled amber dot and bol
 label when Live, and a hollow neutral dot and medium label when Off air. It has
 the shared hover fill and focus ring. Off air adds a warning ring (in
 `--color-warning-text`) around the preview, which continues to show the
-passage. Screen readers get "The audience sees a black screen".
+passage. Screen readers get "The audience sees a black screen"; the toggle's
+accessible name follows its label, so it is announced as "Off air", not "Live".
 
 ## Panel menus
 

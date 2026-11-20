@@ -65,7 +65,8 @@ function ring() {
 }
 
 function liveSwitch() {
-  return screen.getByRole('button', { name: 'Live' })
+  // One button whose name follows its label: Live on air, Off air blacked out.
+  return screen.getByRole('button', { name: /^(Live|Off air)$/ })
 }
 
 beforeEach(() => {
@@ -110,6 +111,7 @@ it('starts live and moves only when the server confirms', () => {
 
   push(socket, { type: 'display_settings_confirmed', data: settings(false) })
   expect(liveSwitch()).toHaveAttribute('aria-pressed', 'false')
+  expect(liveSwitch()).toHaveAccessibleName('Off air')
   expect(liveSwitch()).toHaveTextContent(/^Off air$/)
   // The switch says it; the ring round the preview says it; no badge repeats it.
   expect(ring()).toHaveClass('is-off-air')
@@ -186,6 +188,7 @@ it('is read-only while disconnected', () => {
 it('shows off air from the snapshot, as a console that connects mid-blackout must', () => {
   openWith(settings(false))
   expect(liveSwitch()).toHaveAttribute('aria-pressed', 'false')
+  expect(liveSwitch()).toHaveAccessibleName('Off air')
   expect(ring()).toHaveClass('is-off-air')
 })
 
@@ -195,6 +198,7 @@ it('marks Live with the on-air dot, filled by CSS only while live', () => {
   const dot = liveSwitch().querySelector('.live-dot')
   expect(dot).toHaveAttribute('aria-hidden', 'true')
   expect(liveSwitch()).toHaveClass('btn-ghost')
+  expect(liveSwitch()).toHaveAccessibleName('Live')
   expect(liveSwitch()).toHaveTextContent(/^Live$/)
 })
 
