@@ -72,6 +72,7 @@ function Launcher({ bridge, initial }: Connection) {
   const logRef = useRef<HTMLDivElement>(null)
   const rootRef = useRef<HTMLElement>(null)
   const languageRequest = useRef(Promise.resolve())
+  const microphoneRequest = useRef({ pending: false, done: Promise.resolve() })
   const sessionRequest = useRef<{ readyForPoll: boolean } | null>(null)
   const pollNow = useRef<(() => void) | null>(null)
 
@@ -122,21 +123,26 @@ function Launcher({ bridge, initial }: Connection) {
       const visible = !document.hidden
       const request = sessionRequest.current
       const releasePending = request?.readyForPoll
+      const microphone = microphoneRequest.current
+      const microphoneReady = !microphone.pending
       try {
         const result = await bridge.poll()
         if (active) {
           session = result.state.session
           meter = result.meter
+          // A poll that started before the microphone switch may still return old samples.
+          const levels =
+            microphoneReady && microphone === microphoneRequest.current ? result.levels : []
           acceptLevels(
             visible &&
               !document.hidden &&
               meter === 'on' &&
               session === 'idle' &&
               (!request || releasePending)
-              ? result.levels
+              ? levels
               : null
           )
-          dispatch({ type: 'poll', result, now: Date.now() })
+          dispatch({ type: 'poll', result: { ...result, levels }, now: Date.now() })
           setPollFailed(false)
           if (releasePending && sessionRequest.current === request) {
             sessionRequest.current = null
@@ -215,6 +221,25 @@ function Launcher({ bridge, initial }: Connection) {
     )
   }
 
+  function changeMicrophone(device: Form['input_device']) {
+    change('input_device', device)
+    acceptLevels(null)
+    dispatch({ type: 'resetLevels' })
+    const previous = microphoneRequest.current
+    const request = { pending: true, done: Promise.resolve() }
+    microphoneRequest.current = request
+    request.done = previous.done.then(async () => {
+      if (microphoneRequest.current !== request) return
+      await runAction(async () => {
+        try {
+          await bridge.set_microphone(device)
+        } finally {
+          request.pending = false
+        }
+      })
+    })
+  }
+
   async function toggleSession() {
     const stopping = state.session === 'live' || state.session === 'starting'
     if (pending === 'stop' || (!stopping && (pending || state.session !== 'idle'))) return
@@ -281,11 +306,7 @@ function Launcher({ bridge, initial }: Connection) {
           canProject={canProject}
           error={error}
           onChange={change}
-          onMicrophone={device => {
-            change('input_device', device)
-            dispatch({ type: 'resetLevels' })
-            void runAction(() => bridge.set_microphone(device))
-          }}
+          onMicrophone={changeMicrophone}
           onRefresh={() => void runAction(() => bridge.refresh_devices())}
           onProjector={() => void runAction(() => bridge.show_projector())}
         />

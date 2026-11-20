@@ -233,17 +233,12 @@
   font-size: 13px;
 }
 #bl-launcher .bl-primary {
-  background: var(--session-button-bg, var(--gold));
+  background: var(--gold);
   border-color: transparent;
   color: #2d200e;
 }
 #bl-launcher .bl-primary:hover:not(:disabled, [aria-disabled='true']) {
-  background: var(--session-button-hover, #ffce81);
-}
-#bl-launcher[data-status='live'] .bl-primary {
-  --session-button-bg: #ffb4a6;
-  --session-button-hover: #ffc4b9;
-  color: #48231c;
+  background: #ffce81;
 }
 #bl-launcher .bl-hero-secondary {
   --disabled-opacity: 0.35;

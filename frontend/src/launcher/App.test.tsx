@@ -115,6 +115,76 @@ describe('launcher App', () => {
     }
   })
 
+  it('decays the held peak after silence and clears it on a mic change even with a poll in flight', async () => {
+    vi.useFakeTimers({
+      toFake: [
+        'Date',
+        'performance',
+        'setTimeout',
+        'clearTimeout',
+        'requestAnimationFrame',
+        'cancelAnimationFrame',
+      ],
+    })
+    const bridge = createDemoBridge()
+    const poll = bridge.poll
+    let level = 0.8
+    let pausePoll: Promise<void> | undefined
+    let releasePoll!: () => void
+    let pollPaused = false
+    vi.spyOn(bridge, 'poll').mockImplementation(async () => {
+      const sample = level
+      if (pausePoll) {
+        pollPaused = true
+        await pausePoll
+      }
+      return { ...(await poll()), levels: [sample] }
+    })
+    const app = render(<App bridge={bridge} />)
+    const readout = () => app.container.querySelector('.bl-meter-readout')
+    const tick = () => app.container.querySelector<HTMLElement>('.bl-meter-peak')
+    try {
+      await act(() => vi.advanceTimersByTimeAsync(0))
+      await act(() => vi.advanceTimersByTimeAsync(0))
+      await act(() => vi.advanceTimersByTimeAsync(350))
+      expect(readout()).toHaveTextContent('-12 dB')
+      level = 0
+      await act(() => vi.advanceTimersByTimeAsync(1_900))
+      expect(readout()).toHaveTextContent('-12 dB')
+      await act(() => vi.advanceTimersByTimeAsync(400))
+      expect(readout()).toHaveTextContent(/^-[2-5]\d dB$/)
+      expect(parseFloat(tick()?.style.left ?? '')).toBeLessThan(80)
+      await act(() => vi.advanceTimersByTimeAsync(750))
+      expect(readout()).toHaveTextContent('-∞')
+      expect(tick()).toHaveStyle({ opacity: '0' })
+
+      level = 0.8
+      await act(() => vi.advanceTimersByTimeAsync(350))
+      expect(readout()).toHaveTextContent('-12 dB')
+      pausePoll = new Promise(resolve => {
+        releasePoll = resolve
+      })
+      await act(() => vi.advanceTimersByTimeAsync(60))
+      expect(pollPaused).toBe(true)
+      fireEvent.change(screen.getByRole('combobox', { name: 'Microphone' }), {
+        target: { value: 'built-in' },
+      })
+      expect(readout()).toHaveTextContent('-∞')
+      expect(tick()).toHaveStyle({ opacity: '0' })
+      level = 0
+      pausePoll = undefined
+      await act(async () => {
+        releasePoll()
+        await vi.advanceTimersByTimeAsync(350)
+      })
+      expect(readout()).toHaveTextContent('-∞')
+      expect(tick()).toHaveStyle({ opacity: '0' })
+    } finally {
+      app.unmount()
+      vi.useRealTimers()
+    }
+  })
+
   it('keeps the projector action beside its select in both views', async () => {
     const bridge = createDemoBridge()
     const init = bridge.init

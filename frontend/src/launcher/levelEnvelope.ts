@@ -1,10 +1,12 @@
 import { LEVEL_INTERVAL, type LevelSample } from './noSignal'
 
 const ATTACK_MS = 60
-const RELEASE_MS = 800
+const RELEASE_MS = 625
+const PEAK_HOLD_MS = 2_000
+const PEAK_RELEASE_DB_PER_MS = 0.06
 const SILENCE = 0.001
 const MAX_QUEUED_LEVELS = 6
-export const RIPPLE_STEP_MS = 50
+export const RIPPLE_STEP_MS = 40
 
 export const MIN_DBFS = -60
 export const MAX_DBFS = 0
@@ -41,6 +43,12 @@ export function advanceEnvelope(level: number, target: number, elapsed: number) 
   const decay = target > level ? 5 ** (-elapsed / ATTACK_MS) : 3 ** (-elapsed / RELEASE_MS)
   const next = target + (level - target) * decay
   return target === 0 && next < SILENCE ? 0 : next
+}
+
+export function releasePeak(peak: number, signalEnd: number, from: number, to: number) {
+  const elapsed = Math.max(0, to - Math.max(from, signalEnd + PEAK_HOLD_MS))
+  const drop = (elapsed * PEAK_RELEASE_DB_PER_MS) / (MAX_DBFS - MIN_DBFS)
+  return Math.max(0, peak - drop)
 }
 
 export function queueLevels(queue: LevelSample[], levels: number[], now: number) {

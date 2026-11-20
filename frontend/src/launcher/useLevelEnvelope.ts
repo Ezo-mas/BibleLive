@@ -1,20 +1,19 @@
 import { useCallback, useLayoutEffect, useRef } from 'react'
 import { useI18n } from '../shared/i18nContext'
 import {
-  advanceEnvelope,
   formatPeak,
   levelToDbfs,
   meterZone,
   playLevels,
   queueLevels,
+  releasePeak,
   rippleDistance,
   rippleLevel,
   RIPPLE_STEP_MS,
 } from './levelEnvelope'
-import { LEVEL_INTERVAL, type LevelSample } from './noSignal'
+import { LEVEL_INTERVAL, SIGNAL_THRESHOLD, type LevelSample } from './noSignal'
 
-const PEAK_HOLD_MS = 1000
-const METER_TEXT_INTERVAL_MS = 100
+const METER_TEXT_INTERVAL_MS = 65
 
 export function useLevelEnvelope(meterOn: boolean) {
   const { t } = useI18n()
@@ -76,18 +75,23 @@ export function useLevelEnvelope(meterOn: boolean) {
     let frame = 0
     let level = 0
     let heldPeak = 0
-    let holdUntil = 0
+    let signalEnd = -Infinity
     let previous = Math.min(performance.now(), queue.current[0]?.time ?? Infinity)
 
     function update(now: number) {
       if (now < previous) return
       const next = playLevels(level, queue.current, previous, now)
-      queue.current = queue.current.filter(sample => sample.time + LEVEL_INTERVAL > now)
-      heldPeak = advanceEnvelope(heldPeak, 0, now - Math.max(holdUntil, previous))
-      if (next > heldPeak) {
-        heldPeak = next
-        holdUntil = now + PEAK_HOLD_MS
+      for (const sample of queue.current) {
+        if (sample.time >= now) break
+        if (sample.level >= SIGNAL_THRESHOLD) {
+          signalEnd = Math.max(signalEnd, Math.min(now, sample.time + LEVEL_INTERVAL))
+        }
       }
+      queue.current = queue.current.filter(sample => sample.time + LEVEL_INTERVAL > now)
+      heldPeak =
+        signalEnd > previous
+          ? Math.max(heldPeak, next)
+          : releasePeak(heldPeak, signalEnd, previous, now)
       const ripple = !motion?.matches
       if (ripple) {
         history.push({ time: now, level: next })
@@ -113,7 +117,8 @@ export function useLevelEnvelope(meterOn: boolean) {
 
     onPoll.current = (now, reset) => {
       if (reset) {
-        level = heldPeak = holdUntil = 0
+        level = heldPeak = 0
+        signalEnd = -Infinity
         history.length = 0
         previous = now
         lastTextUpdate = -Infinity

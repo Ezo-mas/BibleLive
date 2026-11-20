@@ -8,6 +8,7 @@ import {
   METER_TICKS,
   playLevels,
   queueLevels,
+  releasePeak,
   rippleDistance,
   rippleLevel,
   RIPPLE_STEP_MS,
@@ -61,16 +62,27 @@ describe('level envelope', () => {
     expect(advanceEnvelope(first, 1, 44)).toBeCloseTo(0.8)
   })
 
-  it('decays to a third after 800 ms regardless of frame spacing', () => {
+  it('decays to a third after 625 ms regardless of frame spacing', () => {
     const first = advanceEnvelope(0.9, 0, 150)
-    expect(advanceEnvelope(first, 0, 650)).toBeCloseTo(0.3)
-    expect(advanceEnvelope(0.9, 0, 800)).toBeCloseTo(0.3)
+    expect(advanceEnvelope(first, 0, 475)).toBeCloseTo(0.3)
+    expect(advanceEnvelope(0.9, 0, 625)).toBeCloseTo(0.3)
   })
 
   it('keeps falling until it reaches silence without new samples', () => {
     const released = playLevels(0.9, [], 0, 800)
     expect(playLevels(released, [], 800, 816)).toBeLessThan(released)
     expect(playLevels(released, [], 800, 6000)).toBe(0)
+  })
+})
+
+describe('peak hold', () => {
+  it('holds for two seconds from the end of the signal, then falls to silence at a steady rate', () => {
+    const peak = dbfsToLevel(-12)
+    expect(releasePeak(peak, 100, 100, 2_100)).toBe(peak)
+    const falling = releasePeak(peak, 100, 2_090, 2_200)
+    expect(formatPeak(falling)).toBe('-18 dB')
+    expect(formatPeak(releasePeak(falling, 100, 2_200, 2_300))).toBe('-24 dB')
+    expect(formatPeak(releasePeak(peak, 100, 2_090, 2_901))).toBe('-∞')
   })
 })
 
