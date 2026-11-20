@@ -52,6 +52,7 @@ class FormValues:
     open_operator: bool
     speech_engine: str = "auto"
     allow_network: bool = False
+    session_audio: bool = True
 
 
 def form_from_settings(s: LauncherSettings) -> FormValues:
@@ -71,10 +72,13 @@ def form_from_settings(s: LauncherSettings) -> FormValues:
         open_operator=s.open_operator_on_start,
         speech_engine=s.speech_engine,
         allow_network=s.allow_network,
+        session_audio=s.session_audio,
     )
 
 
-def settings_from_form(base: LauncherSettings, form: FormValues) -> LauncherSettings:
+def settings_from_form(
+    base: LauncherSettings, form: FormValues, *, include_session_audio: bool = False
+) -> LauncherSettings:
     """Settings with the form laid over ``base`` (keeps fields the form doesn't show)."""
     try:
         port = int(form.port.strip())
@@ -103,6 +107,8 @@ def settings_from_form(base: LauncherSettings, form: FormValues) -> LauncherSett
         open_operator_on_start=form.open_operator,
         speech_engine=form.speech_engine,
         allow_network=form.allow_network,
+        # The Tk fallback does not show a recording control.
+        session_audio=form.session_audio if include_session_audio else base.session_audio,
     )
 
 

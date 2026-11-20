@@ -32,7 +32,7 @@ def _no_window_flags() -> int:
     return 0
 
 
-def list_input_devices() -> list[str]:
+def list_input_devices(*, ffmpeg: str = "ffmpeg") -> list[str]:
     """Names of the audio inputs ffmpeg can open: DirectShow (Windows) or AVFoundation (macOS).
 
     dshow has no ``default`` device: ``-i audio=<name>`` needs one of these
@@ -41,12 +41,12 @@ def list_input_devices() -> list[str]:
     platforms.
     """
     if sys.platform == "darwin":
-        return _list_avfoundation_audio()
+        return _list_avfoundation_audio(ffmpeg)
     if sys.platform != "win32":
         return []
     try:
         result = subprocess.run(
-            ["ffmpeg", "-hide_banner", "-list_devices", "true", "-f", "dshow", "-i", "dummy"],
+            [ffmpeg, "-hide_banner", "-list_devices", "true", "-f", "dshow", "-i", "dummy"],
             capture_output=True,
             text=True,
             encoding="utf-8",
@@ -60,10 +60,10 @@ def list_input_devices() -> list[str]:
     return _DSHOW_AUDIO_DEVICE.findall(result.stderr)
 
 
-def _list_avfoundation_audio() -> list[str]:
+def _list_avfoundation_audio(ffmpeg: str) -> list[str]:
     try:
         result = subprocess.run(
-            ["ffmpeg", "-hide_banner", "-f", "avfoundation", "-list_devices", "true", "-i", ""],
+            [ffmpeg, "-hide_banner", "-f", "avfoundation", "-list_devices", "true", "-i", ""],
             capture_output=True,
             text=True,
             encoding="utf-8",
@@ -82,6 +82,35 @@ def _list_avfoundation_audio() -> list[str]:
         elif in_audio and (match := _AVFOUNDATION_DEVICE.search(line)):
             names.append(match.group("name").strip())
     return names
+
+
+def ffmpeg_input_args(device: str | None, *, ffmpeg: str = "ffmpeg") -> list[str]:
+    """Select the platform input, including the first DirectShow device when automatic."""
+    if sys.platform == "darwin":
+        # ":" alone opens no capture device and never triggers the permission prompt.
+        return ["-f", "avfoundation", "-i", f":{device or 'default'}"]
+    if sys.platform.startswith("linux"):
+        return ["-f", "pulse", "-i", device or "default"]
+    if sys.platform == "win32":
+        if not device:
+            device = _default_dshow_device(ffmpeg)
+        return ["-f", "dshow", "-i", f"audio={device}"]
+    raise ValueError(f"Unsupported platform: {sys.platform}")
+
+
+def _default_dshow_device(ffmpeg: str) -> str:
+    """First DirectShow audio input; dshow rejects ``audio=default``."""
+    devices = list_input_devices() if ffmpeg == "ffmpeg" else list_input_devices(ffmpeg=ffmpeg)
+    if not devices:
+        raise RuntimeError(
+            "No DirectShow audio input found. Connect a microphone, or check "
+            "`ffmpeg -list_devices true -f dshow -i dummy`."
+        )
+    logger.warning(
+        f"No --input-device given; using the first audio input {devices[0]!r}. "
+        f"Available: {devices}. Pass --input-device to choose another."
+    )
+    return devices[0]
 
 
 class AudioCapture:
@@ -132,17 +161,7 @@ class AudioCapture:
         macOS. ``None`` picks the platform default (the system default input on
         macOS; the first dshow device on Windows, which has no default of its own).
         """
-        # Build ffmpeg command
-        if sys.platform == "darwin":  # macOS
-            # ":" alone names no device at all ("No AV capture device found"), so the
-            # microphone is never opened and macOS never asks for permission.
-            input_args = ["-f", "avfoundation", "-i", f":{device or 'default'}"]
-        elif sys.platform.startswith("linux"):  # Linux
-            input_args = ["-f", "pulse", "-i", device or "default"]
-        elif sys.platform == "win32":  # Windows
-            input_args = ["-f", "dshow", "-i", f"audio={device or self._default_dshow_device()}"]
-        else:
-            raise ValueError(f"Unsupported platform: {sys.platform}")
+        input_args = ffmpeg_input_args(device)
 
         # A restart begins a new stream: a partial frame left over from the dead
         # one is not contiguous with the new audio, so it is discarded here (and
@@ -291,21 +310,6 @@ class AudioCapture:
                 f"({self.captured_seconds:.1f}s of audio captured, "
                 f"{self.total_chunks} chunks, {self.dropped_chunks} dropped)"
             )
-
-    @staticmethod
-    def _default_dshow_device() -> str:
-        """First DirectShow audio input; dshow rejects ``audio=default``."""
-        devices = list_input_devices()
-        if not devices:
-            raise RuntimeError(
-                "No DirectShow audio input found. Connect a microphone, or check "
-                "`ffmpeg -list_devices true -f dshow -i dummy`."
-            )
-        logger.warning(
-            f"No --input-device given; using the first audio input {devices[0]!r}. "
-            f"Available: {devices}. Pass --input-device to choose another."
-        )
-        return devices[0]
 
     def _report_ffmpeg_exit(self) -> None:
         """Say why capture ended: a stop request, or ffmpeg dying on its own."""

@@ -211,6 +211,17 @@ def main(argv: Sequence[str] | None = None) -> int:
         or args.smoke
         or (sys.stdout is None and not (args.dry_run or args.list_mics or _is_oneshot(args)))
     ):
+        from . import i18n, webui
+
+        if os.environ.get("BIBLELIVE_LAUNCHER_UI") == "tk":
+            reason = "window.tk_requested"
+        else:
+            result = webui.main(smoke=args.smoke)
+            if result != webui.FALLBACK:
+                return result
+            reason = "window.webview_failed"
+        i18n.set_language(i18n.resolve_ui_language(load_settings().ui_language))
+        logging.getLogger(__name__).warning(i18n.t("log.window_fallback", detail=i18n.t(reason)))
         from .gui import main as gui_main
 
         return gui_main(smoke=args.smoke)
