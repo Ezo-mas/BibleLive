@@ -531,3 +531,16 @@ def test_whisper_on_the_processor_is_reported_once_per_session(bridge):
 
     wait_for(is_live)
     assert [line["text"] for line in lines].count(no_gpu) == 1
+
+
+def test_meter_start_superseded_during_lookup_is_off_not_an_error(monkeypatch):
+    # A session starting (or another mic chosen) while the device lookup runs is not a failure.
+    allowed = iter([True, False])  # start() checks once, the reader once after the lookup
+    monkeypatch.setattr(micmeter, "ffmpeg_input_args", lambda device, **_: ["-i", "x"])
+    spawned = []
+    meter = micmeter.MicMeter(popen=lambda *a, **k: spawned.append(a), access=lambda **_: "")
+    meter.start("Mic A", env={"PATH": ""}, can_start=lambda: next(allowed, False))
+    wait_for(lambda: meter._thread is not None and not meter._thread.is_alive())
+    assert spawned == []
+    assert meter.snapshot()[:2] == ("off", None)
+    meter.stop()

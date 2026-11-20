@@ -102,7 +102,7 @@ class MicMeter:
             return self._state, t(self._error) if self._error else None, levels
 
     def _read(self, device: str | None, env: dict[str, str], can_start: Callable[[], bool]) -> None:
-        error = "meter.device_failed"
+        error: str | None = "meter.device_failed"
         try:
             if sys.platform == "darwin":
                 status = self._access(ask=False)
@@ -115,6 +115,7 @@ class MicMeter:
             ffmpeg = shutil.which("ffmpeg", path=env.get("PATH")) or "ffmpeg"
             args = ffmpeg_input_args(device, ffmpeg=ffmpeg)
             if self._cancel.is_set() or not can_start():
+                error = None  # superseded (a session is starting or another mic was chosen)
                 return
             proc = self._popen(
                 [ffmpeg, *args, "-ac", "1", "-ar", "16000", "-f", "s16le", "-"],
@@ -149,5 +150,5 @@ class MicMeter:
             with self._lock:
                 self._process = None
                 if not self._cancel.is_set():
-                    self._state = "error"
+                    self._state = "error" if error else "off"
                     self._error = error

@@ -121,7 +121,8 @@ let connection: Promise<Bridge> | undefined
 
 export function getBridge(): Promise<Bridge> {
   return (connection ??= new Promise(resolve => {
-    if (new URLSearchParams(window.location.search).has('demo')) {
+    // The demo is for the vite dev server only; a packaged launcher never runs it.
+    if (import.meta.env.DEV && new URLSearchParams(window.location.search).has('demo')) {
       resolve(createDemoBridge())
       return
     }

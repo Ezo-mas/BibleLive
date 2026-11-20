@@ -56,12 +56,20 @@ describe('launcher bridge handshake', () => {
     expect(await connection).toBe(api)
   })
 
-  it('uses the demo when requested through the URL', async () => {
+  it('uses the demo when requested through the URL in Vite development', async () => {
+    vi.stubEnv('DEV', true)
     window.history.replaceState(null, '', '/launcher.html?demo')
     window.pywebview = { api }
     const { getBridge } = await import('./bridge')
     const { isDemoBridge } = await import('./demoBridge')
     expect(isDemoBridge(await getBridge())).toBe(true)
+  })
+
+  it('ignores ?demo in a production build', async () => {
+    window.history.replaceState(null, '', '/launcher.html?demo')
+    window.pywebview = { api }
+    const { getBridge } = await import('./bridge')
+    expect(await getBridge()).toBe(api)
   })
 
   it('uses the demo in Vite development without pywebview', async () => {
