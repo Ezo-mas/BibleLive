@@ -360,6 +360,10 @@ def test_form_keeps_unshown_fields():
 
 def test_option_lists():
     assert [v for v, _ in projector_options([PRIMARY, SECOND])] == [None, SECOND.device]
+    i18n.set_language("en")
+    assert projector_options([])[0] == (None, "Automatic (first extra screen)")
+    assert projector_options([PRIMARY, SECOND])[0] == (None, "Automatic → DISPLAY2 (1280x720)")
+    assert projector_options([PRIMARY])[0] == (None, "Automatic (no second screen found)")
     opts = microphone_options(["A", "B"], "Gone")
     assert [v for v, _ in opts] == [None, "Gone", "A", "B"]
 

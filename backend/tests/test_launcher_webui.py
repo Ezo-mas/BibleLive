@@ -651,3 +651,14 @@ def test_meter_asks_dshow_for_small_buffers_and_leaves_other_inputs_alone():
         "-i",
         ":default",
     ]
+
+
+def test_window_icon_prefers_the_built_app_then_the_checkout(tmp_path):
+    assert webui.window_icon(tmp_path) is None
+    source = tmp_path / "scripts" / "windows" / "installer" / "biblelive.ico"
+    source.parent.mkdir(parents=True)
+    source.touch()
+    assert webui.window_icon(tmp_path) == source
+    built = tmp_path / "biblelive.ico"
+    built.touch()
+    assert webui.window_icon(tmp_path) == built

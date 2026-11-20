@@ -9,7 +9,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass, replace
 
 from .i18n import t
-from .monitors import Monitor
+from .monitors import Monitor, choose_projector
 from .network import operator_url_with_token, qr_png
 from .process import MSG_STARTING_AUDIO, MSG_STARTING_SERVER_PREFIX, RestartMessage, build_plan
 from .settings import (
@@ -188,8 +188,20 @@ def microphone_options(names: Sequence[str], saved: str | None) -> list[Option]:
 
 
 def projector_options(monitors: Sequence[Monitor]) -> list[Option]:
-    """Automatic plus every non-primary monitor (the operator's own screen is excluded)."""
-    opts: list[Option] = [(None, t("projector.automatic"))]
+    """Automatic plus every non-primary monitor (the operator's own screen is excluded).
+
+    Automatic names the screen it will use, so nobody has to guess before going live. An empty
+    list means the screens were not listed (yet, or not on this platform): no claim then.
+    """
+    automatic = t("projector.automatic")
+    if monitors:
+        chosen = choose_projector(monitors)
+        automatic = (
+            t("projector.automatic_to", screen=chosen.label)
+            if chosen
+            else t("projector.automatic_none")
+        )
+    opts: list[Option] = [(None, automatic)]
     opts += [(m.device, m.label) for m in monitors if not m.primary]
     return opts
 

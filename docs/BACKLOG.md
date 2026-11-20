@@ -159,6 +159,13 @@ The Tk window stays as a fallback. Follow-ups, each its own change:
 - **Regenerate the operator token.** Revokes access for devices it was shared
   with. Needs a security review.
 - **Port check before Start.** When the port is taken, name the program using it.
+- **Console quick actions.** A one-click Copy logs button beside Log files, and a
+  "Paused — jump to latest" indicator when the operator scrolls the console up
+  (auto-scroll already stops then, but nothing says so).
+- **Remember the window between launches.** Save the window's position and size
+  per view, the Advanced tab (Speech / Network / Launch) and the console filters
+  (source, minimum level) in `launcher.json`, beside the Simple/Advanced choice that
+  is already saved, so a repeat Sunday setup opens as it was left.
 - **One palette for launcher and pages (undecided).** The launcher uses its own
   warm palette (`frontend/src/launcher/launcher.css`), not the console's
   `DESIGN.md` tokens. The owner likes the launcher's better: decide whether to

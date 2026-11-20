@@ -1,6 +1,7 @@
 """pywebview launcher window and its thread-safe bridge."""
 
 import contextlib
+import ctypes
 import logging
 import math
 import os
@@ -736,6 +737,30 @@ def _solid_title_bar(window: Any) -> None:
         logger.debug("Could not install launcher caption theme", exc_info=True)
 
 
+def window_icon(app_root: Path | None = None) -> Path | None:
+    """The BibleLive icon: beside the app in a build, in the installer sources in a checkout.
+
+    Without it the window and its taskbar button show python.exe's icon.
+    """
+    root = app_root or _default_app_root()
+    for icon in (
+        root / "biblelive.ico",
+        root / "scripts" / "windows" / "installer" / "biblelive.ico",
+    ):
+        if icon.is_file():
+            return icon
+    return None
+
+
+def _own_taskbar_button() -> None:
+    """Windows groups a window under its process's executable (python.exe) on the taskbar,
+    with Python's icon, unless the process names its own app."""
+    if sys.platform == "win32":
+        with contextlib.suppress(AttributeError, OSError):
+            shell32 = ctypes.windll.shell32  # type: ignore[attr-defined,unused-ignore]
+            shell32.SetCurrentProcessExplicitAppUserModelID("BibleLive.Launcher")
+
+
 def webview_profiles_root() -> Path:
     """Where the launcher window's browser profiles live: local (not roaming) app data."""
     return models_dir().parent / "webview"
@@ -796,6 +821,7 @@ def main(*, smoke: bool = False) -> int:
             from .gui import _enable_dpi_awareness
 
             _enable_dpi_awareness()
+        _own_taskbar_button()
         screens = webview.screens
         # The primary desktop screen contains the coordinate origin.
         primary = next(
@@ -834,6 +860,7 @@ def main(*, smoke: bool = False) -> int:
             # This launch's own profile (see claim_webview_profile), not private mode's temp one.
             private_mode=False,
             storage_path=str(profile),
+            icon=str(icon) if (icon := window_icon()) else None,
             gui="edgechromium" if sys.platform == "win32" else None,
         )
     except (Exception, SystemExit):
