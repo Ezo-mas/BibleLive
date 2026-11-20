@@ -13,16 +13,16 @@ the development PC. Test with OBS streaming and live sound: watch dedicated and
 shared GPU memory in Task Manager and the transcription times in the session
 log. If shared memory climbs or transcription lags, use the CPU tier on that PC.
 
-### macOS: second screen, and the network prompt's wording
+### macOS: second screen, and the network prompt naming Python
 From the first Mac test (M1, 2026-11-17, PR #94). The display opening full
 screen on an extended display is untested (no USB-C adapter on hand); check it
 with the projector set to "Extended display", including a screen placed left of
-or above the main one (negative coordinates). Network mode works, but macOS's
-"accept incoming connections" prompt names Python, not BibleLive: the server is
-the bundled `python3.13`, and the application firewall asks per binary. Explain
-it in the launcher's network wording and in `docs/macos-install.md` (or run the
-server under a BibleLive-named binary). Also unchecked: whether macOS asks for
-the microphone again after a re-downloaded update.
+or above the main one (negative coordinates). The network prompt names
+`python3.13`, not BibleLive (the server is the bundled Python, and the firewall
+asks per binary); the launcher and `docs/macos-install.md` now explain it.
+Running the server under a BibleLive-named binary would remove it. Also
+unchecked: whether macOS asks for the microphone again after a re-downloaded
+update.
 
 ### Follow-along rolling window at a service
 Check that the text size stays steady and that the next verse is offered
@@ -42,10 +42,6 @@ Add subtle motion to the idle logo and respect `prefers-reduced-motion`.
 
 - **QR codes split by audience.** The audience QR shown on `/display` on demand
   (from the launcher); the operator QR only under Advanced → Network.
-- **macOS on the new window.** Add the `launcher` extra to the Mac app
-  (regenerate `scripts/macos/requirements-arm64.lock` on the Mac for pyobjc) and
-  test on the M1. The network prompt wording is tracked in the macOS follow-up
-  above.
 - **Input meter in the operator console.** A small live level next to Speech
   status. Needs a new server message (protocol change: show the shapes first).
 - **Identify screens.** A button by Projector that briefly shows a large number

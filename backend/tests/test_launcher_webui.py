@@ -529,7 +529,10 @@ def test_webview_main_checks_dev_url_and_registers_closing_handler(
 
     def create_window(title, url, **options):
         observed.update(title=title, url=url, **options)
-        return SimpleNamespace(events=SimpleNamespace(closing=closing, before_show=Closing()))
+        return SimpleNamespace(
+            events=SimpleNamespace(closing=closing, before_show=Closing()),
+            destroy=lambda: observed.update(destroyed=True),
+        )
 
     def start(**options):
         observed.update(options)
@@ -554,10 +557,12 @@ def test_webview_main_checks_dev_url_and_registers_closing_handler(
     )
     assert webui.main() == 0
     assert observed["title"] == i18n.t("app.title")
-    assert observed["url"] == (url if allowed else str(page))
+    # macOS loads the page from its file, so no local server triggers the firewall prompt.
+    local_page = page.as_uri() if webui._SERVE_FROM_FILE else str(page)
+    assert observed["url"] == (url if allowed else local_page)
     assert ("Ignoring BIBLELIVE_LAUNCHER_URL" in caplog.text) is not allowed
     assert (observed["width"], observed["height"], observed["min_size"]) == (1120, 600, (760, 480))
-    assert observed["http_server"] is True
+    assert observed["http_server"] is not webui._SERVE_FROM_FILE
     # Its own profile under the launcher profiles folder, not a private-mode temp one.
     assert observed["private_mode"] is False
     assert Path(observed["storage_path"]).parent == webui.webview_profiles_root()
