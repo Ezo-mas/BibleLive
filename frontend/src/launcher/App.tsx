@@ -1,0 +1,302 @@
+import { useEffect, useLayoutEffect, useReducer, useRef, useState } from 'react'
+import { useI18n } from '../shared/i18nContext'
+import { getBridge } from './bridge'
+import type { Bridge, Form, InitResult, StartError, UILanguage, View } from './bridge'
+import { Console } from './Console'
+import { isDemoBridge } from './demoBridge'
+import { Icon } from './Icon'
+import { LauncherI18nProvider } from './LauncherI18nProvider'
+import { initialData, launcherReducer } from './launcherReducer'
+import { LEVEL_INTERVAL } from './noSignal'
+import { Hero, Setup } from './Session'
+import { Settings } from './Settings'
+import type { SettingsTab } from './Settings'
+
+interface Connection {
+  bridge: Bridge
+  initial: InitResult
+}
+
+export function App({ bridge }: { bridge?: Bridge }) {
+  const { t } = useI18n()
+  const [connection, setConnection] = useState<Connection | null>(null)
+  const [failed, setFailed] = useState(false)
+
+  useEffect(() => {
+    let active = true
+    async function connect() {
+      try {
+        const api = bridge ?? (await getBridge())
+        if (!active) return
+        const initial = await api.init()
+        if (active) setConnection({ bridge: api, initial })
+      } catch {
+        if (active) setFailed(true)
+      }
+    }
+    void connect()
+    return () => {
+      active = false
+    }
+  }, [bridge])
+
+  if (!connection)
+    return (
+      <p className="bl-loading" role="status">
+        {t(failed ? 'launcher.bridgeError' : 'launcher.loading')}
+      </p>
+    )
+  return <Launcher {...connection} />
+}
+
+function Launcher({ bridge, initial }: Connection) {
+  const [language, setLanguage] = useState(initial.language)
+  const [form, setForm] = useState(initial.form)
+  const [view, setView] = useState(initial.view)
+  const [tab, setTab] = useState<SettingsTab>('speech')
+  const [data, dispatch] = useReducer(launcherReducer, initial, initialData)
+  const [pending, setPending] = useState<'start' | 'stop' | null>(null)
+  const [error, setError] = useState<StartError | null>(null)
+  const [pollFailed, setPollFailed] = useState(false)
+  const [actionFailed, setActionFailed] = useState(false)
+  const [focus, setFocus] = useState<'port' | 'extra_args' | 'console' | null>(null)
+  const portRef = useRef<HTMLInputElement>(null)
+  const argsRef = useRef<HTMLInputElement>(null)
+  const logRef = useRef<HTMLDivElement>(null)
+  const languageRequest = useRef(Promise.resolve())
+  const waitForPoll = useRef(false)
+
+  const { state } = data
+  const locked = state.session !== 'idle' || pending !== null
+  const canProject = state.session === 'live' && pending !== 'stop'
+
+  useEffect(() => {
+    let active = true
+    let timer: number
+    async function poll() {
+      const started = performance.now()
+      const releasePending = waitForPoll.current
+      try {
+        const result = await bridge.poll()
+        if (active) {
+          dispatch({ type: 'poll', result, now: Date.now() })
+          setPollFailed(false)
+          if (releasePending) {
+            waitForPoll.current = false
+            setPending(null)
+          }
+        }
+      } catch {
+        if (active) setPollFailed(true)
+      } finally {
+        if (active)
+          timer = window.setTimeout(
+            poll,
+            Math.max(0, LEVEL_INTERVAL - (performance.now() - started))
+          )
+      }
+    }
+    void poll()
+    return () => {
+      active = false
+      window.clearTimeout(timer)
+    }
+  }, [bridge])
+
+  useLayoutEffect(() => {
+    if (focus === 'port') portRef.current?.focus()
+    if (focus === 'extra_args') {
+      const input = argsRef.current
+      const details = input?.closest('details')
+      if (details) details.open = true
+      input?.focus()
+    }
+    if (focus === 'console') logRef.current?.focus()
+    if (focus) setFocus(null)
+  }, [focus])
+
+  async function runAction(action: () => Promise<unknown>) {
+    setActionFailed(false)
+    try {
+      await action()
+    } catch {
+      setActionFailed(true)
+    }
+  }
+
+  function chooseView(next: View) {
+    if (next === view) return
+    setView(next)
+    void runAction(() => bridge.set_view(next))
+  }
+
+  function change<K extends keyof Form>(key: K, value: Form[K]) {
+    setForm(current => ({ ...current, [key]: value }))
+    setError(current => (current?.field === key ? null : current))
+  }
+
+  function changeLanguage(code: UILanguage) {
+    change('ui_language', code)
+    languageRequest.current = languageRequest.current.then(() =>
+      runAction(async () => {
+        const translated = await bridge.set_ui_language(code)
+        setLanguage(translated.language)
+        dispatch({ type: 'options', options: translated.options })
+      })
+    )
+  }
+
+  async function toggleSession() {
+    if (pending) return
+    if (state.session === 'live') {
+      setPending('stop')
+      await runAction(async () => {
+        await bridge.stop()
+        waitForPoll.current = true
+      })
+      if (!waitForPoll.current) setPending(null)
+      return
+    }
+    if (state.session !== 'idle') return
+    setError(null)
+    setPending('start')
+    await runAction(async () => {
+      const result = await bridge.start(form)
+      if (result.ok) {
+        waitForPoll.current = true
+      } else {
+        setPending(null)
+        setError(result.error)
+        const field = result.error.field
+        if (field === 'port' || field === 'extra_args') {
+          chooseView('advanced')
+          setTab(field === 'port' ? 'network' : 'speech')
+          setFocus(field)
+        }
+      }
+    })
+    if (!waitForPoll.current) setPending(null)
+  }
+
+  return (
+    <LauncherI18nProvider language={language}>
+      <LauncherFrame
+        view={view}
+        session={state.session}
+        chooseView={chooseView}
+        preview={isDemoBridge(bridge)}
+        bridgeFailed={pollFailed || actionFailed}
+      >
+        <Hero
+          data={data}
+          pending={pending}
+          stopped={data.sessionStopped}
+          error={error?.field === null ? error.text : undefined}
+          onSession={() => void toggleSession()}
+          onOperator={() => void runAction(() => bridge.open_operator())}
+          onDetails={() => {
+            chooseView('advanced')
+            setFocus('console')
+          }}
+        />
+        <Setup
+          data={data}
+          form={form}
+          locked={locked}
+          canProject={canProject}
+          error={error}
+          onChange={change}
+          onMicrophone={device => {
+            change('input_device', device)
+            dispatch({ type: 'resetLevels' })
+            void runAction(() => bridge.set_microphone(device))
+          }}
+          onRefresh={() => void runAction(() => bridge.refresh_devices())}
+          onProjector={() => void runAction(() => bridge.show_projector())}
+        />
+        <div className="bl-workspace" hidden={view !== 'advanced'}>
+          <Settings
+            tab={tab}
+            onTab={setTab}
+            form={form}
+            options={data.options}
+            locked={locked}
+            platform={initial.platform}
+            network={state.network}
+            error={error}
+            portRef={portRef}
+            argsRef={argsRef}
+            onChange={change}
+            onLanguage={changeLanguage}
+            bridge={bridge}
+            onFirewall={() => void runAction(() => bridge.allow_firewall())}
+          />
+          <Console
+            data={data}
+            logRef={logRef}
+            visible={view === 'advanced'}
+            onLogs={() => void runAction(() => bridge.open_logs())}
+          />
+        </div>
+      </LauncherFrame>
+    </LauncherI18nProvider>
+  )
+}
+
+function LauncherFrame({
+  view,
+  session,
+  chooseView,
+  preview,
+  bridgeFailed,
+  children,
+}: {
+  view: View
+  session: InitResult['state']['session']
+  chooseView: (view: View) => void
+  preview: boolean
+  bridgeFailed: boolean
+  children: React.ReactNode
+}) {
+  const { t } = useI18n()
+  return (
+    <main id="bl-launcher" data-mode={view} data-status={session}>
+      <header className="bl-header">
+        <div className="bl-identity">
+          <span className="bl-mark">
+            <Icon name="book" />
+          </span>
+          <div>
+            <strong>{t('launcher.brand')}</strong>
+            <span>{t('launcher.name')}</span>
+          </div>
+        </div>
+        <div className="bl-switch" role="group" aria-label={t('launcher.view')}>
+          {(['simple', 'advanced'] as const).map(name => (
+            <button
+              type="button"
+              key={name}
+              aria-pressed={view === name}
+              onClick={() => chooseView(name)}
+            >
+              {t(`launcher.view.${name}`)}
+            </button>
+          ))}
+        </div>
+      </header>
+      <div className="bl-body">
+        {children}
+        {(preview || bridgeFailed) && (
+          <footer className="bl-footer">
+            {preview && <span>{t('launcher.preview')}</span>}
+            {bridgeFailed && (
+              <span className="bl-error" role="status">
+                {t('launcher.bridgeError')}
+              </span>
+            )}
+          </footer>
+        )}
+      </div>
+    </main>
+  )
+}
