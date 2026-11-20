@@ -6,24 +6,6 @@ built yet.
 
 ## Follow-ups
 
-### Idle screen picture: small follow-ups
-Found in review (2026-10-22), none urgent:
-- A same-format upload replaces the file before its record is saved
-  (`AppState.set_idle_image`). If that save fails, the console gets a 500 but the new
-  picture is already on disk, and a reloading display shows it.
-- A file chosen in the native picker while a refresh is running is silently ignored
-  (`useIdleScreen`), and an open Settings dialog does not see a change made on another
-  console until it is reopened.
-- The Settings hint no longer says the picture never shows on the OBS overlay (it
-  still does not). Add it back if operators ask.
-
-### Small console follow-ups
-- The source label (detected, manual, history) on Up Next is now screen-reader-only, so a
-  sighted operator cannot see whether Show approves a queued detection or re-shows
-  coordinates. Show it again if that matters.
-- Up Next has a 1.5 px dashed border and the other cards 1 px, so their text edges differ
-  by half a pixel (kept on purpose so Up Next reads as queued).
-
 ### Two-model speech on a 4 GB GPU with OBS running
 Kmynas + Canary has not been run with real audio on a 4 GB card next to OBS. The
 2026-10-18 attempt on a GTX 1650 Ti received digital silence, so the ~2.2 GB of
