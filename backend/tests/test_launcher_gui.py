@@ -196,7 +196,8 @@ def test_t_language_switch_and_fallback():
     try:
         i18n.set_language("lt")
         assert i18n.t("btn.start") == "Paleisti"
-        assert "ą" in i18n.t("label.ui_language")
+        assert i18n.t("label.ui_language") == "Programos kalba"
+        assert i18n.t("speech.whisper") == "Whisper (ankstesnė sąranka)"
         i18n.set_language("en")
         assert i18n.t("btn.start") == "Start"
         assert i18n.t("no.such.key") == "no.such.key"
