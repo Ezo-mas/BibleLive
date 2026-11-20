@@ -17,10 +17,12 @@ app over a full KJV database and resets state between tests.
 """
 
 import json
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 
 from core.config import config
+from core.server.models import BibleReference
 
 # NOTE: conftest's autouse ``reset_app_state`` fixture clears pending/history and
 # the connection manager before each test, so tests here start from empty state.
@@ -91,6 +93,78 @@ def _replay(operator_ws, entry, **extra):
     }
     payload.update(extra)
     operator_ws.send_text(json.dumps(payload))
+
+
+@pytest.mark.asyncio
+async def test_clear_history_preserves_other_session_state(app_state, monkeypatch):
+    shown = BibleReference(book="John", chapter=3, verse_start=16)
+    pending = BibleReference(book="John", chapter=3, verse_start=17)
+    app_state.current_display = shown
+    app_state._record_history(shown)
+    app_state.pending_references.append(pending)
+    emit = Mock()
+    monkeypatch.setattr(app_state.service_log, "emit", emit)
+
+    assert app_state.clear_history() == 1
+    assert app_state.clear_history() == 0
+    assert app_state.reference_history == []
+    assert app_state.current_display is shown
+    assert app_state.pending_references == [pending]
+    emit.assert_called_once_with("history_cleared", count=1)
+    await app_state.runtime_state.flush()
+
+
+def test_clear_history_broadcasts_only_to_operators(client):
+    shown = _display(client)
+    with (
+        client.websocket_connect("/ws/display") as display,
+        client.websocket_connect("/ws/operator") as first,
+        client.websocket_connect("/ws/operator") as second,
+    ):
+        assert display.receive_json()["data"] == shown
+        assert display.receive_json()["type"] == "display_settings"
+        for operator in (first, second):
+            assert operator.receive_json()["data"]["history"] == [shown]
+
+        first.send_json({"action": "clear_history"})
+        for operator in (first, second):
+            assert operator.receive_json() == {
+                "type": "history_cleared",
+                "data": {"history": [], "history_count": 0},
+            }
+
+        snapshot = client.get("/api/state").json()
+        assert snapshot["history"] == []
+        assert snapshot["history_count"] == 0
+        assert snapshot["current_display"] == shown
+        with client.websocket_connect("/ws/operator") as newcomer:
+            assert newcomer.receive_json() == {
+                "type": "state_snapshot",
+                "data": snapshot
+                | {
+                    "operator_connections": 3,
+                },
+            }
+
+        _replay(first, shown)
+        confirmed = first.receive_json()
+        assert confirmed["type"] == "display_confirmed"
+        replayed = confirmed["data"]["reference"]
+        assert replayed["id"] != shown["id"]
+        # The next display message must be the replay, with no message from the clear.
+        assert display.receive_json() == {"type": "reference", "data": replayed}
+        assert client.get("/api/state").json()["history"] == [replayed]
+
+
+def test_clear_history_reports_errors_to_the_requester(client, app_state, monkeypatch):
+    monkeypatch.setattr(app_state, "clear_history_and_notify", AsyncMock(side_effect=OSError))
+    with client.websocket_connect("/ws/operator") as operator:
+        assert operator.receive_json()["type"] == "state_snapshot"
+        operator.send_json({"action": "clear_history"})
+        assert operator.receive_json() == {
+            "type": "error",
+            "data": {"action": "clear_history", "message": "Internal error clearing history"},
+        }
 
 
 class TestHistoryModel:

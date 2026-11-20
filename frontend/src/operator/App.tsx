@@ -226,6 +226,7 @@ export default function App() {
             <HistoryPanel
               history={operator.history}
               onShow={operator.showHistory}
+              onClearHistory={operator.clearHistory}
               canShow={operator.isConnected}
             />
           )}

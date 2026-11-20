@@ -26,6 +26,7 @@ ACTIONS = {
     "discard_pending": {"action": "discard_pending", "reference_id": REFERENCE_ID},
     "clear": {"action": "clear"},
     "clear_pending": {"action": "clear_pending"},
+    "clear_history": {"action": "clear_history"},
     "set_verse_limit": {"action": "set_verse_limit", "verse_limit": 5},
     "set_display_theme": {"action": "set_display_theme", "theme": "light"},
     "set_clear_mode": {"action": "set_clear_mode", "clear_mode": "blank"},
@@ -159,6 +160,9 @@ def test_real_server_protocol_fixtures(client, app_state, kjv_db, monkeypatch):
             send(operator, "clear_pending")
             receive(operator, "operator", "pending_cleared")
             receive(operator, "operator", "pending_update", save=False)
+
+            send(operator, "clear_history")
+            receive(operator, "operator", "history_cleared")
 
     for group, adapter in adapters.items():
         assert seen[group] == set(adapter.json_schema()["discriminator"]["mapping"])

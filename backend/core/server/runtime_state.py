@@ -101,6 +101,10 @@ class RuntimeStateStore:
         self.snapshot = RuntimeSnapshot(history=self.snapshot.history)
         self._schedule()
 
+    def clear_history(self) -> None:
+        self.snapshot = RuntimeSnapshot(current=self.snapshot.current)
+        self._schedule()
+
     def _schedule(self) -> None:
         self._pending = self.snapshot.model_dump(mode="json")
         if self._task is None or self._task.done():

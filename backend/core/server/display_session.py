@@ -17,9 +17,11 @@ from .models import (
     DisplayClear,
     DisplayReference,
     DisplaySettings,
+    HistoryClearedData,
     OperatorApprovalConfirmed,
     OperatorClearConfirmed,
     OperatorDisplayConfirmed,
+    OperatorHistoryCleared,
     OperatorPendingCleared,
     OperatorPendingUpdate,
     PendingUpdateData,
@@ -31,6 +33,10 @@ from .service_log import ServiceLog
 
 # kept on the name this code logged under before it left state.py
 logger = logging.getLogger("core.server.state")
+
+# History window for state snapshots and history updates. The backing list is
+# bounded separately by config.MAX_HISTORY_REFERENCES.
+SNAPSHOT_HISTORY = 20
 
 
 class ApprovalRefusal(Enum):
@@ -83,6 +89,8 @@ class DisplaySessionOwner(Protocol):
     async def clear_display(self) -> None: ...
 
     async def clear_pending(self) -> None: ...
+
+    def clear_history(self) -> int: ...
 
 
 class DisplaySession:
@@ -507,4 +515,29 @@ class DisplaySession:
             OperatorPendingCleared(data={}).model_dump()
         )
         await self._owner._send_pending_update()
+        return count
+
+    def clear_history(self) -> int:
+        """Empty display history and return the number of removed entries."""
+        count = len(self.reference_history)
+        try:
+            self._owner.runtime_state.clear_history()
+        except Exception:
+            logger.warning("Could not record cleared history", exc_info=True)
+        self.reference_history.clear()
+        if count:
+            self._owner.service_log.emit("history_cleared", count=count)
+        return count
+
+    async def clear_history_and_notify(self) -> int:
+        """Clear display history and broadcast the resulting list to operators."""
+        count = self._owner.clear_history()
+        await self._owner.connection_manager.send_to_operator(
+            OperatorHistoryCleared(
+                data=HistoryClearedData(
+                    history=self.reference_history[:SNAPSHOT_HISTORY],
+                    history_count=len(self.reference_history),
+                )
+            ).model_dump()
+        )
         return count

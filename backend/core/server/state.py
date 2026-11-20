@@ -19,8 +19,8 @@ from ..config import config
 from ..passage import PassageError, ResolvedPassage, resolve_passage
 from .bible_version_service import BibleVersions
 from .connections import SEND_TIMEOUT, ConnectionManager
+from .display_session import SNAPSHOT_HISTORY, DisplaySession
 from .display_session import ApprovalRefusal as ApprovalRefusal
-from .display_session import DisplaySession
 from .follow_along import FOLLOW_AUTO_MAX_JUMP, FollowAlong, VerseIndexes
 from .idle_screen import IdleImage, IdleScreenFit, IdleScreenState, ImageKind
 from .idle_service import IdleScreenService
@@ -70,11 +70,6 @@ AUTO_APPROVE_CONFIDENCES: dict[AutoMode, frozenset[str]] = {
     "medium_and_up": frozenset({"high", "medium"}),
     "all": frozenset({"high", "medium", "low"}),
 }
-
-# How many history entries the state snapshot carries (the operator's ``state_snapshot``
-# message and GET /api/state). The list itself is bounded by ``config.MAX_HISTORY_REFERENCES``.
-SNAPSHOT_HISTORY = 20
-
 
 NO_TEXT_MESSAGE = "Reference has no text in the active translation"
 
@@ -759,3 +754,9 @@ class AppState:
 
     async def clear_pending_and_notify(self) -> int:
         return await self._display_session.clear_pending_and_notify()
+
+    def clear_history(self) -> int:
+        return self._display_session.clear_history()
+
+    async def clear_history_and_notify(self) -> int:
+        return await self._display_session.clear_history_and_notify()

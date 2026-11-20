@@ -37,9 +37,12 @@ easy to break by accident.
    a confidence (it is `source="manual"`, or `source="follow"` for an
    auto-show, so nothing can auto-approve it). The supported operator actions are
    `authenticate` (the token, as the socket's first message; it carries no
-   operation and is ignored once the socket is let in), `approve`, `discard_pending`, `clear`, `clear_pending`, `set_verse_limit`,
+   operation and is ignored once the socket is let in), `approve`, `discard_pending`, `clear`, `clear_pending`, `clear_history`, `set_verse_limit`,
    `set_display_theme`, `set_clear_mode`, `set_live`, `set_auto_mode`, `set_follow_auto`, `display_reference` — there is no
    `reject` action; `discard_pending` removes one pending row and broadcasts only `pending_update`.
+   `clear_history` empties saved and in-memory history while preserving the current
+   passage. Every operator receives `history_cleared` with `{history, history_count}`
+   (`[]` and `0` after a clear). Display sockets receive no event.
    Display settings include verse limit, theme, idle picture and persisted
    `clear_mode` (`idle` by default, or `blank` after a passage has been cleared).
    `bible_version_confirmed` (server → operators only) announces a
@@ -107,7 +110,7 @@ easy to break by accident.
    **Restore after a restart** is not a door either. `core/server/runtime_state.py`
    keeps the on-screen passage and the last 20 history entries as coordinates
    (never text) in `runtime_state.json` beside the settings file, written in the
-   background from `_record_history` and `clear_display` (coalesced, never
+   background from `_record_history`, `clear_display` and `clear_history` (coalesced, never
    awaited on the display path, and guarded so it cannot raise between a state
    change and its send). At startup, `create_app` re-resolves a record younger
    than `RESTORE_DISPLAY_MAX_AGE_S` (600 s) into `current_display` only when its

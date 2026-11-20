@@ -75,6 +75,27 @@ def test_restore_age_and_display_snapshot(monkeypatch, tmp_path, bible_db, age, 
         assert display.receive_json()["type"] == "display_settings"
 
 
+def test_clear_history_persists_current_display_across_restart(monkeypatch, tmp_path, bible_db):
+    path = recovery_file(tmp_path)
+    with TestClient(startup(monkeypatch, tmp_path, bible_db)) as client:
+        saved = json.loads(path.read_text())
+        assert saved["history"] == [saved["current"]]
+        state = client.app.state.app_state
+        assert client.portal.call(state.clear_history) == 1
+
+    assert json.loads(path.read_text()) == {"current": saved["current"], "history": []}
+    with TestClient(startup(monkeypatch, tmp_path, bible_db)) as client:
+        snapshot = client.get("/api/state").json()
+        assert snapshot["history"] == []
+        assert snapshot["history_count"] == 0
+        assert snapshot["current_display"]["verse_start"] == 16
+        with client.websocket_connect("/ws/display") as display:
+            assert display.receive_json() == {
+                "type": "reference",
+                "data": snapshot["current_display"],
+            }
+
+
 def test_restore_missing_verse_warns(monkeypatch, tmp_path, bible_db, caplog):
     recovery_file(tmp_path, verse=18)  # This translation ends John 3 at verse 17.
     application = startup(monkeypatch, tmp_path, bible_db)

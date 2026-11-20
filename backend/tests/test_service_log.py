@@ -103,6 +103,8 @@ async def test_server_events_and_pipeline_status_changes(monkeypatch, tmp_path, 
     await state.clear_pending_and_notify()
     await state.display_manual_passage(resolve_passage(state.bible_lookup, "John", 3, 17))
     await state.clear_display()
+    state.clear_history()
+    state.clear_history()
     monkeypatch.setattr(
         state, "available_bible_versions", lambda: {"kjv": BibleVersion(id="kjv", path=kjv_db)}
     )
@@ -141,6 +143,7 @@ async def test_server_events_and_pipeline_status_changes(monkeypatch, tmp_path, 
         "shown",
         "cleared",
         "queue_cleared",
+        "history_cleared",
         "queue_overflowed",
         "translation_switched",
         "pipeline_status",
@@ -157,6 +160,8 @@ async def test_server_events_and_pipeline_status_changes(monkeypatch, tmp_path, 
     assert statuses[1]["issue_codes"] == ["mic_silent"]
     assert set(statuses[2]["issue_codes"]) == {"mic_silent", "capture_stalled"}
     assert len([e for e in events if e["event"] == "queue_cleared"]) == 1
+    history_cleared = [e for e in events if e["event"] == "history_cleared"]
+    assert [e["count"] for e in history_cleared] == [2]
     switch = next(e for e in events if e["event"] == "translation_switched")
     assert (switch["from"], switch["to"]) == ("sample", "kjv")
 

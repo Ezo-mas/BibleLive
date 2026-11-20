@@ -71,9 +71,9 @@ return a 503 with build instructions.
   `{"action": "authenticate", "token": "xxx"}` as its first message (required if
   auth is enabled; never in the URL, which gets logged; empty when no token is
   saved, which an auth-on server refuses at once), then receives `state_snapshot` on connect, `pending_update`, `approval_confirmed`, `display_confirmed`,
-  `clear_confirmed`, `pending_cleared`, and sends `{"action": "approve", "reference_id": "uuid"}`,
+  `clear_confirmed`, `pending_cleared`, `history_cleared`, and sends `{"action": "approve", "reference_id": "uuid"}`,
   `{"action": "discard_pending", "reference_id": "uuid"}`,
-  `{"action": "clear"}`, `{"action": "clear_pending"}`, plus the display/settings actions
+  `{"action": "clear"}`, `{"action": "clear_pending"}`, `{"action": "clear_history"}`, plus the display/settings actions
   (`set_verse_limit`, `set_display_theme`, `set_auto_mode`).
 
 ### Manual scripture selection

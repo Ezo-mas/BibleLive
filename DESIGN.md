@@ -132,10 +132,10 @@ plain state-named button, not an `aria-pressed` toggle: its accessible name is
 ## Panel menus
 
 Plan opens its three-dot menu beside the trigger, within the header and above
-the row controls. The Pending trigger sits at the footer's left edge and opens
-upward; History has no footer and no menu. Both use
-a ghost trigger, a raised surface, and the shared focus ring. Clear plan and
-Clear queue use an × and danger text inside their menus. The Pending menu
+the row controls. The Pending and History triggers sit at the footer's left
+edge and open upward. All three use a ghost trigger, a raised surface, and the
+shared focus ring. Clear plan, Clear queue and Clear history use an × and danger
+text inside their menus. The Pending menu
 also shows the Auto-approve toggle and its On or Off state. Turning it back
 on restores the last active mode from the current console session, defaulting
 to High only. While active, the mode appears in a left-aligned text line

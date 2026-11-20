@@ -224,14 +224,45 @@ describe('history list', () => {
     expect(historyPanel().queryByRole('button', { name: 'Show' })).not.toBeInTheDocument()
   })
 
-  it.each([
-    { state: 'empty', entries: [] },
-    { state: 'populated', entries: history },
-  ])('has no options menu with an $state list', ({ entries }) => {
-    openWith({ history: entries })
+  it('clears History after confirmation and keeps the live preview', () => {
+    openWith({ history: [john], currentDisplay: john })
+    const panel = historyPanel()
+    expect(panel.queryByRole('button', { name: 'Pending options' })).not.toBeInTheDocument()
+    const options = panel.getByRole('button', { name: 'History options' })
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    function openMenu() {
+      fireEvent.click(options)
+      return panel.getByRole('menuitem', { name: 'Clear history' })
+    }
 
-    // History has no options of its own yet, so neither the Pending menu nor any other shows.
-    expect(historyPanel().queryByRole('button', { name: /options/i })).not.toBeInTheDocument()
+    fireEvent.click(openMenu())
+    expect(confirm).toHaveBeenCalledWith("Clear history? This can't be undone.")
+    expect(sentActions()).toEqual([])
+
+    confirm.mockReturnValue(true)
+    fireEvent.click(openMenu())
+    expect(sentActions()).toEqual([{ action: 'clear_history' }])
+    expect(panel.getByText('John 3:16')).toBeInTheDocument()
+
+    push(socket, { type: 'history_cleared', data: { history: [], history_count: 0 } })
+    expect(panel.getByText('No history yet')).toBeInTheDocument()
+    expect(within(screen.getByTestId('live-verses')).getByText(john.text)).toBeInTheDocument()
+    const disabled = openMenu()
+    expect(disabled).toHaveAttribute('aria-disabled', 'true')
+    fireEvent.click(disabled)
+    expect(confirm).toHaveBeenCalledTimes(2)
+    expect(sentActions()).toHaveLength(1)
+  })
+
+  it('disables Clear history when disconnected', () => {
+    openWith({ history: [john] })
+    act(() => socket?.onclose?.({ code: 1006 }))
+    const panel = historyPanel()
+    fireEvent.click(panel.getByRole('button', { name: 'History options' }))
+    expect(panel.getByRole('menuitem', { name: 'Clear history' })).toHaveAttribute(
+      'aria-disabled',
+      'true'
+    )
   })
 
   it('keeps the server window of twenty entries as confirmations arrive', () => {

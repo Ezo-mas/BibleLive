@@ -251,6 +251,9 @@ export const en = {
   'queue.moveHint': '↑ ↓ to move · Enter shows',
   'queue.confirmClear': 'Clear all pending references?',
   'history.title': 'History',
+  'history.options': 'History options',
+  'history.clear': 'Clear history',
+  'history.confirmClear': "Clear history? This can't be undone.",
   'history.empty': 'No history yet',
   'history.emptyHint':
     'References that reach the display appear here. Show puts one on screen again.',
@@ -303,6 +306,7 @@ export const en = {
   'notice.errDisplayReference': 'Could not show that passage',
   'notice.errClear': 'Could not clear the display',
   'notice.errClearPending': 'Could not clear the queue',
+  'notice.errClearHistory': 'Could not clear history',
   'notice.errDiscardPending': 'Could not remove the reference',
   'notice.errVerseLimit': 'Could not change the verses shown',
   'notice.errTheme': 'Could not change the background',
