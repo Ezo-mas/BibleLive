@@ -4,6 +4,8 @@ import { App } from './App'
 import { createDemoBridge } from './demoBridge'
 
 describe('launcher App', () => {
+  const speechTarget = 'Aim for speech peaks between -24 and -12 dB'
+
   it('renders Simple and persists the switch to Advanced with its three tabs', async () => {
     const bridge = createDemoBridge()
     const setView = vi.spyOn(bridge, 'set_view')
@@ -57,6 +59,8 @@ describe('launcher App', () => {
 
     expect(meter).toHaveAttribute('aria-valuemin', '-60')
     expect(meter).toHaveAttribute('aria-valuemax', '0')
+    expect(meter).toHaveAccessibleDescription(speechTarget)
+    expect(meter).toHaveAttribute('title', speechTarget)
     await waitFor(() => {
       const db = Number(meter.getAttribute('aria-valuenow'))
       expect(db).toBeGreaterThanOrEqual(-20)
@@ -97,16 +101,98 @@ describe('launcher App', () => {
       const details = 'Check that it is plugged in and not muted, or choose another.'
       expect(warning).toBeVisible()
       expect(warning).toHaveAttribute('title', details)
-      expect(meter).toHaveAccessibleDescription(details)
+      expect(meter).toHaveAccessibleDescription(`${details} ${speechTarget}`)
       expect(status.closest('.bl-meter-label')?.querySelector('.bl-meter-readout')).toBeVisible()
       expect(within(status).queryByText('Mic level')).not.toBeInTheDocument()
 
       fireEvent.change(microphone, { target: { value: 'usb' } })
       await act(() => vi.advanceTimersByTimeAsync(100))
       expect(status).toHaveTextContent('Mic level')
-      expect(meter).not.toHaveAttribute('aria-describedby')
+      expect(meter).toHaveAccessibleDescription(speechTarget)
     } finally {
       app.unmount()
+      vi.useRealTimers()
+    }
+  })
+
+  it('keeps the projector action beside its select in both views', async () => {
+    const bridge = createDemoBridge()
+    const init = bridge.init
+    const automatic = 'Automatic → DISPLAY2 (1920x1080)'
+    vi.spyOn(bridge, 'init').mockImplementation(async () => {
+      const result = await init()
+      result.options.projector[0] = { value: null, label: automatic }
+      return result
+    })
+    const showProjector = vi.spyOn(bridge, 'show_projector')
+    render(<App bridge={bridge} />)
+    const projector = await screen.findByRole('combobox', { name: 'Projector' })
+    const show = screen.getByRole('button', { name: 'Show projector' })
+    expect(projector).toHaveAttribute('title', automatic)
+    expect(show).toBeDisabled()
+    expect(show).toHaveAttribute('title', 'Start a session first to show the projector.')
+    const open = screen.getByRole('button', { name: 'Open operator' })
+    expect(open).toBeDisabled()
+    expect(open).toHaveAttribute('title')
+    expect(projector.closest('label')?.nextElementSibling).toBe(show)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Advanced' }))
+    expect(
+      screen.getByRole('combobox', { name: 'Projector' }).closest('label')?.nextElementSibling
+    ).toBe(show)
+    fireEvent.click(screen.getByRole('button', { name: 'Start session' }))
+    await waitFor(() => expect(show).toBeEnabled(), { timeout: 3000 })
+    expect(open).toBeEnabled()
+    expect(show).toHaveAttribute('title', 'Show projector')
+    fireEvent.click(show)
+    expect(showProjector).toHaveBeenCalledOnce()
+  })
+
+  it('slows down when hidden and coalesces resume and action polls behind an in-flight poll', async () => {
+    vi.useFakeTimers()
+    let hidden = false
+    const visibility = vi.spyOn(document, 'hidden', 'get').mockImplementation(() => hidden)
+    const bridge = createDemoBridge()
+    const originalPoll = bridge.poll
+    const poll = vi.spyOn(bridge, 'poll')
+    const app = render(<App bridge={bridge} />)
+    try {
+      await act(() => vi.advanceTimersByTimeAsync(0))
+      expect(poll).toHaveBeenCalledTimes(1)
+      hidden = true
+      fireEvent(document, new Event('visibilitychange'))
+      await act(() => vi.advanceTimersByTimeAsync(999))
+      expect(poll).toHaveBeenCalledTimes(1)
+
+      let finish = () => {}
+      poll.mockImplementationOnce(
+        () =>
+          new Promise(resolve => {
+            finish = () => resolve(originalPoll())
+          })
+      )
+      await act(() => vi.advanceTimersByTimeAsync(1))
+      expect(poll).toHaveBeenCalledTimes(2)
+      hidden = false
+      fireEvent(document, new Event('visibilitychange'))
+      fireEvent.click(screen.getByRole('button', { name: 'Refresh devices' }))
+      await act(() => vi.advanceTimersByTimeAsync(0))
+      expect(poll).toHaveBeenCalledTimes(2)
+      await act(async () => finish())
+      await act(() => vi.advanceTimersByTimeAsync(0))
+      expect(poll).toHaveBeenCalledTimes(3)
+
+      fireEvent.click(screen.getByRole('button', { name: 'Refresh devices' }))
+      await act(() => vi.advanceTimersByTimeAsync(0))
+      expect(poll).toHaveBeenCalledTimes(4)
+      hidden = true
+      fireEvent(document, new Event('visibilitychange'))
+      hidden = false
+      fireEvent(document, new Event('visibilitychange'))
+      expect(poll).toHaveBeenCalledTimes(5)
+    } finally {
+      app.unmount()
+      visibility.mockRestore()
       vi.useRealTimers()
     }
   })

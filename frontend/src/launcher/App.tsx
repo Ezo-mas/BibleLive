@@ -1,13 +1,13 @@
 import { useEffect, useLayoutEffect, useReducer, useRef, useState } from 'react'
 import { useI18n } from '../shared/i18nContext'
 import { getBridge } from './bridge'
-import type { Bridge, Form, InitResult, StartError, UILanguage, View } from './bridge'
+import type { Bridge, Form, InitResult, Meter, StartError, UILanguage, View } from './bridge'
 import { Console } from './Console'
 import { isDemoBridge } from './demoBridge'
 import { Icon } from './Icon'
 import { LauncherI18nProvider } from './LauncherI18nProvider'
 import { initialData, launcherReducer } from './launcherReducer'
-import { LEVEL_INTERVAL } from './noSignal'
+import { pollInterval } from './pollInterval'
 import { Hero, Setup } from './Session'
 import { Settings } from './Settings'
 import type { SettingsTab } from './Settings'
@@ -73,6 +73,7 @@ function Launcher({ bridge, initial }: Connection) {
   const rootRef = useRef<HTMLElement>(null)
   const languageRequest = useRef(Promise.resolve())
   const sessionRequest = useRef<{ readyForPoll: boolean } | null>(null)
+  const pollNow = useRef<(() => void) | null>(null)
 
   const { state } = data
   const locked = state.session !== 'idle' || pending !== null
@@ -90,15 +91,48 @@ function Launcher({ bridge, initial }: Connection) {
   useEffect(() => {
     let active = true
     let timer: number
+    let polling = false
+    let pollAgain = false
+    let session = initial.state.session
+    let meter: Meter = 'off'
+
+    function delay() {
+      return pollInterval(sessionRequest.current ? 'starting' : session, meter, document.hidden)
+    }
+
+    function requestPoll() {
+      window.clearTimeout(timer)
+      if (polling) pollAgain = true
+      else void poll()
+    }
+
+    function visibilityChanged() {
+      if (!document.hidden) {
+        requestPoll()
+      } else {
+        acceptLevels(null)
+        window.clearTimeout(timer)
+        if (!polling) timer = window.setTimeout(poll, delay())
+      }
+    }
+
     async function poll() {
+      polling = true
       const started = performance.now()
+      const visible = !document.hidden
       const request = sessionRequest.current
       const releasePending = request?.readyForPoll
       try {
         const result = await bridge.poll()
         if (active) {
+          session = result.state.session
+          meter = result.meter
           acceptLevels(
-            result.meter === 'on' && result.state.session === 'idle' && (!request || releasePending)
+            visible &&
+              !document.hidden &&
+              meter === 'on' &&
+              session === 'idle' &&
+              (!request || releasePending)
               ? result.levels
               : null
           )
@@ -111,23 +145,30 @@ function Launcher({ bridge, initial }: Connection) {
         }
       } catch {
         if (active) {
+          meter = 'off'
           acceptLevels(null)
           setPollFailed(true)
         }
       } finally {
-        if (active)
-          timer = window.setTimeout(
-            poll,
-            Math.max(0, LEVEL_INTERVAL - (performance.now() - started))
-          )
+        polling = false
+        if (active) {
+          // Coalesce immediate requests made while the bridge was busy.
+          const wait = pollAgain ? 0 : Math.max(0, delay() - (performance.now() - started))
+          pollAgain = false
+          timer = window.setTimeout(poll, wait)
+        }
       }
     }
+    pollNow.current = requestPoll
+    document.addEventListener('visibilitychange', visibilityChanged)
     void poll()
     return () => {
       active = false
+      pollNow.current = null
+      document.removeEventListener('visibilitychange', visibilityChanged)
       window.clearTimeout(timer)
     }
-  }, [acceptLevels, bridge])
+  }, [acceptLevels, bridge, initial.state.session])
 
   useLayoutEffect(() => {
     if (focus === 'port') portRef.current?.focus()
@@ -147,6 +188,8 @@ function Launcher({ bridge, initial }: Connection) {
       await action()
     } catch {
       setActionFailed(true)
+    } finally {
+      pollNow.current?.()
     }
   }
 
@@ -300,10 +343,7 @@ function LauncherFrame({
           <span className="bl-mark">
             <Icon name="book" />
           </span>
-          <div>
-            <strong>{t('launcher.brand')}</strong>
-            <span>{t('launcher.name')}</span>
-          </div>
+          <strong>{t('launcher.brand')}</strong>
         </div>
         <div className="bl-switch" role="group" aria-label={t('launcher.view')}>
           {(['simple', 'advanced'] as const).map(name => (

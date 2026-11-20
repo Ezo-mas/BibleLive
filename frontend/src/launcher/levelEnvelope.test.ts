@@ -11,9 +11,14 @@ import {
   rippleDistance,
   rippleLevel,
   RIPPLE_STEP_MS,
+  speechTargetPosition,
 } from './levelEnvelope'
 
 describe('meter scale', () => {
+  it('marks -24 to -12 dBFS at 60% to 80% of the meter', () => {
+    expect(speechTargetPosition()).toEqual({ start: 60, end: 80 })
+  })
+
   it.each([
     [0, -60],
     [0.5, -30],

@@ -23,6 +23,10 @@ export function dbfsToLevel(db: number) {
   return (db - MIN_DBFS) / (MAX_DBFS - MIN_DBFS)
 }
 
+export function speechTargetPosition() {
+  return { start: dbfsToLevel(-24) * 100, end: dbfsToLevel(-12) * 100 }
+}
+
 export function meterZone(db: number) {
   if (db < YELLOW_DBFS) return 'green'
   return db <= RED_DBFS ? 'yellow' : 'red'

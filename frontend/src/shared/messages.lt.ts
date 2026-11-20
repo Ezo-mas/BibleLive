@@ -342,7 +342,6 @@ export const lt: Record<MessageKey, MessageEntry> = {
   // Desktop launcher
   'launcher.windowTitle': '„BibleLive“ paleidyklė',
   'launcher.brand': 'BibleLive',
-  'launcher.name': 'Paleidyklė',
   'launcher.view': 'Paleidyklės rodinys',
   'launcher.view.simple': 'Paprastas',
   'launcher.view.advanced': 'Išplėstinis',
@@ -379,11 +378,11 @@ export const lt: Record<MessageKey, MessageEntry> = {
   'launcher.micInUse': 'Mikrofonas naudojamas seanso metu',
   'launcher.meterDecibels': '{db} decibelų',
   'launcher.meterSilence': 'Tyla',
+  'launcher.speechTarget': 'Kalbos garsumo pikai turėtų būti nuo -24 iki -12 dB',
   'launcher.noSignal': 'Iš šio mikrofono negaunama garso',
   'launcher.noSignalDetails':
     'Patikrinkite, ar jis prijungtas ir nenutildytas, arba pasirinkite kitą.',
   'launcher.projector': 'Projektorius',
-  'launcher.deviceHint': 'Pasirinkite mikrofoną ir ekraną, kuriame bus rodomos eilutės.',
   'launcher.projectorUnavailable': 'Norėdami įjungti projektoriaus rodinį, pradėkite seansą.',
   'launcher.showProjector': 'Rodyti projektoriuje',
   'launcher.networkDetails': 'Prisijungimo tinkle duomenys',

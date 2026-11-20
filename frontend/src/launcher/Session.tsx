@@ -12,6 +12,7 @@ import {
   METER_TICKS,
   MIN_DBFS,
   RED_DBFS,
+  speechTargetPosition,
   YELLOW_DBFS,
 } from './levelEnvelope'
 import { noSignal } from './noSignal'
@@ -172,6 +173,8 @@ function MicMeter({
   const label = t(inUse ? 'launcher.micInUse' : 'launcher.micLevel')
   const warning = quiet ? t('launcher.noSignal') : meterError
   const details = quiet ? t('launcher.noSignalDetails') : undefined
+  const target = t('launcher.speechTarget')
+  const { start, end } = speechTargetPosition()
   return (
     <div className="bl-mic-meter" data-in-use={inUse} ref={meterRef}>
       <div className="bl-meter-label">
@@ -190,6 +193,11 @@ function MicMeter({
           {details}
         </span>
       )}
+      {!inUse && (
+        <span id="bl-meter-target" hidden>
+          {target}
+        </span>
+      )}
       <div
         className="bl-meter-track"
         style={
@@ -200,7 +208,10 @@ function MicMeter({
         }
         role="meter"
         aria-label={label}
-        aria-describedby={details ? 'bl-meter-details' : undefined}
+        aria-describedby={
+          inUse ? undefined : details ? 'bl-meter-details bl-meter-target' : 'bl-meter-target'
+        }
+        title={inUse ? undefined : target}
         aria-valuemin={MIN_DBFS}
         aria-valuemax={MAX_DBFS}
         aria-valuenow={MIN_DBFS}
@@ -209,7 +220,18 @@ function MicMeter({
         <span className="bl-meter-fill" />
         <span className="bl-meter-peak" />
       </div>
-      <div className="bl-meter-scale" aria-hidden="true">
+      <div
+        className="bl-meter-scale"
+        aria-hidden="true"
+        style={
+          inUse
+            ? undefined
+            : ({
+                '--speech-target-start': `${start}%`,
+                '--speech-target-end': `${100 - end}%`,
+              } as CSSProperties)
+        }
+      >
         {METER_TICKS.map(({ db, position }) => (
           <span key={db} style={{ left: `${position}%` }}>
             {db}
@@ -293,29 +315,30 @@ export function Setup({
             </p>
           )}
         </div>
-        <Choice
-          label={
-            <>
-              <Icon name="monitor" /> {t('launcher.projector')}
-            </>
-          }
-          value={form.projector_monitor}
-          options={options.projector}
-          disabled={locked}
-          onChange={value => onChange('projector_monitor', value)}
-        />
-      </div>
-      <div className="bl-setup-foot">
-        <span className="bl-muted">{t('launcher.deviceHint')}</span>
-        <button
-          type="button"
-          className="bl-button bl-quiet"
-          disabled={!canProject}
-          title={!canProject ? t('launcher.projectorUnavailable') : undefined}
-          onClick={onProjector}
-        >
-          <Icon name="monitor" /> {t('launcher.showProjector')}
-        </button>
+        <div className="bl-projector-field">
+          <Choice
+            label={
+              <>
+                <Icon name="monitor" /> {t('launcher.projector')}
+              </>
+            }
+            value={form.projector_monitor}
+            options={options.projector}
+            disabled={locked}
+            showSelectedTitle
+            onChange={value => onChange('projector_monitor', value)}
+          />
+          <button
+            type="button"
+            className="bl-button"
+            disabled={!canProject}
+            aria-label={t('launcher.showProjector')}
+            title={t(canProject ? 'launcher.showProjector' : 'launcher.projectorUnavailable')}
+            onClick={onProjector}
+          >
+            <Icon name="monitor" />
+          </button>
+        </div>
       </div>
     </section>
   )
