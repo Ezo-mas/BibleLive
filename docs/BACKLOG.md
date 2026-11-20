@@ -1,8 +1,7 @@
 # Backlog
 
-Features and checks planned for later, with rough size and the risks known so
-far. Defects go in [`TECH_DEBT.md`](TECH_DEBT.md); this file is for things not
-built yet.
+Open features, verification checks, maintenance, and experiments. Confirmed
+defects are tracked in [`TECH_DEBT.md`](TECH_DEBT.md).
 
 ## Follow-ups
 
@@ -25,57 +24,28 @@ it in the launcher's network wording and in `docs/macos-install.md` (or run the
 server under a BibleLive-named binary). Also unchecked: whether macOS asks for
 the microphone again after a re-downloaded update.
 
-## Planned console and display features (owner notes, 2026-11-17)
+### Follow-along rolling window at a service
+Check that the text size stays steady and that the next verse is offered
+promptly after a rolled passage goes up. The three-verse window shipped in
+[PR #103](https://github.com/Ezo-mas/BibleLive/pull/103).
 
-To start after the improvement plan (M7), apart from what is blocked waiting
-for new service recordings. Each changes how the operator works, so each gets a
-plan and review before it is built.
+## Planned console and display features
 
-### Remove staging; Plan always in view
-Staging (Up Next) has gone practically unused at real services: Plan already
-covers "what comes next", and the Live switch below covers "check it before the
-audience sees it". Remove staging and redesign the console so Plan is always
-visible, with the queue (pending) and History beside it. Rework every flow and
-shortcut that stages today: arrow-key selection then Show, Ctrl+Enter in Find
-Scripture, double-click restore, Show on a history row, and the Up Next card.
-Large: layout (designer + `DESIGN.md`), `useStaging`/reducer, many App tests.
-Mock the layout first and get it approved before building.
+### Expand a follow-along passage
+Optional console button that adds one verse per press, using the same
+three-verse window as Show and auto-show.
 
-### Live / not-live switch
-A console button. While not live the audience display shows nothing at all: a
-blank screen, no idle picture or logo, as if disconnected. Going live shows the
-current passage again. The state is the server's, so a reconnecting display
-obeys it. This is a protocol change (new action and confirmation, a field in the
-snapshot and `display_settings`): show the message shapes to the owner before
-building. Open: whether auto-approve keeps showing references while not live.
-Pairs with removing staging; build them as one milestone.
+### Idle logo animation
+Add subtle motion to the idle logo and respect `prefers-reduced-motion`.
 
-### Follow-along adds verses (rolling window)
-Built (2026-11-18), not yet seen live. As the speaker reads on, Show and
-auto-show grow the passage to three verses, then roll (10, 10-11, 10-12,
-11-13 ...), whatever the verse limit; a hint now names only the verse being
-read. At a service, check that the text size stays steady and that the next
-verse is still offered promptly after a rolled passage goes up.
-Optional follow-up: a console "expand" button that adds one verse per press,
-sharing the same window rule.
+## Launcher follow-ups
 
-### Animations
-Subtle motion where it helps: the logo, the OBS overlay's show/hide, display
-passage swaps. Respect `prefers-reduced-motion`; nothing moves while text is
-being read.
-
-### Launcher redesign: simple and advanced views
-Built (PR #111, merged 2026-11-20): the launcher window
-becomes a pywebview page (React, `frontend/src/launcher/`) with Simple and
-Advanced views, an always-on microphone meter before the session, live server
-and audio output in the Advanced console, a no-signal warning and a status strip.
-The Tk window stays as a fallback. Follow-ups, each its own change:
 - **QR codes split by audience.** The audience QR shown on `/display` on demand
   (from the launcher); the operator QR only under Advanced → Network.
 - **macOS on the new window.** Add the `launcher` extra to the Mac app
   (regenerate `scripts/macos/requirements-arm64.lock` on the Mac for pyobjc) and
-  test on the M1; until then the Mac keeps the Tk window. Includes the wording
-  pass for the macOS network prompt above.
+  test on the M1. The network prompt wording is tracked in the macOS follow-up
+  above.
 - **Input meter in the operator console.** A small live level next to Speech
   status. Needs a new server message (protocol change: show the shapes first).
 - **Identify screens.** A button by Projector that briefly shows a large number
@@ -111,33 +81,15 @@ reproduced in an empty project); 5.0.5 installs. `package.json` allows
 `^5.0.5`, so only `package-lock.json` holds it at 5.0.5: before an
 `npm update` that moves vitest, check that it installs, or upgrade npm first.
 
-### Test suite audit
-Size: small, what is left. Not urgent.
+### Profile slow tests on Windows
+Run `pytest --durations=15` on Windows to recheck these audit findings:
 
-First pass done 2026-10-21 on the Fedora box (Python 3.13): the two-socket
-WebSocket hang is fixed (`TECH_DEBT.md`, resolved), every CI job has
-`timeout-minutes`, the control-server and language-proxy tests no longer wait
-0.5 s per server stop, the three real-ffmpeg `test_live_path.py` tests are
-marked `slow` (`-m "not slow"` for a quick local run; CI runs everything), and
-the Linux-only launcher window failures are fixed (the tests saved settings to
-the Windows `%APPDATA%` layout; the 1366x768 height test is now Windows-only,
-because Linux Tk's default fonts make the same window ~790 px tall). Full suite
-there: 59 s to 38 s, 20 s without `slow`. No test was clearly meaningless, so
-none was removed. Every test now has a 60 s limit (`pytest-timeout`), so a
-future hang fails one test with a stack dump instead of a whole CI job. The CI
-Python matrix is settled: one version, 3.13. Left:
-
-- Windows-only slowness, not measurable on Linux (all under 0.2 s there):
-  `test_db_path_resolution.py` (3–4.6 s each on Windows on 2026-10-20; the
-  tests import a tiny 66-book canon in-process, no subprocess, so likely
-  SQLite or antivirus file cost) and `test_launcher_process.py` (1.5–2.5 s).
-  Profile them on Windows with `pytest --durations=15` (the Windows 3.13 test
-  run is a good moment).
+- `test_db_path_resolution.py` (3–4.6 s per test on Windows on 2026-10-20)
+  and `test_launcher_process.py` (1.5–2.5 s). Both were under 0.2 s per test
+  on Linux.
 - `test_capture_recovery.py::test_vad_loop_resumes_after_ffmpeg_dies` takes
-  ~2.2 s on Windows (0.5 s on Linux), spent in thread joins, not in the frame
-  wait (now patched to 0.05 s). The transcript sender's 0.2 s queue poll is
-  done: a constant (`QUEUE_POLL_S`) patched to 0.01 s in tests, so a sender
-  stop costs ~0.02 s instead of ~0.2 s (2026-11-18).
+  ~2.2 s on Windows (0.5 s on Linux), mostly in thread joins. The frame wait
+  is already patched to 0.05 s in this test.
 
 ## Experiments
 
