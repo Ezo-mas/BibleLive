@@ -159,6 +159,11 @@ The Tk window stays as a fallback. Follow-ups, each its own change:
 - **Regenerate the operator token.** Revokes access for devices it was shared
   with. Needs a security review.
 - **Port check before Start.** When the port is taken, name the program using it.
+- **One palette for launcher and pages (undecided).** The launcher uses its own
+  warm palette (`frontend/src/launcher/launcher.css`), not the console's
+  `DESIGN.md` tokens. The owner likes the launcher's better: decide whether to
+  move the operator/display pages to it (update `DESIGN.md` and the token CSS)
+  or bring the launcher onto the existing tokens. Either way, one set of tokens.
 
 ## Maintenance
 
