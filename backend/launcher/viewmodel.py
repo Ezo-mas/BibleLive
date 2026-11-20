@@ -15,6 +15,7 @@ from .process import MSG_STARTING_AUDIO, MSG_STARTING_SERVER_PREFIX, RestartMess
 from .settings import (
     AUTO_MODES,
     COMPUTE_TYPES,
+    DEFAULT_MODEL,
     DEVICES,
     LANGUAGES,
     LOG_LEVELS,
@@ -152,6 +153,22 @@ def speech_engine_options() -> list[Option]:
 
 def plain_options(values: Sequence[str]) -> list[Option]:
     return [(v, v) for v in values]
+
+
+def device_options() -> list[Option]:
+    """Where speech recognition runs, in words (the stored values stay auto/cuda/cpu)."""
+    names = {"auto": "opt.automatic", "cuda": "opt.device_cuda", "cpu": "opt.device_cpu"}
+    return [(v, t(names[v])) for v in DEVICES]
+
+
+def compute_options() -> list[Option]:
+    """Whisper compute types; only "auto" has a word, the rest are CTranslate2's own names."""
+    return [(v, t("opt.automatic") if v == "auto" else v) for v in COMPUTE_TYPES]
+
+
+def model_options() -> list[Option]:
+    """Whisper models, the default one marked as recommended."""
+    return [(v, t("opt.recommended", name=v) if v == DEFAULT_MODEL else v) for v in MODELS]
 
 
 MODEL_OPTIONS = MODELS

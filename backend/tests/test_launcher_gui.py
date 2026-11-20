@@ -22,6 +22,7 @@ from launcher.projector import (
 )
 from launcher.settings import (
     AUTO_MODES,
+    COMPUTE_TYPES,
     LANGUAGES,
     MODELS,
     LauncherSettings,
@@ -32,11 +33,14 @@ from launcher.viewmodel import (
     StatusState,
     apply_event,
     check_microphone,
+    compute_options,
     describe_error,
     describe_event,
     describe_gpu,
+    device_options,
     form_from_settings,
     microphone_options,
+    model_options,
     projector_options,
     settings_from_form,
 )
@@ -358,6 +362,19 @@ def test_option_lists():
     assert [v for v, _ in projector_options([PRIMARY, SECOND])] == [None, SECOND.device]
     opts = microphone_options(["A", "B"], "Gone")
     assert [v for v, _ in opts] == [None, "Gone", "A", "B"]
+
+
+def test_engine_option_labels_are_words_with_the_stored_values_kept():
+    i18n.set_language("en")
+    assert device_options() == [
+        ("auto", "Automatic"),
+        ("cuda", "NVIDIA graphics card (CUDA)"),
+        ("cpu", "Processor (CPU)"),
+    ]
+    assert compute_options()[0] == ("auto", "Automatic")
+    assert [v for v, _ in compute_options()] == list(COMPUTE_TYPES)
+    assert ("large-v3-turbo", "large-v3-turbo (recommended)") in model_options()
+    assert [v for v, _ in model_options()] == list(MODELS)
 
 
 def test_status_transitions():
