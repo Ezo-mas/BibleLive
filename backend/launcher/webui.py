@@ -162,6 +162,7 @@ class LauncherController:
         self._status = StatusState()
         self._started_at: int | None = None
         self._error: str | None = None
+        self._no_gpu_logged = False
         self._network: NetworkView | None = None
         self._firewall: str | None = None
         self._probe_plan: LaunchPlan | None = None
@@ -337,6 +338,7 @@ class LauncherController:
             if self._closed or self._session != "idle":
                 return self._start_error("session_busy", t("err.session_busy"))
             self._error = None
+            self._no_gpu_logged = False
             try:
                 settings = settings_from_form(self._settings, form, include_session_audio=True)
                 check_microphone(settings.input_device, self._mic_names)
@@ -419,7 +421,10 @@ class LauncherController:
                 and plan.device == "cpu"
                 and plan.speech_engine == "whisper"
             ):
-                self._log.append("launcher", "WARNING", t("warn.no_gpu"))
+                # The plan can carry several device warnings; they all mean this one.
+                if not self._no_gpu_logged:
+                    self._no_gpu_logged = True
+                    self._log.append("launcher", "WARNING", t("warn.no_gpu"))
             elif described := describe_event(kind, message, code, detail):
                 level, text = described
                 self._log.append("launcher", level.upper(), text)

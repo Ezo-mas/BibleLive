@@ -92,6 +92,8 @@ def bridge(tmp_path, monkeypatch):
             "cpu",
             "int8",
             network_token=settings.network_token if settings.allow_network else None,
+            # Two device warnings, as build_plan gives on a PC without CUDA.
+            warnings=["CUDA not found", "Using int8"],
         )
 
     class Launch:
@@ -105,6 +107,8 @@ def bridge(tmp_path, monkeypatch):
 
         def run(self):
             trace.append("launcher running")
+            for warning in self.plan.warnings:
+                self.emit("warning", warning)
             self.emit("ready", self.plan.base_url)
             self.emit("running", "")
             session.running.set()
@@ -356,3 +360,15 @@ def test_cli_falls_back_to_tk_when_page_missing(tmp_path, monkeypatch, caplog):
         assert "Opening the Tk launcher" in caplog.text
     finally:
         i18n.set_language(original_language)
+
+
+def test_whisper_on_the_processor_is_reported_once_per_session(bridge):
+    api, _, _, session = bridge
+    form = api.init()["form"]
+    assert api.start(form)["ok"] is True
+    assert session.running.wait(3)
+    no_gpu = i18n.t("warn.no_gpu")
+    lines = []
+    wait_for(lambda: lines.extend(api.poll()["log"]) or api.poll()["state"]["session"] == "live")
+    lines += api.poll()["log"]
+    assert [line["text"] for line in lines].count(no_gpu) == 1
