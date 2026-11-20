@@ -555,7 +555,10 @@ def test_webview_main_checks_dev_url_and_registers_closing_handler(
     assert observed["url"] == (url if allowed else str(page))
     assert ("Ignoring BIBLELIVE_LAUNCHER_URL" in caplog.text) is not allowed
     assert (observed["width"], observed["height"], observed["min_size"]) == (1120, 600, (760, 480))
-    assert observed["http_server"] is observed["private_mode"] is True
+    assert observed["http_server"] is True
+    # A reused profile, not a temp one per launch (see webview_profile_dir).
+    assert observed["private_mode"] is False
+    assert observed["storage_path"] == str(webui.webview_profile_dir())
     assert observed["gui"] == ("edgechromium" if sys.platform == "win32" else None)
     assert isinstance(observed["js_api"], LauncherApi)
     assert api.start(api.init()["form"])["ok"] is False
@@ -607,3 +610,8 @@ def test_meter_start_superseded_during_lookup_is_off_not_an_error(monkeypatch):
     assert spawned == []
     assert meter.snapshot()[:2] == ("off", None)
     meter.stop()
+
+
+def test_webview_profile_is_local_app_data_not_a_temp_folder(monkeypatch, tmp_path):
+    monkeypatch.setattr(webui, "models_dir", lambda: tmp_path / "BibleLive" / "models")
+    assert webui.webview_profile_dir() == tmp_path / "BibleLive" / "webview"

@@ -40,6 +40,7 @@ from .settings import (
     LauncherSettings,
     app_data_dir,
     load_settings,
+    models_dir,
     save_settings,
 )
 from .viewmodel import (
@@ -735,6 +736,11 @@ def _solid_title_bar(window: Any) -> None:
         logger.debug("Could not install launcher caption theme", exc_info=True)
 
 
+def webview_profile_dir() -> Path:
+    """The launcher window's browser profile: local (not roaming) app data, beside the models."""
+    return models_dir().parent / "webview"
+
+
 def main(*, smoke: bool = False) -> int:
     logging.basicConfig(level=logging.WARNING)
     url = os.environ.get("BIBLELIVE_LAUNCHER_URL")
@@ -791,7 +797,11 @@ def main(*, smoke: bool = False) -> int:
             window.events.loaded += close_after_load
         webview.start(
             http_server=True,
-            private_mode=True,
+            # One reused browser profile beside the models. Private mode would make a new temp
+            # profile per launch and delete it on exit, a delete that can lose a race with the
+            # exiting WebView2 process and leave the folder behind in %TEMP%.
+            private_mode=False,
+            storage_path=str(webview_profile_dir()),
             gui="edgechromium" if sys.platform == "win32" else None,
         )
     except (Exception, SystemExit):
