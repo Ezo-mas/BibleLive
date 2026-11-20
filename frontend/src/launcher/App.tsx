@@ -110,7 +110,10 @@ function Launcher({ bridge, initial }: Connection) {
           }
         }
       } catch {
-        if (active) setPollFailed(true)
+        if (active) {
+          acceptLevels(null)
+          setPollFailed(true)
+        }
       } finally {
         if (active)
           timer = window.setTimeout(

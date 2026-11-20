@@ -36,28 +36,29 @@ describe('launcher App', () => {
     }
   })
 
-  it('drives both mic visuals from the peak of a poll and clears them when the meter stops', async () => {
+  it('drives both mic visuals from microphone levels and clears them on meter error', async () => {
     const bridge = createDemoBridge()
     const poll = bridge.poll
     let meterOn = true
     vi.spyOn(bridge, 'poll').mockImplementation(async () => ({
       ...(await poll()),
-      meter: meterOn ? 'on' : 'off',
-      levels: meterOn ? [0.8, 0.1] : [],
+      meter: meterOn ? 'on' : 'error',
+      levels: meterOn ? [0.8] : [],
     }))
     const { container } = render(<App bridge={bridge} />)
     const meter = await screen.findByRole('meter', { name: 'Mic level' })
-    const bar = container.querySelector<HTMLElement>('.bl-wave span')!
+    const bars = Array.from(container.querySelectorAll<HTMLElement>('.bl-wave span'))
+    const centre = bars[bars.length / 2]
 
     await waitFor(() => {
       expect(Number(meter.getAttribute('aria-valuenow'))).toBeGreaterThan(0.6)
-      expect(Number(bar.style.getPropertyValue('--wave-level'))).toBeGreaterThan(0.5)
+      expect(Number(centre.style.getPropertyValue('--wave-level'))).toBeGreaterThan(0.5)
     })
 
     meterOn = false
     await waitFor(() => {
       expect(Number(meter.getAttribute('aria-valuenow'))).toBe(0)
-      expect(bar.style.getPropertyValue('--wave-level')).toBe('0')
+      expect(bars.every(bar => bar.style.getPropertyValue('--wave-level') === '0')).toBe(true)
     })
   })
 

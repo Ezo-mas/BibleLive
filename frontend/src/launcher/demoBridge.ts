@@ -93,6 +93,8 @@ export function createDemoBridge(): Bridge {
   let form = { ...defaults }
   let state = idle
   let lastLevelAt = Date.now() - LEVEL_INTERVAL
+  let speechBlock = 0
+  const syllables = [0.35, 0.82, 0.45, 0.04, 0.25, 0.65, 0.4, 0.04, 0.04, 0.4, 0.9, 0.5]
   let refreshed = false
   let microphone: Form['input_device'] = null
   let log: LogLine[] = []
@@ -115,12 +117,8 @@ export function createDemoBridge(): Bridge {
       if (meter === 'on') {
         for (let sample = 0; sample < numLevels; sample++) {
           lastLevelAt += LEVEL_INTERVAL
-          const phase = lastLevelAt / 175
-          levels.push(
-            microphone === 'built-in'
-              ? 0.04
-              : 0.12 + 0.62 * Math.abs(Math.sin(phase) * Math.cos(phase / 3))
-          )
+          levels.push(microphone === 'built-in' ? 0.04 : (syllables[speechBlock] ?? 0.04))
+          speechBlock = (speechBlock + 1) % 36
         }
       }
       const { microphone: mics, projector } = demoOptions(language)
@@ -183,6 +181,7 @@ export function createDemoBridge(): Bridge {
       window.setTimeout(() => {
         state = idle
         lastLevelAt = Date.now() - LEVEL_INTERVAL
+        speechBlock = 0
         writeLog('launcher', t('launcher.sessionStopped'))
       }, 250)
       return null
