@@ -529,7 +529,10 @@ def test_webview_main_checks_dev_url_and_registers_closing_handler(
 
     def create_window(title, url, **options):
         observed.update(title=title, url=url, **options)
-        return SimpleNamespace(events=SimpleNamespace(closing=closing, before_show=Closing()))
+        return SimpleNamespace(
+            events=SimpleNamespace(closing=closing, before_show=Closing()),
+            destroy=lambda: observed.update(destroyed=True),
+        )
 
     def start(**options):
         observed.update(options)
@@ -554,10 +557,12 @@ def test_webview_main_checks_dev_url_and_registers_closing_handler(
     )
     assert webui.main() == 0
     assert observed["title"] == i18n.t("app.title")
-    assert observed["url"] == (url if allowed else str(page))
+    # macOS loads the page from its file, so no local server triggers the firewall prompt.
+    local_page = page.as_uri() if webui._SERVE_FROM_FILE else str(page)
+    assert observed["url"] == (url if allowed else local_page)
     assert ("Ignoring BIBLELIVE_LAUNCHER_URL" in caplog.text) is not allowed
     assert (observed["width"], observed["height"], observed["min_size"]) == (1120, 600, (760, 480))
-    assert observed["http_server"] is True
+    assert observed["http_server"] is not webui._SERVE_FROM_FILE
     # Its own profile under the launcher profiles folder, not a private-mode temp one.
     assert observed["private_mode"] is False
     assert Path(observed["storage_path"]).parent == webui.webview_profiles_root()
@@ -662,3 +667,27 @@ def test_window_icon_prefers_the_built_app_then_the_checkout(tmp_path):
     built = tmp_path / "biblelive.ico"
     built.touch()
     assert webui.window_icon(tmp_path) == built
+
+
+def test_pywebview_page_call_threads_do_not_block_exit():
+    util = SimpleNamespace(Thread=threading.Thread)
+    webui._daemon_bridge_threads(SimpleNamespace(util=util))
+    assert util.Thread(target=lambda: None).daemon
+    assert not util.Thread(target=lambda: None, daemon=False).daemon
+
+
+@pytest.mark.parametrize("platform_name", ["darwin", "win32"])
+def test_closing_the_window_lets_main_clean_up(monkeypatch, platform_name):
+    # macOS Cmd-Q would otherwise end the process before webview.start() returns, leaving the
+    # server and the pipeline running: there the close is cancelled and the window closed.
+    monkeypatch.setattr(webui.sys, "platform", platform_name)
+    calls = []
+    window = SimpleNamespace(destroy=lambda: calls.append("destroy"))
+    controller = SimpleNamespace(request_close=lambda: calls.append("request_close"))
+    result = webui._on_closing(window, controller)
+    if platform_name == "darwin":
+        assert result is False
+        assert calls == ["request_close", "destroy"]
+    else:
+        assert result is None
+        assert calls == ["request_close"]

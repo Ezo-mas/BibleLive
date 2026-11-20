@@ -65,12 +65,11 @@ model is "an older download, not the checked version", run the line above again.
 ## 5. First start
 
 1. Open BibleLive from Applications (or Launchpad).
-2. Choose the language and the microphone in the launcher window and press **Start**.
-3. The first time, macOS asks: *"BibleLive" would like to access the microphone.* Click
-   **Allow**. BibleLive waits for your answer (up to two minutes) before it opens anything
-   else. If you clicked
-   Don't Allow by mistake, the launcher says so: System Settings → Privacy & Security →
-   Microphone, turn **BibleLive** on, then stop and start again.
+2. The first time, macOS asks: *"BibleLive" would like to access the microphone.* Click
+   **Allow**: the launcher's microphone level needs it. If you clicked Don't Allow by
+   mistake, the launcher says so: System Settings → Privacy & Security → Microphone, turn
+   **BibleLive** on, then quit BibleLive (⌘Q) and open it again.
+3. Choose the language and the microphone in the launcher window and press **Start**.
 4. The operator page opens in your browser and the display on the projector screen.
 
 ## 6. Projector
@@ -91,6 +90,17 @@ into this folder (BibleLive creates it on the first start):
 
 In Finder: Go → Go to Folder…, paste the path above, and drop the file there. Then stop and
 start BibleLive. Do not put it inside `BibleLive.app`; changing the app breaks it.
+
+## 8. Phones and other computers (network mode)
+
+To open the display or the operator page on another device, turn on **Allow other devices on
+this network** in the launcher (Advanced → Network) and start. If the Mac's firewall is on, the
+first time macOS asks
+whether **python3.13** (not BibleLive) may accept incoming network connections. That is
+BibleLive's server: it runs on the Python inside `BibleLive.app`, and macOS asks per program.
+Click **Allow**. If you clicked Deny, other devices cannot connect: open System Settings →
+Network → Firewall → Options, set the python3.13 entry to allow incoming connections, then stop
+and start BibleLive.
 
 ## Where things are
 

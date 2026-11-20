@@ -12,6 +12,25 @@ Entry format:
 
 ## Open
 
+### The Windows launcher page is served on a fixed port that another program can hold
+- **Where:** `backend/launcher/webui.py` (`main`: `webview.start(http_server=True,
+  private_mode=False, ...)`)
+- **Problem:** With `private_mode=False` and no `http_port`, pywebview serves the launcher
+  page on its fixed default port 42001. If that port is already taken, its server thread
+  fails with "Address already in use" and the window still opens
+  `http://127.0.0.1:42001/launcher.html`, i.e. whatever the other process serves there.
+- **Impact:** A second launcher shows the first one's page by accident; any other local
+  program on 42001 gets its page into the launcher window, where pywebview injects the
+  launcher's `js_api` bridge (start/stop, settings). Windows only: macOS loads the page from
+  a file and starts no server.
+- **Evidence:** Reproduced on the M1 (2026-11-21) before the macOS change: a second
+  pywebview process with `http_server=True` logged `OSError: [Errno 48] Address already in
+  use` and its window's `location.href` was the running BibleLive's
+  `http://127.0.0.1:42001/launcher.html`. The port logic is pywebview's
+  (`webview/__init__.py`, `DEFAULT_HTTP_PORT`), the same on Windows. Likely fix: pass a free
+  `http_port` per launch. Not yet reproduced on Windows itself.
+- **Logged:** 2026-11-21
+
 ### Pruned WebSockets can keep receiving when their close stalls (resolved)
 - **Where:** `backend/core/server/connections.py` (`ConnectionManager._prune`,
   `_close_socket`) and `backend/core/server/ws.py` (`websocket_endpoint`).

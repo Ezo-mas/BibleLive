@@ -2,6 +2,7 @@
 
 import contextlib
 import ctypes
+import faulthandler
 import logging
 import math
 import os
@@ -799,8 +800,55 @@ def claim_webview_profile(root: Path | None = None) -> tuple[Path, Any]:
     return profile, lock
 
 
+def _daemon_bridge_threads(webview: Any) -> None:
+    """Run pywebview's page-call threads as daemons, so a closed window cannot block exit.
+
+    pywebview answers each page call to the launcher API on a new thread, which hands the result
+    back with ``evaluate_js``. On macOS that waits for the Cocoa run loop; when the window closes
+    while a call is in flight, the loop is gone, the wait never ends, and Python's exit waits
+    on the (non-daemon) thread forever. Seen as a hung smoke test on CI (2026-11-21). The
+    result is for a page that no longer exists, so nothing is lost by not waiting.
+    """
+    util = getattr(webview, "util", None)
+    if util is None:
+        return
+
+    class _DaemonThread(threading.Thread):
+        def __init__(self, *args: Any, **kwargs: Any) -> None:
+            kwargs.setdefault("daemon", True)
+            super().__init__(*args, **kwargs)
+
+    setattr(util, "Thread", _DaemonThread)  # noqa: B010 (a module attribute, by name)
+
+
+def _on_closing(window: Any, controller: LauncherController) -> bool | None:
+    """The window is closing: from its close button, or (macOS) Cmd-Q / Dock > Quit.
+
+    On macOS, Quit runs Cocoa's terminate:, which ends the process before webview.start()
+    returns, so main()'s cleanup would never stop the server, the pipeline and their ffmpeg
+    (each in its own session; they kept running after Cmd-Q on the M1, 2026-11-21). So the
+    close is cancelled there and the window closed instead: closing the last window ends
+    webview.start() the way the close button does, and the cleanup runs. Returning False
+    cancels; NSWindow.close does not ask again.
+    """
+    controller.request_close()
+    if sys.platform == "darwin":
+        window.destroy()
+        return False
+    return None
+
+
+_SMOKE_TIMEOUT_S = 60
+_SERVE_FROM_FILE = sys.platform == "darwin"
+
+
 def main(*, smoke: bool = False) -> int:
     logging.basicConfig(level=logging.WARNING)
+    if smoke:
+        # A launcher that hangs (starting up, never loading its page, or shutting down) would
+        # hang a build's smoke test: print every thread's stack and exit instead. Left armed
+        # until the process exits.
+        faulthandler.dump_traceback_later(_SMOKE_TIMEOUT_S, exit=True)
     url = os.environ.get("BIBLELIVE_LAUNCHER_URL")
     if url and not _is_loopback_url(url):
         logger.warning("Ignoring BIBLELIVE_LAUNCHER_URL: expected a loopback HTTP(S) URL")
@@ -810,13 +858,18 @@ def main(*, smoke: bool = False) -> int:
         if not page.is_file():
             logger.warning("Launcher page missing at %s", page)
             return FALLBACK
-        url = str(page)
+        # macOS: a file URL, so pywebview starts no local web server. The Mac application
+        # firewall asks to "accept incoming connections" for any listening socket of an app
+        # without a Developer ID signature, even one on 127.0.0.1. WebView2 (Windows) does not
+        # run module scripts from file URLs, so there the page comes from pywebview's server.
+        url = page.as_uri() if _SERVE_FROM_FILE else str(page)
 
     controller = None
     lock = None
     try:
         import webview  # type: ignore[import-untyped,unused-ignore]
 
+        _daemon_bridge_threads(webview)
         profile, lock = claim_webview_profile()
 
         if sys.platform == "win32":
@@ -849,7 +902,7 @@ def main(*, smoke: bool = False) -> int:
         )
         window.events.before_show += _solid_title_bar
         # Let the native window close before the finally block waits for cleanup.
-        window.events.closing += controller.request_close
+        window.events.closing += lambda: _on_closing(window, controller)
         if smoke:
 
             def close_after_load() -> None:
@@ -858,7 +911,7 @@ def main(*, smoke: bool = False) -> int:
 
             window.events.loaded += close_after_load
         webview.start(
-            http_server=True,
+            http_server=not _SERVE_FROM_FILE,
             # This launch's own profile (see claim_webview_profile), not private mode's temp one.
             private_mode=False,
             storage_path=str(profile),
