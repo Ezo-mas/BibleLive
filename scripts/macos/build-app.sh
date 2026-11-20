@@ -10,7 +10,7 @@
 #
 # Usage: scripts/macos/build-app.sh [--skip-frontend-build] [--ffmpeg-dir DIR] [--bible-db FILE] [--no-zip]
 #   --no-zip               build and test the app only (no zip, no disk image)
-#   --skip-frontend-build  reuse static/frontend (no npm on the machine)
+#   --skip-frontend-build  reuse static/frontend and static/launcher (no npm on the machine)
 #   --ffmpeg-dir DIR       a folder from build-ffmpeg.sh (default: build it into build/cache/ffmpeg-macos)
 #   --bible-db FILE        the English database (default: build it from data/kjv2.json)
 #
@@ -81,7 +81,7 @@ fi
 # ---- frontend ---------------------------------------------------------------------------
 FRONTEND_DIST="$REPO/static/frontend"
 if [ "$SKIP_FRONTEND" = 1 ]; then
-  step "Skipping frontend build (reusing static/frontend)"
+  step "Skipping frontend build (reusing static/frontend and static/launcher)"
 else
   step "Building the frontend (npm ci + npm run build)"
   (cd "$REPO/frontend" && npm ci --no-audit --no-fund && npm run build)
@@ -89,6 +89,8 @@ fi
 for f in display.html operator.html; do
   [ -f "$FRONTEND_DIST/$f" ] || { echo "Frontend bundle is incomplete: $FRONTEND_DIST/$f missing" >&2; exit 1; }
 done
+LAUNCHER_DIST="$REPO/static/launcher"
+[ -f "$LAUNCHER_DIST/launcher.html" ] || { echo "Launcher page is missing: $LAUNCHER_DIST/launcher.html" >&2; exit 1; }
 
 # ---- fresh bundle -----------------------------------------------------------------------
 step "Creating $APP_BUNDLE"
@@ -106,8 +108,12 @@ step "Installing third-party dependencies (scripts/macos/requirements-arm64.lock
 # Every wheel by version and SHA256 (generated from backend/constraints.txt by
 # lock_requirements.py; backend/tests/test_macos_lock.py keeps the two in step). pip refuses a
 # wheel whose hash differs and any dependency the lock does not list. Wheels only: a source
-# build would need a compiler and could pick up Homebrew or /usr/local libraries.
-"$PY" -m pip install --disable-pip-version-check --no-warn-script-location --no-cache-dir   --only-binary=:all: --require-hashes -r "$REPO/scripts/macos/requirements-arm64.lock"
+# build would need a compiler and could pick up Homebrew or /usr/local libraries. The one
+# exception is proxy_tools (pywebview's), published only as source and pure Python: it is built
+# without build isolation, so its build backend is the locked setuptools installed first.
+LOCK="$REPO/scripts/macos/requirements-arm64.lock"
+"$PY" -m pip install --disable-pip-version-check --no-warn-script-location --no-cache-dir   --only-binary=:all: --require-hashes --no-deps -r <(grep -A1 '^setuptools==' "$LOCK")
+"$PY" -m pip install --disable-pip-version-check --no-warn-script-location --no-cache-dir   --only-binary=:all: --no-binary=proxy-tools --no-build-isolation --require-hashes -r "$LOCK"
 "$PY" -m pip check
 
 # ---- app --------------------------------------------------------------------------------
@@ -126,6 +132,7 @@ if command -v git >/dev/null && BUILD_ID="$(git -C "$REPO" rev-parse --short HEA
 fi
 printf '%s\n' "$STAMP" > "$APP/backend/core/build-id.txt"
 rsync -a "$FRONTEND_DIST/" "$APP/static/frontend/"
+rsync -a "$LAUNCHER_DIST/" "$APP/static/launcher/"
 
 # Put app/backend on sys.path; relative .pth entries resolve against site-packages
 # (Resources/python/lib/python3.13/site-packages -> Resources/app/backend).
@@ -253,8 +260,10 @@ trap cleanup EXIT
   "$CONTENTS/MacOS/BibleLive" --dry-run
   echo "- launcher window (through the app's executable; closes itself)"
   "$CONTENTS/MacOS/BibleLive" --smoke
+  echo "- launcher window is the webview page, not the Tk fallback"
+  "$PY" -c "import sys; from launcher import webui; sys.exit(webui.main(smoke=True))"
   echo "- imports"
-  "$PY" -c "import faster_whisper, ctranslate2, webrtcvad, transcribe_cpp, tkinter, core.config as c; print('imports OK, PROJECT_ROOT =', c.PROJECT_ROOT)"
+  "$PY" -c "import faster_whisper, ctranslate2, webrtcvad, transcribe_cpp, tkinter, webview, core.config as c; print('imports OK, PROJECT_ROOT =', c.PROJECT_ROOT)"
   echo "- version stamp"
   "$PY" -c "from core.version import version_string; s = version_string(); print('version:', s); assert not s.startswith('unknown')"
   echo "- platform"
