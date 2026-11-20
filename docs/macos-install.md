@@ -92,6 +92,17 @@ into this folder (BibleLive creates it on the first start):
 In Finder: Go → Go to Folder…, paste the path above, and drop the file there. Then stop and
 start BibleLive. Do not put it inside `BibleLive.app`; changing the app breaks it.
 
+## 8. Phones and other computers (network mode)
+
+To open the display or the operator page on another device, turn on **Allow other devices on
+this network** in the launcher (Advanced → Network) and start. If the Mac's firewall is on, the
+first time macOS asks
+whether **Python** (not BibleLive) may accept incoming network connections. That is
+BibleLive's server: it runs on the Python inside `BibleLive.app`, and macOS asks per program.
+Click **Allow**. If you clicked Deny, other devices cannot connect: open System Settings →
+Network → Firewall → Options, set the Python entry to allow incoming connections, then stop
+and start BibleLive.
+
 ## Where things are
 
 | What | Where |

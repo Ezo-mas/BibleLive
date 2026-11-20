@@ -2,6 +2,7 @@
 
 import contextlib
 import ctypes
+import faulthandler
 import logging
 import math
 import os
@@ -799,6 +800,9 @@ def claim_webview_profile(root: Path | None = None) -> tuple[Path, Any]:
     return profile, lock
 
 
+_SMOKE_TIMEOUT_S = 60
+
+
 def main(*, smoke: bool = False) -> int:
     logging.basicConfig(level=logging.WARNING)
     url = os.environ.get("BIBLELIVE_LAUNCHER_URL")
@@ -851,6 +855,9 @@ def main(*, smoke: bool = False) -> int:
         # Let the native window close before the finally block waits for cleanup.
         window.events.closing += controller.request_close
         if smoke:
+            # A window that never loads would hang a build's smoke test: print every thread's
+            # stack and exit instead.
+            faulthandler.dump_traceback_later(_SMOKE_TIMEOUT_S, exit=True)
 
             def close_after_load() -> None:
                 time.sleep(1)
@@ -871,6 +878,8 @@ def main(*, smoke: bool = False) -> int:
     finally:
         if controller is not None:
             controller.close()
+        if smoke:
+            faulthandler.cancel_dump_traceback_later()
         if lock is not None:
             lock.close()  # the next start removes this profile
     return 0
