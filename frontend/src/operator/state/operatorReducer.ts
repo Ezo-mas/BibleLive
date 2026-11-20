@@ -19,7 +19,7 @@ import type {
 
 /**
  * How many history entries a state snapshot carries (the server sends the last
- * 20, see `SNAPSHOT_HISTORY` in `backend/core/server/state.py`). The console
+ * 20, see `SNAPSHOT_HISTORY` in `backend/core/server/display_session.py`). The console
  * keeps the same window, so an entry folded in from a confirmation cannot grow
  * the list past what a reconnect would show. `history_count` still reports the
  * server's total.
@@ -36,6 +36,7 @@ const ERROR_PREFIX_KEYS: Record<string, MessageKey> = {
   display_reference: 'notice.errDisplayReference',
   clear: 'notice.errClear',
   clear_pending: 'notice.errClearPending',
+  clear_history: 'notice.errClearHistory',
   discard_pending: 'notice.errDiscardPending',
   set_verse_limit: 'notice.errVerseLimit',
   set_display_theme: 'notice.errTheme',
@@ -238,6 +239,13 @@ export function operatorReducer(
       effects.push({ type: 'flash', target: 'clearPending' })
       notice('info', { key: 'notice.queueCleared' })
       break
+    case 'history_cleared':
+      next = {
+        ...state,
+        history: dedupeHistory(event.data.history),
+        historyCount: event.data.history_count,
+      }
+      break
     case 'connection_status':
       next = { ...state, displayConnected: event.data.display > 0 }
       break
@@ -393,6 +401,9 @@ export function operatorReducer(
       break
     case 'clear_pending':
       effects.push({ type: 'send', action: { action: 'clear_pending' } })
+      break
+    case 'clear_history':
+      effects.push({ type: 'send', action: { action: 'clear_history' } })
       break
     case 'set_live':
       effects.push({ type: 'send', action: { action: 'set_live', live: event.live } })

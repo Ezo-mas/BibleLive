@@ -283,6 +283,9 @@ export function useOperatorState(): OperatorState {
   const clearPendingQueue = useCallback(() => {
     if (window.confirm(t('queue.confirmClear'))) dispatch({ type: 'clear_pending' })
   }, [dispatch, t])
+  const clearHistory = useCallback(() => {
+    if (window.confirm(t('history.confirmClear'))) dispatch({ type: 'clear_history' })
+  }, [dispatch, t])
   // Applied optimistically so the control feels immediate; the server echoes
   // the accepted value back in display_settings_confirmed.
   const setDisplayVerseLimit = useCallback(
@@ -372,6 +375,7 @@ export function useOperatorState(): OperatorState {
     discardInFlight: state.discardId !== null,
     clearDisplay,
     clearPendingQueue,
+    clearHistory,
     canClearDisplay: currentDisplay !== null && isConnected,
     canClearPending: state.pending.length > 0 && isConnected,
     flash,

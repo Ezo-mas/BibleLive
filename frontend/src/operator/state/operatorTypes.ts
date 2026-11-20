@@ -127,6 +127,7 @@ export type OperatorIntent =
   | { type: 'discard_pending'; id: string }
   | { type: 'clear_display' }
   | { type: 'clear_pending' }
+  | { type: 'clear_history' }
   | { type: 'set_setting'; action: OptimisticSettingAction }
   | { type: 'set_live'; live: boolean }
   | { type: 'disconnected' }

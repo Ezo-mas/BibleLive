@@ -31,7 +31,6 @@ export function QueueFooter({
   const lastOnMode = useRef<Exclude<AutoMode, 'off'>>('high')
   if (autoMode !== 'off') lastOnMode.current = autoMode
   const on = autoMode !== 'off'
-  // History has no options of its own yet ("Clear history" is in the backlog), so it gets no menu.
   if (tab !== 'pending') return null
   const items = [
     {

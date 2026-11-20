@@ -123,6 +123,18 @@ async def _handle_clear_pending(
         )
 
 
+async def _handle_clear_history(
+    websocket: WebSocket, app_state: AppState, _message: dict[str, Any]
+) -> None:
+    """Clear display history (operator action ``clear_history``)."""
+    try:
+        count = await app_state.clear_history_and_notify()
+        logger.info(f"Cleared {count} history references via WebSocket")
+    except Exception as e:
+        logger.error(f"Error clearing history: {e}", exc_info=True)
+        await _ws_error(websocket, app_state, "clear_history", "Internal error clearing history")
+
+
 async def _handle_set_verse_limit(
     websocket: WebSocket, app_state: AppState, message: dict[str, Any]
 ) -> None:
@@ -373,6 +385,7 @@ _OPERATOR_ACTIONS: dict[str, Any] = {
     "discard_pending": _handle_discard_pending,
     "clear": _handle_clear,
     "clear_pending": _handle_clear_pending,
+    "clear_history": _handle_clear_history,
     "set_verse_limit": _handle_set_verse_limit,
     "set_display_theme": _handle_set_display_theme,
     "set_clear_mode": _handle_set_clear_mode,

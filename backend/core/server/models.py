@@ -424,6 +424,12 @@ class OperatorClearPendingAction(BaseModel):
     action: Literal["clear_pending"]
 
 
+class OperatorClearHistoryAction(BaseModel):
+    """Action to clear display history."""
+
+    action: Literal["clear_history"]
+
+
 class OperatorSetVerseLimitAction(BaseModel):
     """Action to change how many verses the display shows at once."""
 
@@ -507,6 +513,7 @@ OperatorAction = Annotated[
     | OperatorDiscardPendingAction
     | OperatorClearDisplayAction
     | OperatorClearPendingAction
+    | OperatorClearHistoryAction
     | OperatorSetVerseLimitAction
     | OperatorSetDisplayThemeAction
     | OperatorSetClearModeAction
@@ -602,6 +609,20 @@ class OperatorPendingCleared(BaseModel):
     data: dict[str, Any] = Field(max_length=0)
 
 
+class HistoryClearedData(BaseModel):
+    """The resulting display history window and total count."""
+
+    history: list[BibleReference]
+    history_count: int
+
+
+class OperatorHistoryCleared(BaseModel):
+    """Server-to-client ``history_cleared`` message."""
+
+    type: Literal["history_cleared"] = "history_cleared"
+    data: HistoryClearedData
+
+
 class OperatorConnectionStatus(BaseModel):
     """Server-to-client ``connection_status`` message."""
 
@@ -679,6 +700,7 @@ OperatorServerMessage = Annotated[
     | OperatorDisplayConfirmed
     | OperatorClearConfirmed
     | OperatorPendingCleared
+    | OperatorHistoryCleared
     | OperatorConnectionStatus
     | OperatorDisplaySettingsConfirmed
     | OperatorAutoModeConfirmed

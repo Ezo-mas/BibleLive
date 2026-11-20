@@ -421,7 +421,7 @@ A missing local translation keeps the previous validator and reports
 - `ws://<host>/ws/display` — display clients receive `reference`, `clear`,
   and `display_settings` events
 - `ws://<host>/ws/operator` — operator clients receive `pending_update`,
-  `approval_confirmed`, `clear_confirmed`, `pending_cleared`, `state_snapshot`,
+  `approval_confirmed`, `clear_confirmed`, `pending_cleared`, `history_cleared`, `state_snapshot`,
   `auto_mode_confirmed`, `follow_auto_confirmed`, `display_settings_confirmed`,
   `bible_version_confirmed` (`{version, available}`), `display_confirmed`,
   `follow_along`, `error`, and `connection_status`
@@ -432,6 +432,8 @@ A missing local translation keeps the previous validator and reports
   - `{action: 'discard_pending', reference_id: 'uuid'}`
   - `{action: 'clear'}`
   - `{action: 'clear_pending'}`
+  - `{action: 'clear_history'}` — clear display history while preserving the current
+    passage. Every operator receives `history_cleared` with `{history: [], history_count: 0}`.
   - `{action: 'set_verse_limit', verse_limit: 3 | 5 | 10 | 'all'}`
   - `{action: 'set_display_theme', theme: 'dark' | 'light'}`
   - `{action: 'set_live', live: true | false}` — put the audience display on air

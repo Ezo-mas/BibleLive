@@ -150,6 +150,7 @@ export type OperatorMessage =
   | { type: 'approval_confirmed'; data: { reference: BibleReference } }
   | { type: 'clear_confirmed'; data: Record<string, never> }
   | { type: 'pending_cleared'; data: Record<string, never> }
+  | { type: 'history_cleared'; data: { history: BibleReference[]; history_count: number } }
   | { type: 'connection_status'; data: { display: number; operator: number } }
   | { type: 'display_settings_confirmed'; data: DisplaySettings }
   | { type: 'auto_mode_confirmed'; data: { auto_mode: AutoMode } }
@@ -181,6 +182,10 @@ export interface DiscardPendingAction {
 
 export interface ClearPendingAction {
   action: 'clear_pending'
+}
+
+export interface ClearHistoryAction {
+  action: 'clear_history'
 }
 
 export interface SetVerseLimitAction {
@@ -254,6 +259,7 @@ export type OperatorAction =
   | DiscardPendingAction
   | ClearAction
   | ClearPendingAction
+  | ClearHistoryAction
   | SetVerseLimitAction
   | SetDisplayThemeAction
   | SetClearModeAction

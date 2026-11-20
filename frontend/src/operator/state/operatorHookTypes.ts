@@ -119,6 +119,7 @@ export interface OperatorState {
 
   clearDisplay: () => void
   clearPendingQueue: () => void
+  clearHistory: () => void
   canClearDisplay: boolean
   canClearPending: boolean
   flash: FlashTarget | null

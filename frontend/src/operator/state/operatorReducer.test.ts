@@ -128,6 +128,10 @@ describe('operator protocol transitions', () => {
           { type: 'notice', tone: 'info', message: { key: 'notice.queueCleared' } },
         ])
         break
+      case 'history_cleared':
+        expect(state).toEqual({ ...before, history: [], historyCount: 0 })
+        expect(effects).toEqual([])
+        break
       case 'connection_status':
         expect(state.displayConnected).toBe(true)
         expect(effects).toEqual([])
@@ -498,6 +502,7 @@ describe('operator intents', () => {
   it.each([
     { type: 'clear_display', action: 'clear' },
     { type: 'clear_pending', action: 'clear_pending' },
+    { type: 'clear_history', action: 'clear_history' },
   ] as const)('sends $action without claiming confirmation', ({ type, action }) => {
     const before = populatedState()
     expect(reduce(before, { type })).toEqual({
