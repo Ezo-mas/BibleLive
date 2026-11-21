@@ -111,7 +111,7 @@ describe('console language', () => {
     expect(await screen.findByRole('heading', { name: 'Ekrane' })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Planas' })).toBeInTheDocument()
     // The sidebar's tabs are named in Lithuanian too (a count may follow the name).
-    expect(screen.getByRole('tab', { name: /^Laukiančios/ })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: /^Laukia patvirtinimo/ })).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: 'Istorija' })).toBeInTheDocument()
     // The settings dialog itself is in Lithuanian too.
     expect(screen.getByRole('dialog', { name: 'Nustatymai' })).toBeInTheDocument()
