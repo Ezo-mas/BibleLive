@@ -114,10 +114,7 @@ function historyRow(title: string) {
 
 /** Show on a history row: coordinates only. */
 function showFromHistory(title: string) {
-  const button = within(historyRow(title)).getByRole('button', { name: 'Show' })
-  act(() => {
-    button.click()
-  })
+  fireEvent.doubleClick(historyRow(title))
 }
 
 beforeEach(() => {
@@ -277,7 +274,7 @@ describe('auto-followed passages', () => {
 
     const row = within(historyRow('Luke 16:13-15'))
     expect(row.getByText('Auto-followed')).toBeInTheDocument()
-    expect(row.queryByText('Manual')).not.toBeInTheDocument()
+    expect(row.queryByText('Search')).not.toBeInTheDocument()
   })
 
   it('leaves a manually shown passage untagged', () => {

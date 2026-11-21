@@ -146,12 +146,9 @@ function historyRow(name: RegExp) {
   return rows[0].closest('.ref-item') as HTMLElement
 }
 
-/** Show on the history row whose title matches. */
+/** Double-click the history row whose title matches. */
 function showAgain(name: RegExp) {
-  const button = within(historyRow(name)).getByRole('button', { name: 'Show' })
-  act(() => {
-    button.click()
-  })
+  fireEvent.doubleClick(historyRow(name))
 }
 
 beforeEach(() => {
@@ -193,7 +190,7 @@ describe('history list', () => {
 
     const row = within(historyRow(/Romans 8:28/))
     expect(row.getByText('Romans 8:28')).toBeInTheDocument()
-    expect(row.getByText('Manual')).toBeInTheDocument()
+    expect(row.getByText('Search')).toBeInTheDocument()
     const time = row.getByText(/\d{1,2}:\d{2}:\d{2}/)
     expect(time).toHaveAttribute('datetime', '2026-01-01T10:00:00Z')
 
@@ -203,12 +200,13 @@ describe('history list', () => {
     expect(detected).not.toHaveAttribute('data-confidence')
   })
 
-  it('rows have Show and no Remove, and take no cursor', () => {
+  it('replays from the row and takes no cursor', () => {
     openWith({ history })
 
     const row = within(historyRow(/John 3:16/))
-    expect(row.getAllByRole('button').map(button => button.textContent)).toEqual(['Show'])
-    expect(row.queryByRole('button', { name: /highlight/ })).not.toBeInTheDocument()
+    expect(row.getByRole('button', { name: 'Show John 3:16 again' })).toBeInTheDocument()
+    expect(row.queryByRole('button', { name: /^(Show|Remove)$/ })).not.toBeInTheDocument()
+    expect(historyPanel().getByText('Double-click or Enter to show again')).toBeInTheDocument()
 
     // A click on the row selects nothing and sends nothing.
     fireEvent.click(row.getByText('John 3:16'))
@@ -348,7 +346,22 @@ describe('Show again', () => {
     expect(
       within(screen.getByTestId('live-verses')).getByText('John 3:16 text')
     ).toBeInTheDocument()
-    expect(screen.getByText('Shown: John 3:16 (manual)')).toBeInTheDocument()
+    expect(screen.getByText('Shown: John 3:16 (search)')).toBeInTheDocument()
+  })
+
+  it('plain Enter on the focused History row replays it, once per press', () => {
+    openWith({ history })
+    const replay = within(historyRow(/John 3:16/)).getByRole('button', {
+      name: 'Show John 3:16 again',
+    })
+    replay.focus()
+    fireEvent.keyDown(replay, { key: 'Enter', ctrlKey: true })
+    fireEvent.keyDown(replay, { key: 'Enter', repeat: true })
+    expect(sentActions()).toEqual([])
+    fireEvent.keyDown(replay, { key: 'Enter' })
+    expect(sentActions()).toEqual([
+      { action: 'display_reference', book: 'John', chapter: 3, verse_start: 16, verse_end: 16 },
+    ])
   })
 
   it('sends a detected single verse as it was detected', () => {
@@ -402,7 +415,12 @@ describe('Show again', () => {
       socket?.onclose?.({ code: 1006 })
     })
 
-    expect(within(historyRow(/John 3:16/)).getByRole('button', { name: 'Show' })).toBeDisabled()
+    const row = historyRow(/John 3:16/)
+    const replay = within(row).getByRole('button', { name: 'Show John 3:16 again' })
+    expect(replay).toHaveAttribute('aria-disabled', 'true')
+    fireEvent.keyDown(replay, { key: 'Enter' })
+    fireEvent.doubleClick(row)
+    expect(sentActions()).toEqual([])
   })
 
   it('works again after a dropped socket reconnects', () => {
@@ -439,12 +457,9 @@ describe('switching between the lists', () => {
     })
     push(socket, { type: 'display_confirmed', data: { reference: roman } })
 
-    const show = pendingPanel()
-      .getAllByRole('button', { name: 'Show' })
-      .find(button => button.closest('.ref-item')?.textContent?.includes('John 1:1'))
-    act(() => {
-      show?.click()
-    })
+    fireEvent.doubleClick(
+      pendingPanel().getByRole('button', { name: 'John 1:1 — highlight; Enter shows it' })
+    )
     expect(lastSent(socket)).toEqual({ action: 'approve', reference_id: 'p-1' })
   })
 

@@ -26,7 +26,7 @@ export interface RowCursorState {
  * The console's one keyboard cursor, in Pending or Plan.
  *
  * A click (or focus) on a row highlights it and sends nothing; Enter shows the
- * highlighted row, the way the row's own Show does. The cursor is in the list the
+ * highlighted row, just like double-clicking the row. The cursor is in the list the
  * operator last clicked or focused, so the arrow keys and Enter act there. With no
  * cursor, the arrows start in Pending while its tab is open and holds detections,
  * otherwise in Plan. A highlight in Pending is inert while the History tab covers it:

@@ -6,7 +6,7 @@ import { formatReference } from '../../shared/reference'
 import type { BibleReference } from '../../shared/types'
 import { PanelHint } from './PanelHint'
 import { PanelMenu } from './PanelMenu'
-import { RowRemoveButton, RowShowButton } from './RowButtons'
+import { RowRemoveButton } from './RowButtons'
 import { samePassage } from '../passageKey'
 import { useCursorFocus } from '../hooks/useRowCursor'
 import type { PlanItem } from '../hooks/usePlan'
@@ -25,7 +25,7 @@ export interface PlanPanelProps {
   keyboardMoves?: number
   /** Highlight an entry (click or focus); nothing is sent. */
   onSelect: (id: string) => void
-  /** False while the socket is closed: Show then has nowhere to go. */
+  /** False while the socket is closed. */
   canShow?: boolean
   /** Show the entry: coordinates only, for the server to resolve. */
   onShow: (item: PlanItem) => void
@@ -45,9 +45,8 @@ function onRowClick(event: MouseEvent, select: () => void) {
  *
  * It is the pending queue's counterpart — the queue holds what was heard, the
  * plan holds what is expected. A row shows its number, reference, excerpt, and
- * an "On screen" tag when it matches the passage on a connected, live display. Remove, reorder,
- * and Show sit at the right. A click highlights the row (the keyboard cursor); Show, or
- * Enter on the highlight, sends its coordinates for the server to resolve. The plan
+ * an "On screen" tag when it matches the passage on a connected, live display. A click
+ * highlights the row. Double-click or Enter shows it using the existing display action. The plan
  * never touches the queue, and entries stay after they are shown, since a verse is
  * often read twice.
  */
@@ -80,6 +79,9 @@ export function PlanPanel({
           <span className="operator-section-count">{items.length}</span>
         </div>
         <span className="operator-card-grow" />
+        {items.length > 0 && canShow && (
+          <span className="operator-queue-hint">{t('plan.showHint')}</span>
+        )}
         <PanelMenu
           label={t('plan.options')}
           placement="beside"
@@ -102,7 +104,7 @@ export function PlanPanel({
           <ol className="plan-list" ref={listRef}>
             {items.map((item, index) => {
               const label = formatReference(item)
-              const titleId = `${item.id}-title`
+              const previewId = `${item.id}-preview`
               const onScreenId = `${item.id}-onscreen`
               const selected = item.id === selectedId
               const onScreen =
@@ -112,42 +114,57 @@ export function PlanPanel({
                 samePassage(item, currentDisplay)
               // Text looked up since (in the current translation), else the remembered start.
               const preview = snippets[item.id] || item.snippet || ''
+              const describedBy = [onScreen ? onScreenId : null, preview ? previewId : null]
+                .filter(Boolean)
+                .join(' ')
               return (
                 <li
                   key={item.id}
                   data-cursor-row={item.id}
                   className={`ref-item plan-item${selected ? ' is-selected' : ''}`}
                   onClick={event => onRowClick(event, () => onSelect(item.id))}
+                  // As in Pending: a double-click shows the row without selecting a word.
+                  onMouseDown={event => {
+                    if (event.detail > 1) event.preventDefault()
+                  }}
+                  onDoubleClick={event => {
+                    if (canShow && !(event.target as Element).closest('.plan-row-tools')) {
+                      onSelect(item.id)
+                      onShow(item)
+                    }
+                  }}
                 >
                   <span className="plan-row-number" aria-hidden="true">
                     {index + 1}
                   </span>
-                  <div className="plan-row-details">
-                    <div
-                      className="plan-row-main"
-                      role="button"
-                      tabIndex={0}
-                      aria-pressed={selected}
-                      aria-label={t('row.highlightAria', { ref: label })}
-                      aria-describedby={onScreen ? onScreenId : undefined}
-                      onFocus={() => onSelect(item.id)}
-                      onKeyDown={event => {
-                        if (event.key === ' ') {
-                          event.preventDefault()
-                          onSelect(item.id)
-                        }
-                      }}
-                    >
-                      <span className="plan-row-title" id={titleId}>
-                        {label}
-                      </span>
+                  <div
+                    className="plan-row-details"
+                    role="button"
+                    tabIndex={0}
+                    aria-pressed={selected}
+                    aria-label={t('row.highlightAria', { ref: label })}
+                    aria-describedby={describedBy || undefined}
+                    onFocus={() => onSelect(item.id)}
+                    onKeyDown={event => {
+                      if (event.key === ' ') {
+                        event.preventDefault()
+                        onSelect(item.id)
+                      }
+                    }}
+                  >
+                    <div className="plan-row-main">
+                      <span className="plan-row-title">{label}</span>
                       {onScreen && (
                         <span className="tag plan-row-onscreen" id={onScreenId}>
                           {t('plan.onScreen')}
                         </span>
                       )}
                     </div>
-                    {preview && <p className="ref-card-text plan-row-text">{preview}</p>}
+                    {preview && (
+                      <p className="ref-card-text plan-row-text" id={previewId}>
+                        {preview}
+                      </p>
+                    )}
                   </div>
                   <div className="plan-row-tools">
                     <RowRemoveButton
@@ -171,12 +188,6 @@ export function PlanPanel({
                       aria-label={t('plan.moveDown', { ref: label })}
                       disabled={index === items.length - 1}
                       onClick={() => onMove(item.id, 1)}
-                    />
-                    <RowShowButton
-                      titleId={titleId}
-                      highlighted={selected}
-                      disabled={!canShow}
-                      onClick={() => onShow(item)}
                     />
                   </div>
                 </li>

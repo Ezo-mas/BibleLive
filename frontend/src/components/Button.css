@@ -133,17 +133,6 @@
   --btn-bg-active: color-mix(in srgb, var(--color-text) 12%, var(--btn-bg));
 }
 
-/* On: the control stands for a state that is currently active (a secondary button
-   that opens the setting it reports, or the search result that was resolved). */
-.btn-secondary.is-on {
-  --btn-bg: var(--color-primary-subtle);
-  --btn-bg-hover: var(--color-primary-subtle);
-  --btn-bg-active: var(--color-primary-subtle);
-  --btn-fg: var(--accent-text);
-  --btn-border: var(--color-primary);
-  --btn-border-hover: var(--color-primary-hover);
-}
-
 /* Full width */
 .btn-full-width {
   width: 100%;

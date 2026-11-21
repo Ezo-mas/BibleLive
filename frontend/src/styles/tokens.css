@@ -290,6 +290,7 @@
   --color-success: #23734d;
   --color-success-text: #23734d;
   --color-warning-text: #866000;
+  --color-warning-banner-border: #e2c98d;
   --color-danger: #9e362d;
   --color-danger-text: #9e362d;
   --color-info-bg: #f0ede6;
@@ -322,6 +323,7 @@
   --color-success: #60cf85;
   --color-success-text: #60cf85;
   --color-warning-text: #f2cc52;
+  --color-warning-banner-border: #8a723f;
   --color-danger: #ff9f92;
   --color-danger-text: #ff9f92;
   --color-info-bg: #2e2b26;

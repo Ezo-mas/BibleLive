@@ -14,7 +14,7 @@ shared class instead of writing a one-off. Display page styling is separate
 | Buttons (`.btn` + variant + size) | `frontend/src/components/Button.css`, `Button.tsx` |
 | Segmented control (`.segmented`), text field (`.input`), tag (`.tag`) | `frontend/src/styles/controls.css` |
 | Badges, empty state | `frontend/src/components/*.css` |
-| Row buttons (Show and icon-only Remove) | `frontend/src/operator/components/RowButtons.tsx` |
+| Row buttons (icon-only Remove) | `frontend/src/operator/components/RowButtons.tsx` |
 | Layout and the console's own parts (header and its chips, the two cards, the panel, rows, dialog, search, settings rows) | `frontend/src/operator/styles/*.css` (base, header, layout, live-panel, side-panel, settings, scripture-search, settings-dialog, responsive) |
 
 ## Token-only rule
@@ -126,9 +126,9 @@ text-only warning chip sits next to the switch and describes it for screen reade
 Clear uses the subtle neutral button variant, the accessible name "Clear display"
 and the B shortcut. The switch is a ghost button with a filled gold dot and bold
 label when Live, and a hollow neutral dot and medium label when Off air. It has
-the shared hover fill and focus ring. Off air adds a warning ring (in
-`--color-warning-text`) around the preview, which continues to show the
-passage. Screen readers get "The audience sees a black screen". The switch is a
+the shared hover fill and focus ring. Off air, the preview keeps showing the
+passage, dimmed and grey but still readable, with no ring or tag. Screen
+readers get "The audience sees a black screen". The switch is a
 plain state-named button, not an `aria-pressed` toggle: its accessible name is
 "Live" or "Off air", and the hover title names the action, so off air it reads
 "Off air, button, Show the display to the audience again".
@@ -161,14 +161,14 @@ change colours, so every button in a row has the same size.
 
 | Variant | Look | Use |
 | --- | --- | --- |
-| `primary` | gold fill and darker edge | Show on the keyboard-selected row, Connect |
-| `secondary` | raised surface and neutral outline | Other Show buttons, Reconnect, Logout |
+| `primary` | gold fill and darker edge | Add to Plan in search, Connect |
+| `secondary` | raised surface and neutral outline | Reconnect, Logout |
 | `subtle` | neutral fill and transparent border | Clear display |
 | `danger` | raised surface with danger border and text | Remove the idle picture |
 | `ghost` | transparent at rest with hover fill | Settings, Live toggle, panel menus, row trash and reorder buttons, dialog close, toast dismiss |
 
-`is-on` on a secondary button marks an active state (the resolved search result);
-it uses `--color-primary-subtle` and a primary border. `iconOnly` gives a square
+The resolved search row surrounds the passage button and the + action with a
+`--color-primary-subtle` fill and a primary border. `iconOnly` gives a square
 button and needs an `aria-label`. Sizes (`--control-h-*`): `sm` 30px for dense rows
 (list-row buttons, banners, popover); `md` 36px is the default (header, the cards,
 dialogs); `lg` 44px for bars and the sign-in button. Use `<Button>`; only list-style
@@ -177,22 +177,22 @@ buttons with custom inner layout (search results) use the classes directly.
 ## Rows: Pending, History and Plan
 
 **One keyboard cursor.** A click on a row (anywhere but its buttons), or focus on it,
-highlights it and sends nothing; Enter, or the row's Show, displays it. There is one
+highlights it and sends nothing. Enter displays it. There is one
 highlighted row, in Pending or in Plan, whichever was last clicked or focused; ↑ ↓
 move it within that list, and focus moves with it so the row scrolls into view; Esc
 drops it. A new detection never takes it, and Enter does nothing while the highlighted
 row's tab is hidden (History open). History rows take no cursor. The highlighted row
 uses a light gold tint and a gold edge (`--color-primary-edge`); in dark mode the
 tint is fainter, so the row's muted text keeps its contrast.
-Its Show button uses a gold fill, and the other Show buttons use the thin
-neutral outline. The button label and size stay the same as the highlight moves.
 
 **Pending and History** use boxed rows with a reference, source or Context badge
 where applicable, and a muted excerpt clamped to two lines. Excerpts use the
-translation's punctuation. The footer puts the
-timestamp at the left and Show at the far right. Pending puts the trash icon beside
-the timestamp. Row trash buttons are neutral at rest and take the danger colour
-on hover.
+translation's punctuation. The footer shows the timestamp, with a trash icon
+beside it in Pending. Double-click a row to show it, or press Enter on the
+highlighted Pending row or focused History row. The footer in each tab shows
+the shortcut when it contains rows and the panel is hovered or contains keyboard
+focus. The hint stays visible on touch devices. A double-click doesn't select the
+word under the pointer; dragging still selects text.
 
 **Detection confidence** appears as a dashed edge for Low, including while
 selected. Medium and High use the regular row treatment. The word remains in the
@@ -204,9 +204,10 @@ Each position number sits on a neutral circle. The title sits above a one-line
 excerpt. The matching passage gets an On screen tag when the server reports
 an audience display connected.
 The excerpt can continue across verse boundaries and ends with an ellipsis when
-it runs out of room. The trash, reorder arrows and compact Show button form a
+it runs out of room. The trash and reorder arrows form a
 right-aligned group with equal spacing. The group drops below the excerpt on
-narrow cards. The controls stay in place as selection moves.
+narrow cards. Double-click a Plan row or press Enter on the highlighted passage to
+show it. The Plan header uses the same hover and focus behavior for its hint.
 
 ## Radius by element kind
 

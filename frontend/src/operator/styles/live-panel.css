@@ -202,6 +202,33 @@
   font-weight: var(--weight-bold);
 }
 
+/* The label and both state names, bold and hidden, share one grid cell, so the
+   switch has the same width in either state and language. */
+.operator-live-label {
+  display: inline-grid;
+  justify-items: start;
+}
+
+.operator-live-label > span,
+.operator-live-label::before,
+.operator-live-label::after {
+  grid-area: 1 / 1;
+}
+
+.operator-live-label::before,
+.operator-live-label::after {
+  font-weight: var(--weight-bold);
+  visibility: hidden;
+}
+
+.operator-live-label::before {
+  content: attr(data-on);
+}
+
+.operator-live-label::after {
+  content: attr(data-off);
+}
+
 .operator-live-switch .btn-icon {
   width: auto;
 }
@@ -219,8 +246,8 @@
 }
 
 /* Off air the preview keeps the passage, so the operator can check it, all of it
-   readable (citation included), inside a warning ring drawn over its edge. */
-.operator-monitor-wrap.is-off-air {
-  outline: var(--focus-ring-width) solid var(--color-warning-text);
-  outline-offset: calc(-1 * var(--focus-ring-width));
+   still readable (citation included), but dimmed and grey. */
+.operator-monitor-wrap.is-off-air .operator-monitor > * {
+  opacity: 0.45;
+  filter: grayscale(1);
 }

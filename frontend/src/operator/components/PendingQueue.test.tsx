@@ -56,7 +56,28 @@ describe('Pending row Remove', () => {
     expect(onSelect).not.toHaveBeenCalled()
   })
 
-  it('disables Remove while disconnected, like Show', () => {
+  it('a double-click shows the row without selecting a word; a single press still can', () => {
+    const onShow = vi.fn()
+    render(
+      <I18nProvider>
+        <PendingQueue
+          pending={[ref]}
+          selectedId={null}
+          onSelect={vi.fn()}
+          onShow={onShow}
+          onRemove={vi.fn()}
+        />
+      </I18nProvider>
+    )
+    const text = screen.getAllByText('Verse text')[0]
+    // fireEvent returns false when the handler called preventDefault.
+    expect(fireEvent.mouseDown(text, { detail: 1 })).toBe(true)
+    expect(fireEvent.mouseDown(text, { detail: 2 })).toBe(false)
+    fireEvent.doubleClick(text)
+    expect(onShow).toHaveBeenCalledExactlyOnceWith(ref.id)
+  })
+
+  it('disables Remove while disconnected', () => {
     const onRemove = vi.fn()
     render(
       <PendingQueue
@@ -169,7 +190,7 @@ describe('detection confidence on a Pending row', () => {
     ).toHaveAccessibleDescription(/Context.*Detection confidence: Low/)
     expect(
       screen.getByRole('button', { name: 'Mark 3:16 — highlight; Enter shows it' })
-    ).toHaveAccessibleDescription(/Manual/)
+    ).toHaveAccessibleDescription(/Search/)
   })
 
   it('a highlighted Low row is still the highlighted row', () => {

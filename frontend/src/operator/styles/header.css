@@ -157,7 +157,7 @@
   padding: var(--space-3) var(--space-6);
   background: var(--color-warning-bg);
   color: var(--color-warning-text);
-  border-bottom: var(--border-width) solid var(--color-border);
+  border-bottom: var(--border-width) solid var(--color-warning-banner-border);
   font-size: var(--font-size-sm);
 }
 

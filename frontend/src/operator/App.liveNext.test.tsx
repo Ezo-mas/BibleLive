@@ -84,17 +84,6 @@ function highlight(name: RegExp) {
   fireEvent.click(row(name))
 }
 
-/** The Show button on the pending row whose title matches. */
-function showOn(title: string) {
-  return screen
-    .getAllByRole('button', { name: 'Show' })
-    .find(button => button.getAttribute('aria-describedby') === titleId(title)) as HTMLElement
-}
-
-function titleId(title: string) {
-  return screen.getByRole('heading', { name: title }).id
-}
-
 function pressKey(key: string) {
   fireEvent.keyDown(window, { key })
 }
@@ -207,7 +196,7 @@ describe('the row cursor in Pending', () => {
     openWith({ pending: [] })
     const panel = within(screen.getByRole('tabpanel'))
     const empty = 'Detected references will appear here.'
-    const hint = '↑ ↓ to move · Enter shows'
+    const hint = '↑ ↓ to move · Double-click or Enter to show'
     const options = panel.getByRole('button', { name: 'Pending options' })
 
     expect(panel.getByText(empty)).toBeInTheDocument()
@@ -248,17 +237,12 @@ describe('the row cursor in Pending', () => {
     ).toBeInTheDocument()
   })
 
-  it("fills the highlighted row's Show with amber and keeps its label compact", () => {
+  it('highlights the selected row without an inline Show button', () => {
     openWith()
-
     highlight(/Romans 8:28/)
 
-    const selected = showOn('Romans 8:28')
-    const unselected = showOn('John 1:1')
-    expect(selected).toHaveClass('btn-primary')
-    expect(unselected).toHaveClass('btn-secondary')
-    expect(selected).toHaveTextContent(/^Show$/)
-    expect(unselected).toHaveTextContent(/^Show$/)
+    expect(row(/Romans 8:28/).closest('.ref-item')).toHaveClass('is-selected')
+    expect(screen.queryByRole('button', { name: 'Show' })).not.toBeInTheDocument()
   })
 
   it('Enter shows the highlighted detection, approved by its ID', () => {
@@ -311,21 +295,19 @@ describe('the row cursor in Pending', () => {
     expect(lastSent(socket)).toEqual({ action: 'approve', reference_id: 'p-1' })
   })
 
-  it("a double-click on Show approves one detection, not the next row's that slides under it", () => {
+  it('approves only the row that received both clicks', () => {
     openWith()
 
-    fireEvent.click(showOn('John 1:1'), { detail: 1 })
+    fireEvent.click(row(/John 1:1/), { detail: 1 })
+    expect(sentActions()).toEqual([])
+    fireEvent.click(row(/John 1:1/), { detail: 2 })
+    fireEvent.doubleClick(row(/John 1:1/))
     expect(sentActions()).toEqual([{ action: 'approve', reference_id: 'p-1' }])
     push(socket, { type: 'approval_confirmed', data: { reference: john } })
     push(socket, { type: 'pending_update', data: { pending: [romans], count: 1 } })
 
-    // The second click of the double-click lands on Romans' Show, now in John's place.
-    fireEvent.click(showOn('Romans 8:28'), { detail: 2 })
+    fireEvent.click(row(/Romans 8:28/), { detail: 2 })
     expect(sentActions()).toEqual([{ action: 'approve', reference_id: 'p-1' }])
-
-    // A fresh single click still shows it.
-    fireEvent.click(showOn('Romans 8:28'), { detail: 1 })
-    expect(sentActions().at(-1)).toEqual({ action: 'approve', reference_id: 'p-2' })
   })
 
   it('drops the highlight when its detection leaves the queue', () => {
@@ -392,10 +374,10 @@ describe('the row cursor in Pending', () => {
     expect(row(/Acts 2:38/)).toHaveAttribute('aria-pressed', 'false')
   })
 
-  it("a row's Show approves it at once, highlighted or not", () => {
+  it('double-click approves the clicked row, highlighted or not', () => {
     openWith()
 
-    fireEvent.click(showOn('John 1:1'))
+    fireEvent.doubleClick(row(/John 1:1/))
 
     expect(sentActions()).toEqual([{ action: 'approve', reference_id: 'p-1' }])
   })
@@ -417,15 +399,15 @@ describe('the row cursor in Pending', () => {
   it('a second Show while the first is in flight sends nothing more', () => {
     openWith()
 
-    fireEvent.click(showOn('John 1:1'))
-    fireEvent.click(showOn('Romans 8:28'))
+    fireEvent.doubleClick(row(/John 1:1/))
+    fireEvent.doubleClick(row(/Romans 8:28/))
     highlight(/Romans 8:28/)
     pressKey('Enter')
     expect(sentActions()).toEqual([{ action: 'approve', reference_id: 'p-1' }])
 
     // The confirmation frees the next Show.
     push(socket, { type: 'approval_confirmed', data: { reference: john } })
-    fireEvent.click(showOn('Romans 8:28'))
+    fireEvent.doubleClick(row(/Romans 8:28/))
     expect(lastSent(socket)).toEqual({ action: 'approve', reference_id: 'p-2' })
   })
 
@@ -437,14 +419,15 @@ describe('the row cursor in Pending', () => {
     expect(sentActions()).toEqual([{ action: 'discard_pending', reference_id: 'p-2' }])
   })
 
-  it('puts Remove before Show on the time line, Show right-most', () => {
+  it('puts only Remove beside the timestamp', () => {
     openWith()
 
-    const actions = showOn('Romans 8:28').closest('.ref-item-foot') as HTMLElement
+    const actions = row(/Romans 8:28/)
+      .closest('.ref-item')!
+      .querySelector<HTMLElement>('.ref-item-foot')!
     const buttons = within(actions).getAllByRole('button')
     expect(buttons.map(button => button.getAttribute('aria-label') ?? button.textContent)).toEqual([
       'Remove Romans 8:28 from the queue',
-      'Show',
     ])
     expect(actions.querySelector('time')?.nextElementSibling).toBe(buttons[0])
   })
@@ -466,7 +449,7 @@ describe('the row cursor in Pending', () => {
     })
     highlight(/Romans 8:28/)
 
-    expect(showOn('Romans 8:28')).toBeDisabled()
+    fireEvent.doubleClick(row(/Romans 8:28/))
     pressKey('Enter')
     expect(sentActions()).toEqual([])
   })

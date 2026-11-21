@@ -18,9 +18,11 @@ export interface ReferenceCardProps {
    * belongs to a detection, not to something that was shown.
    */
   showConfidence?: boolean
-  /** Remove sits beside the timestamp and Show uses the title as its description. */
+  /** Show on double-click, or from the focused card in History. */
+  onShow: () => void
+  showDisabled?: boolean
+  /** Remove sits beside the timestamp in Pending. */
   removeAction?: ReactNode
-  actions?: (titleId: string) => ReactNode
 }
 
 /** Confidence in plain words, as message keys. */
@@ -48,10 +50,8 @@ function arrivalTime(createdAt: string): { label: string; iso: string } | null {
 /**
  * A single reference tile. Pass `onSelect` to make it selectable: a pending row
  * takes the keyboard cursor that way (a click anywhere on the row but its buttons,
- * or focus, highlights it; Enter shows the highlighted row). History rows are not
- * selectable; they only have Show.
- *
- * The highlighted row takes a subtle tint and outline and its Show uses amber.
+ * or focus, highlights it; Enter shows the highlighted row). History rows replay
+ * with Enter while focused. Double-click shows a row in either list.
  *
  * Detection confidence is not a chip. A Low detection's row has a dashed edge;
  * Medium and High look the same. The word itself is the row's accessible description
@@ -65,11 +65,11 @@ export function ReferenceCard({
   selected = false,
   onSelect,
   showConfidence = true,
+  onShow,
+  showDisabled = false,
   removeAction,
-  actions,
 }: ReferenceCardProps) {
   const { t } = useI18n()
-  const titleId = useId()
   const confidenceId = useId()
   const badgesId = useId()
   const selectable = onSelect !== undefined
@@ -80,7 +80,7 @@ export function ReferenceCard({
       ? `${t('ref.confidenceSr')}${t(CONFIDENCE_LABELS[reference.confidence])}`
       : null
 
-  // The source badge: Followed, or Manual for a passage that was never a detection.
+  // The source badge: Followed, or Search for a passage that was never a detection.
   const sourceBadge =
     reference.source === 'follow'
       ? 'follow'
@@ -111,35 +111,53 @@ export function ReferenceCard({
             }
           : undefined
       }
+      // The second press of a double-click would select a word under the pointer;
+      // a drag still selects text.
+      onMouseDown={event => {
+        if (event.detail > 1) event.preventDefault()
+      }}
+      onDoubleClick={event => {
+        if (!showDisabled && !(event.target as Element).closest('button')) onShow()
+      }}
     >
       <div
         className={`ref-card ${selected ? 'ref-card-selected' : ''}`}
-        role={selectable ? 'button' : undefined}
-        tabIndex={selectable ? 0 : undefined}
+        role="button"
+        tabIndex={0}
         aria-pressed={selectable ? selected : undefined}
-        aria-label={
-          selectable ? t('row.highlightAria', { ref: formatReference(reference) }) : undefined
-        }
+        aria-disabled={!selectable && showDisabled ? true : undefined}
+        aria-label={t(selectable ? 'row.highlightAria' : 'history.replayAria', {
+          ref: formatReference(reference),
+        })}
         aria-describedby={describedBy}
-        // Focus is the keyboard's click: tabbing to a row highlights it, so Enter (the
-        // console's own shortcut) shows the row that has focus.
         onFocus={onSelect}
-        onKeyDown={
-          selectable
-            ? e => {
-                if (e.key === ' ') {
-                  e.preventDefault()
-                  onSelect?.()
-                }
-              }
-            : undefined
-        }
+        onKeyDown={event => {
+          if (selectable) {
+            if (event.key === ' ') {
+              event.preventDefault()
+              onSelect()
+            }
+            return
+          }
+          if (event.key !== 'Enter' && event.key !== ' ') return
+          // A focused History card owns activation even if Plan has a highlighted row.
+          event.preventDefault()
+          event.stopPropagation()
+          if (
+            !showDisabled &&
+            !event.repeat &&
+            !event.ctrlKey &&
+            !event.metaKey &&
+            !event.shiftKey &&
+            !event.altKey
+          ) {
+            onShow()
+          }
+        }}
       >
         <div className="ref-card-content">
           <div className="ref-card-header">
-            <h3 className="ref-card-title" id={titleId}>
-              {formatReference(reference)}
-            </h3>
+            <h3 className="ref-card-title">{formatReference(reference)}</h3>
             <div className="ref-card-badges" id={badgesId}>
               {sourceBadge === 'follow' ? (
                 <StatusBadge variant="info">
@@ -167,7 +185,7 @@ export function ReferenceCard({
       {/* Arrival order is the queue's order, and the clock reading on each card is
           what makes that order readable. Verse count is here too, so the operator
           knows what the display will be bounded to (`verses` is absent when talking
-          to an older server). The row's buttons share the line, Show right-most. */}
+          to an older server). */}
       <div className="ref-item-foot">
         <div className="ref-card-meta">
           {time && (
@@ -182,7 +200,6 @@ export function ReferenceCard({
             </span>
           )}
         </div>
-        {actions && <div className="ref-item-actions">{actions(titleId)}</div>}
       </div>
     </div>
   )
