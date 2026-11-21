@@ -29,11 +29,10 @@ html.stream-overlay-page #root {
   gap: 1.2vh;
   padding: 2.2vh 5vw;
   box-sizing: border-box;
-  opacity: 0;
-  transform: translateY(1.5vh);
-  transition:
-    opacity 0.4s ease,
-    transform 0.4s ease;
+  /* Which way the band drifts as it fades: up into a bottom band, down into a top
+     one. The travel splits like the time: a short drift out, a longer drift in. */
+  --stream-drift-in: 1.8vh;
+  --stream-drift-out: 1.2vh;
 }
 
 .stream-band--bottom {
@@ -42,12 +41,41 @@ html.stream-overlay-page #root {
 
 .stream-band--top {
   top: 0;
-  transform: translateY(-1.5vh);
+  --stream-drift-in: -1.8vh;
+  --stream-drift-out: -1.2vh;
 }
 
+/* Keyframes, not transitions: the band is mounted already visible when a passage
+   follows an empty screen, and only an animation fades in on mount. `both` holds
+   the faded-out frame until the content is swapped, so nothing flashes back. */
 .stream-band--visible {
-  opacity: 1;
-  transform: translateY(0);
+  animation: streamBandIn var(--enter-ms, 240ms) ease-out both;
+}
+
+.stream-band--hidden {
+  animation: streamBandOut var(--exit-ms, 160ms) ease-in both;
+}
+
+@keyframes streamBandIn {
+  from {
+    opacity: 0;
+    transform: translateY(var(--stream-drift-in));
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes streamBandOut {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(var(--stream-drift-out));
+  }
 }
 
 /* Dark translucent band: readable over any camera shot, still shows the room. */
@@ -113,9 +141,40 @@ html.stream-overlay-page #root {
   opacity: 0.75;
 }
 
+/* Sans verses (?font=sans): plainer letterforms read better small on a phone. */
+.stream-band--sans .stream-verses {
+  font-family: var(--font-sans);
+}
+
+/* Centred (?align=center): each verse is a centred paragraph with its number
+   inline, since a number column would sit far from centred lines. */
+.stream-band--center .stream-reference {
+  text-align: center;
+}
+
+.stream-band--center .stream-verses-inner {
+  display: block;
+  text-align: center;
+}
+
+.stream-band--center .stream-verse {
+  display: block;
+  margin: 0 0 0.35em;
+}
+
+.stream-band--center .stream-verse:last-child {
+  margin-bottom: 0;
+}
+
+.stream-band--center .stream-verse-number {
+  margin-right: 0.3em;
+  vertical-align: 0.35em;
+}
+
+/* Reduced motion: global.css makes the fade instant; no drift either way. */
 @media (prefers-reduced-motion: reduce) {
   .stream-band {
-    transition: opacity 0.15s ease;
-    transform: none;
+    --stream-drift-in: 0;
+    --stream-drift-out: 0;
   }
 }

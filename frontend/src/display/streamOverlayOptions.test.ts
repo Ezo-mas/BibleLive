@@ -1,10 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import {
   DEFAULT_HEIGHT_PCT,
+  DEFAULT_STREAM_OVERLAY_OPTIONS,
   fitVersesToBand,
   isStreamOverlay,
+  isStreamOverlayPreview,
   parseStreamOverlayOptions,
   streamFontBounds,
+  streamOverlayQuery,
 } from './streamOverlayOptions'
 
 describe('stream overlay options', () => {
@@ -20,6 +23,8 @@ describe('stream overlay options', () => {
       heightPct: DEFAULT_HEIGHT_PCT,
       position: 'bottom',
       style: 'band',
+      font: 'serif',
+      align: 'left',
     })
   })
 
@@ -28,6 +33,8 @@ describe('stream overlay options', () => {
       heightPct: 40,
       position: 'top',
       style: 'none',
+      font: 'serif',
+      align: 'left',
     })
   })
 
@@ -36,6 +43,37 @@ describe('stream overlay options', () => {
     expect(parseStreamOverlayOptions('?height=90').heightPct).toBe(60)
     expect(parseStreamOverlayOptions('?height=abc').heightPct).toBe(DEFAULT_HEIGHT_PCT)
     expect(parseStreamOverlayOptions('?position=left').position).toBe('bottom')
+  })
+
+  it('reads the font and alignment, defaulting to serif and left', () => {
+    expect(parseStreamOverlayOptions('?font=sans&align=center')).toMatchObject({
+      font: 'sans',
+      align: 'center',
+    })
+    expect(parseStreamOverlayOptions('?font=comic&align=right')).toMatchObject({
+      font: 'serif',
+      align: 'left',
+    })
+  })
+
+  it('builds a short link that reads back as the same options', () => {
+    expect(streamOverlayQuery(DEFAULT_STREAM_OVERLAY_OPTIONS)).toBe('?mode=obs')
+    const options = {
+      heightPct: 40,
+      position: 'top',
+      style: 'none',
+      font: 'sans',
+      align: 'center',
+    } as const
+    const query = streamOverlayQuery(options)
+    expect(query).toBe('?mode=obs&height=40&position=top&bg=none&font=sans&align=center')
+    expect(isStreamOverlay(query)).toBe(true)
+    expect(parseStreamOverlayOptions(query)).toEqual(options)
+  })
+
+  it('is the console preview only with preview=1', () => {
+    expect(isStreamOverlayPreview('?mode=obs&preview=1')).toBe(true)
+    expect(isStreamOverlayPreview('?mode=obs')).toBe(false)
   })
 
   it('never goes below a stream-readable size', () => {
