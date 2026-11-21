@@ -54,7 +54,7 @@ export const lt: Record<MessageKey, MessageEntry> = {
     'Garso įrašymas sustojo; garso apdorojimas bando jį paleisti iš naujo',
   'pipeline.issue.audio_stalled': 'Iš mikrofono garso nebegaunama jau {seconds} s',
   'pipeline.issue.mic_silent':
-    'Mikrofonas tyli: jau {seconds} s negirdėti jokio garso. Patikrinkite, ar pasirinktas tinkamas mikrofonas ir ar jis neišjungtas.',
+    'Iš mikrofono neaptikta garso jau {seconds} s. Patikrinkite, ar pasirinktas tinkamas mikrofonas ir ar jis įjungtas.',
   // Worded so the count needs no case agreement ("paskutiniuose 10 fragmentų" is wrong).
   'pipeline.issue.stt_failed': {
     one: 'Nepavykę kalbos atpažinimai iš eilės: {count}',
@@ -123,13 +123,13 @@ export const lt: Record<MessageKey, MessageEntry> = {
   'settings.sectionDisplay': 'Ekranas',
   'settings.sectionAudio': 'Garsas',
   'settings.sectionAuto': 'Automatinis patvirtinimas',
-  'settings.sectionShortcuts': 'Klaviatūros trumpiniai',
-  'settings.shortcutMove': 'Perkelti žymeklį laukiančiose arba plane',
+  'settings.sectionShortcuts': 'Klaviatūros spartieji klavišai',
+  'settings.shortcutMove': 'Pasirinkti kitą ištrauką laukiančiųjų sąraše arba plane',
   'settings.shortcutShow':
-    'Rodyti pažymėtą eilutę; ieškant Šventojo Rašto, rodyti geriausią rezultatą',
+    'Rodyti pasirinktą ištrauką. Istorijoje – rodyti ją dar kartą. Paieškoje – rodyti pirmą rezultatą.',
   'settings.shortcutCtrlEnter': 'Ieškant Šventojo Rašto, įtraukti ištrauką į planą',
   'settings.shortcutClear': 'Išvalyti ekraną',
-  'settings.shortcutEsc': 'Panaikinti žymeklį; kai atidarytas šis langas, jį uždaryti',
+  'settings.shortcutEsc': 'Atžymėti ištrauką arba uždaryti atidarytus nustatymus',
   'settings.versesAll': 'Visos',
   'settings.verseLimitHint': 'Daugiausia ištraukos eilučių, rodomų vienu metu.',
   'settings.background': 'Ekrano fonas',
@@ -147,27 +147,27 @@ export const lt: Record<MessageKey, MessageEntry> = {
   'settings.interfaceLanguage': 'Sąsajos kalba',
   'settings.interfaceEnglish': 'English',
   'settings.interfaceLithuanian': 'Lietuvių',
-  'settings.interfaceAuto': 'Auto',
+  'settings.interfaceAuto': 'Automatiškai',
   'settings.interfaceHint':
-    'Taikoma tik šiai naršyklei. Auto seka paleidimo programos nustatymą, o tada šio kompiuterio kalbą.',
-  'settings.spokenLanguage': 'Šnekamoji kalba',
+    'Pasirinkimas galioja tik šioje naršyklėje. Automatiškai parenkama paleidyklės kalba. Jei ji nenurodyta, naudojama naršyklės kalba.',
+  'settings.spokenLanguage': 'Atpažinimo kalba',
   'settings.switching': 'Keičiama…',
   'settings.checkAgain': 'Tikrinti dar kartą',
   'settings.checkingPipeline': 'Tikrinamas garso apdorojimas…',
   'settings.takesEffect':
-    'Veikia iš karto, be paleidimo iš naujo. Viskas, kas sakoma perjungimo metu, praleidžiama.',
+    'Kalba pakeičiama iš karto. Kol kalba keičiama, naujos nuorodos neaptinkamos.',
   'settings.bibleVersion': 'Biblijos vertimas',
   'settings.versionHint':
-    'Pagal nutylėjimą seka šnekamąją kalbą. Ekrane jau rodoma ištrauka lieka tokia pat.',
+    'Jei vertimo nepasirinkote, jis parenkamas pagal atpažinimo kalbą. Ekrane rodoma ištrauka nesikeičia.',
 
   // Languages, Bible versions, auto-approve
   'language.en': 'Anglų',
   'language.lt': 'Lietuvių',
-  'language.changeFailed': 'Šnekamosios kalbos pakeisti nepavyko.',
+  'language.changeFailed': 'Atpažinimo kalbos pakeisti nepavyko.',
   'language.controlFailed': 'Kalbos valdymas nepavyko (HTTP {status}).',
   'language.badReply': 'Serveris atsiuntė kalbos atsakymą, kurio konsolė neperskaitė.',
-  'language.readUnreachable': 'Nepavyko pasiekti serverio, kad nuskaitytų šnekamąją kalbą.',
-  'language.changeUnreachable': 'Nepavyko pasiekti serverio, kad pakeistų šnekamąją kalbą.',
+  'language.readUnreachable': 'Nepavyko sužinoti atpažinimo kalbos, nes serveris nepasiekiamas.',
+  'language.changeUnreachable': 'Nepavyko pakeisti atpažinimo kalbos, nes serveris nepasiekiamas.',
   'language.changed': 'Šnekamoji kalba: {language}',
   'version.kjv': 'King James (KJV)',
   'version.web': 'World English (WEB)',
@@ -212,9 +212,9 @@ export const lt: Record<MessageKey, MessageEntry> = {
   'auto.off': 'Išjungta',
   'auto.offDesc': 'Kiekviena nauja nuoroda laukia jūsų patvirtinimo.',
   'auto.high': 'Aukštas',
-  'auto.highDesc': 'Naujos aukšto tikrumo nuorodos iškart rodomos ekrane.',
+  'auto.highDesc': 'Iškart rodomos tik patikimiausios naujai aptiktos nuorodos.',
   'auto.mediumAndUp': 'Vid.+',
-  'auto.mediumAndUpDesc': 'Naujos vidutinio ir aukšto tikrumo nuorodos iškart rodomos ekrane.',
+  'auto.mediumAndUpDesc': 'Naujos vidutinio ir aukšto patikimumo nuorodos iškart rodomos ekrane.',
   'auto.all': 'Visos',
   'auto.allDesc': 'Kiekviena nauja nuoroda iškart rodoma ekrane.',
   'settings.followAuto': 'Automatiškai sekti skaitymą',
@@ -230,9 +230,9 @@ export const lt: Record<MessageKey, MessageEntry> = {
   'api.lookupUnreachable': 'Nepavyko pasiekti serverio, kad surastų tą ištrauką.',
 
   // Spoken-language status
-  'speech.status': 'Kalba: {language}',
-  'speech.inputLevels': 'įvestis {input} (pikas {peak})',
-  'speech.staleStatus': 'Kalba: {language}. Nuorodų aptikimas neveikia.',
+  'speech.status': 'Atpažinimo kalba: {language}',
+  'speech.inputLevels': 'Mikrofono lygis: {input} (didžiausias: {peak})',
+  'speech.staleStatus': 'Atpažinimo kalba: {language}. Nuorodų aptikimas neveikia.',
 
   // Stages and queue
   'stage.onDisplay': 'Ekrane',
@@ -254,7 +254,7 @@ export const lt: Record<MessageKey, MessageEntry> = {
   'stage.clear': 'Išvalyti',
   'quick.clearTitle': 'Išvalyti ekraną (B)',
   'source.manual': 'Paieška',
-  'queue.title': 'Laukiančios',
+  'queue.title': 'Laukia patvirtinimo',
   'queue.empty': 'Čia bus rodomos aptiktos nuorodos.',
   'queue.clear': 'Išvalyti eilę',
   'queue.options': 'Eilės parinktys',
@@ -294,12 +294,12 @@ export const lt: Record<MessageKey, MessageEntry> = {
   'quick.autoOn': 'Įjungta',
   'quick.autoOff': 'Išjungta',
   'quick.autoStatus': 'Automatinis patvirtinimas · {mode}',
-  'quick.autoHigh': 'Tik aukštas',
-  'quick.autoMedium': 'Vidutinis ir aukštas',
-  'quick.autoAll': 'Visi',
+  'quick.autoHigh': 'Tik patikimiausios nuorodos',
+  'quick.autoMedium': 'Vidutinio ir aukšto patikimumo nuorodos',
+  'quick.autoAll': 'Visos nuorodos',
 
   // Reference cards
-  'ref.confidenceSr': 'Aptikimo tikrumas: ',
+  'ref.confidenceSr': 'Aptikimo patikimumas: ',
   'ref.confidence.high': 'Aukštas',
   'ref.confidence.medium': 'Vidutinis',
   'ref.confidence.low': 'Žemas',
