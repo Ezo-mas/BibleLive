@@ -206,7 +206,7 @@ describe('history list', () => {
     const row = within(historyRow(/John 3:16/))
     expect(row.getByRole('button', { name: 'Show John 3:16 again' })).toBeInTheDocument()
     expect(row.queryByRole('button', { name: /^(Show|Remove)$/ })).not.toBeInTheDocument()
-    expect(historyPanel().getByText('Double-click or Enter to show again')).toBeInTheDocument()
+    expect(historyPanel().getByText('Double-click / Enter to show again')).toBeInTheDocument()
 
     // A click on the row selects nothing and sends nothing.
     fireEvent.click(row.getByText('John 3:16'))

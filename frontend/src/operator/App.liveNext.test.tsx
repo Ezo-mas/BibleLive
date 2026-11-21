@@ -196,7 +196,7 @@ describe('the row cursor in Pending', () => {
     openWith({ pending: [] })
     const panel = within(screen.getByRole('tabpanel'))
     const empty = 'Detected references will appear here.'
-    const hint = '↑ ↓ to move · Double-click or Enter to show'
+    const hint = '↑ ↓ move · Double-click / Enter to show'
     const options = panel.getByRole('button', { name: 'Pending options' })
 
     expect(panel.getByText(empty)).toBeInTheDocument()

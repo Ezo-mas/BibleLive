@@ -79,9 +79,6 @@ export function PlanPanel({
           <span className="operator-section-count">{items.length}</span>
         </div>
         <span className="operator-card-grow" />
-        {items.length > 0 && canShow && (
-          <span className="operator-queue-hint">{t('plan.showHint')}</span>
-        )}
         <PanelMenu
           label={t('plan.options')}
           placement="beside"

@@ -76,14 +76,6 @@
   color: var(--color-text-muted);
 }
 
-/* Keep the shortcut available as the operator approaches the rows, without
-   leaving instructions in both panels while they work elsewhere. */
-@media (hover: hover) and (pointer: fine) {
-  :is(.operator-plan, .operator-pending):not(:hover):not(:focus-within) .operator-queue-hint {
-    opacity: 0;
-  }
-}
-
 .operator-auto-status {
   flex: none;
   padding: var(--space-1) var(--card-pad);

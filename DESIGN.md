@@ -189,9 +189,9 @@ tint is fainter, so the row's muted text keeps its contrast.
 where applicable, and a muted excerpt clamped to two lines. Excerpts use the
 translation's punctuation. The footer shows the timestamp, with a trash icon
 beside it in Pending. Double-click a row to show it, or press Enter on the
-highlighted Pending row or focused History row. The footer in each tab shows
-the shortcut when it contains rows and the panel is hovered or contains keyboard
-focus. The hint stays visible on touch devices. A double-click doesn't select the
+highlighted Pending row or focused History row. While a tab has rows, its footer
+keeps a short, muted shortcut hint ("Double-click / Enter to show") in view; it never
+fades or moves. A double-click doesn't select the
 word under the pointer; dragging still selects text.
 
 **Detection confidence** appears as a dashed edge for Low, including while
@@ -207,7 +207,8 @@ The excerpt can continue across verse boundaries and ends with an ellipsis when
 it runs out of room. The trash and reorder arrows form a
 right-aligned group with equal spacing. The group drops below the excerpt on
 narrow cards. Double-click a Plan row or press Enter on the highlighted passage to
-show it. The Plan header uses the same hover and focus behavior for its hint.
+show it. Plan has no hint of its own: the keys work the same in both lists, and the
+Pending footer names them.
 
 ## Radius by element kind
 

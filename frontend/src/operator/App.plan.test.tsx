@@ -400,13 +400,13 @@ describe('the cursor in the plan', () => {
     expect(rowHandle('Psalms 23:1-6')).toHaveAttribute('aria-pressed', 'true')
   })
 
-  it('shows the double-click and Enter hint when the plan has rows', () => {
+  it('has no Show button and no hint of its own (the Pending footer names the keys)', () => {
     seedPlan(seeded)
     openWith()
 
     fireEvent.click(rowHandle('John 3:16'))
 
-    expect(planPanel().getByText('Double-click or Enter to show')).toBeInTheDocument()
+    expect(planPanel().queryByText(/Double-click/)).not.toBeInTheDocument()
     expect(planPanel().queryByRole('button', { name: 'Show' })).not.toBeInTheDocument()
   })
 
