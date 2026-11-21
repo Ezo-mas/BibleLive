@@ -27,9 +27,10 @@ shared class instead of writing a one-off. Display page styling is separate
   The only literal sizes left across `frontend/src/operator/styles/*.css` are layout dimensions (column
   widths, card min-heights, breakpoints).
 - A new palette is a swap of the values in `tokens.css`: the light and dark theme
-  blocks plus the two console blocks (`.operator-app`, dark variant) at the end.
-  The console is amber on warm grey; amber is the primary action, the highlighted row
-  (the keyboard cursor), the follow-along tint and the On screen tag, and nothing else
+  blocks plus the console blocks at the end (`.operator-app`, its dark variant, and
+  the header band scope). The console uses the launcher's warm palette; gold
+  (`#f7bc62`) is the primary action, the highlighted row (the keyboard cursor), the
+  follow-along tint and the On screen tag, and nothing else
   is a hue except the danger Remove and the warning chips and ring.
 - Every change must work in light and dark (`useTheme`, `data-theme`). Check both.
 - WCAG AA contrast, visible focus (the global `:focus-visible` ring, drawn in
@@ -98,7 +99,10 @@ under its 160px floor, below which the column scrolls instead.
 One slim bar: the brand, the Find Scripture command bar, then at the right the
 Connecting warning, Speech and Settings (and Logout when a token is in use).
 The brand and right controls keep their intrinsic width while Find Scripture
-shrinks. At 800px and below, search moves to its own row.
+shrinks. At 800px and below, search moves to its own row. In both themes the bar
+is a dark band (`#221e1a`) with light text, a dark search field (`#2f2a24`) and a
+gold focus ring (`#ffc879`); the search results and the action feedback that hang
+from it keep the page's colours.
 
 - **Operator connection.** The warning chip says "Connectingâ€¦" during the first
   connection or a manual Reconnect. The banner below the bar reports a closed
@@ -120,7 +124,7 @@ The On display header holds Clear and the Live / Off air switch. When the
 connected server confirms zero audience displays, a "No display connected"
 text-only warning chip sits next to the switch and describes it for screen readers.
 Clear uses the subtle neutral button variant, the accessible name "Clear display"
-and the B shortcut. The switch is a ghost button with a filled amber dot and bold
+and the B shortcut. The switch is a ghost button with a filled gold dot and bold
 label when Live, and a hollow neutral dot and medium label when Off air. It has
 the shared hover fill and focus ring. Off air adds a warning ring (in
 `--color-warning-text`) around the preview, which continues to show the
@@ -157,7 +161,7 @@ change colours, so every button in a row has the same size.
 
 | Variant | Look | Use |
 | --- | --- | --- |
-| `primary` | amber fill and darker edge | Show on the keyboard-selected row, Connect |
+| `primary` | gold fill and darker edge | Show on the keyboard-selected row, Connect |
 | `secondary` | raised surface and neutral outline | Other Show buttons, Reconnect, Logout |
 | `subtle` | neutral fill and transparent border | Clear display |
 | `danger` | raised surface with danger border and text | Remove the idle picture |
@@ -178,9 +182,9 @@ highlighted row, in Pending or in Plan, whichever was last clicked or focused; â
 move it within that list, and focus moves with it so the row scrolls into view; Esc
 drops it. A new detection never takes it, and Enter does nothing while the highlighted
 row's tab is hidden (History open). History rows take no cursor. The highlighted row
-uses a light amber tint and an amber edge (`--color-primary-edge`); in dark mode the
+uses a light gold tint and a gold edge (`--color-primary-edge`); in dark mode the
 tint is fainter, so the row's muted text keeps its contrast.
-Its Show button uses an amber fill, and the other Show buttons use the thin
+Its Show button uses a gold fill, and the other Show buttons use the thin
 neutral outline. The button label and size stay the same as the highlight moves.
 
 **Pending and History** use boxed rows with a reference, source or Context badge

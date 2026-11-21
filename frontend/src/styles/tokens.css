@@ -241,95 +241,122 @@
 
 /* Operator console palette
 
-   The console has its own palette: amber on warm grey, set by overriding the
+   The console has its own palette: the launcher's warm palette, set by overriding the
    semantic tokens on the console root. Everything built on those tokens (buttons,
    the settings dialog, badges) follows without knowing, and the audience display
    keeps its own tokens untouched. The display preview and the stages carry a
    `data-theme` attribute of their own, which re-applies the display's tokens to
-   them, so a preview is drawn in exactly the colours the projector uses. Amber is
+   them, so a preview is drawn in exactly the colours the projector uses. Gold is
    the primary action and "this is on air" (the Live dot); the detection-confidence
    chips are the only other hues (success, warning, danger).
 
-   Retheming the console means editing these two blocks and nothing else: no raw
-   colour appears in operator.css, controls.css or the component CSS. The
-   console-only surface tokens are:
+   Retheming the console means editing these blocks (light, dark and the header
+   band) and nothing else: no raw colour appears in operator.css, controls.css or
+   the component CSS. The console-only surface tokens are:
      --app-bg       page background
-     --panel-bg     panels, header, dialog
+     --panel-bg     panels and dialog (the header has its own scope)
      --card-bg      raised surface on a panel (list items, hovered rows)
      --accent-text  the accent as text (AA contrast on --panel-bg and the subtle fill)
-   `--color-text-inverse` is the text colour on a primary (amber) fill in both
+   `--color-text-inverse` is the text colour on a primary (gold) fill in both
    themes. The tinted backgrounds are mixed from the hue and the surface, so a new
    hue only needs its one colour changed. */
 .operator-app,
-.operator-auth-container {
-  --app-bg: #f4f2ee;
-  --panel-bg: #f9f8f5;
-  --card-bg: #fcfbf9;
-  --accent-text: #6e4a00;
+.operator-auth-container,
+.operator-header .operator-search-drop,
+.operator-header .operator-feedback {
+  --app-bg: #f3efe8;
+  --panel-bg: #fffdfa;
+  --card-bg: #ffffff;
+  --accent-text: #8b5915;
 
   --font-sans:
     'Segoe UI Variable Text', 'Segoe UI', system-ui, -apple-system, Roboto, 'Helvetica Neue', Arial,
     sans-serif;
 
-  --color-canvas: #f4f2ee;
-  --color-surface: #f9f8f5;
-  --color-surface-raised: #fcfbf9;
-  --color-surface-overlay: #fcfbf9;
-  --color-surface-muted: #e8e5de;
-  --color-text: #1d1c1a;
-  --color-text-secondary: #46433d;
-  --color-text-muted: #5f5b53;
-  --color-text-inverse: #1a1303;
-  --color-border: #c9c3b6;
-  --color-border-strong: #8d887d;
-  --color-border-focus: #6e4a00;
-  --color-primary: #e9a919;
-  --color-primary-subtle: #f8ecc9;
-  --color-success: #166d3f;
-  --color-success-text: #166d3f;
-  --color-warning-text: #7a5200;
-  --color-danger: #b3261e;
-  --color-danger-text: #b3261e;
-  --color-info-bg: #e8e5de;
-  --color-info-text: #46433d;
+  --color-canvas: #f3efe8;
+  --color-surface: #fffdfa;
+  --color-surface-raised: #ffffff;
+  --color-surface-overlay: #ffffff;
+  --color-surface-muted: #f0ede6;
+  --color-text: #231f19;
+  --color-text-secondary: #625b50;
+  --color-text-muted: #6e665a;
+  --color-text-inverse: #231f19;
+  --color-border: #ded8ce;
+  --color-border-strong: #91887a;
+  --color-border-focus: #7d510a;
+  --color-primary: #f7bc62;
+  --color-primary-subtle: #fbe8c8;
+  --color-success: #23734d;
+  --color-success-text: #23734d;
+  --color-warning-text: #866000;
+  --color-danger: #9e362d;
+  --color-danger-text: #9e362d;
+  --color-info-bg: #f0ede6;
+  --color-info-text: #625b50;
 }
 
 [data-theme='dark'] .operator-app,
-[data-theme='dark'] .operator-auth-container {
-  --app-bg: #222220;
-  --panel-bg: #292927;
-  --card-bg: #30302d;
-  --accent-text: #f7cf6a;
+[data-theme='dark'] .operator-auth-container,
+[data-theme='dark'] .operator-header .operator-search-drop,
+[data-theme='dark'] .operator-header .operator-feedback {
+  --app-bg: #1c1b19;
+  --panel-bg: #24221f;
+  --card-bg: #2a2824;
+  --accent-text: #f7bc62;
 
-  --color-canvas: #222220;
-  --color-surface: #292927;
-  --color-surface-raised: #30302d;
-  --color-surface-overlay: #30302d;
-  --color-surface-muted: #3a3a36;
-  --color-text: #f1efe9;
-  --color-text-secondary: #cbc8bd;
-  --color-text-muted: #a9a699;
-  --color-text-inverse: #1a1303;
-  --color-border: #403f3b;
-  --color-border-strong: #8a877d;
-  --color-border-focus: #f0b429;
-  --color-primary: #f0b429;
-  --color-primary-subtle: #463a14;
-  --color-success: #5fd38d;
-  --color-success-text: #5fd38d;
-  --color-warning-text: #f2c04d;
-  --color-danger: #f2837a;
-  --color-danger-text: #f2837a;
-  --color-info-bg: #3a3a36;
-  --color-info-text: #cbc8bd;
+  --color-canvas: #1c1b19;
+  --color-surface: #24221f;
+  --color-surface-raised: #2a2824;
+  --color-surface-overlay: #2a2824;
+  --color-surface-muted: #2e2b26;
+  --color-text: #faf2e4;
+  --color-text-secondary: #bdb2a1;
+  --color-text-muted: #a59a8a;
+  --color-text-inverse: #231f19;
+  --color-border: #403a32;
+  --color-border-strong: #7d7264;
+  --color-border-focus: #ffc879;
+  --color-primary: #f7bc62;
+  --color-primary-subtle: #3e311e;
+  --color-success: #60cf85;
+  --color-success-text: #60cf85;
+  --color-warning-text: #f2cc52;
+  --color-danger: #ff9f92;
+  --color-danger-text: #ff9f92;
+  --color-info-bg: #2e2b26;
+  --color-info-text: #bdb2a1;
+}
+
+/* The header is a dark band in both themes; its popovers restore page tokens.
+   The scope covers only the tokens something in the header uses today. Others
+   (accent, danger and success text, the subtle fill, and the derived tints, which
+   are mixed once on .operator-app) still carry page values here, so give anything
+   new in the header that uses them a band value first. */
+.operator-app .operator-header {
+  --panel-bg: #221e1a;
+  --color-canvas: #2f2a24;
+  --color-surface: #221e1a;
+  --color-surface-raised: #2f2a24;
+  --color-surface-muted: #42382f;
+  --color-text: #fbf2e3;
+  --color-text-secondary: #d0c1ae;
+  --color-text-muted: #d0c1ae;
+  --color-border: #42382f;
+  --color-border-strong: #8f8070;
+  --color-border-focus: #ffc879;
+  --color-warning-text: #f2cc52;
+  --color-warning-bg: color-mix(in srgb, var(--color-warning-text) 14%, var(--color-surface));
 }
 
 /* Derived tokens: the same recipe in both themes, from the colours above. */
 .operator-app,
-.operator-auth-container {
+.operator-auth-container,
+.operator-header .operator-search-drop,
+.operator-header .operator-feedback {
   --color-primary-hover: color-mix(in srgb, var(--color-primary) 88%, var(--color-text));
   --color-primary-active: color-mix(in srgb, var(--color-primary) 76%, var(--color-text));
-  --color-primary-edge: color-mix(in srgb, var(--color-primary) 70%, var(--color-text));
+  --color-primary-edge: color-mix(in srgb, var(--color-primary) 65%, var(--color-text));
   --color-danger-hover: color-mix(in srgb, var(--color-danger) 85%, var(--color-text));
   --color-danger-bg: color-mix(in srgb, var(--color-danger) 12%, var(--color-surface));
   --color-success-bg: color-mix(in srgb, var(--color-success) 14%, var(--color-surface));
