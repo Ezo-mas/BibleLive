@@ -30,6 +30,26 @@ from .state import AppState
 logger = logging.getLogger(__name__)
 
 
+class _LevelAccessFilter(logging.Filter):
+    """Keep routine meter posts from crowding out useful access records."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        # Both uvicorn HTTP protocols pass (client, method, path, version, status).
+        if not isinstance(record.args, tuple) or len(record.args) != 5:
+            return True
+        _, method, path, _, status = record.args
+        return not (
+            method == "POST"
+            and isinstance(path, str)
+            and path.partition("?")[0] == pipeline.LEVELS_PATH
+            and isinstance(status, int)
+            and 200 <= status < 300
+        )
+
+
+_level_access_filter = _LevelAccessFilter()
+
+
 def create_bible_lookup(db_path: str | None = None) -> BibleLookup:
     """Create and initialize a BibleLookup instance.
 
@@ -74,6 +94,7 @@ def create_app(bible_lookup: BibleLookup | None = None) -> FastAPI:
     # A client that still puts the operator token in the URL (``?token=``, no
     # longer accepted) would otherwise have it written to the log by uvicorn.
     install_token_redaction()
+    logging.getLogger("uvicorn.access").addFilter(_level_access_filter)
 
     injected_lookup = bible_lookup is not None
     if bible_lookup is None:

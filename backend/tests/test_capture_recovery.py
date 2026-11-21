@@ -12,6 +12,7 @@ import threading
 import time
 from queue import Queue
 from types import SimpleNamespace
+from unittest.mock import Mock
 
 import pytest
 from processor_factory import make_processor
@@ -191,6 +192,8 @@ def _processor(capture, **config) -> BibleLiveAudioProcessor:
 
 def test_restart_queues_the_utterance_in_progress_and_restarts_capture():
     proc = _processor(_FlakyCapture(), capture_restart_base_delay=0.0)
+    meter = Mock()
+    proc.level_sender = meter
     for _ in range(20):  # 0.6 s of speech, cut off by the failure
         proc.segmenter.push(b"\0" * FRAME_BYTES)
 
@@ -201,6 +204,7 @@ def test_restart_queues_the_utterance_in_progress_and_restarts_capture():
     assert proc.audio_capture.failed is False
     assert proc.metrics.capture_failures == 1
     assert proc.metrics.capture_restarts == 1
+    meter.reset_capture.assert_called_once_with()
 
 
 def test_silence_clock_restarts_with_the_stream():

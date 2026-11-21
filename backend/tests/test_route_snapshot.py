@@ -28,6 +28,7 @@ EXPECTED = [
     ("/api/language", ("POST",), True),
     ("/api/lookup", ("GET",), True),
     ("/api/pipeline/heartbeat", ("POST",), True),
+    ("/api/pipeline/levels", ("POST",), True),
     ("/api/pipeline/status", ("GET",), True),
     ("/api/reference", ("POST",), True),
     ("/api/state", ("GET",), True),

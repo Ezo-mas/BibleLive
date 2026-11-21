@@ -5,6 +5,7 @@ import threading
 import time
 from array import array
 from types import SimpleNamespace
+from unittest.mock import Mock, call
 
 import pytest
 import requests
@@ -139,6 +140,49 @@ def test_frames_arriving_clear_a_stall():
     proc.is_running = True
 
     assert proc.health_report()["problems"] == []
+
+
+def test_capture_loop_feeds_the_level_sender_and_segmenter_the_same_frames():
+    frames = [b"\0" * 960, b"\1" * 960]
+    meter = Mock()
+    capture = Mock(get_audio_frame=Mock(side_effect=frames))
+    proc = make_processor(is_running=True, audio_capture=capture, level_sender=meter)
+
+    def push(frame):
+        if frame is frames[-1]:
+            proc.is_running = False
+
+    proc.segmenter = Mock(push=Mock(side_effect=push))
+    proc._vad_loop()
+
+    assert meter.mock_calls == [call.reset_capture(), *(call.note_frame(frame) for frame in frames)]
+    assert proc.segmenter.push.call_args_list == [call(frame) for frame in frames]
+
+
+@pytest.mark.parametrize("startup_fails", [False, True])
+def test_pipeline_stops_level_sender_on_stop_or_rollback(monkeypatch, startup_fails):
+    monkeypatch.setattr("audio.pipeline.threading.Thread", Mock(return_value=Mock()))
+    meter = Mock()
+    heartbeat = Mock()
+    proc = make_processor(
+        config=AudioPipelineConfig(control_enabled=False),
+        audio_capture=Mock(),
+        level_sender=meter,
+        heartbeat=heartbeat,
+        sender=Mock(),
+        transcript_sender=Mock(),
+    )
+
+    if startup_fails:
+        heartbeat.start.side_effect = RuntimeError("startup failed")
+        with pytest.raises(RuntimeError, match="startup failed"):
+            proc.start()
+    else:
+        proc.start()
+        proc.stop()
+
+    assert meter.mock_calls == [call.start(), call.stop()]
+    assert not proc.is_running
 
 
 def test_transcription_errors_are_counted_until_one_succeeds():

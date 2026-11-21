@@ -26,6 +26,8 @@ backend/
     segmenter.py   VAD frames → utterances; shared by pipeline.py and the benchmark
     capture_supervisor.py  Capture recovery, watchdog and microphone health (VAD thread)
     health.py      Heartbeat report construction from pipeline and capture state
+    levels.py      Shared PCM peak calculation for the pipeline and launcher
+    level_sender.py  Live microphone peak accumulation and background delivery
     detector.py    Transcription → references; shared by pipeline.py, benchmark and session replay
     partials.py    partial transcripts for follow-along (schedule, mailbox, grow/chunk); shared with the benchmark
   scripts/         DB import / maintenance scripts

@@ -86,6 +86,7 @@ describe('checked-in protocol fixtures', () => {
       'follow_along',
       'follow_auto_confirmed',
       'history_cleared',
+      'input_levels',
       'pending_cleared',
       'pending_update',
       'state_snapshot',

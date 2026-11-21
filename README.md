@@ -405,6 +405,7 @@ in `%APPDATA%\BibleLive\logs\sessions`.
 | POST   | `/api/transcript`   | Audio pipeline transcript line, used only for follow-along suggestions; not stored; the reply's `follow_along_active` says whether to keep sending partial transcripts (token when auth is on) |
 | POST   | `/api/pipeline/heartbeat` | Audio pipeline health report, sent every 5 s; optional `version` stamp; 200 reply `{"bible_version": "<id>"}` (or `null`), followed by the pipeline when available locally (token when auth is on) |
 | GET    | `/api/pipeline/status` | Pipeline health for the operator console: `unknown`, `ok`, `degraded` (with problems), or `offline` after three missed reports (requires auth if enabled) |
+| POST   | `/api/pipeline/levels` | Forward 1–20 normalized 50 ms microphone peaks (`{"levels": [...]}`) to operator consoles, 204 response (token when auth is on) |
 | GET    | `/healthz`          | Liveness probe: `{"status": "healthy", "version": "<stamp>"}` |
 | GET    | `/readyz`           | Readiness probe (database + frontend built checks) |
 
@@ -425,7 +426,7 @@ A missing local translation keeps the previous validator and reports
   `approval_confirmed`, `clear_confirmed`, `pending_cleared`, `history_cleared`, `state_snapshot`,
   `auto_mode_confirmed`, `follow_auto_confirmed`, `display_settings_confirmed`,
   `bible_version_confirmed` (`{version, available}`), `display_confirmed`,
-  `follow_along`, `error`, and `connection_status`
+  `follow_along`, `input_levels` (`{levels}`, transient 50 ms microphone peaks), `error`, and `connection_status`
   events; they send these actions:
   - `{action: 'authenticate', token}` — first, when authentication is enabled
     (ignored otherwise)

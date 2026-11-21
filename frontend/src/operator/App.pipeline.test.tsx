@@ -1,9 +1,10 @@
+import { readFileSync } from 'node:fs'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, render, screen } from '@testing-library/react'
 import App from './App'
 import { PIPELINE_POLL_MS } from './hooks/usePipelineStatus'
 import type { PipelineStatus } from '../shared/types'
-import { createMockSocket } from '../test/operatorHarness'
+import { createMockSocket, push } from '../test/operatorHarness'
 import type { MockSocket } from '../test/operatorHarness'
 
 const created: MockSocket[] = []
@@ -19,6 +20,14 @@ const MockWebSocket = Object.assign(
 
 function latest() {
   return created[created.length - 1]
+}
+
+function sendLevels(...levels: number[]) {
+  push(latest(), { type: 'input_levels', data: { levels } })
+}
+
+function bars() {
+  return [...document.querySelectorAll<HTMLElement>('.operator-input-meter-bar')]
 }
 
 /** Answers for /api/pipeline/status, served in order; the last one repeats. */
@@ -154,6 +163,9 @@ describe('speech detection status', () => {
     const stale = screen.getByTitle(/speech detection is not running/i)
     expect(stale).toHaveClass('operator-language-status--stale')
     expect(stale.querySelector('.sr-only')).toHaveTextContent(/speech detection is not running/i)
+    sendLevels(1, 1, 1, 1)
+    expect(stale.querySelectorAll('svg line')).toHaveLength(5)
+    expect(bars()).toHaveLength(0)
 
     await act(async () => {
       await vi.advanceTimersByTimeAsync(PIPELINE_POLL_MS)
@@ -162,6 +174,119 @@ describe('speech detection status', () => {
     const live = screen.getByTitle('Speech: English')
     expect(live).not.toHaveClass('operator-language-status--stale')
     expect(live.querySelector('.sr-only')).toHaveTextContent('Speech: English')
+  })
+
+  it('scrolls real peaks in four-sample windows and clears them after a gap', async () => {
+    await renderConnected()
+    sendLevels(0.08, 0.5, 0.2)
+    expect(bars()).toHaveLength(5)
+    expect(bars().map(bar => bar.dataset.zone)).toEqual(Array(5).fill('quiet'))
+
+    sendLevels(0.1, 0.6, 0.45, 0.75, 0.5, 0.9, 0.1, 0.5, 0.2)
+    expect(bars()[4]).toHaveStyle({ transform: 'scaleY(0.5)' })
+    act(() => vi.advanceTimersByTime(199))
+    expect(bars()[4]).toHaveStyle({ transform: 'scaleY(0.5)' })
+    act(() => vi.advanceTimersByTime(1))
+    expect(bars()[4]).toHaveStyle({ transform: 'scaleY(0.75)' })
+    act(() => vi.advanceTimersByTime(200))
+    expect(bars().map(bar => bar.style.transform)).toEqual([
+      'scaleY(0.18)',
+      'scaleY(0.18)',
+      'scaleY(0.5)',
+      'scaleY(0.75)',
+      'scaleY(0.9)',
+    ])
+    expect(bars().map(bar => bar.dataset.zone)).toEqual([
+      'quiet',
+      'quiet',
+      'green',
+      'yellow',
+      'red',
+    ])
+    expect(bars()[0].parentElement).toHaveAttribute('aria-hidden', 'true')
+
+    act(() => vi.advanceTimersByTime(1099))
+    expect(bars()[4]).toHaveStyle({ transform: 'scaleY(0.9)' })
+    act(() => vi.advanceTimersByTime(2))
+    expect(bars().map(bar => bar.style.transform)).toEqual(Array(5).fill('scaleY(0.18)'))
+  })
+
+  it('updates the badge without rebinding the console keyboard shortcuts', async () => {
+    await renderConnected()
+    const addListener = vi.spyOn(window, 'addEventListener')
+
+    sendLevels(0, 0, 0, 0, 0.75, 0, 0, 0)
+    expect(screen.getByTitle('Speech: English · input -∞ (peak -15 dB)')).toBeInTheDocument()
+    act(() => vi.advanceTimersByTime(200))
+    expect(bars()[4]).toHaveStyle({ transform: 'scaleY(0.75)' })
+    sendLevels(0, 0, 0, 0)
+    expect(bars()[4]).toHaveStyle({ transform: 'scaleY(0.18)' })
+
+    expect(addListener.mock.calls.filter(([event]) => event === 'keydown')).toHaveLength(0)
+  })
+
+  it('uses the launcher silence reading for both tooltip values at zero', async () => {
+    await renderConnected()
+    sendLevels(0, 0, 0, 0)
+    expect(screen.getByTitle('Speech: English · input -∞ (peak -∞)')).toBeInTheDocument()
+  })
+
+  it('discards level history and partial windows across a socket reconnect', async () => {
+    await renderConnected()
+    const original = latest()
+    sendLevels(0.75, 0, 0, 0, 0.9, 0, 0, 0, 1)
+    expect(bars()[4]).toHaveStyle({ transform: 'scaleY(0.75)' })
+
+    act(() => original.onclose?.({ code: 1006 }))
+    expect(bars()).toHaveLength(0)
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(3000)
+      expect(latest()).not.toBe(original)
+      latest().onopen?.()
+    })
+    push(original, { type: 'input_levels', data: { levels: [1, 1, 1, 1] } })
+    expect(bars()).toHaveLength(0)
+
+    sendLevels(0.5, 0, 0)
+    expect(bars().map(bar => bar.style.transform)).toEqual(Array(5).fill('scaleY(0.18)'))
+    sendLevels(0)
+    expect(bars()[4]).toHaveStyle({ transform: 'scaleY(0.5)' })
+  })
+
+  it('throttles the tooltip and leaves the screen-reader label steady', async () => {
+    await renderConnected()
+    sendLevels(0.1, 0.75, 0.4, 0.5)
+    const badge = screen.getByTitle('Speech: English · input -30 dB (peak -15 dB)')
+    sendLevels(0.8, 0, 0, 0.25)
+    expect(badge).toHaveAttribute('title', 'Speech: English · input -30 dB (peak -15 dB)')
+    act(() => vi.advanceTimersByTime(500))
+    sendLevels(0, 0, 0, 0.5)
+    act(() => vi.advanceTimersByTime(500))
+    sendLevels(0, 0, 0, 0.25)
+    expect(badge).toHaveAttribute('title', 'Speech: English · input -45 dB (peak -12 dB)')
+    expect(badge.querySelector('.sr-only')).toHaveTextContent('Speech: English')
+    expect(badge.querySelector('[aria-live]')).toBeNull()
+  })
+
+  it('marks the badge when pipeline health reports a silent microphone', async () => {
+    statuses = [
+      pipeline({
+        status: 'degraded',
+        issues: [{ code: 'mic_silent', params: { seconds: 35 }, text: 'Silent microphone' }],
+      }),
+    ]
+    await renderConnected()
+    const badge = screen.getByTitle('Speech: English')
+    expect(badge).toHaveClass('operator-language-status--silent')
+    sendLevels(0.5, 0, 0, 0)
+    expect(bars()[4]).toHaveStyle({ transform: 'scaleY(0.5)' })
+  })
+
+  it('disables the meter transform transition in the reduced-motion stylesheet', () => {
+    const headerStyles = readFileSync('src/operator/styles/header.css', 'utf8')
+    expect(headerStyles).toMatch(
+      /@media \(prefers-reduced-motion: reduce\)\s*\{\s*\.operator-input-meter-bar\s*\{\s*transition: none/
+    )
   })
 
   it('drops a pipeline warning when the server connection drops', async () => {

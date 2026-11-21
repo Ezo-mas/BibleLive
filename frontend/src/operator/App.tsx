@@ -128,6 +128,8 @@ export default function App() {
           <LanguageStatus
             language={operator.spokenLanguage.language}
             stale={operator.pipeline?.status === 'offline'}
+            silent={operator.pipeline?.issues?.some(issue => issue.code === 'mic_silent')}
+            inputLevels={operator.inputLevels}
           />
         }
         search={

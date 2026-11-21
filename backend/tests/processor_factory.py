@@ -45,6 +45,7 @@ def make_processor(**overrides: Any) -> BibleLiveAudioProcessor:
         "sender": None,
         "transcript_sender": None,
         "heartbeat": None,
+        "level_sender": None,
         "control_server": None,
         "vad_thread": None,
         "transcription_thread": None,

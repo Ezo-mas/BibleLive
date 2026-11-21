@@ -91,6 +91,10 @@ def test_real_server_protocol_fixtures(client, app_state, kjv_db, monkeypatch):
             receive(display, "display", "clear")
             receive(display, "display", "display_settings", save=False)
             receive(operator, "operator", "connection_status")
+            assert (
+                client.post("/api/pipeline/levels", json={"levels": [0.1, 0.75]}).status_code == 204
+            )
+            receive(operator, "operator", "input_levels")
             response = client.post(
                 "/api/reference",
                 json={"book": "John", "chapter": 3, "verse_start": 16, "confidence": "high"},

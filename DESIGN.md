@@ -104,9 +104,12 @@ shrinks. At 800px and below, search moves to its own row.
   connection or a manual Reconnect. The banner below the bar reports a closed
   socket. Screen readers get the connection state through a visually hidden
   "Connection status: …" message.
-- **Speech** is a read-only status with a waveform and a muted language code
-  such as "EN" or "LT". Screen readers and the tooltip get the full language
-  name and the offline status when applicable.
+- **Speech** is a read-only status with a muted language code such as "EN" or
+  "LT" and five bars showing the latest 200 ms microphone peaks. The bars
+  use the secondary text, success, warning and danger colours. The waveform
+  stays static while offline, and a reported silent microphone adds a warning
+  outline and tint. Screen readers get the full language name and offline
+  status. The tooltip also shows the measured input and recent peak.
 - **Settings** uses a 36px ghost button with the shared hover fill and keyboard
   focus ring. The spoken-language picker lives under Audio in the dialog.
 
