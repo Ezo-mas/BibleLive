@@ -31,6 +31,16 @@ ACTIONS = {
     "set_verse_limit": {"action": "set_verse_limit", "verse_limit": 5},
     "set_display_theme": {"action": "set_display_theme", "theme": "light"},
     "set_clear_mode": {"action": "set_clear_mode", "clear_mode": "blank"},
+    "set_stream_overlay": {
+        "action": "set_stream_overlay",
+        "stream_overlay": {
+            "height_pct": 40,
+            "position": "top",
+            "background": "none",
+            "font": "sans",
+            "align": "center",
+        },
+    },
     "set_live": {"action": "set_live", "live": False},
     "set_auto_mode": {"action": "set_auto_mode", "auto_mode": "high"},
     "set_follow_auto": {"action": "set_follow_auto", "follow_auto": True},
@@ -134,15 +144,15 @@ def test_real_server_protocol_fixtures(client, app_state, kjv_db, monkeypatch):
             assert client.portal.call(app_state.offer_follow_along, "example transcript", "en")
             receive(operator, "operator", "follow_along")
 
-            for action in ("set_verse_limit", "set_display_theme"):
+            for action in ("set_verse_limit", "set_display_theme", "set_stream_overlay"):
                 send(operator, action)
                 receive(
                     operator,
                     "operator",
                     "display_settings_confirmed",
-                    save=action == "set_display_theme",
+                    save=action == "set_stream_overlay",
                 )
-                receive(display, "display", "display_settings", save=action == "set_display_theme")
+                receive(display, "display", "display_settings", save=action == "set_stream_overlay")
             send(operator, "set_live")
             receive(operator, "operator", "display_settings_confirmed", save=False)
             receive(display, "display", "display_settings", save=False)

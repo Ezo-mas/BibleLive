@@ -6,6 +6,7 @@ import { LANGUAGE_STORAGE_KEY } from '../shared/i18n'
 import type { DisplayMessage } from '../shared/types'
 import { createMockSocket, push } from '../test/operatorHarness'
 import type { MockSocket } from '../test/operatorHarness'
+import { DEFAULT_STREAM_OVERLAY_OPTIONS } from './streamOverlayOptions'
 
 let socket: MockSocket | null = null
 
@@ -31,7 +32,7 @@ function reference() {
 
 beforeEach(() => {
   window.localStorage.clear()
-  window.history.replaceState(null, '', '/display?mode=obs&height=40')
+  window.history.replaceState(null, '', '/display?mode=obs')
   vi.stubGlobal('WebSocket', function MockWebSocket() {
     socket = createMockSocket()
     return socket
@@ -93,15 +94,55 @@ describe('stream overlay', () => {
     expect(screen.queryByTestId('stream-band')).toBeNull()
   })
 
-  it('shows the passage on a band of the height from the URL', async () => {
+  it.each([
+    { query: '', height: 50, position: 'top', background: 'none', font: 'sans', align: 'center' },
+    {
+      query: '&height=40&position=bottom&bg=band&font=serif&align=left',
+      height: 40,
+      position: 'bottom',
+      background: 'band',
+      font: 'serif',
+      align: 'left',
+    },
+    {
+      query: '&height=40',
+      height: 40,
+      position: 'top',
+      background: 'none',
+      font: 'sans',
+      align: 'center',
+    },
+  ])('applies live server settings with URL overrides ($query)', async expected => {
+    window.history.replaceState(null, '', `/display?mode=obs${expected.query}`)
     render(<StreamOverlay />)
     push(socket, { type: 'display_settings', data: { verse_limit: 'all', theme: 'dark' } })
     push(socket, { type: 'reference', data: reference() })
 
     const band = await screen.findByTestId('stream-band')
     await waitFor(() => expect(band.className).toContain('stream-band--visible'))
-    expect(band.className).toContain('stream-band--bottom')
-    expect(band.style.height).toBe('40vh')
+    expect(band.style.height).toBe(expected.query ? '40vh' : '30vh')
+    push(socket, {
+      type: 'display_settings',
+      data: {
+        verse_limit: 'all',
+        theme: 'dark',
+        stream_overlay: {
+          ...DEFAULT_STREAM_OVERLAY_OPTIONS,
+          height_pct: 50,
+          position: 'top',
+          background: 'none',
+          font: 'sans',
+          align: 'center',
+        },
+      },
+    })
+    expect(band).toHaveClass(
+      `stream-band--${expected.position}`,
+      `stream-band--${expected.background}`,
+      `stream-band--${expected.font}`,
+      `stream-band--${expected.align}`
+    )
+    expect(band.style.height).toBe(`${expected.height}vh`)
     expect(screen.getByText('In the beginning was the Word.')).toBeInTheDocument()
     expect(screen.getByText('In him was life.')).toBeInTheDocument()
   })

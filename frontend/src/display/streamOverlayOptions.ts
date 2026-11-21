@@ -3,35 +3,19 @@
  * "Browser" source that shows the passage on screen as a lower third over a
  * transparent page instead of the projector's full-screen slide.
  *
- * The URL carries the overlay's own layout; what is shown (the passage, the
- * verse limit) is the projector's, pushed by the server as usual.
+ * The server supplies the layout. Legacy URL parameters override individual options.
  */
 
-export type BandPosition = 'bottom' | 'top'
-export type BandStyle = 'band' | 'none'
-export type BandFont = 'serif' | 'sans'
-export type BandAlign = 'left' | 'center'
-
-export interface StreamOverlayOptions {
-  /** Band height as a percentage of the frame. */
-  heightPct: number
-  position: BandPosition
-  /** 'band': text on a dark translucent band; 'none': text with a shadow only. */
-  style: BandStyle
-  /** Verse typeface: the projector's serif, or a sans that reads better small. */
-  font: BandFont
-  /** 'left': verses start at one edge, numbered in a column; 'center': centred lines. */
-  align: BandAlign
-}
+import type { StreamOverlaySettings } from '../shared/types'
 
 export const DEFAULT_HEIGHT_PCT = 30
 const MIN_HEIGHT_PCT = 15
 const MAX_HEIGHT_PCT = 60
 
-export const DEFAULT_STREAM_OVERLAY_OPTIONS: StreamOverlayOptions = {
-  heightPct: DEFAULT_HEIGHT_PCT,
+export const DEFAULT_STREAM_OVERLAY_OPTIONS: StreamOverlaySettings = {
+  height_pct: DEFAULT_HEIGHT_PCT,
   position: 'bottom',
-  style: 'band',
+  background: 'band',
   font: 'serif',
   align: 'left',
 }
@@ -49,19 +33,35 @@ export function isStreamOverlay(search: string): boolean {
   return new URLSearchParams(search).get('mode') === 'obs'
 }
 
-/** Overlay options from the page URL; anything missing or invalid uses the default. */
-export function parseStreamOverlayOptions(search: string): StreamOverlayOptions {
+/** Apply legacy URL options over the current server layout (or defaults for the preview). */
+export function parseStreamOverlayOptions(
+  search: string,
+  base = DEFAULT_STREAM_OVERLAY_OPTIONS
+): StreamOverlaySettings {
   const params = new URLSearchParams(search)
   const height = Number(params.get('height'))
+  const legacyHeight =
+    Number.isFinite(height) && height > 0
+      ? Math.min(MAX_HEIGHT_PCT, Math.max(MIN_HEIGHT_PCT, height))
+      : DEFAULT_HEIGHT_PCT
   return {
-    heightPct:
-      Number.isFinite(height) && height > 0
-        ? Math.min(MAX_HEIGHT_PCT, Math.max(MIN_HEIGHT_PCT, height))
-        : DEFAULT_HEIGHT_PCT,
-    position: params.get('position') === 'top' ? 'top' : 'bottom',
-    style: params.get('bg') === 'none' ? 'none' : 'band',
-    font: params.get('font') === 'sans' ? 'sans' : 'serif',
-    align: params.get('align') === 'center' ? 'center' : 'left',
+    height_pct: params.has('height') ? legacyHeight : base.height_pct,
+    position: params.has('position')
+      ? params.get('position') === 'top'
+        ? 'top'
+        : 'bottom'
+      : base.position,
+    background: params.has('bg')
+      ? params.get('bg') === 'none'
+        ? 'none'
+        : 'band'
+      : base.background,
+    font: params.has('font') ? (params.get('font') === 'sans' ? 'sans' : 'serif') : base.font,
+    align: params.has('align')
+      ? params.get('align') === 'center'
+        ? 'center'
+        : 'left'
+      : base.align,
   }
 }
 
@@ -70,12 +70,12 @@ export function parseStreamOverlayOptions(search: string): StreamOverlayOptions 
  * differ from the defaults, so the link stays short. The inverse of
  * `parseStreamOverlayOptions`.
  */
-export function streamOverlayQuery(options: StreamOverlayOptions): string {
+export function streamOverlayQuery(options: StreamOverlaySettings): string {
   const params = new URLSearchParams({ mode: 'obs' })
   const d = DEFAULT_STREAM_OVERLAY_OPTIONS
-  if (options.heightPct !== d.heightPct) params.set('height', String(options.heightPct))
+  if (options.height_pct !== d.height_pct) params.set('height', String(options.height_pct))
   if (options.position !== d.position) params.set('position', options.position)
-  if (options.style !== d.style) params.set('bg', options.style)
+  if (options.background !== d.background) params.set('bg', options.background)
   if (options.font !== d.font) params.set('font', options.font)
   if (options.align !== d.align) params.set('align', options.align)
   return `?${params.toString()}`

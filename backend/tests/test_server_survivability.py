@@ -17,7 +17,7 @@ from core.bible_versions import BibleVersion
 from core.config import config
 from core.server import app as server_app
 from core.server import state as server_state
-from core.server.models import BibleReference
+from core.server.models import BibleReference, StreamOverlaySettings
 from core.server.runtime_state import RESTORE_DISPLAY_MAX_AGE_S, RuntimeReference, RuntimeStateStore
 from core.server.settings_store import SettingsStore
 from core.server.state import AppState
@@ -155,6 +155,8 @@ async def test_settings_round_trip_and_shutdown_flush(tmp_path, bible_db, monkey
     assert await state.set_verse_limit("all")
     assert await state.set_display_theme("light")
     assert await state.set_clear_mode("blank")
+    overlay = StreamOverlaySettings(height_pct=50, position="top")
+    await state.set_stream_overlay(overlay)
     ref = reference()
     state._resolve_verses(ref)
     state.current_display = ref
@@ -164,6 +166,7 @@ async def test_settings_round_trip_and_shutdown_flush(tmp_path, bible_db, monkey
     assert restored.display_settings.verse_limit == "all"
     assert restored.display_settings.theme == "light"
     assert restored.display_settings.clear_mode == "blank"
+    assert restored.display_settings.stream_overlay == overlay
     restored.restore_runtime_state()
     assert restored.current_display.verse_start == 16
     assert "text" not in restored.runtime_state.path.read_text()
@@ -412,7 +415,7 @@ async def test_shutdown_timeboxes_flush_and_stalled_service_log(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("kind", ["verse_limit", "theme", "clear_mode"])
+@pytest.mark.parametrize("kind", ["verse_limit", "theme", "clear_mode", "stream_overlay"])
 async def test_concurrent_settings_saves_keep_latest_value(tmp_path, bible_db, monkeypatch, kind):
     state = AppState(BibleLookup(str(bible_db)), SettingsStore(tmp_path / "settings.json"))
     started, release = asyncio.Event(), asyncio.Event()
@@ -430,11 +433,16 @@ async def test_concurrent_settings_saves_keep_latest_value(tmp_path, bible_db, m
         "verse_limit": state.set_verse_limit,
         "theme": state.set_display_theme,
         "clear_mode": state.set_clear_mode,
+        "stream_overlay": state.set_stream_overlay,
     }[kind]
     first, second = {
         "verse_limit": (5, 10),
         "theme": ("light", "dark"),
         "clear_mode": ("blank", "idle"),
+        "stream_overlay": (
+            StreamOverlaySettings(height_pct=40),
+            StreamOverlaySettings(height_pct=50),
+        ),
     }[kind]
     first_task = asyncio.create_task(setter(first))
     await started.wait()
@@ -442,7 +450,9 @@ async def test_concurrent_settings_saves_keep_latest_value(tmp_path, bible_db, m
     release.set()
     await first_task
     saved = json.loads((tmp_path / "settings.json").read_text())
-    assert saved[kind] == second
+    assert saved[kind] == (
+        second.model_dump() if isinstance(second, StreamOverlaySettings) else second
+    )
     await state.shutdown()
 
 

@@ -6,6 +6,7 @@ import type {
   AutoMode,
   BibleReference,
   ClearMode,
+  StreamOverlaySettings,
   FollowAlongHint,
   PipelineStatus,
 } from '../../shared/types'
@@ -129,11 +130,13 @@ export interface OperatorState {
   verseLimit: VerseLimit
   displayTheme: DisplayTheme
   clearMode: ClearMode
+  streamOverlay: StreamOverlaySettings
   /** The picture the display shows while idle, so the preview can show it too; null for blank. */
   idleImage: IdleImage | null
   setDisplayVerseLimit: (next: VerseLimit) => void
   setDisplayBackground: (next: DisplayTheme) => void
   setDisplayClearMode: (next: ClearMode) => void
+  setStreamOverlay: (next: StreamOverlaySettings) => void
 
   /** Whether the audience display is on air, as the server last confirmed it. */
   live: boolean

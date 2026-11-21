@@ -1,3 +1,4 @@
+import { DEFAULT_STREAM_OVERLAY_OPTIONS } from '../../display/streamOverlayOptions'
 import { coerceClearMode } from '../../shared/clearMode'
 import { readIdleImage } from '../../shared/idleScreen'
 import type { MessageKey } from '../../shared/i18n'
@@ -40,6 +41,7 @@ const ERROR_PREFIX_KEYS: Record<string, MessageKey> = {
   set_verse_limit: 'notice.errVerseLimit',
   set_display_theme: 'notice.errTheme',
   set_clear_mode: 'notice.errClearMode',
+  set_stream_overlay: 'notice.errStreamOverlay',
   set_live: 'notice.errLive',
   set_auto_mode: 'notice.errAutoMode',
   set_follow_auto: 'notice.errFollowAuto',
@@ -59,6 +61,7 @@ const SETTING_KEYS = {
   set_verse_limit: 'verseLimit',
   set_display_theme: 'theme',
   set_clear_mode: 'clearMode',
+  set_stream_overlay: 'streamOverlay',
   set_auto_mode: 'autoMode',
   set_follow_auto: 'followAuto',
 } as const satisfies Record<OptimisticSettingAction['action'], keyof OperatorSettings>
@@ -76,6 +79,7 @@ export function createOperatorState(
     verseLimit,
     theme,
     clearMode: 'idle',
+    streamOverlay: DEFAULT_STREAM_OVERLAY_OPTIONS,
     live: true,
     autoMode: 'off',
     followAuto: false,
@@ -118,6 +122,7 @@ function displaySettings(data: DisplaySettings) {
     verseLimit: coerceVerseLimit(data.verse_limit),
     theme: coerceDisplayTheme(data.theme),
     clearMode: coerceClearMode(data.clear_mode),
+    streamOverlay: data.stream_overlay ?? DEFAULT_STREAM_OVERLAY_OPTIONS,
     // An older server omits it, and an older server is always live.
     live: data.live !== false,
   }
@@ -365,6 +370,9 @@ export function operatorReducer(
           break
         case 'set_display_theme':
           settings.theme = action.theme
+          break
+        case 'set_stream_overlay':
+          settings.streamOverlay = action.stream_overlay
           break
         case 'set_clear_mode':
           settings.clearMode = action.clear_mode

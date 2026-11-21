@@ -46,6 +46,7 @@ from .models import (
     PipelineHeartbeat,
     PipelineStatusResponse,
     StateResponse,
+    StreamOverlaySettings,
     VerseText,
 )
 from .pipeline_health import PIPELINE_MISSED_REPORTS_OFFLINE as PIPELINE_MISSED_REPORTS_OFFLINE
@@ -107,6 +108,7 @@ class AppState:
             verse_limit=self.settings_store.load_verse_limit(),
             theme=self.settings_store.load_theme(),
             clear_mode=self.settings_store.load_clear_mode(),
+            stream_overlay=self.settings_store.load_stream_overlay(),
         )
         # The audience QR code on the displays: in memory only, so a restart hides it.
         self.audience_qr: AudienceQrData = HIDDEN_AUDIENCE_QR
@@ -354,6 +356,15 @@ class AppState:
         self.settings_store.save_clear_mode(self.display_settings.clear_mode)
         logger.info(f"Display clear mode set to {clear_mode}")
         return True
+
+    async def set_stream_overlay(self, stream_overlay: StreamOverlaySettings) -> None:
+        """Set the OBS overlay layout for all displays."""
+        self.display_settings = self.display_settings.model_copy(
+            update={"stream_overlay": stream_overlay}
+        )
+        await self.send_display_settings()
+        self.settings_store.save_stream_overlay(self.display_settings.stream_overlay)
+        logger.info("Stream overlay settings updated")
 
     async def set_live(self, live: object) -> bool:
         """Put the audience display on air or take it off. Returns False if invalid.

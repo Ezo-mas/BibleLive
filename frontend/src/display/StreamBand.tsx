@@ -3,10 +3,9 @@ import { formatReference } from '../shared/reference'
 import { useI18n } from '../shared/i18nContext'
 import { hiddenVerseCount, selectVerses } from '../shared/verseText'
 import type { VerseLimit } from '../shared/verseText'
-import type { BibleReference } from '../shared/types'
+import type { BibleReference, StreamOverlaySettings } from '../shared/types'
 import { computeFitFontSize, fitFontSizeByMeasurement } from './fitText'
 import { fitVersesToBand, streamFontBounds } from './streamOverlayOptions'
-import type { StreamOverlayOptions } from './streamOverlayOptions'
 import { SCREEN_SWAP, swapStyle } from './fadeTimings'
 import type { SwapTiming } from './fadeTimings'
 import '../styles/tokens.css'
@@ -22,7 +21,7 @@ export interface StreamBandProps {
   /** The current swap's exit and entrance durations. */
   timing?: SwapTiming
   verseLimit: VerseLimit
-  options: StreamOverlayOptions
+  options: StreamOverlaySettings
 }
 
 /**
@@ -114,7 +113,7 @@ export function StreamBand({
   const bandClass = [
     'stream-band',
     `stream-band--${options.position}`,
-    `stream-band--${options.style}`,
+    `stream-band--${options.background}`,
     `stream-band--${options.font}`,
     `stream-band--${options.align}`,
     visible ? 'stream-band--visible' : 'stream-band--hidden',
@@ -125,7 +124,7 @@ export function StreamBand({
       {reference && (
         <div
           className={bandClass}
-          style={{ height: `${options.heightPct}vh`, ...swapStyle(timing) }}
+          style={{ height: `${options.height_pct}vh`, ...swapStyle(timing) }}
           data-testid="stream-band"
         >
           <div className="stream-reference">

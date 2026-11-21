@@ -13,7 +13,7 @@ import { useFadeSwap } from './useFadeSwap'
  * shows (same messages, same verse limit) on a transparent page.
  */
 export default function StreamOverlay() {
-  const [options] = useState(() => parseStreamOverlayOptions(window.location.search))
+  const [options, setOptions] = useState(() => parseStreamOverlayOptions(window.location.search))
   const { shown, visible, timing, swap } = useFadeSwap<BibleReference>()
   const [verseLimit, setVerseLimit] = useState<VerseLimit>(() =>
     coerceVerseLimit(readStoredVerseLimit(window.localStorage))
@@ -24,6 +24,7 @@ export default function StreamOverlay() {
       // The projector's background theme does not apply: the band has its own look.
       // Off air the server also clears the page, so the band fades out with the projector.
       setVerseLimit(coerceVerseLimit(message.data.verse_limit))
+      setOptions(parseStreamOverlayOptions(window.location.search, message.data.stream_overlay))
       return
     }
     // The audience QR code is for people in the room, not for the stream.

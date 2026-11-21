@@ -2,15 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 import { Button, SegmentedOption } from '../../components'
 import { useI18n } from '../../shared/i18nContext'
 import type { MessageKey } from '../../shared/i18n'
-import {
-  DEFAULT_STREAM_OVERLAY_OPTIONS,
-  parseStreamOverlayOptions,
-  streamOverlayQuery,
-} from '../../display/streamOverlayOptions'
-import type { StreamOverlayOptions } from '../../display/streamOverlayOptions'
-
-/** Where this browser remembers the options last picked, as the overlay's own query. */
-export const STREAM_OVERLAY_STORAGE_KEY = 'biblelive.streamOverlayQuery'
+import { streamOverlayQuery } from '../../display/streamOverlayOptions'
+import type { StreamOverlaySettings as StreamOverlayLayout } from '../../shared/types'
 
 /** The OBS Browser source is sized to the stream; the preview draws that frame scaled down. */
 const FRAME_WIDTH = 1920
@@ -18,20 +11,11 @@ const FRAME_HEIGHT = 1080
 
 const HEIGHT_OPTIONS = [20, 30, 40, 50] as const
 
-function readStoredOptions(): StreamOverlayOptions {
-  try {
-    const stored = window.localStorage.getItem(STREAM_OVERLAY_STORAGE_KEY)
-    return stored ? parseStreamOverlayOptions(stored) : DEFAULT_STREAM_OVERLAY_OPTIONS
-  } catch {
-    return DEFAULT_STREAM_OVERLAY_OPTIONS
-  }
-}
-
-interface Choice<K extends keyof StreamOverlayOptions> {
+interface Choice<K extends keyof StreamOverlayLayout> {
   key: K
   label: MessageKey
   hint: MessageKey
-  options: readonly { value: StreamOverlayOptions[K]; label: MessageKey | string }[]
+  options: readonly { value: StreamOverlayLayout[K]; label: MessageKey | string }[]
 }
 
 const CHOICES = [
@@ -45,20 +29,20 @@ const CHOICES = [
     ],
   } satisfies Choice<'position'>,
   {
-    key: 'heightPct',
+    key: 'height_pct',
     label: 'obs.height',
     hint: 'obs.heightHint',
     options: HEIGHT_OPTIONS.map(value => ({ value, label: `${value}%` })),
-  } satisfies Choice<'heightPct'>,
+  } satisfies Choice<'height_pct'>,
   {
-    key: 'style',
+    key: 'background',
     label: 'obs.background',
     hint: 'obs.backgroundHint',
     options: [
       { value: 'band', label: 'obs.band' },
       { value: 'none', label: 'obs.textOnly' },
     ],
-  } satisfies Choice<'style'>,
+  } satisfies Choice<'background'>,
   {
     key: 'font',
     label: 'obs.font',
@@ -83,15 +67,18 @@ const CHOICES = [
  * The stream overlay (`/display?mode=obs`) for OBS: its layout, a live preview and the
  * link to paste into an OBS Browser source.
  *
- * The overlay takes its layout from its URL, so these choices build that link and are
- * this console's own (remembered in this browser), not server settings: changing one
- * means pasting the new link into OBS. The preview is the real overlay page in its
- * socket-free preview mode, cycling sample passages with the real fades, so it never
- * counts as an audience display.
+ * The preview uses sample passages in the socket-free overlay page.
  */
-export function StreamOverlaySettings() {
+export function StreamOverlaySettings({
+  options,
+  disabled,
+  onChange,
+}: {
+  options: StreamOverlayLayout
+  disabled: boolean
+  onChange: (next: StreamOverlayLayout) => void
+}) {
   const { t } = useI18n()
-  const [options, setOptions] = useState<StreamOverlayOptions>(readStoredOptions)
   const [copied, setCopied] = useState(false)
   const [scale, setScale] = useState(0)
   const frameRef = useRef<HTMLDivElement>(null)
@@ -99,15 +86,7 @@ export function StreamOverlaySettings() {
   const copiedTimerRef = useRef<number | undefined>(undefined)
 
   const query = streamOverlayQuery(options)
-  const link = `${window.location.origin}/display${query}`
-
-  useEffect(() => {
-    try {
-      window.localStorage.setItem(STREAM_OVERLAY_STORAGE_KEY, query)
-    } catch {
-      // Private window or blocked storage: the choices just are not remembered.
-    }
-  }, [query])
+  const link = `${window.location.origin}/display?mode=obs`
 
   useEffect(() => () => window.clearTimeout(copiedTimerRef.current), [])
 
@@ -124,9 +103,8 @@ export function StreamOverlaySettings() {
     return () => observer.disconnect()
   }, [])
 
-  const choose = <K extends keyof StreamOverlayOptions>(key: K, value: StreamOverlayOptions[K]) => {
-    setOptions(current => ({ ...current, [key]: value }))
-    setCopied(false)
+  const choose = <K extends keyof StreamOverlayLayout>(key: K, value: StreamOverlayLayout[K]) => {
+    onChange({ ...options, [key]: value })
   }
 
   const copyLink = async () => {
@@ -160,6 +138,7 @@ export function StreamOverlaySettings() {
               <SegmentedOption
                 key={String(option.value)}
                 aria-pressed={options[choice.key] === option.value}
+                disabled={disabled}
                 onClick={() => choose(choice.key, option.value)}
               >
                 {option.label.startsWith('obs.') ? t(option.label as MessageKey) : option.label}

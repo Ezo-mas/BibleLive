@@ -20,9 +20,9 @@ describe('stream overlay options', () => {
 
   it('defaults to a bottom band of 30% of the frame', () => {
     expect(parseStreamOverlayOptions('?mode=obs')).toEqual({
-      heightPct: DEFAULT_HEIGHT_PCT,
+      height_pct: DEFAULT_HEIGHT_PCT,
       position: 'bottom',
-      style: 'band',
+      background: 'band',
       font: 'serif',
       align: 'left',
     })
@@ -30,18 +30,18 @@ describe('stream overlay options', () => {
 
   it('reads height, position and background from the URL', () => {
     expect(parseStreamOverlayOptions('?mode=obs&height=40&position=top&bg=none')).toEqual({
-      heightPct: 40,
+      height_pct: 40,
       position: 'top',
-      style: 'none',
+      background: 'none',
       font: 'serif',
       align: 'left',
     })
   })
 
   it('keeps the height within 15-60% and ignores garbage', () => {
-    expect(parseStreamOverlayOptions('?height=5').heightPct).toBe(15)
-    expect(parseStreamOverlayOptions('?height=90').heightPct).toBe(60)
-    expect(parseStreamOverlayOptions('?height=abc').heightPct).toBe(DEFAULT_HEIGHT_PCT)
+    expect(parseStreamOverlayOptions('?height=5').height_pct).toBe(15)
+    expect(parseStreamOverlayOptions('?height=90').height_pct).toBe(60)
+    expect(parseStreamOverlayOptions('?height=abc').height_pct).toBe(DEFAULT_HEIGHT_PCT)
     expect(parseStreamOverlayOptions('?position=left').position).toBe('bottom')
   })
 
@@ -59,9 +59,9 @@ describe('stream overlay options', () => {
   it('builds a short link that reads back as the same options', () => {
     expect(streamOverlayQuery(DEFAULT_STREAM_OVERLAY_OPTIONS)).toBe('?mode=obs')
     const options = {
-      heightPct: 40,
+      height_pct: 40,
       position: 'top',
-      style: 'none',
+      background: 'none',
       font: 'sans',
       align: 'center',
     } as const

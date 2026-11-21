@@ -49,7 +49,7 @@ frontend/
 | --- | --- |
 | Change operator UI | `frontend/src/operator/` (+ `styles/*.css`, split by page section) |
 | Change display UI / text fitting | `frontend/src/display/` (+ `display.css`, `fitText.ts`) |
-| Stream overlay for OBS (`/display?mode=obs`) | `frontend/src/display/StreamOverlay.tsx`, `streamOverlayOptions.ts` (URL options, fit-or-drop-verses), `streamOverlay.css`; picked in `display/main.tsx` |
+| Stream overlay for OBS (`/display?mode=obs`) | `frontend/src/display/StreamOverlay.tsx`, `streamOverlayOptions.ts` (legacy URL overrides, fit-or-drop-verses), `streamOverlay.css`; picked in `display/main.tsx` |
 | Change shared WS hook / message types | `frontend/src/shared/useWebSocket.ts`, `types.ts` (mirror of `backend/core/server/models.py`) |
 | Operator token: the sign-in prompt, the `#token=` link, a refused token (close 1008) | `frontend/src/operator/hooks/useOperatorToken.ts`, `shared/operatorToken.ts` (storage, the link fragment); `hooks/useOperatorState.ts` sends it in the socket's first message — token handling needs a security review (`SECURITY.md`) |
 | A console HTTP call to the server (headers, errors, "unreachable") | `frontend/src/operator/apiClient.ts` (`authHeaders`, `request`, `ApiError`, `readFailure`), used by the `*Api.ts` modules and `usePipelineStatus`; `GET /api/ui-language` is public and is called without a token (`shared/i18n.ts`) |

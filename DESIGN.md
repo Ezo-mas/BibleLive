@@ -273,8 +273,8 @@ One design for the whole dialog (`SettingsDialog.tsx`, styles in
   16:9 preview in its own row with the monitor's border and corners, the current state
   under it. Errors use the same notice style as the rest of the console.
 - **Stream overlay (OBS)** is five segmented rows (position, band height, background,
-  verse font, alignment), then a preview row and the link. The choices build the
-  overlay's URL and are remembered in this browser, not on the server. The preview
+  verse font, alignment), then a preview row and a fixed OBS link. The server
+  saves the layout and pushes changes live to OBS. The preview
   (`.stream-overlay-preview`) is a 16:9 box with the idle preview's border and corners
   over a checkerboard of two surface tokens (the camera); inside, the real overlay page
   (`/display?mode=obs&preview=1`, no socket, sample passages on a loop) is drawn at

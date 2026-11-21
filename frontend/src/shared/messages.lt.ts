@@ -203,7 +203,7 @@ export const lt: Record<MessageKey, MessageEntry> = {
     'Peržiūroje rodomos pavyzdinės ištraukos. Languotas fonas žymi skaidrią sritį.',
   'obs.link': 'OBS nuoroda',
   'obs.linkHint':
-    'OBS pridėkite naršyklės šaltinį („Browser“), įklijuokite šią nuorodą ir nustatykite 1920 × 1080 dydį. Pakeitę išdėstymą, įklijuokite naują nuorodą.',
+    'OBS pridėkite naršyklės šaltinį („Browser“), įklijuokite šią nuorodą ir nustatykite 1920 × 1080 dydį. Nuorodą įklijuokite tik kartą. Išdėstymo pakeitimai transliacijoje matomi iškart.',
   'obs.copy': 'Kopijuoti',
   'obs.copied': 'Nukopijuota',
 
@@ -350,6 +350,7 @@ export const lt: Record<MessageKey, MessageEntry> = {
   'notice.errVerseLimit': 'Nepavyko pakeisti rodomų eilučių',
   'notice.errTheme': 'Nepavyko pakeisti fono',
   'notice.errClearMode': 'Nepavyko pakeisti išvalyto ekrano rodymo',
+  'notice.errStreamOverlay': 'Nepavyko pakeisti ištraukų išdėstymo transliacijoje',
   'notice.errLive': 'Nepavyko įjungti ar išjungti ekrano',
   'notice.errAutoMode': 'Nepavyko pakeisti automatinio patvirtinimo',
   'notice.errFollowAuto': 'Nepavyko pakeisti automatinio sekimo',
