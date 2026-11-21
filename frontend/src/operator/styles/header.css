@@ -85,14 +85,6 @@
   border-radius: var(--radius-full);
 }
 
-.operator-status-chip-dot {
-  flex: none;
-  width: var(--space-2);
-  height: var(--space-2);
-  background: currentColor;
-  border-radius: var(--radius-full);
-}
-
 .operator-language-status {
   display: inline-flex;
   align-items: center;
