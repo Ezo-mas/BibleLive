@@ -106,7 +106,15 @@ export function LivePanel({
                 onLiveChange(!live)
               }}
             >
-              {t(live ? 'stage.liveOn' : 'stage.liveOff')}
+              {/* Both labels reserve their width (pseudo-elements, so not text), keeping
+                  Clear beside the switch still as it flips. */}
+              <span
+                className="operator-live-label"
+                data-on={t('stage.liveOn')}
+                data-off={t('stage.liveOff')}
+              >
+                <span>{t(live ? 'stage.liveOn' : 'stage.liveOff')}</span>
+              </span>
             </Button>
           )}
           {displayMissing && (

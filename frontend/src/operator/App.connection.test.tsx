@@ -196,7 +196,6 @@ describe('connection status chips', () => {
 
     const live = screen.getByRole('button', { name: 'Live' })
     expect(noDisplay()).toHaveClass('operator-status-chip')
-    expect(noDisplay()?.querySelector('.operator-status-chip-dot')).toBeNull()
     expect(live.nextElementSibling).toBe(noDisplay())
     expect(live).toHaveAccessibleDescription('No display connected')
     expect(screen.getByRole('banner')).not.toContainElement(noDisplay())

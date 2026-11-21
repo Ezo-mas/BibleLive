@@ -68,7 +68,6 @@ export function OperatorHeader({
           </span>
           {connectionState === 'connecting' && (
             <span className="operator-status-chip" data-testid="status-chip-connecting">
-              <span className="operator-status-chip-dot" aria-hidden="true" />
               {t('header.connecting')}
             </span>
           )}

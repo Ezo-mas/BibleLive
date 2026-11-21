@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { act, render, screen, waitFor, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import App from './App'
 import type { BibleReference } from '../shared/types'
 import { createMockSocket, push } from '../test/operatorHarness'
@@ -95,9 +95,9 @@ describe('server-confirmed feedback', () => {
   it('claims nothing until the server confirms the approval', () => {
     openWith()
 
-    act(() => {
-      screen.getByRole('button', { name: 'Show' }).click()
-    })
+    fireEvent.doubleClick(
+      screen.getByRole('button', { name: 'John 1:1 — highlight; Enter shows it' })
+    )
 
     // The request is on the wire but nothing has come back: no success yet.
     expect(screen.queryByText(/^Shown:/)).not.toBeInTheDocument()

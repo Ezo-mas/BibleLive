@@ -110,8 +110,8 @@
   overflow-y: auto;
 }
 
-/* A result is a secondary button (and the resolved passage is `is-on`), laid out
-   as a left-aligned block that can wrap onto a preview line. */
+/* The result button can wrap onto a preview line. The reference highlight
+   belongs to the row so it surrounds both independent buttons. */
 .btn.operator-search-result {
   align-items: baseline;
   justify-content: flex-start;
@@ -123,10 +123,6 @@
   white-space: normal;
 }
 
-.operator-search-result.is-reference {
-  font-weight: var(--weight-semibold);
-}
-
 .operator-search-result-label {
   min-width: 0;
 }
@@ -134,7 +130,25 @@
 .operator-search-item {
   display: flex;
   align-items: stretch;
-  gap: var(--space-1);
+}
+
+.operator-search-item.is-reference {
+  padding-inline-end: var(--space-2);
+  background: var(--color-primary-subtle);
+  border: var(--border-width) solid var(--color-primary);
+  border-radius: var(--radius-control);
+}
+
+.operator-search-item.is-reference:focus-within,
+.operator-search-item.is-reference:hover {
+  border-color: var(--color-primary-hover);
+}
+
+.operator-search-item.is-reference .operator-search-result {
+  --btn-bg-hover: transparent;
+  --btn-bg-active: transparent;
+
+  color: var(--accent-text);
 }
 
 .operator-search-item .operator-search-result {
@@ -160,7 +174,7 @@
 
 .operator-search-item .operator-search-plan {
   flex-shrink: 0;
-  height: auto;
+  align-self: center;
 }
 
 .operator-search-result-detail {

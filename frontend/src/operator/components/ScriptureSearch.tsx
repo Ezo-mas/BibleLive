@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react'
 import type { KeyboardEvent, ReactNode } from 'react'
-import { AlertCircleIcon, Button, SearchIcon } from '../../components'
+import { AlertCircleIcon, Button, PlusIcon, SearchIcon } from '../../components'
 import { useI18n } from '../../shared/i18nContext'
 import type { ScriptureSearchState } from '../hooks/useScriptureSearch'
 import type { ScriptureResult } from '../scriptureQuery'
@@ -49,7 +49,7 @@ function highlighted(result: ScriptureResult): ReactNode {
  * display: one coordinates-only `display_reference` request, the same one every
  * manual Show sends. The preview of how the verse begins is what makes that safe —
  * the operator sees it is the right passage before pressing the key. On a book row
- * Enter completes the name instead. Ctrl+Enter (or the Plan button) adds the
+ * Enter completes the name instead. Ctrl+Enter (or the + button) adds the
  * passage to the plan, for the operator lining verses up ahead of time; Shift+Enter
  * does the same, so the old plan key can never put a passage on screen. The global
  * shortcuts stand down while a text field has focus, so none of these can approve
@@ -182,11 +182,11 @@ export function ScriptureSearch({ search, disabled, directEnabled = true }: Scri
               {results.length > 0 && (
                 <ul className="operator-search-results" aria-label={t('search.resultsLabel')}>
                   {results.map(result => (
-                    <li key={result.id} className="operator-search-item">
+                    <li key={result.id} className={`operator-search-item is-${result.kind}`}>
                       <button
                         type="button"
-                        className={`btn btn-secondary operator-search-result is-${result.kind}${
-                          result.kind === 'reference' ? ' is-on' : ''
+                        className={`btn operator-search-result ${
+                          result.kind === 'reference' ? 'btn-ghost' : 'btn-secondary'
                         }`}
                         onClick={event => {
                           // The second click of a double-click is not a second Show.
@@ -235,15 +235,16 @@ export function ScriptureSearch({ search, disabled, directEnabled = true }: Scri
                       </button>
                       {result.kind === 'reference' && (
                         <Button
-                          variant="secondary"
+                          variant="primary"
                           size="sm"
                           className="operator-search-plan"
+                          iconOnly
+                          icon={<PlusIcon />}
                           onClick={() => planResult(result)}
                           disabled={disabled}
                           aria-label={t('search.addToPlanAria', { label: result.label })}
-                        >
-                          {t('search.addToPlan')}
-                        </Button>
+                          title={t('search.addToPlan')}
+                        />
                       )}
                     </li>
                   ))}

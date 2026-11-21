@@ -5,7 +5,7 @@ import { formatReference } from '../../shared/reference'
 import { useCursorFocus } from '../hooks/useRowCursor'
 import { PanelHint } from './PanelHint'
 import { ReferenceCard } from './ReferenceCard'
-import { RowRemoveButton, RowShowButton } from './RowButtons'
+import { RowRemoveButton } from './RowButtons'
 import type { BibleReference } from '../../shared/types'
 
 export interface PendingQueueProps {
@@ -16,7 +16,7 @@ export interface PendingQueueProps {
   keyboardMoves?: number
   /** Highlight a row (click or focus); nothing is sent. */
   onSelect: (id: string) => void
-  /** The row's Show: approve this detection by ID. */
+  /** Approve this detection by ID. */
   onShow: (id: string) => void
   onRemove: (id: string) => void
   discardInFlight?: boolean
@@ -29,7 +29,7 @@ export interface PendingQueueProps {
  * waiting for the operator to approve. Order is arrival order and is never
  * re-sorted, because it mirrors the chronological detection stream.
  *
- * A click on a row highlights it; Show (or Enter on the highlight) approves it.
+ * A click highlights a row. Double-click or Enter on the highlight approves it.
  * A new detection never takes the highlight.
  *
  * Renders the body of the sidebar's Pending tab; the tabs (and their counts) are
@@ -62,6 +62,8 @@ export function PendingQueue({
                 reference={reference}
                 selected={selected}
                 onSelect={() => onSelect(reference.id)}
+                onShow={() => onShow(reference.id)}
+                showDisabled={!canShow}
                 removeAction={
                   <RowRemoveButton
                     label={t('queue.remove', { ref: formatReference(reference) })}
@@ -69,14 +71,6 @@ export function PendingQueue({
                     onClick={() => onRemove(reference.id)}
                   />
                 }
-                actions={titleId => (
-                  <RowShowButton
-                    titleId={titleId}
-                    highlighted={selected}
-                    disabled={!canShow}
-                    onClick={() => onShow(reference.id)}
-                  />
-                )}
               />
             )
           })}

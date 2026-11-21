@@ -2,7 +2,6 @@ import { EmptyState, ClockIcon, XIcon } from '../../components'
 import { useI18n } from '../../shared/i18nContext'
 import { PanelMenu } from './PanelMenu'
 import { ReferenceCard } from './ReferenceCard'
-import { RowShowButton } from './RowButtons'
 import type { BibleReference } from '../../shared/types'
 
 export interface HistoryPanelProps {
@@ -19,9 +18,8 @@ export interface HistoryPanelProps {
  * Session history of references that reached the display, newest first.
  *
  * The list and its order come from the server's history (one row per passage).
- * Showing a passage again moves its row to the top. Each row's Show puts the passage on
- * screen again with the same coordinates-only request Find Scripture sends. Rows
- * take no keyboard cursor. The panel menu clears the entire history.
+ * Showing a passage again moves its row to the top. Double-click or Enter on a
+ * focused row replays it with the same coordinates-only request Find Scripture sends.
  */
 export function HistoryPanel({
   history,
@@ -46,13 +44,8 @@ export function HistoryPanel({
                 key={reference.id}
                 reference={reference}
                 showConfidence={false}
-                actions={titleId => (
-                  <RowShowButton
-                    titleId={titleId}
-                    disabled={!canShow}
-                    onClick={() => onShow(reference)}
-                  />
-                )}
+                onShow={() => onShow(reference)}
+                showDisabled={!canShow}
               />
             ))}
           </div>
@@ -72,6 +65,9 @@ export function HistoryPanel({
             },
           ]}
         />
+        {history.length > 0 && canShow && (
+          <span className="operator-queue-hint">{t('history.replayHint')}</span>
+        )}
       </div>
     </>
   )

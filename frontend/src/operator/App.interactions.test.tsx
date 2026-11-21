@@ -210,23 +210,10 @@ describe('pending highlight and approval', () => {
 })
 
 describe('pending row buttons', () => {
-  it('Show approves that detection by ID at once, highlighted or not', () => {
-    openWith()
-    const row = card('Romans 8:28').closest('.ref-item')
-    if (!(row instanceof HTMLElement)) throw new Error('row not found')
-
-    act(() => {
-      within(row).getByRole('button', { name: 'Show' }).click()
-    })
-
-    expect(lastSent(socket)).toEqual({ action: 'approve', reference_id: 'p-2' })
-  })
-
-  it('has no Stage button and no double-click shortcut', () => {
+  it('double-clicking Remove does not approve the row', () => {
     openWith()
 
-    expect(screen.queryByRole('button', { name: 'Stage' })).not.toBeInTheDocument()
-    fireEvent.doubleClick(card('Romans 8:28'))
+    fireEvent.doubleClick(screen.getByRole('button', { name: 'Remove Romans 8:28 from the queue' }))
     expect(sentActions()).toEqual([])
   })
 

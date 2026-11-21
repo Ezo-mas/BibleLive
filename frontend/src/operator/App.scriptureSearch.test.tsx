@@ -504,7 +504,7 @@ describe('Find Scripture', () => {
     expect(
       within(screen.getByTestId('live-verses')).getByText('John 3:16 text')
     ).toBeInTheDocument()
-    expect(screen.getByText('Shown: John 3:16-17 (manual)')).toBeInTheDocument()
+    expect(screen.getByText('Shown: John 3:16-17 (search)')).toBeInTheDocument()
   })
 
   it('adds the best result to the plan on Ctrl+Enter, and shows nothing', async () => {
@@ -760,7 +760,7 @@ describe('Enter shows the passage', () => {
     expect(
       within(screen.getByTestId('live-verses')).getByText('John 3:16 text')
     ).toBeInTheDocument()
-    expect(screen.getByText('Shown: John 3:16-17 (manual)')).toBeInTheDocument()
+    expect(screen.getByText('Shown: John 3:16-17 (search)')).toBeInTheDocument()
   })
 
   it('sends nothing for a book row or an invalid reference', async () => {

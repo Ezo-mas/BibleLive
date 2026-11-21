@@ -400,19 +400,14 @@ describe('the cursor in the plan', () => {
     expect(rowHandle('Psalms 23:1-6')).toHaveAttribute('aria-pressed', 'true')
   })
 
-  it('keeps Show compact on a highlighted Plan row', () => {
+  it('has no Show button and no hint of its own (the Pending footer names the keys)', () => {
     seedPlan(seeded)
     openWith()
 
     fireEvent.click(rowHandle('John 3:16'))
 
-    const show = within(planRow('John 3:16')).getByRole('button', { name: 'Show' })
-    expect(show).toHaveClass('btn-primary')
-    expect(show).toHaveTextContent(/^Show$/)
-
-    pressKey('Escape')
-    expect(show).toHaveClass('btn-secondary')
-    expect(show).toHaveTextContent(/^Show$/)
+    expect(planPanel().queryByText(/Double-click/)).not.toBeInTheDocument()
+    expect(planPanel().queryByRole('button', { name: 'Show' })).not.toBeInTheDocument()
   })
 
   it('the arrows move through the plan once the cursor is there', () => {
@@ -528,7 +523,7 @@ describe('the cursor in the plan', () => {
 })
 
 describe('plan row actions', () => {
-  it('each row has Remove, the reorder arrows and Show, in that order, Show right-most', () => {
+  it('each row has Remove and the reorder arrows', () => {
     seedPlan(seeded)
     openWith()
 
@@ -539,7 +534,6 @@ describe('plan row actions', () => {
       'Remove Romans 8:28 from the plan',
       'Move Romans 8:28 up',
       'Move Romans 8:28 down',
-      'Show',
     ])
     // Remove is an icon: its name is in the label and the tooltip, not on the button.
     const remove = buttons[0]
@@ -548,11 +542,11 @@ describe('plan row actions', () => {
     expect(remove.textContent).toBe('')
   })
 
-  it('Show sends the passage as coordinates at once, without a lookup', () => {
+  it('double-clicking a passage sends its coordinates without a lookup', () => {
     seedPlan(seeded)
     openWith()
 
-    fireEvent.click(within(planRow('John 3:16')).getByRole('button', { name: 'Show' }))
+    fireEvent.doubleClick(rowHandle('John 3:16'))
 
     expect(lastSent(socket)).toEqual({
       action: 'display_reference',
@@ -565,26 +559,36 @@ describe('plan row actions', () => {
     expect(planTitles()).toHaveLength(3)
 
     push(socket, { type: 'display_confirmed', data: { reference: manualReference('John', 3, 16) } })
-    expect(screen.getByText('Shown: John 3:16 (manual)')).toBeInTheDocument()
+    expect(screen.getByText('Shown: John 3:16 (search)')).toBeInTheDocument()
   })
 
-  it('a second Show while the first is in flight is ignored', () => {
+  it('does not show a passage when double-clicking a row tool', () => {
     seedPlan(seeded)
     openWith()
 
-    fireEvent.click(within(planRow('John 3:16')).getByRole('button', { name: 'Show' }))
-    fireEvent.click(within(planRow('Romans 8:28')).getByRole('button', { name: 'Show' }))
+    fireEvent.doubleClick(planPanel().getByRole('button', { name: 'Move John 3:16 down' }))
+
+    expect(sentActions()).toHaveLength(0)
+  })
+
+  it('a second double-click while the first show is in flight is ignored', () => {
+    seedPlan(seeded)
+    openWith()
+
+    fireEvent.doubleClick(rowHandle('John 3:16'))
+    fireEvent.doubleClick(rowHandle('Romans 8:28'))
 
     expect(sentActions()).toHaveLength(1)
     expect(lastSent(socket)).toMatchObject({ action: 'display_reference', book: 'John' })
   })
 
-  it('is disabled while the socket is closed; Remove is not', () => {
+  it('does not show on double-click while the socket is closed', () => {
     seedPlan(seeded)
     render(<App />)
     const row = within(planPanel().getAllByRole('listitem')[0])
 
-    expect(row.getByRole('button', { name: 'Show' })).toBeDisabled()
+    fireEvent.doubleClick(row.getByRole('button', { name: /highlight/ }))
+    expect(sentActions()).toHaveLength(0)
     expect(row.getByRole('button', { name: /^Remove / })).toBeEnabled()
   })
 
@@ -608,9 +612,9 @@ describe('the current passage tag', () => {
     openWith({ currentDisplay: manualReference('Romans', 8, 28) })
 
     expect(within(planRow('Romans 8:28')).getByText('On screen')).toHaveClass('tag')
-    // The row's name carries the tag too, for a screen reader.
-    expect(rowHandle('Romans 8:28')).toHaveAccessibleDescription('On screen')
-    expect(rowHandle('John 3:16')).not.toHaveAccessibleDescription()
+    // A screen reader gets the playback status and the preview.
+    expect(rowHandle('Romans 8:28')).toHaveAccessibleDescription('On screen Romans 8:28 text')
+    expect(rowHandle('John 3:16')).toHaveAccessibleDescription('John 3:16 text')
     expect(within(planRow('John 3:16')).queryByText('On screen')).not.toBeInTheDocument()
     expect(planPanel().getAllByText('On screen')).toHaveLength(1)
   })
@@ -627,27 +631,27 @@ describe('the current passage tag', () => {
     expect(within(currentRow).getByText('On screen')).toBeInTheDocument()
   })
 
-  it('hides the tag and accessible description while the display is confirmed off air', () => {
+  it('hides the tag from the description while the display is confirmed off air', () => {
     seedPlan(seeded)
     openWith({ currentDisplay: manualReference('Romans', 8, 28) })
     const currentRow = within(planRow('Romans 8:28'))
     const handle = rowHandle('Romans 8:28')
     expect(currentRow.getByText('On screen')).toBeInTheDocument()
-    expect(handle).toHaveAccessibleDescription('On screen')
+    expect(handle).toHaveAccessibleDescription('On screen Romans 8:28 text')
 
     push(socket, {
       type: 'display_settings_confirmed',
       data: { verse_limit: 3, theme: 'dark', live: false },
     })
     expect(currentRow.queryByText('On screen')).not.toBeInTheDocument()
-    expect(handle).not.toHaveAccessibleDescription()
+    expect(handle).toHaveAccessibleDescription('Romans 8:28 text')
 
     push(socket, {
       type: 'display_settings_confirmed',
       data: { verse_limit: 3, theme: 'dark', live: true },
     })
     expect(currentRow.getByText('On screen')).toBeInTheDocument()
-    expect(handle).toHaveAccessibleDescription('On screen')
+    expect(handle).toHaveAccessibleDescription('On screen Romans 8:28 text')
   })
 
   it('moves with the display and goes when it is cleared', () => {
@@ -719,7 +723,8 @@ describe('the start of the text on plan rows', () => {
 
     await waitFor(() => expect(lookupCalls()).toHaveLength(1))
     expect(planPanel().getByText('John 3:16')).toBeInTheDocument()
-    expect(planPanel().getByRole('button', { name: 'Show' })).toBeEnabled()
+    fireEvent.doubleClick(rowHandle('John 3:16'))
+    expect(lastSent(socket)).toMatchObject({ action: 'display_reference', book: 'John' })
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
 })

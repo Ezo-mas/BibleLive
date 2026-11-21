@@ -59,7 +59,7 @@ function openWith(display_settings: DisplaySettings) {
   })
 }
 
-/** The warning ring is drawn on the monitor frame while the display is off air. */
+/** The monitor frame, marked off air while the display is (the preview is dimmed). */
 function ring() {
   return document.querySelector('.operator-monitor-wrap')
 }
@@ -117,7 +117,7 @@ it('starts live and moves only when the server confirms', () => {
   // The title says what pressing does, in both states.
   expect(liveSwitch()).toHaveAccessibleDescription('Show the display to the audience again')
   expect(liveSwitch()).toHaveTextContent(/^Off air$/)
-  // The switch says it; the ring round the preview says it; no badge repeats it.
+  // The switch says it; the preview is dimmed; no badge or tag repeats it.
   expect(ring()).toHaveClass('is-off-air')
   expect(screen.queryByText('Off air', { selector: '.status-badge, .status-badge *' })).toBeNull()
   expect(screen.getAllByText('Off air').every(el => el.closest('button'))).toBe(true)
