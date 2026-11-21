@@ -20,6 +20,7 @@ from .models import (
     OperatorDisplaySettingsConfirmed,
     OperatorError,
     OperatorFollowAutoConfirmed,
+    StreamOverlaySettings,
     WebSocketErrorData,
 )
 from .settings_store import ALLOWED_AUTO_MODES
@@ -189,6 +190,18 @@ async def _handle_set_clear_mode(
         return
 
     # Confirm to every operator, just like the display theme.
+    await app_state.connection_manager.send_to_operator(
+        OperatorDisplaySettingsConfirmed(data=app_state.display_settings).model_dump()
+    )
+
+
+async def _handle_set_stream_overlay(
+    _websocket: WebSocket, app_state: AppState, message: dict[str, Any]
+) -> None:
+    """Change the OBS overlay layout after the action has been validated."""
+    await app_state.set_stream_overlay(
+        StreamOverlaySettings.model_validate(message["stream_overlay"])
+    )
     await app_state.connection_manager.send_to_operator(
         OperatorDisplaySettingsConfirmed(data=app_state.display_settings).model_dump()
     )
@@ -389,6 +402,7 @@ _OPERATOR_ACTIONS: dict[str, Any] = {
     "set_verse_limit": _handle_set_verse_limit,
     "set_display_theme": _handle_set_display_theme,
     "set_clear_mode": _handle_set_clear_mode,
+    "set_stream_overlay": _handle_set_stream_overlay,
     "set_live": _handle_set_live,
     "set_auto_mode": _handle_set_auto_mode,
     "set_follow_auto": _handle_set_follow_auto,

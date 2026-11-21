@@ -288,6 +288,8 @@ export default function App() {
         onThemeChange={operator.setDisplayBackground}
         clearMode={operator.clearMode}
         onClearModeChange={operator.setDisplayClearMode}
+        streamOverlay={operator.streamOverlay}
+        onStreamOverlayChange={operator.setStreamOverlay}
         spokenLanguage={operator.spokenLanguage}
         bibleVersion={operator.bibleVersion}
         idleScreen={operator.idleScreen}

@@ -97,12 +97,23 @@ export interface IdleScreenPicture {
   fit: 'logo' | 'fill'
 }
 
+/** Layout of the stream overlay used by OBS. */
+export interface StreamOverlaySettings {
+  height_pct: number
+  position: 'bottom' | 'top'
+  background: 'band' | 'none'
+  font: 'serif' | 'sans'
+  align: 'left' | 'center'
+}
+
 /** Presentation settings for the audience display, chosen by the operator. */
 export interface DisplaySettings {
   verse_limit: VerseLimit
   theme: DisplayTheme
   /** An older server omits it, which keeps the idle picture after clearing. */
   clear_mode?: ClearMode
+  /** An older server omits it, which keeps the default layout. */
+  stream_overlay?: StreamOverlaySettings
   /** Optional and additive: an older server omits it, which means a blank screen. */
   idle_image?: IdleScreenPicture | null
   /**
@@ -216,6 +227,11 @@ export interface SetAutoModeAction {
   auto_mode: AutoMode
 }
 
+export interface SetStreamOverlayAction {
+  action: 'set_stream_overlay'
+  stream_overlay: StreamOverlaySettings
+}
+
 export interface SetClearModeAction {
   action: 'set_clear_mode'
   clear_mode: ClearMode
@@ -276,6 +292,7 @@ export type OperatorAction =
   | SetVerseLimitAction
   | SetDisplayThemeAction
   | SetClearModeAction
+  | SetStreamOverlayAction
   | SetLiveAction
   | SetAutoModeAction
   | SetFollowAutoAction

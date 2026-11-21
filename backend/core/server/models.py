@@ -4,7 +4,16 @@ import uuid
 from datetime import UTC, datetime
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, Field, StrictBool, StrictFloat, StrictInt, StrictStr
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    StrictBool,
+    StrictFloat,
+    StrictInt,
+    StrictStr,
+    field_validator,
+)
 
 
 class VerseText(BaseModel):
@@ -149,6 +158,18 @@ class IdleScreenPicture(BaseModel):
     )
 
 
+class StreamOverlaySettings(BaseModel):
+    """Layout of the stream overlay used by OBS."""
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    height_pct: int = Field(default=30, ge=15, le=60)
+    position: Literal["bottom", "top"] = "bottom"
+    background: Literal["band", "none"] = "band"
+    font: Literal["serif", "sans"] = "serif"
+    align: Literal["left", "center"] = "left"
+
+
 class DisplaySettings(BaseModel):
     """Operator-controlled presentation settings for the audience display.
 
@@ -168,6 +189,7 @@ class DisplaySettings(BaseModel):
         default="idle",
         description="After a passage is cleared, show the idle picture or a blank screen",
     )
+    stream_overlay: StreamOverlaySettings = Field(default_factory=StreamOverlaySettings)
     idle_image: IdleScreenPicture | None = Field(
         default=None,
         description="Picture shown while nothing is on screen; null means a blank screen",
@@ -482,6 +504,22 @@ class OperatorSetClearModeAction(BaseModel):
     clear_mode: Literal["idle", "blank"]
 
 
+class OperatorSetStreamOverlayAction(BaseModel):
+    """Action to replace the OBS overlay layout."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    action: Literal["set_stream_overlay"]
+    stream_overlay: StreamOverlaySettings
+
+    @field_validator("stream_overlay")
+    @classmethod
+    def require_full_layout(cls, value: StreamOverlaySettings) -> StreamOverlaySettings:
+        if value.model_fields_set != StreamOverlaySettings.model_fields.keys():
+            raise ValueError("All stream overlay settings are required")
+        return value
+
+
 class OperatorSetLiveAction(BaseModel):
     """Operator action: put the audience display on air (``live``) or black it out."""
 
@@ -548,6 +586,7 @@ OperatorAction = Annotated[
     | OperatorSetVerseLimitAction
     | OperatorSetDisplayThemeAction
     | OperatorSetClearModeAction
+    | OperatorSetStreamOverlayAction
     | OperatorSetLiveAction
     | OperatorSetAutoModeAction
     | OperatorSetFollowAutoAction

@@ -6,6 +6,7 @@ import type {
   AutoMode,
   BibleReference,
   ClearMode,
+  StreamOverlaySettings,
   OperatorMessage,
   Passage,
 } from '../../shared/types'
@@ -330,6 +331,14 @@ export function useOperatorState(): OperatorState {
       dispatch({ type: 'set_setting', action: { action: 'set_clear_mode', clear_mode: next } }),
     [dispatch]
   )
+  const setStreamOverlay = useCallback(
+    (next: StreamOverlaySettings) =>
+      dispatch({
+        type: 'set_setting',
+        action: { action: 'set_stream_overlay', stream_overlay: next },
+      }),
+    [dispatch]
+  )
   // Not optimistic: the switch shows only what the server confirmed (display_settings_confirmed).
   const setLive = useCallback(
     (next: boolean) => dispatch({ type: 'set_live', live: next }),
@@ -412,10 +421,12 @@ export function useOperatorState(): OperatorState {
     verseLimit: state.settings.verseLimit,
     displayTheme: state.settings.theme,
     clearMode: state.settings.clearMode,
+    streamOverlay: state.settings.streamOverlay,
     idleImage: state.idleImage,
     setDisplayVerseLimit,
     setDisplayBackground,
     setDisplayClearMode,
+    setStreamOverlay,
     live: state.confirmed.live,
     setLive,
     autoMode: state.settings.autoMode,

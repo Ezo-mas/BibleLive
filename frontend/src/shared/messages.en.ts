@@ -195,7 +195,7 @@ export const en = {
   'obs.previewHint': 'Sample passages; the checks stand for the camera.',
   'obs.link': 'OBS link',
   'obs.linkHint':
-    'Add a Browser source in OBS with this link, 1920 × 1080. After changing an option, paste the new link.',
+    'Add a Browser source in OBS with this link and set it to 1920 × 1080. Set the link once and layout changes apply live.',
   'obs.copy': 'Copy',
   'obs.copied': 'Copied',
 
@@ -343,6 +343,7 @@ export const en = {
   'notice.errVerseLimit': 'Could not change the verses shown',
   'notice.errTheme': 'Could not change the background',
   'notice.errClearMode': 'Could not change what happens when the display is cleared',
+  'notice.errStreamOverlay': 'Could not change the stream overlay layout',
   'notice.errLive': 'Could not switch the display on or off air',
   'notice.errAutoMode': 'Could not change auto-approve',
   'notice.errFollowAuto': 'Could not change automatic following',

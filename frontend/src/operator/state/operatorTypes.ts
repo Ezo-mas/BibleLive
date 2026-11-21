@@ -4,6 +4,7 @@ import type {
   AutoMode,
   BibleReference,
   ClearMode,
+  StreamOverlaySettings,
   DisplayReferenceAction,
   DisplayTheme,
   FollowAlongHint,
@@ -36,6 +37,7 @@ export interface OperatorSettings {
   // Display background. Projectors run dark, so that is the default here too.
   theme: DisplayTheme
   clearMode: ClearMode
+  streamOverlay: StreamOverlaySettings
   // Whether the audience display is on air. Never set optimistically: the console
   // shows only what the server confirmed, so it can never claim a dark screen that
   // the audience can still see.
@@ -88,6 +90,7 @@ export type OptimisticSettingAction = Extract<
       | 'set_verse_limit'
       | 'set_display_theme'
       | 'set_clear_mode'
+      | 'set_stream_overlay'
       | 'set_auto_mode'
       | 'set_follow_auto'
   }

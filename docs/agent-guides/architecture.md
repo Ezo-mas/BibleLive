@@ -38,13 +38,15 @@ easy to break by accident.
    auto-show, so nothing can auto-approve it). The supported operator actions are
    `authenticate` (the token, as the socket's first message; it carries no
    operation and is ignored once the socket is let in), `approve`, `discard_pending`, `clear`, `clear_pending`, `clear_history`, `set_verse_limit`,
-   `set_display_theme`, `set_clear_mode`, `set_live`, `set_auto_mode`, `set_follow_auto`, `display_reference` — there is no
+   `set_display_theme`, `set_clear_mode`, `set_stream_overlay`, `set_live`,
+   `set_auto_mode`, `set_follow_auto`, `display_reference` — there is no
    `reject` action; `discard_pending` removes one pending row and broadcasts only `pending_update`.
    `clear_history` empties saved and in-memory history while preserving the current
    passage. Every operator receives `history_cleared` with `{history, history_count}`
    (`[]` and `0` after a clear). Display sockets receive no event.
    Display settings include verse limit, theme, idle picture and persisted
-   `clear_mode` (`idle` by default, or `blank` after a passage has been cleared).
+   `clear_mode` (`idle` by default, or `blank` after a passage has been cleared). The
+   persisted `stream_overlay` layout travels in the same display settings messages.
    `bible_version_confirmed` (server → operators only) announces a
    translation change; it never reaches display sockets, and
    `follow_along` (server → operators only, never display sockets) is a

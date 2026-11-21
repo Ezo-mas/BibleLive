@@ -15,7 +15,11 @@ import { StreamOverlaySettings } from './StreamOverlaySettings'
 import type { IdleScreenState } from '../hooks/useIdleScreen'
 import type { Theme } from '../../hooks/useTheme'
 import type { DisplayTheme, VerseLimit } from '../../shared/verseText'
-import type { AutoMode, ClearMode } from '../../shared/types'
+import type {
+  AutoMode,
+  ClearMode,
+  StreamOverlaySettings as StreamOverlayLayout,
+} from '../../shared/types'
 
 export interface SettingsDialogProps {
   open: boolean
@@ -28,6 +32,8 @@ export interface SettingsDialogProps {
   disabled: boolean
   onThemeChange: (next: DisplayTheme) => void
   onClearModeChange: (next: ClearMode) => void
+  streamOverlay: StreamOverlayLayout
+  onStreamOverlayChange: (next: StreamOverlayLayout) => void
   /** The audio pipeline's spoken language: read and switched through the server. */
   spokenLanguage: SpokenLanguageState
   /** The Bible translation verse text comes from: read and switched through the server. */
@@ -87,6 +93,8 @@ export function SettingsDialog({
   disabled,
   onThemeChange,
   onClearModeChange,
+  streamOverlay,
+  onStreamOverlayChange,
   spokenLanguage,
   bibleVersion,
   idleScreen,
@@ -195,7 +203,11 @@ export function SettingsDialog({
             <h3 className="operator-dialog-section-title" id={streamSectionId}>
               {t('settings.sectionStream')}
             </h3>
-            <StreamOverlaySettings />
+            <StreamOverlaySettings
+              options={streamOverlay}
+              disabled={disabled}
+              onChange={onStreamOverlayChange}
+            />
           </section>
 
           <section className="operator-dialog-section" aria-labelledby={consoleSectionId}>

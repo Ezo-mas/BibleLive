@@ -145,24 +145,17 @@ Add a **Browser** source in OBS with the URL
 `http://127.0.0.1:8000/display?mode=obs`, width 1920 and height 1080 (the
 stream's resolution). It shows the passage on screen as a lower third over the
 camera, on a transparent page, and follows the projector: same passages, same
-verse limit, cleared with it. Options in the URL:
+verse limit, cleared with it.
 
-| Option | Values | Default |
-|---|---|---|
-| `height` | band height, % of the frame (15-60) | `30` |
-| `position` | `bottom`, `top` | `bottom` |
-| `bg` | `band` (dark translucent band), `none` (text with a shadow only) | `band` |
-| `font` | `serif`, `sans` (verse text) | `serif` |
-| `align` | `left` (numbered column), `center` (centred lines) | `left` |
+In the operator console, **Settings → Stream overlay (OBS)** has the layout
+controls, a preview with sample passages, and a Copy button. Paste the link
+into OBS once. The server saves your choices and applies changes live.
+Existing URLs can still override individual settings with `height`, `position`,
+`bg`, `font` and `align`. Use the fixed URL to follow every console setting.
 
 The text shrinks to fit the band but never below what a stream viewer can read
 (about 28 px at 1080p); a passage longer than that shows the verses that fit
-and "+N more verses". Raise `height` to fit more.
-
-The operator console builds this link for you: Settings → Stream overlay (OBS)
-has the options, a live preview with sample passages, and a Copy button. The
-choices are remembered in that browser; after changing one, paste the new link
-into the OBS source.
+and "+N more verses". Increase the band height to fit more.
 
 ### Run the audio pipeline only
 

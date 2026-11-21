@@ -24,6 +24,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Literal, TypeGuard
 
+from pydantic import ValidationError
+
 from .idle_screen import (
     DEFAULT_IDLE_SCREEN_FIT,
     IdleImage,
@@ -32,7 +34,7 @@ from .idle_screen import (
     is_image_kind,
     is_image_version,
 )
-from .models import AutoMode
+from .models import AutoMode, StreamOverlaySettings
 
 logger = logging.getLogger(__name__)
 
@@ -223,6 +225,16 @@ class SettingsStore:
             logger.warning("Ignoring invalid clear mode %r; using idle", value)
         return "idle"
 
+    def load_stream_overlay(self) -> StreamOverlaySettings:
+        """Return the saved OBS overlay layout, or the default layout."""
+        settings = self._read()
+        if "stream_overlay" in settings:
+            try:
+                return StreamOverlaySettings.model_validate(settings["stream_overlay"])
+            except ValidationError:
+                logger.warning("Ignoring invalid stream overlay settings; using defaults")
+        return StreamOverlaySettings()
+
     def save_verse_limit(self, value: int | str) -> bool:
         """Persist a limit accepted by the operator handlers."""
         if not (type(value) is int and value in (3, 5, 10)) and value != "all":
@@ -240,6 +252,12 @@ class SettingsStore:
         if value not in ("idle", "blank"):
             return False
         return self._update({"clear_mode": value}, log=f"Persisted clear mode to {self.path}")
+
+    def save_stream_overlay(self, value: StreamOverlaySettings) -> bool:
+        return self._update(
+            {"stream_overlay": value.model_dump()},
+            log=f"Persisted stream overlay settings to {self.path}",
+        )
 
     def load_bible_version(self, db_path: str) -> str | None:
         """Return the persisted Bible translation id, or None if none applies.

@@ -1,1 +1,1 @@
-{"type": "display_settings_confirmed", "data": {"verse_limit": 5, "theme": "light", "clear_mode": "idle", "idle_image": null, "live": true}}
+{"type": "display_settings_confirmed", "data": {"verse_limit": 5, "theme": "light", "clear_mode": "idle", "stream_overlay": {"height_pct": 40, "position": "top", "background": "none", "font": "sans", "align": "center"}, "idle_image": null, "live": true}}
