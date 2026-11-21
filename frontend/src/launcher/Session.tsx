@@ -253,6 +253,8 @@ interface SetupProps {
   onMicrophone: (device: Form['input_device']) => void
   onRefresh: () => void
   onProjector: () => void
+  /** The audience QR toggle; absent when the displays cannot show one (no network address). */
+  audienceQr?: { shown: boolean; busy: boolean; onToggle: () => void }
 }
 
 export function Setup({
@@ -266,6 +268,7 @@ export function Setup({
   onMicrophone,
   onRefresh,
   onProjector,
+  audienceQr,
 }: SetupProps) {
   const { t } = useI18n()
   const { levels, meter, meterError, now, options } = data
@@ -338,6 +341,19 @@ export function Setup({
           >
             <Icon name="monitor" />
           </button>
+          {audienceQr && (
+            <button
+              type="button"
+              className="bl-button"
+              disabled={!canProject || audienceQr.busy}
+              aria-label={t('launcher.audienceQr')}
+              aria-pressed={audienceQr.shown}
+              title={t('launcher.audienceQrHint')}
+              onClick={audienceQr.onToggle}
+            >
+              <Icon name="qr" />
+            </button>
+          )}
         </div>
       </div>
     </section>

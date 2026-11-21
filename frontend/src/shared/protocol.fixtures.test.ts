@@ -124,7 +124,7 @@ describe('checked-in protocol fixtures', () => {
       ].map(([surface, component]) => ({ path, message, surface, component }))
     )
   )('handles $path on $surface', ({ path, message, surface, component }) => {
-    expect(['reference', 'clear', 'display_settings']).toContain(message.type)
+    expect(['reference', 'clear', 'display_settings', 'audience_qr']).toContain(message.type)
     expect(path.endsWith(`/${message.type}.json`)).toBe(true)
     const { container } = render(createElement(component as typeof DisplayApp))
     const reference = Object.values(display).find(example => example.type === 'reference')!
@@ -160,6 +160,17 @@ describe('checked-in protocol fixtures', () => {
       case 'clear':
         expect(container.textContent).not.toContain(reference.data.verses[0].text)
         break
+      case 'audience_qr': {
+        // The projector draws the code; the stream overlay never does.
+        const code = container.querySelector('[data-testid="display-audience-qr"] img')
+        if (surface === 'projector') {
+          expect(code?.getAttribute('src')).toBe(message.data.svg)
+          expect(container.textContent).toContain('192.168.1.23:8000/display')
+        } else {
+          expect(code).toBeNull()
+        }
+        break
+      }
       case 'display_settings':
         expect(container.textContent).toContain('Fixture verse 5')
         expect(container.textContent).not.toContain('Fixture verse 6')

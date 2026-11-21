@@ -119,11 +119,22 @@ export interface DisplaySettings {
  */
 export type AutoMode = 'off' | 'high' | 'medium_and_up' | 'all'
 
+/**
+ * The audience QR code: the display page's address on the local network, drawn by the
+ * server as an SVG `data:` URI. Both are null when the code is hidden. Turned on and off
+ * from the launcher (`POST /api/display/qr`), never from a display.
+ */
+export interface AudienceQr {
+  url: string | null
+  svg: string | null
+}
+
 /** Messages the server sends to display clients (ws /ws/display). */
 export type DisplayMessage =
   | { type: 'reference'; data: BibleReference }
   | { type: 'clear'; data: Record<string, never> }
   | { type: 'display_settings'; data: DisplaySettings }
+  | { type: 'audience_qr'; data: AudienceQr }
 
 /**
  * Follow-along hint: the speaker appears to be reading on past the passage on

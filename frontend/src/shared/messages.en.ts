@@ -182,6 +182,8 @@ export const en = {
   'idle.blank': 'Blank',
   'idle.previewAlt': 'Preview of the idle screen picture',
   'idle.imageAlt': 'Idle screen picture',
+  'display.qrCaption': 'Follow on your phone',
+  'display.qrAlt': 'QR code that opens this screen on a phone',
   'idle.fitGroup': 'Idle screen picture fit',
   'idle.fitLogo': 'Logo',
   'idle.fitFill': 'Fill screen',
@@ -379,6 +381,12 @@ export const en = {
   'launcher.showProjector': 'Show on projector',
   'launcher.showProjectorHint':
     'Opens the audience display full-screen on the projector, or brings it back to the front if it is already open',
+  'launcher.audienceQr': 'QR code on the projector',
+  'launcher.audienceQrHint':
+    'Shows a QR code in the corner of the audience display that opens it on a phone. Press again to hide it.',
+  'launcher.operatorQr': 'Operator page QR code (signs in)',
+  'launcher.operatorQrWarning':
+    'Anyone who scans this code gets operator control. Never show it on the projector or the stream.',
   'launcher.networkDetails': 'Network connection details',
   'launcher.displayUrl': 'Audience display URL',
   'launcher.operatorUrl': 'Operator URL',

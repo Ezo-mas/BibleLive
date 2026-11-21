@@ -1,5 +1,6 @@
 """Headless checks for the launcher webview bridge."""
 
+import io
 import json
 import struct
 import subprocess
@@ -51,6 +52,8 @@ def bridge(tmp_path, monkeypatch):
         meter_exit=threading.Event(),
         launches=[],
         processes=[],
+        qr_calls=[],
+        qr_answer=lambda visible: visible,
     )
     session.meter_exit.set()
     session.allow_ready.set()
@@ -145,6 +148,9 @@ def bridge(tmp_path, monkeypatch):
         firewall_exists=lambda: False,
         access=lambda **_: "authorized",
         clock=lambda: 1234.5,
+        post_audience_qr=lambda port, token, visible: (
+            session.qr_calls.append((port, token, visible)) or session.qr_answer(visible)
+        ),
     )
     try:
         yield LauncherApi(controller), settings_path, trace, session
@@ -416,6 +422,75 @@ def test_tail_caps_entries(tmp_path):
     ]
 
 
+def test_operator_qr_code_in_network_details(bridge):
+    api, _, _, session = bridge
+    form = api.init()["form"]
+    assert api.start({**form, "allow_network": True}) == {"ok": True}
+    assert session.running.wait(3)
+    network = api.poll()["state"]["network"]
+    assert network["operator_qr"].startswith("data:image/png;base64,")
+    assert (network["audience_qr"], network["audience_qr_busy"]) == (False, False)
+
+
+def test_audience_qr_is_shown_and_hidden_through_the_server(bridge):
+    api, settings_path, _, session = bridge
+    form = api.init()["form"]
+    api.set_audience_qr(True)  # no session yet: nothing to ask
+    assert session.qr_calls == []
+    assert api.start({**form, "allow_network": True}) == {"ok": True}
+    assert session.running.wait(3)
+    token = load_settings(settings_path).network_token
+
+    api.set_audience_qr(True)
+    assert wait_for(lambda: api.poll()["state"]["network"]["audience_qr"])
+    assert session.qr_calls == [(8000, token, True)]
+    api.set_audience_qr(False)
+    wait_for(lambda: len(session.qr_calls) == 2)
+    assert wait_for(lambda: not api.poll()["state"]["network"]["audience_qr_busy"])
+    assert api.poll()["state"]["network"]["audience_qr"] is False
+    assert session.qr_calls[1] == (8000, token, False)
+
+
+def test_audience_qr_failure_and_no_address_are_logged(bridge):
+    api, _, _, session = bridge
+    form = api.init()["form"]
+    assert api.start({**form, "allow_network": True}) == {"ok": True}
+    assert session.running.wait(3)
+    api.poll()
+
+    def unreachable(_visible):
+        raise OSError("connection refused")
+
+    warnings: list[str] = []
+
+    def settled() -> bool:
+        poll = api.poll()
+        warnings.extend(line["text"] for line in poll["log"] if line["level"] == "WARNING")
+        return not poll["state"]["network"]["audience_qr_busy"]
+
+    session.qr_answer = unreachable
+    api.set_audience_qr(True)
+    wait_for(settled)
+    assert any("Could not reach the server" in text for text in warnings)
+    session.qr_answer = lambda _visible: False  # the server found no address
+    api.set_audience_qr(True)
+    wait_for(lambda: len(session.qr_calls) == 2 and settled())
+    assert any("no network address" in text for text in warnings)
+    assert api.poll()["state"]["network"]["audience_qr"] is False
+
+
+def test_stopping_hides_the_audience_qr_state(bridge):
+    api, _, _, session = bridge
+    form = api.init()["form"]
+    assert api.start({**form, "allow_network": True}) == {"ok": True}
+    assert session.running.wait(3)
+    api.set_audience_qr(True)
+    assert wait_for(lambda: api.poll()["state"]["network"]["audience_qr"])
+    api.stop()
+    wait_for(lambda: api.poll()["state"]["session"] == "idle")
+    assert api.poll()["state"]["network"] is None
+
+
 def test_api_exposes_only_contract_methods(bridge):
     api, _, _, _ = bridge
     assert {name for name in dir(api) if not name.startswith("_")} == {
@@ -429,6 +504,7 @@ def test_api_exposes_only_contract_methods(bridge):
         "show_projector",
         "open_logs",
         "allow_firewall",
+        "set_audience_qr",
         "set_ui_language",
         "set_view",
         "fit_window",
@@ -691,3 +767,42 @@ def test_closing_the_window_lets_main_clean_up(monkeypatch, platform_name):
     else:
         assert result is None
         assert calls == ["request_close"]
+
+
+def test_audience_qr_request_goes_to_this_computer_with_the_token(monkeypatch):
+    from launcher import webui
+
+    seen = {}
+
+    class Response(io.BytesIO):
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_):
+            self.close()
+
+    def urlopen(request, timeout):
+        seen.update(
+            url=request.full_url,
+            method=request.get_method(),
+            auth=request.get_header("Authorization"),
+            body=json.loads(request.data),
+            timeout=timeout,
+        )
+        return Response(b'{"visible": true, "url": "http://192.0.2.1:8100/display"}')
+
+    class Opener:
+        def __init__(self, handlers):
+            proxies = [h for h in handlers if isinstance(h, webui.urllib.request.ProxyHandler)]
+            assert proxies and proxies[0].proxies == {}  # never through a proxy
+            self.open = urlopen
+
+    monkeypatch.setattr(webui.urllib.request, "build_opener", lambda *h: Opener(h))
+    assert webui._post_audience_qr(8100, "tok", True) is True
+    assert seen == {
+        "url": "http://127.0.0.1:8100/api/display/qr",
+        "method": "POST",
+        "auth": "Bearer tok",
+        "body": {"visible": True},
+        "timeout": webui._AUDIENCE_QR_TIMEOUT_S,
+    }

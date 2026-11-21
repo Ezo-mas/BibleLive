@@ -17,6 +17,8 @@ from ..bible_versions import BibleVersion
 from ..book_names import BookNames
 from ..config import config
 from ..passage import PassageError, ResolvedPassage, resolve_passage
+from .audience_qr import HIDDEN as HIDDEN_AUDIENCE_QR
+from .audience_qr import audience_qr, audience_url
 from .bible_version_service import BibleVersions
 from .connections import SEND_TIMEOUT, ConnectionManager
 from .display_session import SNAPSHOT_HISTORY, DisplaySession
@@ -25,10 +27,12 @@ from .follow_along import FOLLOW_AUTO_MAX_JUMP, FollowAlong, VerseIndexes
 from .idle_screen import IdleImage, IdleScreenFit, IdleScreenState, ImageKind
 from .idle_service import IdleScreenService
 from .models import (
+    AudienceQrData,
     AutoMode,
     BibleReference,
     BibleVersionResponse,
     ConnectionStatusData,
+    DisplayAudienceQr,
     DisplayClear,
     DisplayReference,
     DisplaySettings,
@@ -104,6 +108,8 @@ class AppState:
             theme=self.settings_store.load_theme(),
             clear_mode=self.settings_store.load_clear_mode(),
         )
+        # The audience QR code on the displays: in memory only, so a restart hides it.
+        self.audience_qr: AudienceQrData = HIDDEN_AUDIENCE_QR
         self.runtime_state = RuntimeStateStore(self.settings_store.directory / "runtime_state.json")
         self.service_log = ServiceLog()
         self._pipeline_health = PipelineHealth(self)
@@ -361,6 +367,22 @@ class AppState:
         logger.info(f"Display {'live' if live else 'off air'}")
         return True
 
+    async def set_audience_qr(self, visible: bool) -> AudienceQrData:
+        """Show or hide the audience QR code on every display; returns what is now shown.
+
+        Showing needs an address other devices can reach (see ``audience_url``); without
+        one the code stays hidden. The address is worked out again on every show, so a
+        new address from the router is picked up by turning the code off and on.
+        """
+        # The address lookup can block on the OS (a host-name lookup): off the event loop.
+        url = await asyncio.to_thread(audience_url, config.HOST, config.PORT) if visible else None
+        qr = audience_qr(url) if url else HIDDEN_AUDIENCE_QR
+        # Change and broadcast in one step, with no await between (architecture invariant).
+        self.audience_qr = qr
+        await self.connection_manager.send_to_display(DisplayAudienceQr(data=qr).model_dump())
+        logger.info(f"Audience QR code {'shown' if qr.url else 'hidden'}")
+        return qr
+
     async def set_auto_mode(self, auto_mode: object) -> bool:
         """Choose which new detections are displayed without operator action.
 
@@ -475,6 +497,7 @@ class AppState:
         if not self.display_settings.live:
             await self.send_display_settings(websocket)
             await self.connection_manager._safe_send(websocket, DisplayClear(data={}).model_dump())
+            await self._send_audience_qr(websocket)
             return
         if self.current_display:
             await self.connection_manager._safe_send(
@@ -486,6 +509,14 @@ class AppState:
         # Settings follow the content so a fresh display renders the passage
         # immediately rather than at the default verse count first.
         await self.send_display_settings(websocket)
+        await self._send_audience_qr(websocket)
+
+    async def _send_audience_qr(self, websocket: WebSocket) -> None:
+        """A newly connected display gets the audience QR code, only while it is shown."""
+        if self.audience_qr.url:
+            await self.connection_manager._safe_send(
+                websocket, DisplayAudienceQr(data=self.audience_qr).model_dump()
+            )
 
     async def notify_display_connection_status(self) -> None:
         """Tell operators how many display/operator clients are connected.

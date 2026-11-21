@@ -56,6 +56,7 @@ from launcher.viewmodel import (
     settings_from_form,
 )
 
+from core import lan
 from core.config import Config
 
 
@@ -168,22 +169,22 @@ def test_server_config_reads_the_names_the_launcher_sets(tmp_path, monkeypatch):
 
 
 def test_lan_ip_prefers_the_outgoing_interface(monkeypatch):
-    monkeypatch.setattr(network, "_route_ip", lambda: "192.168.1.23")
-    monkeypatch.setattr(network, "_host_ips", lambda: ["10.9.9.9"])
+    monkeypatch.setattr(lan, "_route_ip", lambda: "192.168.1.23")
+    monkeypatch.setattr(lan, "_host_ips", lambda: ["10.9.9.9"])
     assert lan_ip() == "192.168.1.23"
 
 
 def test_lan_ip_falls_back_to_host_addresses(monkeypatch):
-    monkeypatch.setattr(network, "_route_ip", lambda: None)
-    monkeypatch.setattr(network, "_host_ips", lambda: ["127.0.0.1", "169.254.10.2", "192.168.0.7"])
+    monkeypatch.setattr(lan, "_route_ip", lambda: None)
+    monkeypatch.setattr(lan, "_host_ips", lambda: ["127.0.0.1", "169.254.10.2", "192.168.0.7"])
     assert lan_ip() == "192.168.0.7"
-    monkeypatch.setattr(network, "_route_ip", lambda: "169.254.1.1")  # link-local is no use
+    monkeypatch.setattr(lan, "_route_ip", lambda: "169.254.1.1")  # link-local is no use
     assert lan_ip() == "192.168.0.7"
 
 
 def test_lan_ip_is_none_without_a_usable_address(monkeypatch):
-    monkeypatch.setattr(network, "_route_ip", lambda: "127.0.0.1")
-    monkeypatch.setattr(network, "_host_ips", lambda: ["127.0.0.1"])
+    monkeypatch.setattr(lan, "_route_ip", lambda: "127.0.0.1")
+    monkeypatch.setattr(lan, "_host_ips", lambda: ["127.0.0.1"])
     assert lan_ip() is None
 
 

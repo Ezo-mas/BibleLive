@@ -18,6 +18,7 @@ EXPECTED = [
     ("/api/books", ("GET",), True),
     ("/api/clear", ("POST",), True),
     ("/api/clear-pending", ("POST",), True),
+    ("/api/display/qr", ("POST",), True),
     ("/api/idle-screen", ("DELETE",), True),
     ("/api/idle-screen", ("GET",), True),
     ("/api/idle-screen", ("POST",), True),

@@ -154,10 +154,11 @@ are described in
    another port in the launcher) for the audience page, which needs no token. For the
    operator console, open `http://<lan-ip>:8000/operator` and enter the token shown in the
    launcher (the same value as `network_token` in `%APPDATA%\BibleLive\launcher.json`).
-   The launcher can also show both addresses as QR codes (press **Show QR codes**, which
-   opens a small window of its own): a phone scans the display code, or the operator code
-   to sign in without typing the token. Show the operator code only on your own screen,
-   never on the projector or the stream.
+   The launcher also has QR codes. The QR button beside the projector picker puts a code
+   for the display page in the corner of the audience display, so people in the room can
+   follow on their phones; press it again to hide it. The operator code, which signs a
+   phone in without typing the token, is under Advanced → Network. Show the operator code
+   only on your own screen, never on the projector or the stream.
 5. Before the service, check that a phone on the same Wi-Fi opens the display page. Many
    routers keep devices from reaching each other; on such a network this setup cannot work.
 

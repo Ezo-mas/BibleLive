@@ -335,7 +335,10 @@
 }
 #bl-launcher .bl-projector-field {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  /* The picker, then its buttons (Show on projector, and the QR code when there is one). */
+  grid-template-columns: minmax(0, 1fr);
+  grid-auto-columns: auto;
+  grid-auto-flow: column;
   align-content: start;
   align-items: end;
   gap: 6px;
@@ -345,6 +348,12 @@
 }
 #bl-launcher .bl-projector-field .bl-button {
   min-height: 37px;
+}
+/* The QR code toggle while the code is on the projector. */
+#bl-launcher .bl-projector-field .bl-button[aria-pressed='true'] {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: var(--soft);
 }
 #bl-launcher .bl-field select,
 #bl-launcher .bl-field input,
@@ -452,6 +461,24 @@
   background: var(--soft);
   border-radius: 10px;
   padding: 12px;
+}
+#bl-launcher .bl-operator-qr {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0;
+}
+#bl-launcher .bl-operator-qr img {
+  width: 132px;
+  height: 132px;
+  flex: none;
+  border-radius: 6px;
+  image-rendering: pixelated;
+}
+#bl-launcher .bl-operator-qr figcaption {
+  display: grid;
+  gap: 4px;
+  font-size: 13px;
 }
 #bl-launcher .bl-engine > div {
   display: flex;

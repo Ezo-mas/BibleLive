@@ -106,6 +106,10 @@ EN: dict[str, str] = {
         "Anyone who scans this code gets operator control. Do not show it on the projector "
         "or the stream."
     ),
+    "net.audience_qr_failed": "Could not reach the server to change the QR code on the projector.",
+    "net.audience_qr_no_address": (
+        "The server found no network address, so there is no QR code to show on the projector."
+    ),
     "fw.missing": (
         "Windows Firewall has no BibleLive rule, so other devices may not reach these pages. "
         "Allowing BibleLive on Private networks asks for administrator approval once."
@@ -266,6 +270,10 @@ LT: dict[str, str] = {
     "net.qr_warning": (
         "Kas nuskaitys šį kodą, gaus operatoriaus valdymą. Nerodykite jo projektoriuje "
         "ar transliacijoje."
+    ),
+    "net.audience_qr_failed": "Nepavyko pasiekti serverio, kad būtų pakeistas QR kodas projektoriuje.",
+    "net.audience_qr_no_address": (
+        "Serveris nerado tinklo adreso, todėl projektoriuje nėra ką rodyti kaip QR kodą."
     ),
     "fw.missing": (
         "Windows ugniasienėje nėra „BibleLive“ taisyklės, todėl kiti įrenginiai gali nepasiekti "

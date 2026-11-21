@@ -13,6 +13,7 @@ import pytest
 from protocol_golden import FIXTURES, golden
 from pydantic import TypeAdapter
 
+from core import lan
 from core.bible_versions import BibleVersion
 from core.config import config
 from core.server import models
@@ -146,6 +147,14 @@ def test_real_server_protocol_fixtures(client, app_state, kjv_db, monkeypatch):
             receive(operator, "operator", "display_settings_confirmed", save=False)
             receive(display, "display", "reference", save=False)
             receive(display, "display", "display_settings", save=False)
+            # The audience QR code: shown and hidden through the launcher's HTTP endpoint.
+            monkeypatch.setattr(config, "HOST", "0.0.0.0")
+            monkeypatch.setattr(config, "PORT", 8000)
+            monkeypatch.setattr(lan, "_route_ip", lambda: "192.168.1.23")
+            assert client.post("/api/display/qr", json={"visible": True}).status_code == 200
+            receive(display, "display", "audience_qr")
+            assert client.post("/api/display/qr", json={"visible": False}).status_code == 200
+            receive(display, "display", "audience_qr", save=False)
             send(operator, "set_auto_mode")
             receive(operator, "operator", "auto_mode_confirmed")
             send(operator, "set_follow_auto")
