@@ -290,7 +290,10 @@ export function operatorReducer(
               ? ERROR_PREFIX_KEYS[action]
               : 'notice.errGeneric',
           },
-          reason,
+          reason:
+            reason === 'Reference not found or already processed'
+              ? { key: 'notice.reasonReferenceUnavailable' }
+              : reason,
         },
       })
       // An optimistic change is only provisional. Put the last confirmed value

@@ -315,6 +315,7 @@ export const en = {
   'notice.errAutoMode': 'Could not change auto-approve',
   'notice.errFollowAuto': 'Could not change automatic following',
   'notice.errGeneric': 'Action failed',
+  'notice.reasonReferenceUnavailable': 'Reference not found or already processed',
   'notice.reverted': '{prefix} — reverted. {reason}',
   'notice.failed': '{prefix}: {reason}',
   'notice.alreadyPlanned': '{ref} is already in the plan',

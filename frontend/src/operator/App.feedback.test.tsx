@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import App from './App'
+import { I18nProvider } from '../shared/I18nProvider'
+import { LANGUAGE_STORAGE_KEY } from '../shared/i18n'
 import type { BibleReference } from '../shared/types'
 import { createMockSocket, push } from '../test/operatorHarness'
 import type { MockSocket } from '../test/operatorHarness'
@@ -32,8 +34,8 @@ function reference(id = 'p-1', book = 'John', chapter = 1, verseStart = 1): Bibl
 }
 
 /** Connect the socket and deliver a snapshot with one pending reference. */
-function openWith() {
-  render(<App />)
+function openWith(wrapper?: typeof I18nProvider) {
+  render(<App />, { wrapper })
   act(() => {
     socket?.onopen?.()
   })
@@ -163,6 +165,20 @@ describe('action failures', () => {
     const alert = screen.getByRole('alert')
     expect(alert).toHaveTextContent('Could not show that reference')
     expect(alert).toHaveTextContent('Reference not found or already processed')
+  })
+
+  it('localizes the reason when a detected reference is no longer pending', () => {
+    window.localStorage.setItem(LANGUAGE_STORAGE_KEY, 'lt')
+    openWith(I18nProvider)
+
+    push(socket, {
+      type: 'error',
+      data: { message: 'Reference not found or already processed', action: 'approve' },
+    })
+
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'Nepavyko rodyti šios nuorodos: Nuorodos nebėra laukiančiųjų sąraše'
+    )
   })
 
   it('reverts a rejected settings change and says so', async () => {
