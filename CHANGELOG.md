@@ -12,7 +12,47 @@ launcher and written to every service log) and attaches it to a GitHub release,
 and `.github/workflows/macos-app.yml`, which attaches the Mac disk image and zip
 to the same release.
 
-## Unreleased
+## 0.2.1 (2026-11-22)
+
+A new launcher window on Windows and Mac, a calmer operator console with a
+Live switch, and OBS settings kept by the server.
+
+### Launcher
+- A new launcher window with a Simple view (start/stop, microphone, projector,
+  spoken language) and an Advanced view with Speech, Network and Launch
+  settings beside a live console of the launcher, server and speech logs.
+- The selected microphone shows a live level while idle, with a warning when
+  it hears near-silence, so a dead mic is found before the service starts.
+- QR codes: a button puts a code for the display page in a corner of the
+  audience display (shown only in network mode); the operator's code, which
+  carries the token, is under Advanced → Network and never on the projector.
+- The Mac app opens the same launcher. ⌘Q stops the services like the close
+  button, and launching no longer triggers a firewall prompt.
+
+### Operator console
+- **Live switch:** take the audience display off air (black) and back without
+  losing the passage; the console's preview keeps showing it.
+- Staging (Up Next) is gone. Plan is always in view under On display, with
+  Pending and History beside it. Click or arrow keys highlight a row;
+  double-click or Enter shows it. In Find Scripture, Enter shows and
+  Ctrl+Enter adds to the plan.
+- A live microphone meter in the speech badge in the header.
+- The launcher's warm palette, with a dark header band.
+- Clear history from the History tab's menu.
+- Notices appear only when something fails; successful actions no longer pop
+  up a message.
+- Clearer Lithuanian wording throughout Operator and Settings.
+- Follow-along Show and auto-show keep a three-verse window that rolls with
+  the reading (10 → 10–11 → 10–12 → 11–13).
+- Optional **+1 verse** button (Settings → This console): adds the next verse
+  to the passage on display, with the same three-verse window.
+
+### Display and OBS
+- Smooth fades between passages, the idle picture and the OBS band.
+- The OBS overlay's layout is set in Settings and kept by the server: OBS uses
+  one fixed link, `/display?mode=obs`, and changes apply live. An old link
+  that still carries layout options keeps them; paste the plain link to let
+  Settings control them.
 
 ### Security
 - The operator WebSocket no longer accepts its token as `?token=` in the URL,
