@@ -35,6 +35,9 @@ promptly after a rolled passage goes up. The three-verse window shipped in
 Optional console button that adds one verse per press, using the same
 three-verse window as Show and auto-show.
 
+### Idle logo animation
+Add subtle motion to the idle logo and respect `prefers-reduced-motion`.
+
 ## Launcher follow-ups
 
 - **Input meter in the operator console.** A small live level next to Speech

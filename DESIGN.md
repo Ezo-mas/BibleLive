@@ -243,7 +243,7 @@ One design for the whole dialog (`SettingsDialog.tsx`, styles in
   one control tall under `--card-pad`, with a hairline under it.
 - **Sections** are headed by the overline style of the card labels (xs, semibold,
   uppercase, `--tracking-caps`, muted): Display (verses, background, idle screen),
-  Stream overlay (OBS), This console (app theme, interface language), Audio, Auto-approve, Keyboard
+  This console (app theme, interface language), Audio, Auto-approve, Keyboard
   shortcuts.
 - **Every setting is one `.operator-setting` row:** the label (semibold) with a muted
   hint under it on the left, the control on the right and centred against them, a 1px
@@ -272,14 +272,6 @@ One design for the whole dialog (`SettingsDialog.tsx`, styles in
   secondary, Remove as danger, 36px), the fit (a segmented Logo / Fill screen), and a
   16:9 preview in its own row with the monitor's border and corners, the current state
   under it. Errors use the same notice style as the rest of the console.
-- **Stream overlay (OBS)** is five segmented rows (position, band height, background,
-  verse font, alignment), then a preview row and the link. The choices build the
-  overlay's URL and are remembered in this browser, not on the server. The preview
-  (`.stream-overlay-preview`) is a 16:9 box with the idle preview's border and corners
-  over a checkerboard of two surface tokens (the camera); inside, the real overlay page
-  (`/display?mode=obs&preview=1`, no socket, sample passages on a loop) is drawn at
-  1920x1080 and scaled to the box. The link row puts a read-only `.input` (mono, xs)
-  and a secondary Copy button across the full row width.
 
 ## Type and spacing
 

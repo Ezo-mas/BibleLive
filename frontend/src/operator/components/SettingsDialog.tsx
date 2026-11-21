@@ -11,7 +11,6 @@ import type { SpokenLanguageState } from '../hooks/useSpokenLanguage'
 import { BibleVersionSettings } from './BibleVersionSettings'
 import type { BibleVersionState } from '../hooks/useBibleVersion'
 import { IdleScreenSettings } from './IdleScreenSettings'
-import { StreamOverlaySettings } from './StreamOverlaySettings'
 import type { IdleScreenState } from '../hooks/useIdleScreen'
 import type { Theme } from '../../hooks/useTheme'
 import type { DisplayTheme, VerseLimit } from '../../shared/verseText'
@@ -97,7 +96,6 @@ export function SettingsDialog({
 }: SettingsDialogProps) {
   const titleId = useId()
   const displaySectionId = useId()
-  const streamSectionId = useId()
   const consoleSectionId = useId()
   const languageSectionId = useId()
   const autoSectionId = useId()
@@ -185,13 +183,6 @@ export function SettingsDialog({
               onClearModeChange={onClearModeChange}
             />
             <IdleScreenSettings state={idleScreen} disabled={disabled} />
-          </section>
-
-          <section className="operator-dialog-section" aria-labelledby={streamSectionId}>
-            <h3 className="operator-dialog-section-title" id={streamSectionId}>
-              {t('settings.sectionStream')}
-            </h3>
-            <StreamOverlaySettings />
           </section>
 
           <section className="operator-dialog-section" aria-labelledby={consoleSectionId}>

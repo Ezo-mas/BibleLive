@@ -193,74 +193,19 @@ body {
   object-fit: cover;
 }
 
-/* Animations. Each swap is an exit then an entrance, timed from --exit-ms and
-   --enter-ms (set inline from fadeTimings.ts: 100 + 150 ms passage to passage,
-   160 + 240 ms to and from the idle screen). `both` holds the last frame, so a
-   faded-out passage stays invisible until it is swapped. */
+/* Animations */
 .display-fade-in {
-  animation: displayFadeIn var(--enter-ms, 240ms) ease-out both;
+  animation: displayFadeIn 0.4s ease-out;
 }
 
 .display-fade-out {
-  animation: displayFadeOut var(--exit-ms, 160ms) ease-in both;
-}
-
-/* The idle screen fades as a whole, opacity only: a full-screen picture that moved
-   would show an edge. */
-.display-idle--in {
-  animation: displayOpacityIn var(--enter-ms, 240ms) ease-out both;
-}
-
-.display-idle--out {
-  animation: displayOpacityOut var(--exit-ms, 160ms) ease-in both;
-}
-
-/* A picture that arrives while the idle screen is up (the first settings after
-   loading, a new upload) fades in rather than popping. */
-.display-idle-image {
-  animation: displayOpacityIn 0.3s ease-out both;
-}
-
-/* Off air the screen fades to black and back (LIVE_FADE_MS in App.tsx, 400 ms); the cover
-   sits over everything, the QR code included. */
-.display-off-air-cover {
-  position: absolute;
-  inset: 0;
-  z-index: 10;
-  background: var(--color-display-off-air);
-  pointer-events: none;
-}
-
-.display-off-air-cover--in {
-  animation: displayOpacityIn 0.4s ease-in-out both;
-}
-
-.display-off-air-cover--out {
-  animation: displayOpacityOut 0.4s ease-in-out both;
-}
-
-@keyframes displayOpacityIn {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
-}
-
-@keyframes displayOpacityOut {
-  from {
-    opacity: 1;
-  }
-  to {
-    opacity: 0;
-  }
+  animation: displayFadeOut 0.4s ease-in;
 }
 
 @keyframes displayFadeIn {
   from {
     opacity: 0;
-    transform: translateY(-12px);
+    transform: translateY(-10px);
   }
   to {
     opacity: 1;
@@ -275,19 +220,27 @@ body {
   }
   to {
     opacity: 0;
-    transform: translateY(8px);
+    transform: translateY(10px);
   }
 }
 
-/* Reduced motion: global.css makes every animation instant; `both` still lands
-   each fade on its last frame. No drift either way. */
+/* Respect reduced motion preference */
 @media (prefers-reduced-motion: reduce) {
-  .display-fade-in {
-    animation: displayOpacityIn var(--enter-ms, 240ms) ease-out both;
+  .display-fade-in,
+  .display-fade-out {
+    animation: none;
+  }
+
+  .display-content {
+    transition: opacity 0.15s ease;
   }
 
   .display-fade-out {
-    animation: displayOpacityOut var(--exit-ms, 160ms) ease-in both;
+    opacity: 0;
+  }
+
+  .display-fade-in {
+    opacity: 1;
   }
 }
 

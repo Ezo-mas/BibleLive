@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { act, render, screen } from '@testing-library/react'
-import App, { LIVE_FADE_FALLBACK_MS } from './App'
+import App from './App'
 import type { BibleReference } from '../shared/types'
 import { createMockSocket, push } from '../test/operatorHarness'
 import type { MockSocket } from '../test/operatorHarness'
@@ -79,11 +79,6 @@ it('goes dark off air and comes back on air', () => {
   expect(screen.getByTestId('display-audience-qr')).toBeInTheDocument()
 
   settings(false)
-  // The screen fades to black first, the code with it.
-  expect(screen.getByTestId('display-off-air-cover')).toBeInTheDocument()
-  act(() => {
-    vi.advanceTimersByTime(LIVE_FADE_FALLBACK_MS)
-  })
   expect(screen.getByTestId('display-off-air')).toBeEmptyDOMElement()
 
   settings(true)

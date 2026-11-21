@@ -1,11 +1,30 @@
-import { useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useWebSocket } from '../shared/useWebSocket'
-import { coerceVerseLimit, readStoredVerseLimit } from '../shared/verseText'
+import { formatReference } from '../shared/reference'
+import { useI18n } from '../shared/i18nContext'
+import {
+  coerceVerseLimit,
+  hiddenVerseCount,
+  readStoredVerseLimit,
+  selectVerses,
+} from '../shared/verseText'
 import type { VerseLimit } from '../shared/verseText'
 import type { BibleReference, DisplayMessage } from '../shared/types'
-import { parseStreamOverlayOptions } from './streamOverlayOptions'
-import { StreamBand } from './StreamBand'
-import { useFadeSwap } from './useFadeSwap'
+import { computeFitFontSize, fitFontSizeByMeasurement } from './fitText'
+import {
+  fitVersesToBand,
+  parseStreamOverlayOptions,
+  streamFontBounds,
+} from './streamOverlayOptions'
+import '../styles/tokens.css'
+import '../styles/global.css'
+import './streamOverlay.css'
+
+/** How long the fade-out runs before content is swapped (as on the projector). */
+const FADE_MS = 400
+
+/** Line-height multiplier of the verse text. */
+const VERSE_LINE_HEIGHT = 1.3
 
 /**
  * The passage on screen as a lower third for a stream: `/display?mode=obs`,
@@ -13,23 +32,33 @@ import { useFadeSwap } from './useFadeSwap'
  * shows (same messages, same verse limit) on a transparent page.
  */
 export default function StreamOverlay() {
+  const { t } = useI18n()
   const [options] = useState(() => parseStreamOverlayOptions(window.location.search))
-  const { shown, visible, timing, swap } = useFadeSwap<BibleReference>()
+  const [reference, setReference] = useState<BibleReference | null>(null)
+  const [visible, setVisible] = useState(false)
   const [verseLimit, setVerseLimit] = useState<VerseLimit>(() =>
     coerceVerseLimit(readStoredVerseLimit(window.localStorage))
   )
+  const [shownCount, setShownCount] = useState(0)
+  const swapTimerRef = useRef<number | undefined>(undefined)
+  const versesRef = useRef<HTMLDivElement>(null)
 
   const handleMessage = (message: DisplayMessage) => {
     if (message.type === 'display_settings') {
       // The projector's background theme does not apply: the band has its own look.
-      // Off air the server also clears the page, so the band fades out with the projector.
       setVerseLimit(coerceVerseLimit(message.data.verse_limit))
       return
     }
     // The audience QR code is for people in the room, not for the stream.
     if (message.type === 'audience_qr') return
     if (message.type === 'reference' || message.type === 'clear') {
-      swap(message.type === 'reference' ? message.data : null)
+      window.clearTimeout(swapTimerRef.current)
+      setVisible(false)
+      const next = message.type === 'reference' ? message.data : null
+      swapTimerRef.current = window.setTimeout(() => {
+        setReference(next)
+        setVisible(next !== null)
+      }, FADE_MS)
     } else {
       const unhandled: never = message
       void unhandled
@@ -41,13 +70,106 @@ export default function StreamOverlay() {
     maxReconnectAttempts: Infinity,
   })
 
+  useEffect(() => () => window.clearTimeout(swapTimerRef.current), [])
+
+  // OBS composites the page over the camera: nothing may paint the background.
+  useEffect(() => {
+    document.documentElement.classList.add('stream-overlay-page')
+    return () => document.documentElement.classList.remove('stream-overlay-page')
+  }, [])
+
+  const verses = selectVerses(reference, verseLimit)
+  const limitHidden = hiddenVerseCount(reference, verseLimit)
+
+  // Fit the verses into the band: shrink the text down to a size a stream viewer
+  // can still read, and past that drop verses from the end rather than overflow.
+  useLayoutEffect(() => {
+    const block = versesRef.current
+    if (!block || verses.length === 0) return
+    const inner = block.querySelector('.stream-verses-inner') as HTMLElement | null
+    const rows = Array.from(block.querySelectorAll<HTMLElement>('.stream-verse'))
+
+    const compute = () => {
+      const bounds = streamFontBounds(window.innerHeight)
+      const apply = (size: number) => {
+        block.style.fontSize = `${size}px`
+      }
+      const fitAt = (count: number) => {
+        rows.forEach((row, i) => {
+          row.style.display = i < count ? '' : 'none'
+        })
+        const shown = verses.slice(0, count)
+        const estimate = computeFitFontSize({
+          charCount: shown.reduce((sum, v) => sum + v.text.length, 0),
+          lineCount: shown.length,
+          widthPx: block.clientWidth,
+          heightPx: block.clientHeight,
+          lineHeight: VERSE_LINE_HEIGHT,
+          chromePx: 0,
+          minFontSize: bounds.min,
+          maxFontSize: bounds.max,
+        })
+        const measure = () => inner?.offsetHeight ?? 0
+        const fontSize = fitFontSizeByMeasurement(
+          estimate,
+          apply,
+          measure,
+          block.clientHeight,
+          bounds
+        )
+        apply(fontSize)
+        // Not laid out (jsdom, hidden source): everything counts as fitting.
+        return { fontSize, fits: block.clientHeight <= 0 || measure() <= block.clientHeight }
+      }
+      const fit = fitVersesToBand(rows.length, fitAt)
+      fitAt(fit.count)
+      setShownCount(fit.count)
+    }
+
+    compute()
+    const observer = new ResizeObserver(compute)
+    observer.observe(block)
+    return () => observer.disconnect()
+  }, [verses])
+
+  const droppedCount = limitHidden + Math.max(0, verses.length - (shownCount || verses.length))
+  const bandClass = [
+    'stream-band',
+    `stream-band--${options.position}`,
+    `stream-band--${options.style}`,
+    visible ? 'stream-band--visible' : '',
+  ]
+    .filter(Boolean)
+    .join(' ')
+
   return (
-    <StreamBand
-      reference={shown}
-      visible={visible}
-      timing={timing}
-      verseLimit={verseLimit}
-      options={options}
-    />
+    <div className="stream-overlay" data-testid="stream-overlay">
+      {reference && (
+        <div
+          className={bandClass}
+          style={{ height: `${options.heightPct}vh` }}
+          data-testid="stream-band"
+        >
+          <div className="stream-reference">
+            {formatReference(reference)}
+            {droppedCount > 0 && (
+              <span className="stream-more"> {t('stage.moreVerses', { count: droppedCount })}</span>
+            )}
+          </div>
+          <div className="stream-verses" ref={versesRef} data-testid="stream-verses">
+            <div className="stream-verses-inner">
+              {verses.map(verse => (
+                <p className="stream-verse" key={verse.verse}>
+                  <span className="stream-verse-number" aria-hidden="true">
+                    {verse.verse}
+                  </span>
+                  <span className="stream-verse-text">{verse.text}</span>
+                </p>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
   )
 }

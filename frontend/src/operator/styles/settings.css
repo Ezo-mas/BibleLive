@@ -42,8 +42,7 @@
 /* Rows with a long error, or a picture, put it across the whole row. */
 .operator-setting > .operator-scripture-error,
 .operator-setting > .operator-scripture-unavailable,
-.operator-setting > .idle-screen-preview,
-.operator-setting > .stream-overlay-link {
+.operator-setting > .idle-screen-preview {
   flex: 1 1 100%;
 }
 
@@ -130,45 +129,4 @@
 .idle-screen-preview-blank {
   font-size: var(--font-size-xs);
   color: var(--color-text-muted);
-}
-
-/* The stream overlay's preview: the real 1920x1080 overlay page in an iframe, scaled
-   to this 16:9 box, over a checkerboard that stands for the camera (the overlay is
-   transparent). Same border and corners as the idle picture's preview. */
-.stream-overlay-preview {
-  position: relative;
-  box-sizing: border-box;
-  width: 100%;
-  max-width: 28rem;
-  aspect-ratio: 16 / 9;
-  overflow: hidden;
-  background: repeating-conic-gradient(
-      color-mix(in srgb, var(--color-text-muted) 24%, var(--color-surface)) 0 25%,
-      var(--color-surface) 0 50%
-    )
-    0 0 / var(--space-4) var(--space-4);
-  border: var(--border-width) solid var(--color-border-strong);
-  border-radius: var(--radius-control);
-}
-
-.stream-overlay-preview-page {
-  position: absolute;
-  top: 0;
-  left: 0;
-  border: 0;
-  transform-origin: 0 0;
-  /* A picture, not a page: clicks and focus stay in the console. */
-  pointer-events: none;
-}
-
-/* The OBS link: the read-only field takes the row's width, Copy keeps its own. */
-.stream-overlay-link {
-  flex-wrap: nowrap;
-}
-
-.stream-overlay-link .input {
-  flex: 1 1 auto;
-  min-width: 0;
-  font-family: var(--font-mono);
-  font-size: var(--font-size-xs);
 }

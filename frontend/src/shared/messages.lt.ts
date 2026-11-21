@@ -179,36 +179,6 @@ export const lt: Record<MessageKey, MessageEntry> = {
   'version.changeUnreachable': 'Nepavyko pasiekti serverio, kad pakeistų Biblijos vertimą.',
   'version.changed': 'Biblijos vertimas: {version}',
 
-  // Transliacijos sluoksnis OBS: nuorodos išdėstymas, peržiūra ir pati nuoroda
-  'settings.sectionStream': 'Biblijos ištraukos transliacijoje (OBS)',
-  'obs.position': 'Vieta',
-  'obs.positionHint': 'Kur ištrauka rodoma transliacijoje.',
-  'obs.bottom': 'Apačioje',
-  'obs.top': 'Viršuje',
-  'obs.height': 'Juostos aukštis',
-  'obs.heightHint':
-    'Juostos aukštis procentais nuo vaizdo aukščio. Aukštesnėje juostoje telpa daugiau eilučių.',
-  'obs.background': 'Fonas',
-  'obs.backgroundHint': 'Pasirinkus „Tik tekstas“, ištrauka rodoma tiesiai ant vaizdo.',
-  'obs.band': 'Tamsi juosta',
-  'obs.textOnly': 'Tik tekstas',
-  'obs.font': 'Eilučių šriftas',
-  'obs.fontHint': 'Šriftas be užraitų geriau skaitomas telefone.',
-  'obs.serif': 'Su užraitais',
-  'obs.sans': 'Be užraitų',
-  'obs.align': 'Lygiuotė',
-  'obs.alignHint': 'Trumpas ištraukas plačiame kadre patogu lygiuoti centre.',
-  'obs.left': 'Kairėje',
-  'obs.center': 'Centre',
-  'obs.previewTitle': 'Ištraukų peržiūra transliacijoje',
-  'obs.previewHint':
-    'Peržiūroje rodomos pavyzdinės ištraukos. Languotas fonas žymi skaidrią sritį.',
-  'obs.link': 'OBS nuoroda',
-  'obs.linkHint':
-    'OBS pridėkite naršyklės šaltinį („Browser“), įklijuokite šią nuorodą ir nustatykite 1920 × 1080 dydį. Pakeitę išdėstymą, įklijuokite naują nuorodą.',
-  'obs.copy': 'Kopijuoti',
-  'obs.copied': 'Nukopijuota',
-
   // Laukimo ekranas: paveikslėlis, rodomas tada, kai ekrane nieko nėra
   'settings.sectionConsole': 'Ši konsolė',
   'idle.label': 'Laukimo ekranas',
