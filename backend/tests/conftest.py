@@ -12,6 +12,7 @@ import pytest
 from core.book_names import BookNames
 from core.config import config
 from core.import_bible import BibleImporter
+from core.server.audience_qr import HIDDEN as HIDDEN_AUDIENCE_QR
 from core.server.follow_along import FollowAlong
 from core.server.idle_screen import DEFAULT_IDLE_SCREEN_FIT
 from core.server.models import DisplaySettings
@@ -175,6 +176,7 @@ def reset_app_state(app_state, tmp_path: Path):
     app_state.pending_references.clear()
     app_state.reference_history.clear()
     app_state.display_settings = DisplaySettings()
+    app_state.audience_qr = HIDDEN_AUDIENCE_QR
     app_state.connection_manager = app_state.connection_manager.__class__()
     # Persisted operator settings get a per-test file, so a mode one test saves
     # cannot leak into another (or onto disk) while tests share one app.

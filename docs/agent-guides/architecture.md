@@ -107,6 +107,14 @@ easy to break by accident.
    one other caller the door guard allows: it re-sends the stored, already
    authorized `current_display` and nothing else (never a pending item, never
    client input), then the settings. Covered by `backend/tests/test_live_switch.py`.
+   **The audience QR code** is not a door either: `audience_qr` (server → displays
+   only) carries the server's own display address and its SVG, never a passage. It is
+   set through `POST /api/display/qr` (operator token; the launcher calls it over
+   127.0.0.1) with a bare `visible` flag; `AppState.set_audience_qr` builds the address
+   from `config.HOST`/`PORT` and `core/lan.py`, never from the request, holds it in memory,
+   and re-sends it to displays that connect while it is shown. The display page draws it
+   beside the passage, hides it off air, and the stream overlay ignores it. Covered by
+   `backend/tests/test_audience_qr.py`.
    **Restore after a restart** is not a door either. `core/server/runtime_state.py`
    keeps the on-screen passage and the last 20 history entries as coordinates
    (never text) in `runtime_state.json` beside the settings file, written in the

@@ -1,4 +1,4 @@
-"""Operator HTTP routes: approve, clear, clear-pending and state."""
+"""Operator HTTP routes: approve, clear, clear-pending, state and the audience QR code."""
 
 import logging
 
@@ -8,6 +8,8 @@ from ..auth import verify_operator_token
 from ..models import (
     ApprovalRequest,
     ApprovalResponse,
+    AudienceQrRequest,
+    AudienceQrResponse,
     ClearPendingResponse,
     ClearResponse,
     ErrorResponse,
@@ -98,6 +100,27 @@ def build_router(app_state: AppState) -> APIRouter:
         count = await app_state.clear_pending_and_notify()
         logger.info(f"Cleared {count} pending references")
         return ClearPendingResponse(status="success", message=f"Cleared {count} pending references")
+
+    @router.post(
+        "/api/display/qr",
+        response_model=AudienceQrResponse,
+        responses={
+            200: {"description": "The audience QR code is shown or hidden"},
+            401: {"model": ErrorResponse, "description": "Unauthorized"},
+            403: {"model": ErrorResponse, "description": "Forbidden"},
+        },
+    )
+    async def set_audience_qr(
+        request: AudienceQrRequest, _: None = Depends(verify_operator_token)
+    ) -> AudienceQrResponse:
+        """Show or hide the QR code that opens the display page on a phone.
+
+        The server builds the address itself; the request carries no address. Without
+        one other devices can reach, the code stays hidden and ``visible`` is false.
+        Requires authentication if BIBLELIVE_REQUIRE_AUTH is enabled.
+        """
+        qr = await app_state.set_audience_qr(request.visible)
+        return AudienceQrResponse(visible=qr.url is not None, url=qr.url)
 
     @router.get(
         "/api/state",

@@ -81,6 +81,8 @@ BIBLELIVE_OPERATOR_TOKEN=your-generated-token-here
 - `POST /api/approve` — approve pending reference
 - `POST /api/clear` — clear display
 - `POST /api/clear-pending` — clear pending queue
+- `POST /api/display/qr` — show or hide the audience QR code on the displays (`{"visible": bool}`;
+  the server builds the address itself and takes none from the request)
 - `GET /api/books` — canonical book list for the operator's passage search
 - `GET /api/lookup` — verse text lookup by coordinates for the operator's passage search
 - `GET /api/language` — current spoken language
@@ -116,10 +118,20 @@ own connections still use `127.0.0.1`.
   the one this PC uses for its default route, so with a VPN on it can be the VPN's address,
   which other devices cannot reach. Turn the VPN off for the service, or use the Wi-Fi
   adapter's IPv4 address from `ipconfig`.
-- **QR codes.** The launcher's **Show QR codes** button opens a window with a code for each page. The
-  operator code carries the token in its `#token=` fragment, so a phone that scans it
-  signs in. Anyone who scans it gets full operator rights: show it only on your own
-  screen, never on the projector or the stream.
+- **QR codes.** The two codes are kept apart. The operator code is only in the
+  launcher, under Advanced → Network. It carries the token in its `#token=` fragment, so
+  a phone that scans it signs in. Anyone who scans it gets full operator rights: show it
+  only on your own screen, never on the projector or the stream. The audience code
+  (the display page, no token) goes on the displays when the launcher's QR button beside
+  the projector picker is pressed. The launcher asks its own server for it over
+  127.0.0.1 (`POST /api/display/qr`, with the token). The server encodes only its own
+  display address, worked out from where it listens and this PC's network address, never
+  an address from the request, so someone holding the token cannot point the audience at
+  another site. It is held in memory only (a restart hides it), it is not drawn while the
+  display is off air or on the stream overlay, and a display page opened through the
+  address in the code (a phone that scanned it) does not draw it. The older Tk launcher
+  window (the fallback when the webview cannot start) still shows both codes in its own
+  window.
 - **Operator token handoff.** The operator page accepts the token in the URL fragment,
   `/operator#token=<token>`. The browser does not send a fragment to the server, so the
   server never logs it. On load the page takes the fragment out of the address bar and its

@@ -188,6 +188,8 @@ export const lt: Record<MessageKey, MessageEntry> = {
   'idle.blank': 'Tuščias',
   'idle.previewAlt': 'Laukimo ekrano paveikslėlio peržiūra',
   'idle.imageAlt': 'Laukimo ekrano paveikslėlis',
+  'display.qrCaption': 'Sekite savo telefone',
+  'display.qrAlt': 'QR kodas, atveriantis šį ekraną telefone',
   'idle.fitGroup': 'Laukimo ekrano paveikslėlio rodymas',
   'idle.fitLogo': 'Logotipas',
   'idle.fitFill': 'Užpildyti ekraną',
@@ -390,6 +392,12 @@ export const lt: Record<MessageKey, MessageEntry> = {
   'launcher.showProjector': 'Rodyti pasirinktame ekrane',
   'launcher.showProjectorHint':
     'Atidaro žiūrovų langą per visą pasirinkto ekrano plotą. Jei langas jau atidarytas, iškelia jį į priekį.',
+  'launcher.audienceQr': 'QR kodas projektoriuje',
+  'launcher.audienceQrHint':
+    'Žiūrovų lango kampe parodo QR kodą, kuriuo šį langą galima atverti telefone. Paspauskite dar kartą, kad paslėptumėte.',
+  'launcher.operatorQr': 'Operatoriaus puslapio QR kodas (prisijungia automatiškai)',
+  'launcher.operatorQrWarning':
+    'Kas nuskaitys šį kodą, gaus operatoriaus valdymą. Niekada nerodykite jo projektoriuje ar transliacijoje.',
   'launcher.networkDetails': 'Prisijungimas iš kito įrenginio',
   'launcher.displayUrl': 'Žiūrovų puslapio adresas',
   'launcher.operatorUrl': 'Operatoriaus lango adresas',

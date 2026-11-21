@@ -395,6 +395,7 @@ in `%APPDATA%\BibleLive\logs\sessions`.
 | POST   | `/api/approve`      | Approve a pending reference (by reference_id) |
 | POST   | `/api/clear`        | Clear the display                        |
 | POST   | `/api/clear-pending`| Clear the pending queue                  |
+| POST   | `/api/display/qr`   | Show or hide the audience QR code on the displays: `{"visible": bool}`; the server encodes its own display address (requires auth if enabled) |
 | GET    | `/api/books`        | List canonical books (for Find Scripture) |
 | GET    | `/api/lookup`       | Look up verse text by coordinates        |
 | GET    | `/api/language`     | Current spoken language (requires auth if enabled) |

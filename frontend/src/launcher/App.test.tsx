@@ -221,6 +221,48 @@ describe('launcher App', () => {
     expect(showProjector).toHaveBeenCalledOnce()
   })
 
+  it('toggles the audience QR code beside the projector and shows the operator code in Network', async () => {
+    const bridge = createDemoBridge()
+    const init = bridge.init
+    vi.spyOn(bridge, 'init').mockImplementation(async () => {
+      const result = await init()
+      result.form.allow_network = true
+      return result
+    })
+    const setAudienceQr = vi.spyOn(bridge, 'set_audience_qr')
+    render(<App bridge={bridge} />)
+    await screen.findByRole('combobox', { name: 'Projector' })
+    // No session, no address: no toggle.
+    expect(screen.queryByRole('button', { name: 'QR code on the projector' })).toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Start session' }))
+    const toggle = await screen.findByRole(
+      'button',
+      { name: 'QR code on the projector' },
+      { timeout: 3000 }
+    )
+    const show = screen.getByRole('button', { name: 'Show on projector' })
+    expect(show.nextElementSibling).toBe(toggle)
+    expect(toggle).toHaveAttribute('aria-pressed', 'false')
+    fireEvent.click(toggle)
+    expect(setAudienceQr).toHaveBeenLastCalledWith(true)
+    await waitFor(() => expect(toggle).toHaveAttribute('aria-pressed', 'true'), { timeout: 3000 })
+    fireEvent.click(toggle)
+    expect(setAudienceQr).toHaveBeenLastCalledWith(false)
+    await waitFor(() => expect(toggle).toHaveAttribute('aria-pressed', 'false'), { timeout: 3000 })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Advanced' }))
+    fireEvent.click(screen.getByRole('tab', { name: 'Network' }))
+    const code = screen.getByRole('img', { name: 'Operator page QR code (signs in)' })
+    expect(code.getAttribute('src')).toMatch(/^data:image\//)
+    expect(screen.getByText(/Never show it on the projector or the stream/)).toBeVisible()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Stop session' }))
+    await waitFor(() =>
+      expect(screen.queryByRole('button', { name: 'QR code on the projector' })).toBeNull()
+    )
+  })
+
   it('slows down when hidden and coalesces resume and action polls behind an in-flight poll', async () => {
     vi.useFakeTimers()
     let hidden = false

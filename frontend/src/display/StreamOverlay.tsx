@@ -49,6 +49,8 @@ export default function StreamOverlay() {
       setVerseLimit(coerceVerseLimit(message.data.verse_limit))
       return
     }
+    // The audience QR code is for people in the room, not for the stream.
+    if (message.type === 'audience_qr') return
     if (message.type === 'reference' || message.type === 'clear') {
       window.clearTimeout(swapTimerRef.current)
       setVisible(false)

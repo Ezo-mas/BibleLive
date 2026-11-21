@@ -4,6 +4,8 @@
    the operator console's accent, so the two pages read as one product. */
 :root {
   --display-accent: #a35f00;
+  /* The QR code's light ground: white in both themes, for phone cameras. */
+  --display-qr-ground: #fff;
 }
 
 [data-theme='dark'] {
@@ -290,4 +292,57 @@ body {
     background: white;
     color: black;
   }
+}
+
+/* The audience QR code (turned on from the launcher). It sits in the bottom-right
+   corner on a white card, since phone cameras need dark modules on a light ground
+   whatever the theme. The stage gives up that corner's width so the fitted verse
+   text never runs under the code. */
+.display-app {
+  --display-qr-size: clamp(9rem, 18vh, 15rem);
+  --display-qr-gap: clamp(1rem, 2.5vh, 2rem);
+}
+
+.display-app--with-qr .display-stage {
+  width: calc(100% - var(--display-qr-size) - 2 * var(--display-qr-gap));
+}
+
+.display-audience-qr {
+  position: absolute;
+  right: var(--display-qr-gap);
+  bottom: var(--display-qr-gap);
+  margin: 0;
+  width: var(--display-qr-size);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  font-family: var(--font-sans);
+  color: var(--color-text-secondary);
+}
+
+.display-audience-qr-code {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 1;
+  background: var(--display-qr-ground);
+  border-radius: 0.5rem;
+  /* Crisp modules at any size. */
+  image-rendering: pixelated;
+}
+
+.display-audience-qr-caption {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.15rem;
+  font-size: clamp(0.8rem, 1.4vh, 1.1rem);
+  line-height: 1.3;
+}
+
+.display-audience-qr-url {
+  color: var(--color-text-muted);
+  font-size: 0.85em;
+  overflow-wrap: anywhere;
 }

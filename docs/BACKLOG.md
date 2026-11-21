@@ -40,8 +40,6 @@ Add subtle motion to the idle logo and respect `prefers-reduced-motion`.
 
 ## Launcher follow-ups
 
-- **QR codes split by audience.** The audience QR shown on `/display` on demand
-  (from the launcher); the operator QR only under Advanced → Network.
 - **Input meter in the operator console.** A small live level next to Speech
   status. Needs a new server message (protocol change: show the shapes first).
 - **Identify screens.** A button by Projector that briefly shows a large number

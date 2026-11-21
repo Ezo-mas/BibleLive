@@ -115,6 +115,23 @@ class ClearPendingResponse(BaseModel):
     message: str
 
 
+class AudienceQrRequest(BaseModel):
+    """Show or hide the audience QR code on the displays (``POST /api/display/qr``)."""
+
+    visible: StrictBool
+
+
+class AudienceQrResponse(BaseModel):
+    """Whether the audience QR code is now shown, and the address it encodes.
+
+    ``visible`` is false with ``url`` null when the server has no address other devices
+    can reach (it listens on this computer only, or found no network address).
+    """
+
+    visible: bool
+    url: str | None
+
+
 # Operator-selected auto-approve modes. Confidence order is low < medium < high,
 # so "medium_and_up" (the console's "Med+") covers high as well; "off" leaves
 # every detection to the operator. Mirrored in frontend/src/shared/types.ts.
@@ -693,6 +710,25 @@ class DisplaySettingsMessage(BaseModel):
     data: DisplaySettings
 
 
+class AudienceQrData(BaseModel):
+    """The audience QR code: the display page's address on the local network.
+
+    ``svg`` is the code as an SVG ``data:`` URI, drawn by the server from ``url``; both
+    are null when the code is hidden. The server builds the address itself, never from
+    client input.
+    """
+
+    url: str | None
+    svg: str | None
+
+
+class DisplayAudienceQr(BaseModel):
+    """Server-to-client ``audience_qr`` message."""
+
+    type: Literal["audience_qr"] = "audience_qr"
+    data: AudienceQrData
+
+
 OperatorServerMessage = Annotated[
     OperatorStateSnapshot
     | OperatorPendingUpdate
@@ -713,6 +749,6 @@ OperatorServerMessage = Annotated[
 
 
 DisplayServerMessage = Annotated[
-    DisplayReference | DisplayClear | DisplaySettingsMessage,
+    DisplayReference | DisplayClear | DisplaySettingsMessage | DisplayAudienceQr,
     Field(discriminator="type"),
 ]

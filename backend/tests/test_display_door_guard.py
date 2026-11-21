@@ -28,6 +28,8 @@ ALLOWED = {
         ("display_session.py", "DisplaySession._send_display_reference"),
         ("display_session.py", "DisplaySession._send_display_clear"),
         ("state.py", "AppState.send_display_settings"),
+        # The audience QR code: the server's own display address, never a passage.
+        ("state.py", "AppState.set_audience_qr"),
     },
     "DisplayReference": {
         ("display_session.py", "DisplaySession._send_display_reference"),

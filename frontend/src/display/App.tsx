@@ -15,6 +15,8 @@ import { idleImageUrl, readIdleImage } from '../shared/idleScreen'
 import { coerceClearMode } from '../shared/clearMode'
 import type { IdleImage } from '../shared/idleScreen'
 import type { BibleReference, ClearMode, DisplayMessage } from '../shared/types'
+import { audienceQrForPage } from './audienceQr'
+import type { ShownAudienceQr } from './audienceQr'
 import { computeFitFontSize, fitFontSizeByMeasurement, MAX_FONT_SIZE } from './fitText'
 import '../styles/tokens.css'
 import '../styles/global.css'
@@ -58,6 +60,8 @@ export default function App() {
   // audience sees a blank screen rather than a broken-image icon. A new upload is a new
   // version and gets a fresh try.
   const [brokenIdleVersion, setBrokenIdleVersion] = useState<string | null>(null)
+  // The audience QR code the launcher turned on, if this page draws it (see audienceQr.ts).
+  const [audienceQr, setAudienceQr] = useState<ShownAudienceQr | null>(null)
   const swapTimerRef = useRef<number | undefined>(undefined)
   const stageRef = useRef<HTMLDivElement>(null)
   const versesRef = useRef<HTMLDivElement>(null)
@@ -70,6 +74,12 @@ export default function App() {
       setIdleImage(readIdleImage(message.data))
       liveRef.current = message.data.live !== false
       setLive(liveRef.current)
+      return
+    }
+
+    // Beside the passage, not instead of it: no fade, and nothing else changes.
+    if (message.type === 'audience_qr') {
+      setAudienceQr(audienceQrForPage(message.data, window.location.origin))
       return
     }
 
@@ -186,7 +196,8 @@ export default function App() {
     observer.observe(stage)
     return () => observer.disconnect()
     // `live`: off air the stage is not mounted, so going live must fit again.
-  }, [visibleVerses, theme, live])
+    // `audienceQr`: the code takes room beside the stage, so the text fits again.
+  }, [visibleVerses, theme, live, audienceQr])
 
   const fadeClass = visible ? 'display-fade-in' : 'display-fade-out'
 
@@ -194,7 +205,7 @@ export default function App() {
     return <div className="display-app display-app--off-air" data-testid="display-off-air" />
 
   return (
-    <div className="display-app">
+    <div className={`display-app${audienceQr ? ' display-app--with-qr' : ''}`}>
       {/* Measured stage: the verse text is sized to fit exactly this box. */}
       <div className="display-stage" ref={stageRef}>
         {reference ? (
@@ -245,6 +256,17 @@ export default function App() {
           </div>
         )}
       </div>
+
+      {/* Off air the page returns early above, so the code goes dark with everything else. */}
+      {audienceQr && (
+        <figure className="display-audience-qr" data-testid="display-audience-qr">
+          <img className="display-audience-qr-code" src={audienceQr.svg} alt={t('display.qrAlt')} />
+          <figcaption className="display-audience-qr-caption">
+            <span>{t('display.qrCaption')}</span>
+            <span className="display-audience-qr-url">{audienceQr.label}</span>
+          </figcaption>
+        </figure>
+      )}
     </div>
   )
 }

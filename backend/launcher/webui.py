@@ -1,8 +1,10 @@
 """pywebview launcher window and its thread-safe bridge."""
 
+import base64
 import contextlib
 import ctypes
 import faulthandler
+import json
 import logging
 import math
 import os
@@ -12,6 +14,7 @@ import subprocess
 import sys
 import threading
 import time
+import urllib.request
 import webbrowser
 from collections.abc import Callable
 from dataclasses import asdict, replace
@@ -32,6 +35,7 @@ from .network import (
     firewall_rule_exists,
     lan_ip,
     operator_url_with_token,
+    qr_png,
 )
 from .platform.macos import microphone_access
 from .process import Launcher, LaunchPlan, _default_app_root, build_plan
@@ -77,6 +81,7 @@ from .viewmodel import (
 logger = logging.getLogger(__name__)
 FALLBACK = 2
 _MIN_WINDOW_SIZE = (760, 480)
+_AUDIENCE_QR_TIMEOUT_S = 5.0
 _ERROR_FIELDS = {
     "invalid_port": "port",
     "invalid_args": "extra_args",
@@ -103,6 +108,27 @@ def _copy_text(text: str) -> None:
         cmd, data = ["xclip", "-selection", "clipboard"], text.encode()
     flags = platform.current().child_process_options().get("creationflags", 0)
     subprocess.run(cmd, input=data, check=True, creationflags=flags)
+
+
+def _post_audience_qr(port: int, token: str, visible: bool) -> bool:
+    """Ask this computer's server to show or hide the audience QR code; returns whether it shows.
+
+    Only ever sent to 127.0.0.1, so the token in the header never leaves this computer.
+    """
+    request = urllib.request.Request(
+        f"http://127.0.0.1:{port}/api/display/qr",
+        data=json.dumps({"visible": visible}).encode(),
+        headers={"Content-Type": "application/json", "Authorization": f"Bearer {token}"},
+        method="POST",
+    )
+    # No proxy: a system or HTTP_PROXY proxy would otherwise get this request, token included.
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    with opener.open(request, timeout=_AUDIENCE_QR_TIMEOUT_S) as response:
+        return json.load(response).get("visible") is True
+
+
+def _png_data_uri(png: bytes) -> str:
+    return "data:image/png;base64," + base64.b64encode(png).decode("ascii")
 
 
 def _options(options: list[Option]) -> list[dict[str, str | None]]:
@@ -133,6 +159,7 @@ class LauncherController:
         access: Callable[..., str] = microphone_access,
         projector: ProjectorBrowser | None = None,
         copy: Callable[[str], None] = _copy_text,
+        post_audience_qr: Callable[[int, str, bool], bool] = _post_audience_qr,
     ) -> None:
         self._lock = threading.RLock()
         self._save = save
@@ -150,6 +177,7 @@ class LauncherController:
         self._clock = clock
         self._access = access
         self._copy = copy
+        self._post_audience_qr = post_audience_qr
         self._fit_window: Callable[[float, float], None] | None = None
         self._projector = (
             projector if projector is not None else ProjectorBrowser(open_default=open_browser)
@@ -172,6 +200,12 @@ class LauncherController:
         self._error: str | None = None
         self._no_gpu_logged = False
         self._network: NetworkView | None = None
+        # The operator page's QR code (token included) for Advanced > Network, as a data URI.
+        self._operator_qr: str | None = None
+        # The audience QR code on the displays: what the server last said, and a request
+        # in flight (the button waits for it rather than guessing).
+        self._audience_qr = False
+        self._audience_qr_busy = False
         self._firewall: str | None = None
         self._probe_plan: LaunchPlan | None = None
         self._plan: LaunchPlan | None = None
@@ -210,6 +244,9 @@ class LauncherController:
                 if row.shown
                 else None
             )
+            network["operator_qr"] = self._operator_qr
+            network["audience_qr"] = self._audience_qr
+            network["audience_qr_busy"] = self._audience_qr_busy
         return {
             "session": self._session,
             "server": self._status.server,
@@ -422,8 +459,7 @@ class LauncherController:
             with self._lock:
                 self._launcher = None
                 self._status = apply_event(self._status, "stopped", "", None)
-                self._network = None
-                self._firewall = None
+                self._clear_network()
                 self._close_session_resources()
                 self._session = "idle"
                 self._started_at = None
@@ -476,8 +512,12 @@ class LauncherController:
 
     def _on_server_ready(self, plan: LaunchPlan) -> None:
         if plan.network_token:
-            self._network = view = network_view(plan.port, plan.network_token, self._lan_ip())
+            ip = self._lan_ip()
+            self._network = view = network_view(plan.port, plan.network_token, ip)
             if view.display_url:
+                self._operator_qr = _png_data_uri(
+                    qr_png(operator_url_with_token(plan.port, plan.network_token, ip or ""))
+                )
                 self._log.append(
                     "launcher",
                     "INFO",
@@ -522,6 +562,51 @@ class LauncherController:
                 self._log.append(
                     "launcher", "INFO" if ok else "WARNING", t("fw.added" if ok else "fw.not_added")
                 )
+
+    def _clear_network(self) -> None:
+        self._network = None
+        self._operator_qr = None
+        self._audience_qr = False
+        self._audience_qr_busy = False
+        self._firewall = None
+
+    def set_audience_qr(self, visible: bool) -> None:
+        """Show or hide the audience QR code on the displays (the server draws it)."""
+        with self._lock:
+            view, plan = self._network, self._plan
+            if (
+                view is None
+                or not view.display_url
+                or plan is None
+                or not plan.network_token
+                or self._session != "live"
+                or self._audience_qr_busy
+            ):
+                return
+            self._audience_qr_busy = True
+            threading.Thread(
+                target=self._send_audience_qr,
+                args=(view, plan.port, plan.network_token, visible),
+                daemon=True,
+            ).start()
+
+    def _send_audience_qr(self, view: NetworkView, port: int, token: str, visible: bool) -> None:
+        shown: bool | None
+        try:
+            shown = self._post_audience_qr(port, token, visible)
+        except (OSError, ValueError) as exc:  # URLError and HTTPError are OSErrors
+            logger.warning("Audience QR request failed: %s", exc)
+            shown = None
+        with self._lock:
+            if self._network is not view or self._session != "live":
+                return  # the session ended meanwhile; its server is gone
+            self._audience_qr_busy = False
+            if shown is None:
+                self._log.append("launcher", "WARNING", t("net.audience_qr_failed"))
+                return
+            self._audience_qr = shown
+            if visible and not shown:
+                self._log.append("launcher", "WARNING", t("net.audience_qr_no_address"))
 
     def _port(self) -> int:
         return self._plan.port if self._plan else self._settings.port
@@ -579,7 +664,7 @@ class LauncherController:
             self._log.append("launcher", "INFO", t("log.stopping"))
             self._session = "stopping"
             self._cancel.set()
-            self._network = None
+            self._clear_network()
             launcher = self._launcher
             self._projector.close()
         if launcher is not None:
@@ -644,6 +729,9 @@ class LauncherApi:
 
     def allow_firewall(self) -> None:
         self._controller.allow_firewall()
+
+    def set_audience_qr(self, visible: bool) -> None:
+        self._controller.set_audience_qr(visible is True)
 
     def set_ui_language(self, code: str) -> dict[str, Any]:
         return self._controller.set_ui_language(code)

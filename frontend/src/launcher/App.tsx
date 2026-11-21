@@ -309,6 +309,18 @@ function Launcher({ bridge, initial }: Connection) {
           onMicrophone={changeMicrophone}
           onRefresh={() => void runAction(() => bridge.refresh_devices())}
           onProjector={() => void runAction(() => bridge.show_projector())}
+          audienceQr={
+            state.network?.display_url
+              ? {
+                  shown: state.network.audience_qr,
+                  busy: state.network.audience_qr_busy,
+                  onToggle: () => {
+                    const shown = state.network?.audience_qr ?? false
+                    void runAction(() => bridge.set_audience_qr(!shown))
+                  },
+                }
+              : undefined
+          }
         />
         <div className="bl-workspace" hidden={view !== 'advanced'}>
           <Settings

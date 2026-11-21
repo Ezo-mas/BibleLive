@@ -49,6 +49,12 @@ export interface Network {
   operator_url: string
   token: string
   firewall: { message: string; button_enabled: boolean } | null
+  /** The operator page's QR code (token included) as a PNG data URI; null without an address. */
+  operator_qr: string | null
+  /** Whether the displays show the audience QR code, as the server last said. */
+  audience_qr: boolean
+  /** A show or hide request is on its way to the server. */
+  audience_qr_busy: boolean
 }
 
 export interface State {
@@ -104,6 +110,7 @@ export interface Bridge {
   show_projector(): Promise<null>
   open_logs(): Promise<null>
   allow_firewall(): Promise<null>
+  set_audience_qr(visible: boolean): Promise<null>
   set_ui_language(code: UILanguage): Promise<{ language: Language; options: Options }>
   set_view(view: View): Promise<null>
   fit_window(contentHeight: number, viewportHeight: number): Promise<null>

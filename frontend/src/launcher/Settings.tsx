@@ -35,7 +35,7 @@ function NetworkDetails({
 }: Pick<Props, 'bridge' | 'onFirewall'> & { network: Network }) {
   const { t } = useI18n()
   const [feedback, setFeedback] = useState('')
-  const { display_url, operator_url, token, firewall } = network
+  const { display_url, operator_url, token, firewall, operator_qr } = network
   const fields = [
     ['displayUrl', display_url],
     ['operatorUrl', operator_url],
@@ -78,6 +78,15 @@ function NetworkDetails({
         <p className="bl-muted">{t('launcher.noNetworkAddress')}</p>
       )}
       <p className="bl-muted">{t('launcher.operatorAccessNote')}</p>
+      {operator_qr && (
+        <figure className="bl-operator-qr">
+          <img src={operator_qr} alt={t('launcher.operatorQr')} />
+          <figcaption>
+            <strong>{t('launcher.operatorQr')}</strong>
+            <span className="bl-error">{t('launcher.operatorQrWarning')}</span>
+          </figcaption>
+        </figure>
+      )}
       {firewall && (
         <div className="bl-notice bl-firewall">
           <p>{firewall.message}</p>

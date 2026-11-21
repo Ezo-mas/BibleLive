@@ -3,6 +3,14 @@ import type { Language } from '../shared/i18n'
 import type { Bridge, Form, LogLine, Option, Options, State } from './bridge'
 import { LEVEL_INTERVAL } from './noSignal'
 
+// A stand-in picture for the preview: the real code is drawn by the Python side.
+const DEMO_QR =
+  'data:image/svg+xml,' +
+  encodeURIComponent(
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 9 9" shape-rendering="crispEdges">' +
+      '<rect width="9" height="9" fill="#fff"/><path d="M1 1h3v3H1zm4 0h3v3H5zM1 5h3v3H1zm4 0h1v1H5zm2 2h1v1H7z"/></svg>'
+  )
+
 const idle: State = {
   session: 'idle',
   server: 'stopped',
@@ -167,6 +175,9 @@ export function createDemoBridge(): Bridge {
                 operator_url: `${host}/operator#token=demo-only`,
                 token: 'demo-only',
                 firewall: null,
+                operator_qr: DEMO_QR,
+                audience_qr: false,
+                audience_qr_busy: false,
               }
             : null,
         }
@@ -219,6 +230,10 @@ export function createDemoBridge(): Bridge {
       return null
     },
     async allow_firewall() {
+      return null
+    },
+    async set_audience_qr(visible) {
+      if (state.network) state = { ...state, network: { ...state.network, audience_qr: visible } }
       return null
     },
     async copy_text() {
