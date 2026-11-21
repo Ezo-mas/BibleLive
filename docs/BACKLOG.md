@@ -29,10 +29,28 @@ Check that the text size stays steady and that the next verse is offered
 promptly after a rolled passage goes up. The three-verse window shipped in
 [PR #103](https://github.com/Ezo-mas/BibleLive/pull/103).
 
+## Planned console and display features
+
+### Show a row on touch screens
+[PR #115](https://github.com/Ezo-mas/BibleLive/pull/115) removed the rows' Show
+buttons: a row is shown by double-click or Enter. A phone or tablet (e.g. via the
+operator QR code) has no Enter and no hover hint, and double-tap is unreliable in
+some mobile browsers (iOS Safari), so showing a row there is untested and may not
+work. Agreed design, touch only (`@media (hover: none) and (pointer: coarse)`),
+desktop unchanged: a tap highlights the row and reveals one compact gold Show button
+on that row only, placed in space the row already has (the timestamp line in
+Pending and History, the tools group in Plan) so nothing shifts. History rows take
+the highlight on touch so the button has a row to appear on. Rows get
+`touch-action: manipulation` (no double-tap zoom, so double-tap still works),
+`user-select: none` and `-webkit-touch-callout: none` on touch. Rejected: a Show
+button on every row (clutter) and a sticky bottom action bar (far from the row).
+Check on a real phone; the browser pane only simulates mouse clicks.
+
 ## Launcher follow-ups
 
-- **Input meter in the operator console.** A small live level next to Speech
-  status. Needs a new server message (protocol change: show the shapes first).
+- **Live wave from real levels.** The launcher's live-state wave (`--wave-live`)
+  is a canned animation. Feed it the pipeline's real input levels, as the
+  console's meter does since [PR #116](https://github.com/Ezo-mas/BibleLive/pull/116).
 - **Identify screens.** A button by Projector that briefly shows a large number
   on every monitor, so the operator picks the right one.
 - **Speech checks in Advanced.** Show whether the Lithuanian GGUF models are
@@ -50,11 +68,11 @@ promptly after a rolled passage goes up. The three-verse window shipped in
   per view, the Advanced tab (Speech / Network / Launch) and the console filters
   (source, minimum level) in `launcher.json`, beside the Simple/Advanced choice that
   is already saved, so a repeat Sunday setup opens as it was left.
-- **One palette for launcher and pages (undecided).** The launcher uses its own
-  warm palette (`frontend/src/launcher/launcher.css`), not the console's
-  `DESIGN.md` tokens. The owner likes the launcher's better: decide whether to
-  move the operator/display pages to it (update `DESIGN.md` and the token CSS)
-  or bring the launcher onto the existing tokens. Either way, one set of tokens.
+- **Launcher on the shared tokens.** [PR #115](https://github.com/Ezo-mas/BibleLive/pull/115)
+  moved the console to the launcher's warm palette, but
+  `frontend/src/launcher/launcher.css` still holds its own copy of the colours as
+  raw hex values. Point it at `frontend/src/styles/tokens.css` so there is one set
+  of tokens.
 
 ## Maintenance
 
@@ -65,6 +83,17 @@ Size: small. The frontend dev tools moved to vite 6 and vitest 5 to clear
 reproduced in an empty project); 5.0.5 installs. `package.json` allows
 `^5.0.5`, so only `package-lock.json` holds it at 5.0.5: before an
 `npm update` that moves vitest, check that it installs, or upgrade npm first.
+
+### Windows CI: pytest exits silently mid-run
+The "Windows backend tests" job twice ended with exit code 1 and no traceback or
+FAILED line, mid-test: on PR #114 (2026-11-21, after `test_working_references.py`
+at 99%) and on PR #122 (2026-11-21, during
+`test_translation_follow.py::test_retry_warning_is_logged_once_per_requested_id`
+at 85%). Neither PR touched those tests, and a rerun passed both times; the full
+suite passes locally on Windows. Cause unknown. A first lead: some tests
+monkeypatch `audio.pipeline.time.monotonic`, which replaces `time.monotonic`
+for every thread in the process. pytest's faulthandler printed no stack, so it
+may not be a native crash: check the job's step timing and any `os._exit` in tests.
 
 ### Profile slow tests on Windows
 Run `pytest --durations=15` on Windows to recheck these audit findings:
