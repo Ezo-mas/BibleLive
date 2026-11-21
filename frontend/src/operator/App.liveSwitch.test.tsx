@@ -123,7 +123,7 @@ it('starts live and moves only when the server confirms', () => {
   expect(screen.getAllByText('Off air').every(el => el.closest('button'))).toBe(true)
   // Screen readers still hear what the audience sees.
   expect(screen.getByText('The audience sees a black screen')).toHaveClass('sr-only')
-  expect(screen.getByRole('status')).toHaveTextContent('Display off air')
+  expect(screen.queryByText(/^Display off air/)).not.toBeInTheDocument()
   // The preview keeps the passage: off air is where the operator checks it.
   expect(screen.getByText(passage.text)).toBeInTheDocument()
 

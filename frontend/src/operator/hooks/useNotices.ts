@@ -6,8 +6,11 @@ import type { NoticeMessage } from '../state/operatorTypes'
 /** Which action button briefly pulses once the server confirms it. */
 export type FlashTarget = 'approve' | 'clear' | 'clearPending'
 
-/** How a notice reads: a confirmation, a neutral fact, or a failure. */
-export type NoticeTone = 'success' | 'info' | 'error'
+/**
+ * How a notice reads: a failure, or a neutral problem (an action that changed
+ * nothing). Successful actions show on screen, so they get no notice.
+ */
+export type NoticeTone = 'info' | 'error'
 
 /** A single server-confirmed message for the operator. */
 export interface OperatorNotice {
@@ -20,7 +23,7 @@ export interface OperatorNotice {
 /** How long the button "pressed" feedback lasts after a confirmation. */
 const FLASH_MS = 150
 /** How long a notice stays up before it removes itself. */
-const NOTICE_MS: Record<NoticeTone, number> = { success: 3000, info: 4000, error: 6000 }
+const NOTICE_MS: Record<NoticeTone, number> = { info: 4000, error: 6000 }
 
 function translateNotice(message: NoticeMessage, t: Translator): string {
   const params: MessageParams = {}

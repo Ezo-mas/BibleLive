@@ -236,7 +236,7 @@ describe('switching the spoken language', () => {
       expect(languageButton('Lithuanian')).toHaveAttribute('aria-pressed', 'true')
     )
     expect(languageButton('English')).toBeEnabled()
-    expect(screen.getByRole('status')).toHaveTextContent('Spoken language: Lithuanian')
+    expect(screen.queryByText(/^Spoken language:/)).not.toBeInTheDocument()
     expect(within(screen.getByTitle('Speech: Lithuanian')).getByText('LT')).toBeInTheDocument()
   })
 

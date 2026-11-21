@@ -559,7 +559,7 @@ describe('plan row actions', () => {
     expect(planTitles()).toHaveLength(3)
 
     push(socket, { type: 'display_confirmed', data: { reference: manualReference('John', 3, 16) } })
-    expect(screen.getByText('Shown: John 3:16 (search)')).toBeInTheDocument()
+    expect(screen.queryByText(/^Shown:/)).not.toBeInTheDocument()
   })
 
   it('does not show a passage when double-clicking a row tool', () => {
@@ -742,7 +742,6 @@ describe('adding a passage to the plan from Find Scripture', () => {
     pressPlanKey('ctrlKey')
 
     await waitFor(() => expect(searchBox()).toHaveValue(''))
-    expect(screen.getByText('Added to the plan: John 3:16-17')).toBeInTheDocument()
     expect(sentActions()).toEqual([])
     expect(planTitles()).toEqual(['John 3:16-17'])
     expect(planPanel().getByText('John 3:16 text John 3:17 text')).toBeInTheDocument()
@@ -779,7 +778,6 @@ describe('adding a passage to the plan from Find Scripture', () => {
     fireEvent.click(screen.getByRole('button', { name: 'John 3:16-17 — add to the plan' }))
 
     await waitFor(() => expect(searchBox()).toHaveValue(''))
-    expect(screen.getByText('Added to the plan: John 3:16-17')).toBeInTheDocument()
     expect(sentActions()).toEqual([])
     expect(planTitles()).toEqual(['John 3:16-17'])
   })

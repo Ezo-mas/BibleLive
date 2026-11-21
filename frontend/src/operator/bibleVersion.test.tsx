@@ -37,7 +37,8 @@ describe('useBibleVersion', () => {
 
     act(() => result.current.change('ltb'))
     await waitFor(() => expect(result.current.version).toBe('ltb'))
-    expect(notify).toHaveBeenCalledWith('info', 'Bible version: Lithuanian (LTB)')
+    // A switch that worked says nothing: the control shows the new version.
+    expect(notify).not.toHaveBeenCalled()
   })
 
   it('does not read while disconnected', () => {
@@ -58,7 +59,7 @@ describe('useBibleVersion', () => {
     expect(notify).toHaveBeenCalledWith('error', expect.stringMatching(/not available/))
   })
 
-  it('announces a change pushed over the socket, once', async () => {
+  it('takes a change pushed over the socket without announcing it', async () => {
     stubFetch()
     const notify = vi.fn()
     const { result } = renderHook(() => useBibleVersion(null, true, notify))
@@ -66,10 +67,7 @@ describe('useBibleVersion', () => {
 
     act(() => result.current.applyConfirmed({ version: 'ltb', available: ['kjv', 'ltb'] }))
     expect(result.current.version).toBe('ltb')
-    expect(notify).toHaveBeenCalledTimes(1)
-
-    act(() => result.current.applyConfirmed({ version: 'ltb', available: ['kjv', 'ltb'] }))
-    expect(notify).toHaveBeenCalledTimes(1)
+    expect(notify).not.toHaveBeenCalled()
 
     act(() => result.current.applyConfirmed({ nonsense: true }))
     expect(result.current.version).toBe('ltb')

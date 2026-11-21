@@ -99,17 +99,10 @@ describe('operator protocol transitions', () => {
         expect(state.showInFlight).toBe(false)
         // Showing something never moves the cursor.
         expect(state.cursor).toBe(before.cursor)
-        expect(effects).toEqual([
-          ...(message.type === 'approval_confirmed' ? [{ type: 'flash', target: 'approve' }] : []),
-          {
-            type: 'notice',
-            tone: 'success',
-            message: {
-              key: message.type === 'approval_confirmed' ? 'notice.shown' : 'notice.shownManual',
-              params: { ref: message.type === 'approval_confirmed' ? 'John 3:16' : 'John 3:16-17' },
-            },
-          },
-        ])
+        // No notice: the preview and history already show it.
+        expect(effects).toEqual(
+          message.type === 'approval_confirmed' ? [{ type: 'flash', target: 'approve' }] : []
+        )
         break
       case 'follow_along':
         expect(state.followAlongHint).toEqual(message.data)
@@ -120,18 +113,12 @@ describe('operator protocol transitions', () => {
         expect(state.currentDisplay).toBeNull()
         expect(state.followAlongHint).toBeNull()
         expect(state.seenPassage).toBe(true)
-        expect(effects).toEqual([
-          { type: 'flash', target: 'clear' },
-          { type: 'notice', tone: 'info', message: { key: 'notice.displayCleared' } },
-        ])
+        expect(effects).toEqual([{ type: 'flash', target: 'clear' }])
         break
       case 'pending_cleared':
         // The subsequent pending_update owns the queue and selection changes.
         expect(state).toBe(before)
-        expect(effects).toEqual([
-          { type: 'flash', target: 'clearPending' },
-          { type: 'notice', tone: 'info', message: { key: 'notice.queueCleared' } },
-        ])
+        expect(effects).toEqual([{ type: 'flash', target: 'clearPending' }])
         break
       case 'history_cleared':
         expect(state).toEqual({ ...before, history: [], historyCount: 0 })
@@ -145,54 +132,18 @@ describe('operator protocol transitions', () => {
         expect(state.settings).toMatchObject({ verseLimit: 5, theme: 'light', clearMode: 'idle' })
         expect(state.confirmed).toEqual(state.settings)
         expect(state.idleImage).toBeNull()
-        expect(effects).toEqual([
-          {
-            type: 'notice',
-            tone: 'info',
-            message: {
-              key: 'notice.saved',
-              params: {
-                changes: {
-                  join: [
-                    { key: 'notice.changeVerses', params: { value: 5 } },
-                    {
-                      key: 'notice.changeBackground',
-                      params: { value: { key: 'settings.bgLight' } },
-                    },
-                  ],
-                },
-              },
-            },
-          },
-        ])
+        // The controls show the new values; nothing is announced.
+        expect(effects).toEqual([])
         break
       case 'auto_mode_confirmed':
         expect(state.settings.autoMode).toBe('high')
         expect(state.confirmed.autoMode).toBe('high')
-        expect(effects).toEqual([
-          {
-            type: 'notice',
-            tone: 'info',
-            message: {
-              key: 'notice.autoApprove',
-              params: { mode: { key: 'auto.high' } },
-            },
-          },
-        ])
+        expect(effects).toEqual([])
         break
       case 'follow_auto_confirmed':
         expect(state.settings.followAuto).toBe(true)
         expect(state.confirmed.followAuto).toBe(true)
-        expect(effects).toEqual([
-          {
-            type: 'notice',
-            tone: 'info',
-            message: {
-              key: 'notice.followAuto',
-              params: { state: { key: 'follow.on' } },
-            },
-          },
-        ])
+        expect(effects).toEqual([])
         break
       case 'bible_version_confirmed':
         expect(state).toBe(before)
@@ -265,16 +216,7 @@ describe('the cursor across server updates', () => {
     expect(state.showInFlight).toBe(true)
     expect(state.currentDisplay).toEqual(followed)
     expect(state.history[0]).toEqual(followed)
-    expect(effects).toEqual([
-      {
-        type: 'notice',
-        tone: 'success',
-        message: {
-          key: 'notice.shownFollow',
-          params: { ref: 'John 3:16-17' },
-        },
-      },
-    ])
+    expect(effects).toEqual([])
   })
 
   it('deduplicates and caps confirmed history at the snapshot window', () => {

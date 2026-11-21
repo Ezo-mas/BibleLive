@@ -229,8 +229,9 @@ export function useOperatorState(): OperatorState {
   const planPassage = useCallback(
     (passage: Passage) => {
       const ref = formatReference(passageToReference(passage))
-      if (addToPlan(passage)) showNotice('success', t('notice.planned', { ref }))
-      else showNotice('info', t('notice.alreadyPlanned', { ref }))
+      // Added: the row appears in the Plan. Already there: nothing changes on screen,
+      // so that one is said.
+      if (!addToPlan(passage)) showNotice('info', t('notice.alreadyPlanned', { ref }))
     },
     [addToPlan, showNotice, t]
   )

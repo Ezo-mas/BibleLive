@@ -1,10 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import {
-  bibleVersionLabel,
-  changeBibleVersion,
-  fetchBibleVersion,
-  parseBibleVersionInfo,
-} from '../bibleVersionApi'
+import { changeBibleVersion, fetchBibleVersion, parseBibleVersionInfo } from '../bibleVersionApi'
 import type { BibleVersionInfo } from '../bibleVersionApi'
 import { useI18n } from '../../shared/i18nContext'
 import type { Translator } from '../../shared/i18n'
@@ -103,14 +98,6 @@ export function useBibleVersion(
         .then(confirmed => {
           // A push that landed meanwhile is at least as new as this reply.
           if (pushSeqRef.current === pushSeqAtStart) setInfo(confirmed)
-          if (confirmed.version) {
-            notifyRef.current(
-              'info',
-              tRef.current('version.changed', {
-                version: bibleVersionLabel(confirmed.version, tRef.current),
-              })
-            )
-          }
         })
         .catch((failure: unknown) => {
           const message = messageOf(failure, tRef.current)
@@ -131,18 +118,8 @@ export function useBibleVersion(
     // A read still in flight is older than this confirmation.
     readSeqRef.current += 1
     pushSeqRef.current += 1
-    const changed = confirmed.version !== versionRef.current
     setInfo(confirmed)
     setError(null)
-    // The switching operator's own request announces its result; this covers the rest.
-    if (changed && confirmed.version && !switchingRef.current) {
-      notifyRef.current(
-        'info',
-        tRef.current('version.changed', {
-          version: bibleVersionLabel(confirmed.version, tRef.current),
-        })
-      )
-    }
   }, [])
 
   return { ...info, error, isSwitching, refresh, change, applyConfirmed }

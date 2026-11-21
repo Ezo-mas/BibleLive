@@ -1,4 +1,4 @@
-import { AlertCircleIcon, Button, CheckIcon, InfoIcon, XIcon } from '../../components'
+import { AlertCircleIcon, Button, InfoIcon, XIcon } from '../../components'
 import { useI18n } from '../../shared/i18nContext'
 import type { OperatorNotice } from '../hooks/useOperatorState'
 
@@ -9,19 +9,20 @@ export interface FeedbackNoticeProps {
 }
 
 const TONE_ICONS = {
-  success: <CheckIcon />,
   info: <InfoIcon />,
   error: <AlertCircleIcon />,
 }
 
 /**
- * The operator's action feedback: one message at a time, for confirmations and
- * failures that the screen itself cannot show.
+ * The operator's action feedback: one message at a time, only for failures and
+ * problems the screen itself cannot show. A successful action gets no message:
+ * the console already shows its result.
  *
  * Every message here comes from the server, never from the click that sent the
  * request, so nothing reads as done before it is. Errors are assertive
- * (`role="alert"`) while confirmations stay polite, and the element is keyed by
- * the notice id so even a repeated message ("Shown: John 1:1-3" twice) is
+ * (`role="alert"`) while the rest stay polite, and the element is keyed by
+ * the notice id so even a repeated message ("John 3:16 is already in the plan"
+ * twice) is
  * announced again instead of looking unchanged.
  *
  * `OperatorHeader` renders it, between the title and the controls; the live

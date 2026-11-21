@@ -104,7 +104,9 @@ describe('checked-in protocol fixtures', () => {
     // The two empty confirmations have observable effects without reading data.
     // All other cases consume their payload, so a silent fall-through fails too.
     if (message.type === 'clear_confirmed' || message.type === 'pending_cleared') {
-      expect(result.current.notice?.tone).toBe('info')
+      expect(result.current.flash).toBe(
+        message.type === 'clear_confirmed' ? 'clear' : 'clearPending'
+      )
     } else {
       expect(dataRead).toBe(true)
     }

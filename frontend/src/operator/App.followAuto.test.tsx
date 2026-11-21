@@ -176,14 +176,16 @@ describe('follow-along auto-show switch', () => {
     })
 
     push(socket, { type: 'follow_auto_confirmed', data: { follow_auto: true } })
-    expect(screen.getByText('Follow the reading automatically: On')).toBeInTheDocument()
+    expect(followOptions().getByRole('button', { name: 'On' })).toHaveAttribute(
+      'aria-pressed',
+      'true'
+    )
 
     push(socket, { type: 'follow_auto_confirmed', data: { follow_auto: false } })
     expect(followOptions().getByRole('button', { name: 'Off' })).toHaveAttribute(
       'aria-pressed',
       'true'
     )
-    expect(screen.getByText('Follow the reading automatically: Off')).toBeInTheDocument()
   })
 
   it('reverts to the confirmed value when the server refuses the change', () => {
@@ -285,12 +287,13 @@ describe('auto-followed passages', () => {
     expect(screen.getByTestId('live-stage')).toBeInTheDocument()
   })
 
-  it('announces a followed passage as followed, not as a manual show', () => {
+  it('shows a followed passage without a notice', () => {
     openWith()
 
     push(socket, { type: 'display_confirmed', data: { reference: followed('f-1', [13, 14, 15]) } })
 
-    expect(screen.getByText(/Shown: Luke 16:13-15 \(followed automatically\)/)).toBeInTheDocument()
+    expect(screen.getByTestId('live-verses')).toHaveTextContent('Luke')
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
   })
 
   it('never offers a followed passage for auto-approval or confidence', () => {
