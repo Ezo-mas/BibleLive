@@ -21,6 +21,7 @@ export interface LivePanelProps {
   /** The picture the display shows while idle, shown here too while nothing is on screen. */
   idleImage?: IdleImage | null
   clearAction?: ReactNode
+  expandAction?: ReactNode
   /** Laid over the top of the preview frame, taking no space (the follow-along strip). */
   overlay?: ReactNode
   /** Whether the audience display is on air; off air the preview keeps showing the passage. */
@@ -48,6 +49,7 @@ export function LivePanel({
   displayTheme,
   idleImage = null,
   clearAction,
+  expandAction,
   overlay,
   live = true,
   onLiveChange,
@@ -85,6 +87,7 @@ export function LivePanel({
           </StatusBadge>
         )}
         <div className="operator-live-actions">
+          {expandAction}
           {clearAction}
           {onLiveChange && (
             <Button

@@ -347,6 +347,10 @@ reading automatically" switch under Settings → Auto-approve (off by default, s
 every console, saved with the auto-approve mode) does it for a verse that starts at
 most 3 verses past the passage on screen; a bigger jump stays a suggestion.
 
+To advance the displayed passage by one verse yourself, enable the **“+1 verse”
+button** under Settings → This console. The button appears in On display and
+keeps up to three verses, ending on the verse you just added.
+
 A whole utterance can end several seconds after the verse began, so the pipeline
 also transcribes the utterance still being spoken: every `--partial-interval-s`
 seconds (1.5) it transcribes the audio since the last one and posts the text so far,

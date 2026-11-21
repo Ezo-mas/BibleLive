@@ -81,6 +81,8 @@ export interface OperatorState {
    */
   showFollowAlong: () => void
   canShowFollowAlong: boolean
+  expandCurrentDisplay: () => void
+  canExpandCurrentDisplay: boolean
 
   /** Manual passage search: the book list and the lookup the form calls. */
   search: ScriptureSearchState

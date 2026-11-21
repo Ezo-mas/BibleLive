@@ -249,6 +249,9 @@ export const lt: Record<MessageKey, MessageEntry> = {
   'settings.followAutoHint':
     'Kai kalbėtojas skaito toliau nei ekrane rodoma ištrauka, kitos eilutės (ne daugiau kaip 3 į priekį) rodomos pačios. Galioja visoms konsolėms.',
   'follow.on': 'Įjungta',
+  'settings.expandPassage': 'Mygtukas „+1 eilutė“',
+  'settings.expandPassageHint':
+    'Prideda kitą eilutę prie rodomos ištraukos, rodant ne daugiau kaip tris eilutes.',
   'follow.off': 'Išjungta',
 
   // API failures
@@ -280,6 +283,7 @@ export const lt: Record<MessageKey, MessageEntry> = {
   'stage.approvedHint': 'Patvirtintos nuorodos rodomos čia ir projektoriuje.',
   'stage.clearDisplay': 'Išvalyti ekraną',
   'stage.clear': 'Išvalyti',
+  'stage.expandPassage': '+1 eilutė',
   'quick.clearTitle': 'Išvalyti ekraną (B)',
   'source.manual': 'Paieška',
   'queue.title': 'Laukia patvirtinimo',

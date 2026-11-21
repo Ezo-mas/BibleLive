@@ -33,6 +33,16 @@ import './styles/scripture-search.css'
 import './styles/settings-dialog.css'
 import './styles/responsive.css'
 
+const EXPAND_PASSAGE_STORAGE_KEY = 'biblelive.expandPassage'
+
+function readExpandPassagePreference() {
+  try {
+    return window.localStorage.getItem(EXPAND_PASSAGE_STORAGE_KEY) === 'true'
+  } catch {
+    return false
+  }
+}
+
 /**
  * Operator console.
  *
@@ -70,6 +80,16 @@ export default function App() {
   const { theme, setTheme } = useTheme()
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [sideTab, setSideTab] = useState<SideTab>('pending')
+  const [showExpandButton, setShowExpandButton] = useState(readExpandPassagePreference)
+
+  const changeExpandButton = (next: boolean) => {
+    setShowExpandButton(next)
+    try {
+      window.localStorage.setItem(EXPAND_PASSAGE_STORAGE_KEY, String(next))
+    } catch {
+      // The preference still applies for this session if storage is blocked.
+    }
+  }
 
   const pendingVisible = sideTab === 'pending'
   const { cursor } = operator
@@ -160,6 +180,19 @@ export default function App() {
             live={operator.live}
             onLiveChange={operator.setLive}
             liveDisabled={!operator.isConnected}
+            expandAction={
+              showExpandButton && (
+                <Button
+                  type="button"
+                  variant="subtle"
+                  size="sm"
+                  onClick={operator.expandCurrentDisplay}
+                  disabled={!operator.canExpandCurrentDisplay}
+                >
+                  {t('stage.expandPassage')}
+                </Button>
+              )
+            }
             clearAction={
               <Button
                 type="button"
@@ -262,6 +295,8 @@ export default function App() {
         onAutoModeChange={operator.setAutoApproveMode}
         followAuto={operator.followAuto}
         onFollowAutoChange={operator.setFollowAutoEnabled}
+        showExpandButton={showExpandButton}
+        onExpandButtonChange={changeExpandButton}
         appTheme={theme}
         onAppThemeChange={setTheme}
       />

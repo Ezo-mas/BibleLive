@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef } from 'react'
 import type { KeyboardEvent } from 'react'
-import { Button, ThemeToggle, XIcon } from '../../components'
+import { Button, SegmentedOption, ThemeToggle, XIcon } from '../../components'
 import { useI18n } from '../../shared/i18nContext'
 import { DisplaySettings } from './DisplaySettings'
 import { AutoApproveControls } from './AutoApproveControls'
@@ -39,6 +39,8 @@ export interface SettingsDialogProps {
   /** Follow-along auto-show: the server shows the verses a speaker reads on to by itself. */
   followAuto: boolean
   onFollowAutoChange: (next: boolean) => void
+  showExpandButton: boolean
+  onExpandButtonChange: (next: boolean) => void
   /**
    * The console's own theme. Held by `App` and passed in, because the theme has
    * to be applied on load — the control that changes it now lives behind this
@@ -92,6 +94,8 @@ export function SettingsDialog({
   onAutoModeChange,
   followAuto,
   onFollowAutoChange,
+  showExpandButton,
+  onExpandButtonChange,
   appTheme,
   onAppThemeChange,
 }: SettingsDialogProps) {
@@ -206,6 +210,26 @@ export function SettingsDialog({
               <ThemeToggle theme={appTheme} onThemeChange={onAppThemeChange} />
             </div>
             <InterfaceLanguageSettings />
+            <div className="operator-setting">
+              <div className="operator-setting-text">
+                <span className="operator-setting-label">{t('settings.expandPassage')}</span>
+                <p className="operator-setting-hint">{t('settings.expandPassageHint')}</p>
+              </div>
+              <div className="segmented" role="group" aria-label={t('settings.expandPassage')}>
+                <SegmentedOption
+                  aria-pressed={!showExpandButton}
+                  onClick={() => onExpandButtonChange(false)}
+                >
+                  {t('follow.off')}
+                </SegmentedOption>
+                <SegmentedOption
+                  aria-pressed={showExpandButton}
+                  onClick={() => onExpandButtonChange(true)}
+                >
+                  {t('follow.on')}
+                </SegmentedOption>
+              </div>
+            </div>
           </section>
 
           <section className="operator-dialog-section" aria-labelledby={languageSectionId}>
