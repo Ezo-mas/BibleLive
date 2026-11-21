@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { act, render, screen, waitFor, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import App from './App'
 import type { BibleReference, FollowAlongHint, OperatorMessage } from '../shared/types'
 import { createMockSocket, push } from '../test/operatorHarness'
@@ -323,5 +323,72 @@ describe('follow-along preview text', () => {
     )
     expect(screen.getByRole('button', { name: 'Show Luke 16:13-15 on display' })).toBeEnabled()
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+})
+
+describe('+1 verse button', () => {
+  function setExpandButton(option: 'On' | 'Off') {
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
+    const dialog = within(screen.getByRole('dialog'))
+    const setting = within(dialog.getByRole('group', { name: '“+1 verse” button' }))
+    fireEvent.click(setting.getByRole('button', { name: option }))
+    fireEvent.click(dialog.getByRole('button', { name: 'Close settings' }))
+  }
+
+  const expandButton = () => screen.getByRole('button', { name: '+1 verse' })
+
+  it('shows the optional control only when enabled and sends the rolling range', () => {
+    openWith(onScreen)
+    expect(screen.queryByRole('button', { name: '+1 verse' })).not.toBeInTheDocument()
+
+    setExpandButton('On')
+    fireEvent.click(expandButton())
+
+    expect(sentActions()).toEqual([
+      {
+        action: 'display_reference',
+        book: 'Luke',
+        chapter: 16,
+        verse_start: 11,
+        verse_end: 13,
+      },
+    ])
+    expect(expandButton()).toBeDisabled()
+
+    push(socket, { type: 'display_confirmed', data: { reference: reference('d-2', [11, 12, 13]) } })
+    expect(expandButton()).toBeEnabled()
+    setExpandButton('Off')
+    expect(screen.queryByRole('button', { name: '+1 verse' })).not.toBeInTheDocument()
+  })
+
+  it('restores the preference and disables expansion with no verse or connection', () => {
+    window.localStorage.setItem('biblelive.expandPassage', 'true')
+    openWith(null)
+    expect(expandButton()).toBeDisabled()
+
+    push(socket, {
+      type: 'display_confirmed',
+      data: { reference: { ...onScreen, verse_start: null, verse_end: null } },
+    })
+    expect(expandButton()).toBeDisabled()
+
+    push(socket, { type: 'display_confirmed', data: { reference: onScreen } })
+    expect(expandButton()).toBeEnabled()
+    act(() => socket?.onclose?.({ code: 1006 }))
+    expect(expandButton()).toBeDisabled()
+  })
+
+  it('shows the usual error notice when the server rejects a verse past the chapter end', () => {
+    openWith(reference('last', [29, 30, 31]))
+    setExpandButton('On')
+    fireEvent.click(expandButton())
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    const message = 'Luke 16:32 is not in the Bible text available on this server.'
+    push(socket, { type: 'error', data: { message, action: 'display_reference' } })
+
+    expect(screen.getByRole('alert')).toHaveTextContent(`Could not show that passage: ${message}`)
+    expect(screen.getByText('Luke 16:29-31')).toBeInTheDocument()
+    expect(expandButton()).toBeEnabled()
   })
 })

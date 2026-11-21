@@ -19,6 +19,7 @@ import {
   writeStoredVerseLimit,
 } from '../../shared/verseText'
 import type { DisplayTheme, VerseLimit } from '../../shared/verseText'
+import { expandPassage } from '../expandPassage'
 import { passageToReference } from '../passageApi'
 import type { PassageQuery } from '../passageApi'
 import { createInputLevelsStore } from '../state/inputLevelsStore'
@@ -240,6 +241,16 @@ export function useOperatorState(): OperatorState {
   const cursor = useRowCursor(state, dispatch, plan.items, approvePending, showPlanItem)
   const planSnippets = usePlanSnippets(plan.items, token, isConnected, bibleVersion.version)
   const { currentDisplay, followAlongHint, showInFlight } = state
+  const canShow = isConnected && !showInFlight
+  const expandCurrentDisplay = useCallback(() => {
+    if (!canShow || !currentDisplay || currentDisplay.verse_start === null) return
+    showManualDirect({
+      book: currentDisplay.book,
+      chapter: currentDisplay.chapter,
+      ...expandPassage(currentDisplay.verse_start, currentDisplay.verse_end),
+    })
+  }, [canShow, currentDisplay, showManualDirect])
+
   // A hint is only meaningful next to the passage it follows on from. Comparing
   // ids here, not when the hint arrives, means a display that changed or was
   // cleared simply stops matching — whichever message got here first.
@@ -382,7 +393,9 @@ export function useOperatorState(): OperatorState {
     showPlanItem,
     followAlong,
     showFollowAlong,
-    canShowFollowAlong: followAlong !== null && isConnected && !showInFlight,
+    canShowFollowAlong: followAlong !== null && canShow,
+    expandCurrentDisplay,
+    canExpandCurrentDisplay: canShow && currentDisplay?.verse_start != null,
     spokenLanguage,
     bibleVersion,
     idleScreen,

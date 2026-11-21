@@ -29,12 +29,6 @@ Check that the text size stays steady and that the next verse is offered
 promptly after a rolled passage goes up. The three-verse window shipped in
 [PR #103](https://github.com/Ezo-mas/BibleLive/pull/103).
 
-## Planned console and display features
-
-### Expand a follow-along passage
-Optional console button that adds one verse per press, using the same
-three-verse window as Show and auto-show.
-
 ## Launcher follow-ups
 
 - **Input meter in the operator console.** A small live level next to Speech

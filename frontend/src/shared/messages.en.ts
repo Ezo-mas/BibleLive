@@ -241,6 +241,9 @@ export const en = {
   'settings.followAutoHint':
     'When the speaker reads on past the passage on screen, the next verses (up to 3 ahead) are shown by themselves. Shared by every console.',
   'follow.on': 'On',
+  'settings.expandPassage': '“+1 verse” button',
+  'settings.expandPassageHint':
+    'Adds the next verse to the passage on display, showing up to three verses.',
   'follow.off': 'Off',
 
   // API failures
@@ -271,6 +274,7 @@ export const en = {
   'stage.approvedHint': 'Approved references appear here and on the projector.',
   'stage.clearDisplay': 'Clear display',
   'stage.clear': 'Clear',
+  'stage.expandPassage': '+1 verse',
   'quick.clearTitle': 'Clear display (B)',
   'source.manual': 'Search',
   'queue.title': 'Pending',
