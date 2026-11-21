@@ -225,6 +225,7 @@ export const en = {
 
   // Spoken-language status
   'speech.status': 'Speech: {language}',
+  'speech.inputLevels': 'input {input} (peak {peak})',
   'speech.staleStatus': 'Speech: {language}. Speech detection is not running.',
 
   // Stages and queue

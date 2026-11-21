@@ -77,6 +77,7 @@ BIBLELIVE_OPERATOR_TOKEN=your-generated-token-here
 - `POST /api/pipeline/heartbeat` — audio pipeline health report (so nobody
   else can tell the operator that detection is healthy)
 - `GET /api/pipeline/status` — pipeline health shown in the operator console
+- `POST /api/pipeline/levels` — transient microphone peaks forwarded to authenticated operator sockets
 - `GET /api/state` — application state
 - `POST /api/approve` — approve pending reference
 - `POST /api/clear` — clear display
@@ -278,7 +279,7 @@ A change to any of these needs a security review before it is called done:
 - **Authentication and tokens:** `backend/core/server/auth.py`, the WebSocket
   `authenticate` handshake (`core/server/ws.py`, `connections.py`), and token
   handling in the clients (`frontend/src/shared/operatorToken.ts`,
-  `useWebSocket.ts`, the `#token=` link, `audio/sender.py`).
+  `useWebSocket.ts`, the `#token=` link, `audio/sender.py`, `audio/level_sender.py`).
 - **Which endpoints are public or protected:** the lists under "Security
   Architecture" above, and any new route in `core/server/routes/` or `core/server/ws.py`.
 - **Who can reach the server:** `HOST`, `REQUIRE_AUTH` and `CORS_ORIGINS` in

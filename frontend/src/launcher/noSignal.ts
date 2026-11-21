@@ -1,13 +1,7 @@
+import { LEVEL_INTERVAL, SIGNAL_THRESHOLD, type LevelSample } from '../shared/levels'
 import type { Meter } from './bridge'
 
-export const LEVEL_INTERVAL = 50
 const QUIET_WINDOW = 5_000
-export const SIGNAL_THRESHOLD = 0.1
-
-export interface LevelSample {
-  time: number
-  level: number
-}
 
 export function noSignal(meter: Meter, samples: LevelSample[], now: number): boolean {
   if (meter !== 'on' || !samples.length) return false

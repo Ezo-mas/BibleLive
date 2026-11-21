@@ -13,10 +13,11 @@ from types import SimpleNamespace
 import pytest
 from launcher import cli, i18n, micmeter, webui
 from launcher.logtail import LogBuffer, LogTail
-from launcher.micmeter import BLOCK_SAMPLES, block_level
 from launcher.process import LaunchPlan
 from launcher.settings import LauncherSettings, load_settings, save_settings
 from launcher.webui import LauncherApi, LauncherController
+
+from audio.levels import BLOCK_SAMPLES, block_level
 
 
 def wait_for(check):

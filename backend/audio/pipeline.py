@@ -26,6 +26,7 @@ from .health import AUDIO_STALL_S as AUDIO_STALL_S
 from .health import _health_issue as _health_issue
 from .health import build_health_report
 from .heartbeat import HeartbeatSender
+from .level_sender import LevelSender
 from .metrics import PipelineMetrics
 from .partials import PartialMailbox, PartialScheduler, PartialSnapshot, PartialTranscript
 from .segmenter import FRAME_DURATION_MS, Segmenter, SegmentEvent
@@ -175,6 +176,9 @@ class BibleLiveAudioProcessor:
             if self.config.heartbeat_interval > 0
             else None
         )
+        self.level_sender = (
+            LevelSender(server_url, self.config) if self.heartbeat is not None else None
+        )
 
         # Live session log, opened by start() when configured.
         self.session_log: SessionLog | None = None
@@ -232,6 +236,8 @@ class BibleLiveAudioProcessor:
             # Start reference delivery before anything can detect a reference
             self.sender.start()
             self.transcript_sender.start()
+            if self.level_sender is not None:
+                self.level_sender.start()
 
             # Start VAD processing thread
             vad_thread = threading.Thread(target=self._vad_loop, daemon=True, name="vad-processor")
@@ -259,6 +265,8 @@ class BibleLiveAudioProcessor:
     def _rollback_start(self) -> None:
         """Unwind a failed :meth:`start`, preserving the original exception."""
         self.is_running = False
+        if self.level_sender is not None:
+            self.level_sender.stop()
         if self.heartbeat is not None:
             self.heartbeat.stop()
         try:
@@ -313,6 +321,8 @@ class BibleLiveAudioProcessor:
 
         # Stop reporting first: the server then shows the pipeline as offline,
         # which is what it is about to be.
+        if self.level_sender is not None:
+            self.level_sender.stop()
         if self.heartbeat is not None:
             self.heartbeat.stop()
 
@@ -425,6 +435,9 @@ class BibleLiveAudioProcessor:
         frame_duration_ms = self.frame_duration_ms
 
         self.capture_supervisor.begin_watchdog()
+        level_sender = self.level_sender
+        if level_sender is not None:
+            level_sender.reset_capture()
         # This counter is local to and owned by the VAD thread.
         consecutive_errors = 0
         while self.is_running:
@@ -440,6 +453,8 @@ class BibleLiveAudioProcessor:
                     continue
 
                 self.capture_supervisor.note_frame(frame)
+                if level_sender is not None:
+                    level_sender.note_frame(frame)
                 self.metrics.audio_chunks_captured += 1
                 session_log = self.session_log
                 if session_log is not None:
@@ -494,6 +509,8 @@ class BibleLiveAudioProcessor:
 
     def _restart_capture(self, cause: str = "ffmpeg exited") -> None:
         """Flush the open utterance before the supervisor waits to restart capture."""
+        if self.level_sender is not None:
+            self.level_sender.reset_capture()
         self.capture_supervisor.restart(cause, self._flush_capture_utterance)
 
     def _flush_capture_utterance(self) -> None:

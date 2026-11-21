@@ -21,6 +21,7 @@ import {
 import type { DisplayTheme, VerseLimit } from '../../shared/verseText'
 import { passageToReference } from '../passageApi'
 import type { PassageQuery } from '../passageApi'
+import { createInputLevelsStore } from '../state/inputLevelsStore'
 import { createOperatorState, operatorReducer } from '../state/operatorReducer'
 import type { OperatorState } from '../state/operatorHookTypes'
 import type { OperatorEffect, OperatorEvent } from '../state/operatorTypes'
@@ -84,12 +85,13 @@ export function useOperatorState(): OperatorState {
   const discardTimerRef = useRef<number | undefined>(undefined)
   const clearDiscardInFlight = useCallback(() => dispatch({ type: 'discard_settled' }), [dispatch])
   const { notice, flash, showNotice, showMessage, pulse, dismissNotice } = useNotices()
+  const [inputLevels] = useState(createInputLevelsStore)
 
   const {
     status,
     send,
     reconnect: reconnectSocket,
-  } = useWebSocket<OperatorMessage>('/ws/operator', dispatch, {
+  } = useWebSocket<OperatorMessage>('/ws/operator', onMessage, {
     maxReconnectAttempts: Infinity,
     // The token goes in the socket's first message, not the URL: URLs end up
     // in server and proxy logs. Always sent, even empty: with auth on and no
@@ -272,6 +274,19 @@ export function useOperatorState(): OperatorState {
   }, [followAlong, showManualDirect])
   // Speech detection health, asked of the server only while it is reachable.
   const pipeline = usePipelineStatus(token, isConnected)
+  const pipelineOffline = pipeline?.status === 'offline'
+  useEffect(() => {
+    if (!isConnected || pipelineOffline) inputLevels.reset()
+  }, [isConnected, pipelineOffline, inputLevels])
+  useEffect(() => inputLevels.reset, [inputLevels])
+
+  function onMessage(message: OperatorMessage) {
+    if (message.type === 'input_levels') {
+      if (!pipelineOffline) inputLevels.receive(message.data.levels)
+      return
+    }
+    dispatch(message)
+  }
 
   const discardPending = useCallback(
     (id: string) => {
@@ -356,6 +371,7 @@ export function useOperatorState(): OperatorState {
     displayConnected: state.displayConnected === true,
     displayMissing: isConnected && state.displayConnected === false,
     pipeline,
+    inputLevels,
     plan,
     search,
     cursor,

@@ -231,6 +231,7 @@ export const lt: Record<MessageKey, MessageEntry> = {
 
   // Spoken-language status
   'speech.status': 'Kalba: {language}',
+  'speech.inputLevels': 'įvestis {input} (pikas {peak})',
   'speech.staleStatus': 'Kalba: {language}. Nuorodų aptikimas neveikia.',
 
   // Stages and queue

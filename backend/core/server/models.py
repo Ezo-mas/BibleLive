@@ -324,6 +324,20 @@ class PipelineIssue(BaseModel):
     )
 
 
+class PipelineLevels(BaseModel):
+    """A batch of normalized, oldest-first microphone peaks."""
+
+    # Keep the batch limit in sync with audio.level_sender.MAX_BATCH.
+    levels: list[Annotated[float, Field(strict=True, ge=0.0, le=1.0)]] = Field(
+        min_length=1, max_length=20
+    )
+
+
+class InputLevelsMessage(BaseModel):
+    type: Literal["input_levels"] = "input_levels"
+    data: PipelineLevels
+
+
 class PipelineHeartbeat(BaseModel):
     """The audio pipeline's periodic health report (``POST /api/pipeline/heartbeat``)."""
 
@@ -743,6 +757,7 @@ OperatorServerMessage = Annotated[
     | OperatorFollowAutoConfirmed
     | OperatorBibleVersionConfirmed
     | OperatorFollowAlong
+    | InputLevelsMessage
     | OperatorError,
     Field(discriminator="type"),
 ]

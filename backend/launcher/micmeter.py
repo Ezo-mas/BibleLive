@@ -1,9 +1,7 @@
 """Idle microphone level meter backed by a short-lived ffmpeg capture."""
 
 import contextlib
-import math
 import shutil
-import struct
 import subprocess
 import sys
 import threading
@@ -11,21 +9,11 @@ from collections import deque
 from collections.abc import Callable
 
 from audio.capture import ffmpeg_input_args
+from audio.levels import BLOCK_BYTES, block_level
 
 from . import platform
 from .i18n import t
 from .platform.macos import microphone_access
-
-BLOCK_SAMPLES = 800
-BLOCK_BYTES = BLOCK_SAMPLES * 2
-
-
-def block_level(block: bytes) -> float:
-    peak = max(abs(sample) for (sample,) in struct.iter_unpack("<h", block))
-    if peak == 0:
-        return 0.0
-    dbfs = 20 * math.log10(peak / 32767)
-    return max(0.0, min(1.0, (dbfs + 60) / 60))
 
 
 def meter_input_args(args: list[str]) -> list[str]:

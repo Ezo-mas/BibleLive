@@ -64,6 +64,39 @@ async def _drain(cm):
     await asyncio.wait_for(asyncio.gather(*(q.join() for q in cm._queues.values())), 1)
 
 
+@pytest.mark.parametrize("queued", [1, 2, 4])
+def test_operator_queue_drops_input_levels_at_half_capacity(monkeypatch, queued):
+    monkeypatch.setattr(connections, "SEND_QUEUE_MAX", 4)
+
+    async def scenario():
+        busy, available = _FakeWebSocket(), _FakeWebSocket()
+        cm = ConnectionManager()
+        await cm.connect(busy, "operator")
+        await cm.connect(available, "operator")
+        try:
+            snapshot = {"type": "state_snapshot", "data": {}}
+            levels = {"type": "input_levels", "data": {"levels": [0.5]}}
+            for _ in range(queued):
+                await cm._safe_send(busy, snapshot)
+            assert await cm.send_to_operator(levels, best_effort=True) == []
+            expected = [snapshot] * queued
+            if queued == 1:
+                expected.append(levels)
+            elif queued == 2:
+                # The entire remaining half is available for reliable messages.
+                await cm._safe_send(busy, snapshot)
+                await cm._safe_send(busy, snapshot)
+                expected.extend([snapshot, snapshot])
+            await _drain(cm)
+            assert cm.operator_connections == {busy, available}
+            assert [json.loads(message) for message in busy.sent] == expected
+            assert [json.loads(message) for message in available.sent] == [levels]
+        finally:
+            await cm.close()
+
+    asyncio.run(scenario())
+
+
 @pytest.mark.parametrize("single_socket", [False, True])
 def test_dead_socket_pruned(single_socket):
     """Delivery failures prune asynchronously, not in the enqueue result."""

@@ -100,15 +100,56 @@
   font-size: var(--font-size-xs);
   font-weight: var(--weight-semibold);
   color: var(--color-text-secondary);
+  border: var(--border-width) solid transparent;
+  border-radius: var(--radius-full);
+  padding-inline: var(--space-1);
+  flex: none;
 }
 
-.operator-language-status svg {
+.operator-language-status svg,
+.operator-input-meter {
   width: var(--icon-sm);
   height: var(--icon-sm);
 }
 
 .operator-language-status--stale {
   color: var(--color-text-muted);
+}
+
+.operator-language-status--silent {
+  border-color: var(--color-warning-text);
+  background: var(--color-warning-bg);
+}
+
+.operator-input-meter {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  justify-items: center;
+}
+
+.operator-input-meter-bar {
+  width: var(--space-0-5);
+  border-radius: var(--radius-full);
+  background: var(--color-text-secondary);
+  transition: transform 120ms ease-out;
+}
+
+.operator-input-meter-bar[data-zone='green'] {
+  background: var(--color-success);
+}
+
+.operator-input-meter-bar[data-zone='yellow'] {
+  background: var(--color-warning-text);
+}
+
+.operator-input-meter-bar[data-zone='red'] {
+  background: var(--color-danger-text);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .operator-input-meter-bar {
+    transition: none;
+  }
 }
 
 /* Action feedback hangs from the bottom of the header, under the gear, instead of

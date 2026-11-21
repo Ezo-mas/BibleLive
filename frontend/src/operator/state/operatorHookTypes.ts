@@ -14,6 +14,7 @@ import type { PlanItem, PlanState } from '../hooks/usePlan'
 import type { ScriptureSearchState } from '../hooks/useScriptureSearch'
 import type { BibleVersionState } from '../hooks/useBibleVersion'
 import type { IdleScreenState } from '../hooks/useIdleScreen'
+import type { InputLevelsStore } from './inputLevelsStore'
 import type { SpokenLanguageState } from '../hooks/useSpokenLanguage'
 import type { FlashTarget, OperatorNotice } from '../hooks/useNotices'
 import type { RowCursorState } from '../hooks/useRowCursor'
@@ -59,6 +60,7 @@ export interface OperatorState {
   displayMissing: boolean
   /** Audio pipeline health; null while disconnected or before the first answer. */
   pipeline: PipelineStatus | null
+  inputLevels: InputLevelsStore
   /**
    * Send a manual passage to the display: coordinates only, for the server to
    * resolve (`display_reference`). Used by Find Scripture, Plan, History and

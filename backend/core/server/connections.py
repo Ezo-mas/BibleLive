@@ -159,9 +159,13 @@ class ConnectionManager:
             logger.warning(f"Failed to send WebSocket message; pruning connection: {e!r}")
             self._prune(websocket)
 
-    def _enqueue(self, websocket: WebSocket, payload: str) -> bool:
+    def _enqueue(self, websocket: WebSocket, payload: str, *, best_effort: bool = False) -> bool:
         queue = self._queues.get(websocket)
         if queue is None:
+            return False
+        # Reserve room for reliable messages even if the meter sends faster than
+        # this socket can drain its queue.
+        if best_effort and queue.qsize() >= max(1, queue.maxsize // 2):
             return False
         try:
             queue.put_nowait(payload)
@@ -172,7 +176,7 @@ class ConnectionManager:
         return False
 
     async def _send_to_connections(
-        self, message: dict, connections: Iterable[WebSocket]
+        self, message: dict, connections: Iterable[WebSocket], *, best_effort: bool = False
     ) -> list[WebSocket]:
         """Enqueue a broadcast; return sockets pruned now because their queue is full."""
         # Copy before iterating: pruning a failed socket mutates the sets below,
@@ -182,7 +186,11 @@ class ConnectionManager:
             return []
 
         payload = json.dumps(message)
-        return [connection for connection in connections if self._enqueue(connection, payload)]
+        return [
+            connection
+            for connection in connections
+            if self._enqueue(connection, payload, best_effort=best_effort)
+        ]
 
     async def _safe_send(self, websocket: WebSocket, message: dict) -> None:
         """Enqueue for one registered socket; silently drop after disconnect/prune."""
@@ -193,6 +201,10 @@ class ConnectionManager:
         """Enqueue for displays; return only sockets pruned now on queue overflow."""
         return await self._send_to_connections(message, self.display_connections)
 
-    async def send_to_operator(self, message: dict) -> list[WebSocket]:
+    async def send_to_operator(
+        self, message: dict, *, best_effort: bool = False
+    ) -> list[WebSocket]:
         """Enqueue for operators; return only sockets pruned now on queue overflow."""
-        return await self._send_to_connections(message, self.operator_connections)
+        return await self._send_to_connections(
+            message, self.operator_connections, best_effort=best_effort
+        )

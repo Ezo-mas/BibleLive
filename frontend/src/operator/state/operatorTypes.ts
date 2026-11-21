@@ -134,7 +134,7 @@ export type OperatorIntent =
   | { type: 'discard_settled' }
   | { type: 'set_idle_image'; image: IdleImage | null }
 
-export type OperatorEvent = OperatorMessage | OperatorIntent
+export type OperatorEvent = Exclude<OperatorMessage, { type: 'input_levels' }> | OperatorIntent
 
 export interface OperatorTransition {
   state: OperatorReducerState

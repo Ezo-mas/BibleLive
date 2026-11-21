@@ -1,6 +1,6 @@
 import type { InitResult, LogLine, PollResult } from './bridge'
 import { appendLevels } from './noSignal'
-import type { LevelSample } from './noSignal'
+import type { LevelSample } from '../shared/levels'
 
 export const LOG_LIMIT = 2_000
 

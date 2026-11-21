@@ -1,10 +1,7 @@
 import { describe, expect, it } from 'vitest'
+import { dbfsToLevel, formatPeak, levelToDbfs, meterZone } from '../shared/levels'
 import {
   advanceEnvelope,
-  dbfsToLevel,
-  formatPeak,
-  levelToDbfs,
-  meterZone,
   METER_TICKS,
   playLevels,
   queueLevels,

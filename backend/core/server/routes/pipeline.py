@@ -1,4 +1,4 @@
-"""Audio pipeline routes: reference, transcript, heartbeat and status."""
+"""Audio pipeline routes: reference, transcript, heartbeat, levels and status."""
 
 import logging
 
@@ -10,8 +10,10 @@ from ..auth import verify_operator_token
 from ..models import (
     BibleReference,
     ErrorResponse,
+    InputLevelsMessage,
     PipelineHeartbeat,
     PipelineHeartbeatResponse,
+    PipelineLevels,
     PipelineStatusResponse,
     ReferenceSubmitRequest,
     ReferenceSubmitResponse,
@@ -22,6 +24,7 @@ from ..state import AppState
 
 # Kept on the name these routes logged under before they left app.py.
 logger = logging.getLogger("core.server.app")
+LEVELS_PATH = "/api/pipeline/levels"
 
 
 def build_router(app_state: AppState) -> APIRouter:
@@ -148,6 +151,22 @@ def build_router(app_state: AppState) -> APIRouter:
             else:
                 logger.info(f"Audio pipeline {current.status}")
         return PipelineHeartbeatResponse(bible_version=app_state.active_bible_version())
+
+    @router.post(
+        LEVELS_PATH,
+        status_code=204,
+        responses={
+            204: {"description": "Levels forwarded to operators"},
+            401: {"model": ErrorResponse, "description": "Unauthorized"},
+            422: {"description": "Invalid level batch"},
+        },
+        dependencies=[Depends(verify_operator_token)],
+    )
+    async def receive_input_levels(batch: PipelineLevels) -> None:
+        """Forward transient microphone peaks to the operator consoles."""
+        await app_state.connection_manager.send_to_operator(
+            InputLevelsMessage(data=batch).model_dump(), best_effort=True
+        )
 
     @router.get(
         "/api/pipeline/status",

@@ -10,15 +10,20 @@ import type {
   RowCursor,
 } from './operatorTypes'
 
-const fixtures = import.meta.glob<OperatorMessage>(
-  '../../../../backend/tests/fixtures/protocol/operator/*.json',
+type ReducerMessage = Extract<OperatorEvent, OperatorMessage>
+
+const fixtures = import.meta.glob<ReducerMessage>(
+  [
+    '../../../../backend/tests/fixtures/protocol/operator/*.json',
+    '!../../../../backend/tests/fixtures/protocol/operator/input_levels.json',
+  ],
   { eager: true, import: 'default' }
 )
 
-function fixture<T extends OperatorMessage['type']>(type: T) {
+function fixture<T extends ReducerMessage['type']>(type: T) {
   const message = Object.values(fixtures).find(message => message.type === type)
   if (!message) throw new Error(`Missing operator fixture: ${type}`)
-  return message as Extract<OperatorMessage, { type: T }>
+  return message as Extract<ReducerMessage, { type: T }>
 }
 
 const queued = fixture('pending_update').data.pending[0]

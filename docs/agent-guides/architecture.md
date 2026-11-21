@@ -149,6 +149,12 @@ easy to break by accident.
    Disconnect drops queued messages and cancels the writer; shutdown waits up to
    `SEND_TIMEOUT` for writers and outstanding close cleanup. Keep two-socket integration tests inside `with TestClient(app)`
    so both sockets share one event loop.
+
+   `POST /api/pipeline/levels` uses the heartbeat's operator-token dependency.
+   The pipeline sends batches of normalized 50 ms microphone peaks in capture
+   order. `input_levels` carries `{"levels": [...]}` to operator sockets only.
+   The server keeps no history or snapshot entry. An operator queue that is
+   at least half full drops meter updates, leaving space for reliable messages.
 3. **VAD frame discipline**: frames must be exactly the size the active
    VAD requires at 16 kHz — WebRTC VAD (the default): 10/20/30 ms. The
    optional Silero VAD (`--vad silero`) takes the same 30 ms frames and

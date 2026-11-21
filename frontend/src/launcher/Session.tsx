@@ -1,20 +1,19 @@
 import type { CSSProperties, RefObject } from 'react'
 import { useI18n } from '../shared/i18nContext'
+import {
+  dbfsToLevel,
+  formatPeak,
+  MAX_DBFS,
+  MIN_DBFS,
+  RED_DBFS,
+  YELLOW_DBFS,
+} from '../shared/levels'
 import type { Form, StartError } from './bridge'
 import { Choice } from './Choice'
 import { formatElapsed } from './elapsed'
 import { Icon } from './Icon'
 import type { LauncherData } from './launcherReducer'
-import {
-  dbfsToLevel,
-  formatPeak,
-  MAX_DBFS,
-  METER_TICKS,
-  MIN_DBFS,
-  RED_DBFS,
-  speechTargetPosition,
-  YELLOW_DBFS,
-} from './levelEnvelope'
+import { METER_TICKS, speechTargetPosition } from './levelEnvelope'
 import { noSignal } from './noSignal'
 
 const liveWave = [
