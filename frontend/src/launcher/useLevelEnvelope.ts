@@ -1,9 +1,14 @@
 import { useCallback, useLayoutEffect, useRef } from 'react'
 import { useI18n } from '../shared/i18nContext'
 import {
+  LEVEL_INTERVAL,
   formatPeak,
   levelToDbfs,
   meterZone,
+  SIGNAL_THRESHOLD,
+  type LevelSample,
+} from '../shared/levels'
+import {
   playLevels,
   queueLevels,
   releasePeak,
@@ -11,7 +16,6 @@ import {
   rippleLevel,
   RIPPLE_STEP_MS,
 } from './levelEnvelope'
-import { LEVEL_INTERVAL, SIGNAL_THRESHOLD, type LevelSample } from './noSignal'
 
 const METER_TEXT_INTERVAL_MS = 65
 

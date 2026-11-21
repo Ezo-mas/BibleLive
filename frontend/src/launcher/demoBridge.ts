@@ -1,7 +1,7 @@
 import { translatorFor } from '../shared/i18n'
 import type { Language } from '../shared/i18n'
 import type { Bridge, Form, LogLine, Option, Options, State } from './bridge'
-import { LEVEL_INTERVAL } from './noSignal'
+import { LEVEL_INTERVAL } from '../shared/levels'
 
 // A stand-in picture for the preview: the real code is drawn by the Python side.
 const DEMO_QR =
