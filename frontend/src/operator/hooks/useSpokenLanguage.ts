@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ApiError } from '../apiClient'
-import { changeSpokenLanguage, fetchSpokenLanguage, spokenLanguageLabel } from '../languageApi'
+import { changeSpokenLanguage, fetchSpokenLanguage } from '../languageApi'
 import { useI18n } from '../../shared/i18nContext'
 import type { Translator } from '../../shared/i18n'
 
@@ -118,12 +118,6 @@ export function useSpokenLanguage(
         .then(confirmed => {
           setLanguage(confirmed)
           setStatus('ready')
-          notifyRef.current(
-            'info',
-            tRef.current('language.changed', {
-              language: spokenLanguageLabel(confirmed, tRef.current),
-            })
-          )
         })
         .catch((failure: unknown) => {
           const message = messageOf(failure, tRef.current)

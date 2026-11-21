@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import App from './App'
+import { I18nProvider } from '../shared/I18nProvider'
+import { LANGUAGE_STORAGE_KEY } from '../shared/i18n'
 import type { BibleReference } from '../shared/types'
 import { createMockSocket, push } from '../test/operatorHarness'
 import type { MockSocket } from '../test/operatorHarness'
@@ -32,8 +34,8 @@ function reference(id = 'p-1', book = 'John', chapter = 1, verseStart = 1): Bibl
 }
 
 /** Connect the socket and deliver a snapshot with one pending reference. */
-function openWith() {
-  render(<App />)
+function openWith(wrapper?: typeof I18nProvider) {
+  render(<App />, { wrapper })
   act(() => {
     socket?.onopen?.()
   })
@@ -91,64 +93,63 @@ afterEach(() => {
   socket = null
 })
 
-describe('server-confirmed feedback', () => {
-  it('claims nothing until the server confirms the approval', () => {
+/** A server error for `action`, which the console shows as an alert. */
+function fail(action: string, message = 'Something went wrong') {
+  push(socket, { type: 'error', data: { message, action } })
+}
+
+describe('notices', () => {
+  it('says nothing when an action succeeds: the console already shows it', () => {
     openWith()
 
     fireEvent.doubleClick(
       screen.getByRole('button', { name: 'John 1:1 — highlight; Enter shows it' })
     )
-
-    // The request is on the wire but nothing has come back: no success yet.
-    expect(screen.queryByText(/^Shown:/)).not.toBeInTheDocument()
-
     push(socket, { type: 'approval_confirmed', data: { reference: reference() } })
+    push(socket, { type: 'clear_confirmed', data: {} })
+    push(socket, { type: 'pending_cleared', data: {} })
+    push(socket, { type: 'display_settings_confirmed', data: { verse_limit: 5, theme: 'light' } })
+    push(socket, { type: 'auto_mode_confirmed', data: { auto_mode: 'high' } })
+    push(socket, { type: 'follow_auto_confirmed', data: { follow_auto: true } })
 
-    expect(screen.getByRole('status')).toHaveTextContent('Shown: John 1:1')
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
 
   it('replaces the previous notice instead of stacking a second one', () => {
     openWith()
 
-    push(socket, { type: 'approval_confirmed', data: { reference: reference() } })
-    push(socket, { type: 'clear_confirmed', data: {} })
+    fail('approve')
+    fail('clear')
 
-    expect(screen.getAllByRole('status')).toHaveLength(1)
-    expect(screen.getByRole('status')).toHaveTextContent('Display cleared')
+    expect(screen.getAllByRole('alert')).toHaveLength(1)
+    expect(screen.getByRole('alert')).toHaveTextContent('Could not clear the display')
   })
 
   it('keeps the notice in the header, clear of the actions and the queue', () => {
     openWith()
 
-    push(socket, { type: 'approval_confirmed', data: { reference: reference() } })
+    fail('approve')
 
     // Placement is the fix for a measured problem: as a fixed overlay the notice
     // sat on the action row on a laptop and on the first queue card on a short
     // landscape window, which are the controls the operator reaches for next.
-    const notice = screen.getByRole('status')
+    const notice = screen.getByRole('alert')
     const header = notice.closest('header')
     expect(header).not.toBeNull()
     expect(within(header as HTMLElement).getByText('BibleLive')).toBeInTheDocument()
     expect(notice.closest('.operator-main')).toBeNull()
   })
 
-  it('reports clearing the queue', () => {
-    openWith()
-
-    push(socket, { type: 'pending_cleared', data: {} })
-
-    expect(screen.getByRole('status')).toHaveTextContent('Pending queue cleared')
-  })
-
   it('lets the operator dismiss the notice by hand', () => {
     openWith()
-    push(socket, { type: 'clear_confirmed', data: {} })
+    fail('clear')
 
     act(() => {
       screen.getByRole('button', { name: /dismiss message/i }).click()
     })
 
-    expect(screen.queryByText('Display cleared')).not.toBeInTheDocument()
+    expect(screen.queryByText(/Could not clear the display/)).not.toBeInTheDocument()
   })
 })
 
@@ -164,6 +165,20 @@ describe('action failures', () => {
     const alert = screen.getByRole('alert')
     expect(alert).toHaveTextContent('Could not show that reference')
     expect(alert).toHaveTextContent('Reference not found or already processed')
+  })
+
+  it('localizes the reason when a detected reference is no longer pending', () => {
+    window.localStorage.setItem(LANGUAGE_STORAGE_KEY, 'lt')
+    openWith(I18nProvider)
+
+    push(socket, {
+      type: 'error',
+      data: { message: 'Reference not found or already processed', action: 'approve' },
+    })
+
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'Nepavyko rodyti šios nuorodos: Nuorodos nebėra laukiančiųjų sąraše'
+    )
   })
 
   it('reverts a rejected settings change and says so', async () => {
@@ -254,7 +269,7 @@ describe('action failures', () => {
 })
 
 describe('settings confirmations', () => {
-  it('announces what actually changed and stays quiet on an unchanged echo', () => {
+  it('applies what the server confirms without announcing it', () => {
     openWith()
     openSettings()
 
@@ -263,7 +278,7 @@ describe('settings confirmations', () => {
 
     push(socket, { type: 'display_settings_confirmed', data: { verse_limit: 5, theme: 'dark' } })
 
-    expect(screen.getByRole('status')).toHaveTextContent('Saved — verses shown 5')
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
     expect(versesShown().getByRole('button', { name: '5' })).toHaveAttribute('aria-pressed', 'true')
   })
 
@@ -278,7 +293,7 @@ describe('settings confirmations', () => {
     expect(
       screen.getByText('New high- and medium-confidence detections go straight to the display.')
     ).toBeInTheDocument()
-    expect(screen.getByRole('status')).toHaveTextContent('Auto-approve: Med+')
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
   })
 })
 

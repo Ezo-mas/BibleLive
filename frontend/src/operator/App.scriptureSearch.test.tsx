@@ -504,7 +504,7 @@ describe('Find Scripture', () => {
     expect(
       within(screen.getByTestId('live-verses')).getByText('John 3:16 text')
     ).toBeInTheDocument()
-    expect(screen.getByText('Shown: John 3:16-17 (search)')).toBeInTheDocument()
+    expect(screen.queryByText(/^Shown:/)).not.toBeInTheDocument()
   })
 
   it('adds the best result to the plan on Ctrl+Enter, and shows nothing', async () => {
@@ -519,9 +519,9 @@ describe('Find Scripture', () => {
 
     pressCtrlEnter()
 
-    await waitFor(() =>
-      expect(screen.getByText('Added to the plan: Genesis 1:1')).toBeInTheDocument()
-    )
+    // Added quietly: the box empties and the row appears in the Plan.
+    await waitFor(() => expect(searchBox()).toHaveValue(''))
+    expect(document.querySelector('.plan-row-title')?.textContent).toBe('Genesis 1:1')
     expect(
       within(screen.getByTestId('live-verses')).getByText('Romans 8:28 text')
     ).toBeInTheDocument()
@@ -541,9 +541,9 @@ describe('Find Scripture', () => {
 
     expect(fireEvent.keyDown(result, { key: 'Enter', [modifier]: true })).toBe(false)
 
-    await waitFor(() =>
-      expect(screen.getByText('Added to the plan: Genesis 1:1')).toBeInTheDocument()
-    )
+    // Added quietly: the box empties and the row appears in the Plan.
+    await waitFor(() => expect(searchBox()).toHaveValue(''))
+    expect(document.querySelector('.plan-row-title')?.textContent).toBe('Genesis 1:1')
     expect(sentActions()).toEqual([])
     // Focus stays in the box, not on the page where the next key reaches the shortcuts.
     expect(searchBox()).toHaveFocus()
@@ -575,7 +575,7 @@ describe('Find Scripture', () => {
     })
 
     expect(sentActions()).toEqual([])
-    expect(screen.queryByText('Added to the plan: Genesis 1:1')).not.toBeInTheDocument()
+    expect(document.querySelector('.plan-row-title')).toBeNull()
   })
 
   it('completes the text when Enter picks a book, and stages nothing', async () => {
@@ -760,7 +760,7 @@ describe('Enter shows the passage', () => {
     expect(
       within(screen.getByTestId('live-verses')).getByText('John 3:16 text')
     ).toBeInTheDocument()
-    expect(screen.getByText('Shown: John 3:16-17 (search)')).toBeInTheDocument()
+    expect(screen.queryByText(/^Shown:/)).not.toBeInTheDocument()
   })
 
   it('sends nothing for a book row or an invalid reference', async () => {

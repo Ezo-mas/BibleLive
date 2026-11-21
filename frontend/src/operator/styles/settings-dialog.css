@@ -85,10 +85,6 @@
   z-index: var(--z-tooltip);
 }
 
-.operator-feedback-success {
-  border-color: var(--color-success);
-}
-
 .operator-feedback-error {
   border-color: var(--color-danger);
 }
@@ -102,10 +98,6 @@
 .operator-feedback-icon svg {
   width: var(--icon-md);
   height: var(--icon-md);
-}
-
-.operator-feedback-success .operator-feedback-icon {
-  color: var(--color-success-text);
 }
 
 .operator-feedback-info .operator-feedback-icon {

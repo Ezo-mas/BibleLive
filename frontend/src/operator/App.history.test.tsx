@@ -346,7 +346,7 @@ describe('Show again', () => {
     expect(
       within(screen.getByTestId('live-verses')).getByText('John 3:16 text')
     ).toBeInTheDocument()
-    expect(screen.getByText('Shown: John 3:16 (search)')).toBeInTheDocument()
+    expect(screen.queryByText(/^Shown:/)).not.toBeInTheDocument()
   })
 
   it('plain Enter on the focused History row replays it, once per press', () => {

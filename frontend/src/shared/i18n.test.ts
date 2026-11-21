@@ -51,12 +51,16 @@ describe('pluralCategory', () => {
 
 describe('translatorFor', () => {
   it('fills {name} placeholders from the params', () => {
-    expect(translatorFor('en')('notice.shown', { ref: 'John 3:16' })).toBe('Shown: John 3:16')
-    expect(translatorFor('lt')('notice.shown', { ref: 'Jono 3:16' })).toBe('Rodoma: Jono 3:16')
+    expect(translatorFor('en')('notice.alreadyPlanned', { ref: 'John 3:16' })).toBe(
+      'John 3:16 is already in the plan'
+    )
+    expect(translatorFor('lt')('notice.alreadyPlanned', { ref: 'Jono 3:16' })).toBe(
+      'Jono 3:16 jau yra plane'
+    )
   })
 
   it('leaves a placeholder without a value visible rather than hiding it', () => {
-    expect(translatorFor('en')('notice.shown')).toBe('Shown: {ref}')
+    expect(translatorFor('en')('notice.alreadyPlanned')).toBe('{ref} is already in the plan')
   })
 
   it('picks the Lithuanian plural form from count', () => {

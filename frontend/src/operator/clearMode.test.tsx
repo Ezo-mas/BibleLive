@@ -69,7 +69,7 @@ it('sends the selected mode optimistically, confirms it and reverts a later erro
   expect(lastSent(socket)).toEqual({ action: 'set_clear_mode', clear_mode: 'blank' })
   expect(blank).toHaveAttribute('aria-pressed', 'true')
   confirm('blank')
-  expect(screen.getByRole('status')).toHaveTextContent('when cleared: Blank')
+  expect(screen.queryByText(/when cleared/)).not.toBeInTheDocument()
   fireEvent.click(idle)
   expect(lastSent(socket)).toEqual({ action: 'set_clear_mode', clear_mode: 'idle' })
   expect(idle).toHaveAttribute('aria-pressed', 'true')

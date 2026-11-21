@@ -100,7 +100,7 @@ export interface NoticeMessage {
 }
 
 export type OperatorEffect =
-  | { type: 'notice'; tone: 'success' | 'info' | 'error'; message: NoticeMessage }
+  | { type: 'notice'; tone: 'info' | 'error'; message: NoticeMessage }
   | { type: 'flash'; target: 'approve' | 'clear' | 'clearPending' }
   | { type: 'store_verse_limit'; value: VerseLimit }
   | { type: 'store_display_theme'; value: DisplayTheme }

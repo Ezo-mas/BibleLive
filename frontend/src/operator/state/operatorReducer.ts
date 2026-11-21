@@ -1,10 +1,9 @@
 import { coerceClearMode } from '../../shared/clearMode'
 import { readIdleImage } from '../../shared/idleScreen'
 import type { MessageKey } from '../../shared/i18n'
-import { formatReference } from '../../shared/reference'
 import type { BibleReference, DisplaySettings } from '../../shared/types'
 import { coerceDisplayTheme, coerceVerseLimit } from '../../shared/verseText'
-import { autoModeOption, coerceAutoMode } from '../autoMode'
+import { coerceAutoMode } from '../autoMode'
 import { dedupeHistory } from '../passageKey'
 import type {
   NoticeMessage,
@@ -140,7 +139,8 @@ export function operatorReducer(
   event: OperatorEvent
 ): OperatorTransition {
   const effects: OperatorEffect[] = []
-  const notice = (tone: 'success' | 'info' | 'error', message: NoticeMessage) =>
+  // Notices are for errors only: what the operator did shows on screen already.
+  const notice = (tone: 'info' | 'error', message: NoticeMessage) =>
     effects.push({ type: 'notice', tone, message })
   let next = state
 
@@ -213,16 +213,6 @@ export function operatorReducer(
         showInFlight: followed ? state.showInFlight : false,
       }
       if (event.type === 'approval_confirmed') effects.push({ type: 'flash', target: 'approve' })
-      // A passage follow-along showed by itself is not one the operator picked.
-      notice('success', {
-        key:
-          event.type === 'approval_confirmed'
-            ? 'notice.shown'
-            : followed
-              ? 'notice.shownFollow'
-              : 'notice.shownManual',
-        params: { ref: formatReference(shown) },
-      })
       break
     }
     case 'follow_along':
@@ -233,11 +223,9 @@ export function operatorReducer(
     case 'clear_confirmed':
       next = { ...state, currentDisplay: null, followAlongHint: null }
       effects.push({ type: 'flash', target: 'clear' })
-      notice('info', { key: 'notice.displayCleared' })
       break
     case 'pending_cleared':
       effects.push({ type: 'flash', target: 'clearPending' })
-      notice('info', { key: 'notice.queueCleared' })
       break
     case 'history_cleared':
       next = {
@@ -251,45 +239,12 @@ export function operatorReducer(
       break
     case 'display_settings_confirmed': {
       const settings = displaySettings(event.data)
-      // The server echoes the whole settings block, so announce only what
-      // actually moved; an unrelated echo stays quiet.
-      const changes: NoticeMessage[] = []
-      if (settings.verseLimit !== state.confirmed.verseLimit)
-        changes.push({
-          key: 'notice.changeVerses',
-          params: {
-            value:
-              settings.verseLimit === 'all' ? { key: 'settings.versesAll' } : settings.verseLimit,
-          },
-        })
-      if (settings.theme !== state.confirmed.theme)
-        changes.push({
-          key: 'notice.changeBackground',
-          params: {
-            value: { key: settings.theme === 'dark' ? 'settings.bgDark' : 'settings.bgLight' },
-          },
-        })
-      if (settings.clearMode !== state.confirmed.clearMode)
-        changes.push({
-          key: 'notice.changeClearMode',
-          params: {
-            value: {
-              key: settings.clearMode === 'idle' ? 'settings.clearIdle' : 'settings.clearBlank',
-            },
-          },
-        })
       next = {
         ...state,
         settings: { ...state.settings, ...settings },
         confirmed: { ...state.confirmed, ...settings },
         idleImage: readIdleImage(event.data),
       }
-      if (changes.length > 0)
-        notice('info', { key: 'notice.saved', params: { changes: { join: changes } } })
-      // Its own notice, not one of the saved changes: it is not saved, and it is the
-      // one change the operator must not miss.
-      if (settings.live !== state.confirmed.live)
-        notice('info', { key: settings.live ? 'notice.liveOn' : 'notice.liveOff' })
       break
     }
     case 'auto_mode_confirmed': {
@@ -299,11 +254,6 @@ export function operatorReducer(
         settings: { ...state.settings, autoMode },
         confirmed: { ...state.confirmed, autoMode },
       }
-      if (autoMode !== state.confirmed.autoMode)
-        notice('info', {
-          key: 'notice.autoApprove',
-          params: { mode: { key: autoModeOption(autoMode).labelKey } },
-        })
       break
     }
     case 'follow_auto_confirmed': {
@@ -313,11 +263,6 @@ export function operatorReducer(
         settings: { ...state.settings, followAuto },
         confirmed: { ...state.confirmed, followAuto },
       }
-      if (followAuto !== state.confirmed.followAuto)
-        notice('info', {
-          key: 'notice.followAuto',
-          params: { state: { key: followAuto ? 'follow.on' : 'follow.off' } },
-        })
       break
     }
     case 'bible_version_confirmed':
@@ -345,7 +290,10 @@ export function operatorReducer(
               ? ERROR_PREFIX_KEYS[action]
               : 'notice.errGeneric',
           },
-          reason,
+          reason:
+            reason === 'Reference not found or already processed'
+              ? { key: 'notice.reasonReferenceUnavailable' }
+              : reason,
         },
       })
       // An optimistic change is only provisional. Put the last confirmed value
