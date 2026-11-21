@@ -180,15 +180,16 @@ export const lt: Record<MessageKey, MessageEntry> = {
   'version.changed': 'Biblijos vertimas: {version}',
 
   // Transliacijos sluoksnis OBS: nuorodos išdėstymas, peržiūra ir pati nuoroda
-  'settings.sectionStream': 'Transliacijos sluoksnis (OBS)',
+  'settings.sectionStream': 'Biblijos ištraukos transliacijoje (OBS)',
   'obs.position': 'Vieta',
   'obs.positionHint': 'Kur ištrauka rodoma transliacijoje.',
   'obs.bottom': 'Apačioje',
   'obs.top': 'Viršuje',
   'obs.height': 'Juostos aukštis',
-  'obs.heightHint': 'Dalis kadro. Aukštesnėje telpa ilgesnės ištraukos.',
+  'obs.heightHint':
+    'Juostos aukštis procentais nuo vaizdo aukščio. Aukštesnėje juostoje telpa daugiau eilučių.',
   'obs.background': 'Fonas',
-  'obs.backgroundHint': 'Tik tekstas palieka matomą daugiau vaizdo.',
+  'obs.backgroundHint': 'Pasirinkus „Tik tekstas“, ištrauka rodoma tiesiai ant vaizdo.',
   'obs.band': 'Tamsi juosta',
   'obs.textOnly': 'Tik tekstas',
   'obs.font': 'Eilučių šriftas',
@@ -196,14 +197,15 @@ export const lt: Record<MessageKey, MessageEntry> = {
   'obs.serif': 'Su užraitais',
   'obs.sans': 'Be užraitų',
   'obs.align': 'Lygiuotė',
-  'obs.alignHint': 'Centre tinka trumpoms ištraukoms plačiame kadre.',
+  'obs.alignHint': 'Trumpas ištraukas plačiame kadre patogu lygiuoti centre.',
   'obs.left': 'Kairėje',
   'obs.center': 'Centre',
-  'obs.previewTitle': 'Transliacijos sluoksnio peržiūra',
-  'obs.previewHint': 'Pavyzdinės ištraukos; langeliai vaizduoja kamerą.',
+  'obs.previewTitle': 'Ištraukų peržiūra transliacijoje',
+  'obs.previewHint':
+    'Peržiūroje rodomos pavyzdinės ištraukos. Languotas fonas žymi skaidrią sritį.',
   'obs.link': 'OBS nuoroda',
   'obs.linkHint':
-    'OBS pridėkite naršyklės šaltinį (Browser) su šia nuoroda, 1920 × 1080. Pakeitę nustatymą, įklijuokite naują nuorodą.',
+    'OBS pridėkite naršyklės šaltinį („Browser“), įklijuokite šią nuorodą ir nustatykite 1920 × 1080 dydį. Pakeitę išdėstymą, įklijuokite naują nuorodą.',
   'obs.copy': 'Kopijuoti',
   'obs.copied': 'Nukopijuota',
 
