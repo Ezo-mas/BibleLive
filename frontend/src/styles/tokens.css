@@ -330,9 +330,9 @@
 
 /* The header is a dark band in both themes; its popovers restore page tokens.
    The scope covers only the tokens something in the header uses today. Others
-   (accent, danger and success text, the subtle fill, and the derived tints, which
-   are mixed once on .operator-app) still carry page values here, so give anything
-   new in the header that uses them a band value first. */
+   (accent text, success text, the danger fill, the subtle fill, and the derived
+   tints, which are mixed once on .operator-app) still carry page values here, so
+   give anything new in the header that uses them a band value first. */
 .operator-app .operator-header {
   --panel-bg: #221e1a;
   --color-canvas: #2f2a24;
@@ -347,6 +347,9 @@
   --color-border-focus: #ffc879;
   --color-warning-text: #f2cc52;
   --color-warning-bg: color-mix(in srgb, var(--color-warning-text) 14%, var(--color-surface));
+  /* The speech badge's level bars sit on the band in both themes. */
+  --color-success: #60cf85;
+  --color-danger-text: #ff9f92;
 }
 
 /* Derived tokens: the same recipe in both themes, from the colours above. */
