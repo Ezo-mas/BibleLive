@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import type { RefObject } from 'react'
 import { useWebSocket } from '../shared/useWebSocket'
 import { useI18n } from '../shared/i18nContext'
 import { formatReference } from '../shared/reference'
@@ -14,16 +15,25 @@ import type { DisplayTheme, VerseLimit } from '../shared/verseText'
 import { idleImageUrl, readIdleImage } from '../shared/idleScreen'
 import { coerceClearMode } from '../shared/clearMode'
 import type { IdleImage } from '../shared/idleScreen'
-import type { BibleReference, ClearMode, DisplayMessage } from '../shared/types'
+import type { BibleReference, ClearMode, DisplayMessage, VerseText } from '../shared/types'
 import { audienceQrForPage } from './audienceQr'
 import type { ShownAudienceQr } from './audienceQr'
 import { computeFitFontSize, fitFontSizeByMeasurement, MAX_FONT_SIZE } from './fitText'
+import { SCREEN_SWAP, swapStyle, VERSE_SWAP } from './fadeTimings'
+import type { SwapTiming } from './fadeTimings'
 import '../styles/tokens.css'
 import '../styles/global.css'
 import './display.css'
 
-/** How long the fade-out animation runs before content is swapped. */
-const FADE_MS = 400
+/** How long the screen takes to fade to black off air, and back on air. */
+export const LIVE_FADE_MS = 400
+
+/**
+ * The fade ends when its animation does (mounting the stage under the black can delay
+ * the start); this timer only finishes it when no animation event comes, as in a
+ * background tab, where animations do not run.
+ */
+export const LIVE_FADE_FALLBACK_MS = 2 * LIVE_FADE_MS
 
 /** Line-height multiplier applied to the fitted verse font size. */
 const VERSE_LINE_HEIGHT = 1.35
@@ -31,7 +41,9 @@ const VERSE_LINE_HEIGHT = 1.35
 export default function App() {
   const { t } = useI18n()
   const [reference, setReference] = useState<BibleReference | null>(null)
-  const [visible, setVisible] = useState(false)
+  // Whether what the stage holds (the passage, or the idle picture) is faded in. It
+  // goes false while the old content fades out and true once the new one is in.
+  const [visible, setVisible] = useState(true)
   // Presentation-only: the operator console owns this value and the server
   // pushes it here. localStorage is only a pre-socket fallback for the first
   // render, so a reconnect does not flash a stale verse count.
@@ -53,6 +65,18 @@ export default function App() {
   // The socket handler reads it between renders: back on air the server sends the
   // passage just before the settings, and both must land before the next paint.
   const liveRef = useRef(true)
+  // The black cover while the screen fades to black ('in') or back from it ('out').
+  // Fully off air the page is drawn black on its own and the cover is gone.
+  const [cover, setCover] = useState<'in' | 'out' | null>(null)
+  const coverTimerRef = useRef<number | undefined>(undefined)
+  // Messages that arrive while the screen fades to black (the server clears right
+  // after going off air): applied once it is black, so the fade never shows the
+  // stage changing underneath it.
+  const fadingToBlackRef = useRef(false)
+  const heldMessagesRef = useRef<DisplayMessage[]>([])
+  // The first settings after the page loads set live or off air at once: a page that
+  // loads while off air goes straight to black instead of fading from the idle picture.
+  const settingsSeenRef = useRef(false)
   // Page-local by design: a display reloaded mid-service shows the picture again
   // until the next passage; the protocol has no server-side "has shown" field.
   const [hasShownPassage, setHasShownPassage] = useState(false)
@@ -65,6 +89,77 @@ export default function App() {
   const swapTimerRef = useRef<number | undefined>(undefined)
   const stageRef = useRef<HTMLDivElement>(null)
   const versesRef = useRef<HTMLDivElement>(null)
+  // The current swap's exit and entrance durations: quicker passage to passage than
+  // to and from the idle screen (see fadeTimings.ts).
+  const [timing, setTiming] = useState<SwapTiming>(SCREEN_SWAP)
+  // On (re)connecting the server sends what is on screen (a passage or a clear), then
+  // the settings. That first content is not a new show: it goes up at once, so a
+  // reloaded page never shows the idle picture fading out first.
+  const awaitingInitialStateRef = useRef(true)
+  // What is on the stage as of the last render, for the socket handler.
+  const shownRef = useRef<{ reference: BibleReference | null; visible: boolean }>({
+    reference: null,
+    visible: true,
+  })
+
+  // Off air nothing is drawn, so there is nothing to fade: take the passage (or the
+  // clear) at once, and going back on air shows it without flashing the idle screen.
+  const applyAtOnce = (message: DisplayMessage) => {
+    window.clearTimeout(swapTimerRef.current)
+    if (message.type === 'reference') {
+      setReference(message.data)
+      setHasShownPassage(true)
+    } else if (message.type === 'clear') {
+      setReference(null)
+    }
+    setVisible(true)
+  }
+
+  const releaseHeldMessages = () => {
+    fadingToBlackRef.current = false
+    const held = heldMessagesRef.current
+    heldMessagesRef.current = []
+    held.forEach(applyAtOnce)
+  }
+
+  const goLive = (next: boolean) => {
+    const was = liveRef.current
+    liveRef.current = next
+    const animate = settingsSeenRef.current && was !== next
+    settingsSeenRef.current = true
+    if (!animate) {
+      if (was !== next) {
+        window.clearTimeout(coverTimerRef.current)
+        releaseHeldMessages()
+        setLive(next)
+        setCover(null)
+      }
+      return
+    }
+    window.clearTimeout(coverTimerRef.current)
+    if (!next) {
+      // Fade to black over the stage as it is; only then go dark and catch up.
+      fadingToBlackRef.current = true
+      setCover('in')
+    } else {
+      // Back on air: anything held from a fade cut short lands first, then the stage
+      // is drawn under the black and the black fades away.
+      releaseHeldMessages()
+      setLive(true)
+      setCover('out')
+    }
+    coverTimerRef.current = window.setTimeout(finishCover, LIVE_FADE_FALLBACK_MS)
+  }
+
+  // The cover's fade is over: black now means off air proper, clear means gone.
+  const finishCover = () => {
+    window.clearTimeout(coverTimerRef.current)
+    if (fadingToBlackRef.current) {
+      releaseHeldMessages()
+      setLive(false)
+    }
+    setCover(null)
+  }
 
   const handleMessage = (message: DisplayMessage) => {
     if (message.type === 'display_settings') {
@@ -72,8 +167,8 @@ export default function App() {
       setTheme(coerceDisplayTheme(message.data.theme))
       setClearMode(coerceClearMode(message.data.clear_mode))
       setIdleImage(readIdleImage(message.data))
-      liveRef.current = message.data.live !== false
-      setLive(liveRef.current)
+      awaitingInitialStateRef.current = false
+      goLive(message.data.live !== false)
       return
     }
 
@@ -83,18 +178,12 @@ export default function App() {
       return
     }
 
-    // Off air nothing is drawn, so there is nothing to fade: take the passage (or the
-    // clear) at once, and going back on air shows it without flashing the idle screen.
-    if (!liveRef.current) {
-      window.clearTimeout(swapTimerRef.current)
-      if (message.type === 'reference') {
-        setReference(message.data)
-        setHasShownPassage(true)
-        setVisible(true)
-      } else {
-        setReference(null)
-        setVisible(false)
-      }
+    if (fadingToBlackRef.current) {
+      heldMessagesRef.current.push(message)
+      return
+    }
+    if (!liveRef.current || awaitingInitialStateRef.current) {
+      applyAtOnce(message)
       return
     }
 
@@ -102,20 +191,26 @@ export default function App() {
       // A newer reference always wins; cancel any in-flight content swap.
       window.clearTimeout(swapTimerRef.current)
       const next = message.data
-      // Fade out whatever is showing, then swap in the new reference.
+      // Fade out whatever is showing, then fade the new reference in: quickly over a
+      // passage, a little slower from the idle screen.
+      const shown = shownRef.current
+      const swap = shown.reference && shown.visible ? VERSE_SWAP : SCREEN_SWAP
+      setTiming(swap)
       setVisible(false)
       swapTimerRef.current = window.setTimeout(() => {
         setReference(next)
         setHasShownPassage(true)
         setVisible(true)
-      }, FADE_MS)
+      }, swap.exitMs)
     } else if (message.type === 'clear') {
       window.clearTimeout(swapTimerRef.current)
-      // 'clear': fade out, then return to the waiting state.
+      // 'clear': fade out, then fade the waiting state (the idle picture) in.
+      setTiming(SCREEN_SWAP)
       setVisible(false)
       swapTimerRef.current = window.setTimeout(() => {
         setReference(null)
-      }, FADE_MS)
+        setVisible(true)
+      }, SCREEN_SWAP.exitMs)
     } else {
       const unhandled: never = message
       void unhandled
@@ -128,10 +223,19 @@ export default function App() {
   // token prompt comes from close code 1008, which stops retries.
   useWebSocket<DisplayMessage>('/ws/display', handleMessage, {
     maxReconnectAttempts: Infinity,
+    onClose: () => {
+      awaitingInitialStateRef.current = true
+    },
   })
 
-  // Cancel a pending swap when the page goes away.
-  useEffect(() => () => window.clearTimeout(swapTimerRef.current), [])
+  // Cancel a pending swap or live fade when the page goes away.
+  useEffect(
+    () => () => {
+      window.clearTimeout(swapTimerRef.current)
+      window.clearTimeout(coverTimerRef.current)
+    },
+    []
+  )
 
   // The theme lives on <html> so the design tokens resolve for the whole page.
   useEffect(() => {
@@ -199,7 +303,10 @@ export default function App() {
     // `audienceQr`: the code takes room beside the stage, so the text fits again.
   }, [visibleVerses, theme, live, audienceQr])
 
+  shownRef.current = { reference, visible }
+
   const fadeClass = visible ? 'display-fade-in' : 'display-fade-out'
+  const idleFadeClass = visible ? 'display-idle--in' : 'display-idle--out'
 
   if (!live)
     return <div className="display-app display-app--off-air" data-testid="display-off-air" />
@@ -209,39 +316,18 @@ export default function App() {
       {/* Measured stage: the verse text is sized to fit exactly this box. */}
       <div className="display-stage" ref={stageRef}>
         {reference ? (
-          <div className={`display-content ${fadeClass}`}>
-            {/* Verse text - primary focus, bounded to the chosen limit */}
-            <div
-              className="display-verses"
-              ref={versesRef}
-              style={{ fontSize: `${fontSize}px` }}
-              data-testid="display-verses"
-            >
-              <div className="display-verses-inner">
-                {visibleVerses.map(verse => (
-                  <p className="display-verse" key={verse.verse}>
-                    <span className="display-verse-number" aria-hidden="true">
-                      {verse.verse}
-                    </span>
-                    <span className="display-verse-text">{verse.text}</span>
-                  </p>
-                ))}
-              </div>
-            </div>
-
-            {/* Reference - secondary, elegant label below */}
-            <div className="display-reference">{formatReference(reference)}</div>
-
-            {/* Tell the audience when a range was only partly shown */}
-            {hiddenCount > 0 && (
-              <div className="display-range-note">
-                {t('stage.moreVerses', { count: hiddenCount })}
-              </div>
-            )}
+          <div className={`display-content ${fadeClass}`} style={swapStyle(timing)}>
+            <PassageBody
+              reference={reference}
+              verses={visibleVerses}
+              hiddenCount={hiddenCount}
+              fontSize={fontSize}
+              versesRef={versesRef}
+            />
           </div>
         ) : (
           // Nothing on screen: the themed background, plus the operator's picture if one is set.
-          <div className="display-idle">
+          <div className={`display-idle ${idleFadeClass}`} style={swapStyle(timing)}>
             {idleImage &&
               (clearMode === 'idle' || !hasShownPassage) &&
               idleImage.version !== brokenIdleVersion && (
@@ -267,6 +353,59 @@ export default function App() {
           </figcaption>
         </figure>
       )}
+
+      {/* Fading to black off air, or back from it on air: over everything, QR included. */}
+      {cover && (
+        <div
+          className={`display-off-air-cover display-off-air-cover--${cover}`}
+          data-testid="display-off-air-cover"
+          aria-hidden="true"
+          onAnimationEnd={finishCover}
+        />
+      )}
     </div>
+  )
+}
+
+interface PassageBodyProps {
+  reference: BibleReference
+  verses: VerseText[]
+  hiddenCount: number
+  fontSize: number
+  versesRef: RefObject<HTMLDivElement>
+}
+
+/** The verses, the citation and the "+N more" note of one passage. */
+function PassageBody({ reference, verses, hiddenCount, fontSize, versesRef }: PassageBodyProps) {
+  const { t } = useI18n()
+  return (
+    <>
+      {/* Verse text - primary focus, bounded to the chosen limit */}
+      <div
+        className="display-verses"
+        ref={versesRef}
+        style={{ fontSize: `${fontSize}px` }}
+        data-testid="display-verses"
+      >
+        <div className="display-verses-inner">
+          {verses.map(verse => (
+            <p className="display-verse" key={verse.verse}>
+              <span className="display-verse-number" aria-hidden="true">
+                {verse.verse}
+              </span>
+              <span className="display-verse-text">{verse.text}</span>
+            </p>
+          ))}
+        </div>
+      </div>
+
+      {/* Reference - secondary, elegant label below */}
+      <div className="display-reference">{formatReference(reference)}</div>
+
+      {/* Tell the audience when a range was only partly shown */}
+      {hiddenCount > 0 && (
+        <div className="display-range-note">{t('stage.moreVerses', { count: hiddenCount })}</div>
+      )}
+    </>
   )
 }

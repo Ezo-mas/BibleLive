@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import App from './App'
+import { SCREEN_SWAP, VERSE_SWAP } from './fadeTimings'
 import { DISPLAY_THEME_STORAGE_KEY } from '../shared/verseText'
 import type { DisplayMessage } from '../shared/types'
 import { createMockSocket, push } from '../test/operatorHarness'
@@ -98,18 +99,64 @@ describe('display theme', () => {
 })
 
 describe('display verses', () => {
+  it('swaps passage to passage in 250 ms, 40% out and 60% in', () => {
+    vi.useFakeTimers()
+    const { container, unmount } = render(<App />)
+    try {
+      // The connect-time state goes up at once; after the settings, swaps fade.
+      push(socket, { type: 'clear', data: {} })
+      push(socket, { type: 'display_settings', data: { verse_limit: 3, theme: 'dark' } })
+      const content = () => container.querySelector<HTMLElement>('.display-content')
+
+      push(socket, { type: 'reference', data: reference() })
+      // From the idle screen: 160 ms out, 240 ms in.
+      act(() => {
+        vi.advanceTimersByTime(SCREEN_SWAP.exitMs)
+      })
+      expect(content()).toHaveClass('display-fade-in')
+      expect(content()?.style.getPropertyValue('--enter-ms')).toBe('240ms')
+
+      push(socket, { type: 'reference', data: { ...reference(), id: 'ref-2', book: 'Luke' } })
+      expect(content()).toHaveClass('display-fade-out')
+      expect(content()?.style.getPropertyValue('--exit-ms')).toBe('100ms')
+      // Never both at once: the old passage is alone until its 100 ms exit is over.
+      expect(screen.queryByText('Luke 1:1-3')).not.toBeInTheDocument()
+      act(() => {
+        vi.advanceTimersByTime(VERSE_SWAP.exitMs)
+      })
+      expect(screen.getByText('Luke 1:1-3')).toBeInTheDocument()
+      expect(screen.queryByText('John 1:1-3')).not.toBeInTheDocument()
+      expect(content()).toHaveClass('display-fade-in')
+      expect(content()?.style.getPropertyValue('--enter-ms')).toBe('150ms')
+    } finally {
+      unmount()
+      vi.useRealTimers()
+    }
+  })
+
+  it('puts the passage up at once after a reload, without the idle picture first', () => {
+    render(<App />)
+    // The server's order on connect: what is on screen, then the settings.
+    push(socket, { type: 'reference', data: reference() })
+    expect(screen.getByText('John 1:1-3')).toBeInTheDocument()
+    pushIdlePicture(PICTURE)
+    expect(screen.queryByTestId('display-idle-image')).not.toBeInTheDocument()
+  })
+
   it.each(['shown', 'swapping'])('ignores unknown messages while a passage is %s', state => {
     vi.useFakeTimers()
     const errors = vi.spyOn(console, 'error').mockImplementation(() => {})
     const { container, unmount } = render(<App />)
     try {
+      push(socket, { type: 'display_settings', data: { verse_limit: 3, theme: 'dark' } })
       push(socket, { type: 'reference', data: reference() })
       act(() => vi.advanceTimersByTime(400))
       expect(screen.getByText('John 1:1-3')).toBeInTheDocument()
 
       if (state === 'swapping') {
+        // Mid-swap: the old passage is still fading out.
         push(socket, { type: 'reference', data: { ...reference(), id: 'ref-2', book: 'Luke' } })
-        act(() => vi.advanceTimersByTime(200))
+        act(() => vi.advanceTimersByTime(50))
       }
       const fadeClass = container.querySelector('.display-content')?.className
 
@@ -119,7 +166,7 @@ describe('display verses', () => {
       expect(container.querySelector('.display-content')?.className).toBe(fadeClass)
       expect(screen.getByText('John 1:1-3')).toBeInTheDocument()
 
-      act(() => vi.advanceTimersByTime(state === 'swapping' ? 200 : 400))
+      act(() => vi.advanceTimersByTime(state === 'swapping' ? 50 : 400))
       expect(
         screen.getByText(state === 'swapping' ? 'Luke 1:1-3' : 'John 1:1-3')
       ).toBeInTheDocument()
@@ -260,6 +307,36 @@ describe('idle display', () => {
 
     push(socket, { type: 'clear', data: {} })
     await waitFor(() => expect(screen.getByTestId('display-idle-image')).toBeInTheDocument())
+  })
+
+  it('fades the picture out before a passage and back in after the clear', () => {
+    vi.useFakeTimers()
+    try {
+      const { container } = render(<App />)
+      pushIdlePicture(PICTURE)
+      const idle = () => container.querySelector('.display-idle')
+      expect(idle()).toHaveClass('display-idle--in')
+
+      push(socket, { type: 'reference', data: reference() })
+      // The picture is still up, fading out; the passage waits for it.
+      expect(idle()).toHaveClass('display-idle--out')
+      expect(screen.getByTestId('display-idle-image')).toBeInTheDocument()
+      act(() => {
+        vi.advanceTimersByTime(400)
+      })
+      expect(idle()).toBeNull()
+      expect(container.querySelector('.display-content')).toHaveClass('display-fade-in')
+
+      push(socket, { type: 'clear', data: {} })
+      expect(container.querySelector('.display-content')).toHaveClass('display-fade-out')
+      act(() => {
+        vi.advanceTimersByTime(400)
+      })
+      expect(idle()).toHaveClass('display-idle--in')
+      expect(screen.getByTestId('display-idle-image')).toBeInTheDocument()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('waits for the clear when a picture arrives over a passage on screen', async () => {

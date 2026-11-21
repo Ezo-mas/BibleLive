@@ -152,10 +152,17 @@ verse limit, cleared with it. Options in the URL:
 | `height` | band height, % of the frame (15-60) | `30` |
 | `position` | `bottom`, `top` | `bottom` |
 | `bg` | `band` (dark translucent band), `none` (text with a shadow only) | `band` |
+| `font` | `serif`, `sans` (verse text) | `serif` |
+| `align` | `left` (numbered column), `center` (centred lines) | `left` |
 
 The text shrinks to fit the band but never below what a stream viewer can read
 (about 28 px at 1080p); a passage longer than that shows the verses that fit
 and "+N more verses". Raise `height` to fit more.
+
+The operator console builds this link for you: Settings → Stream overlay (OBS)
+has the options, a live preview with sample passages, and a Copy button. The
+choices are remembered in that browser; after changing one, paste the new link
+into the OBS source.
 
 ### Run the audio pipeline only
 

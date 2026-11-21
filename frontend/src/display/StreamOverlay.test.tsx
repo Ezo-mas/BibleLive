@@ -64,7 +64,7 @@ describe('stream overlay', () => {
 
       if (state === 'swapping') {
         push(socket, { type: 'reference', data: { ...reference(), id: 'ref-2', book: 'Luke' } })
-        act(() => vi.advanceTimersByTime(200))
+        act(() => vi.advanceTimersByTime(50))
       }
       const bandClass = screen.getByTestId('stream-band').className
 
@@ -74,7 +74,7 @@ describe('stream overlay', () => {
       expect(screen.getByTestId('stream-band').className).toBe(bandClass)
       expect(screen.getByText('John 1:1-4')).toBeInTheDocument()
 
-      act(() => vi.advanceTimersByTime(state === 'swapping' ? 200 : 400))
+      act(() => vi.advanceTimersByTime(state === 'swapping' ? 50 : 400))
       expect(
         screen.getByText(state === 'swapping' ? 'Luke 1:1-4' : 'John 1:1-4')
       ).toBeInTheDocument()

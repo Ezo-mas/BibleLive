@@ -9,6 +9,8 @@
 
 export type BandPosition = 'bottom' | 'top'
 export type BandStyle = 'band' | 'none'
+export type BandFont = 'serif' | 'sans'
+export type BandAlign = 'left' | 'center'
 
 export interface StreamOverlayOptions {
   /** Band height as a percentage of the frame. */
@@ -16,11 +18,31 @@ export interface StreamOverlayOptions {
   position: BandPosition
   /** 'band': text on a dark translucent band; 'none': text with a shadow only. */
   style: BandStyle
+  /** Verse typeface: the projector's serif, or a sans that reads better small. */
+  font: BandFont
+  /** 'left': verses start at one edge, numbered in a column; 'center': centred lines. */
+  align: BandAlign
 }
 
 export const DEFAULT_HEIGHT_PCT = 30
 const MIN_HEIGHT_PCT = 15
 const MAX_HEIGHT_PCT = 60
+
+export const DEFAULT_STREAM_OVERLAY_OPTIONS: StreamOverlayOptions = {
+  heightPct: DEFAULT_HEIGHT_PCT,
+  position: 'bottom',
+  style: 'band',
+  font: 'serif',
+  align: 'left',
+}
+
+/**
+ * True on the console's preview of the overlay (`/display?mode=obs&preview=1`): it
+ * cycles sample passages and opens no socket, so it never counts as a display.
+ */
+export function isStreamOverlayPreview(search: string): boolean {
+  return new URLSearchParams(search).get('preview') === '1'
+}
 
 /** True when the display page should render the stream overlay. */
 export function isStreamOverlay(search: string): boolean {
@@ -38,7 +60,25 @@ export function parseStreamOverlayOptions(search: string): StreamOverlayOptions 
         : DEFAULT_HEIGHT_PCT,
     position: params.get('position') === 'top' ? 'top' : 'bottom',
     style: params.get('bg') === 'none' ? 'none' : 'band',
+    font: params.get('font') === 'sans' ? 'sans' : 'serif',
+    align: params.get('align') === 'center' ? 'center' : 'left',
   }
+}
+
+/**
+ * The overlay's query string for `options`: `mode=obs` plus only the options that
+ * differ from the defaults, so the link stays short. The inverse of
+ * `parseStreamOverlayOptions`.
+ */
+export function streamOverlayQuery(options: StreamOverlayOptions): string {
+  const params = new URLSearchParams({ mode: 'obs' })
+  const d = DEFAULT_STREAM_OVERLAY_OPTIONS
+  if (options.heightPct !== d.heightPct) params.set('height', String(options.heightPct))
+  if (options.position !== d.position) params.set('position', options.position)
+  if (options.style !== d.style) params.set('bg', options.style)
+  if (options.font !== d.font) params.set('font', options.font)
+  if (options.align !== d.align) params.set('align', options.align)
+  return `?${params.toString()}`
 }
 
 /**
