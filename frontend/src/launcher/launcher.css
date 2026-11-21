@@ -552,7 +552,11 @@
 #bl-launcher .bl-log {
   margin: 0 9px;
   padding: 11px 9px;
-  height: 216px;
+  /* At least this tall, and it fills the console when the settings beside it are taller
+     (Network with its QR code), so no empty band opens under the log. Size containment
+     keeps the log lines from growing the console: it scrolls instead. */
+  min-height: 216px;
+  contain: size;
   overflow-y: auto;
   border: 1px solid var(--line);
   border-radius: 9px;
@@ -606,7 +610,7 @@
     padding-block: 8px;
   }
   #bl-launcher .bl-log {
-    height: 194px;
+    min-height: 194px;
   }
 }
 @media (max-width: 715px) {
