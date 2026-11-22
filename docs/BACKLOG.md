@@ -98,6 +98,15 @@ monkeypatch `audio.pipeline.time.monotonic`, which replaces `time.monotonic`
 for every thread in the process. pytest's faulthandler printed no stack, so it
 may not be a native crash: check the job's step timing and any `os._exit` in tests.
 
+### Replay a session log into a running server
+A dev command (make target or CLI flag) that feeds a session `.jsonl` into the
+existing pipeline endpoints (transcripts and references) at 1x or 10x speed, so
+the operator queue, auto-approve timing, follow-along hints and the phone layout
+can be tested at a desk without a microphone or a 45-minute sermon. It only
+calls routes that already exist: no protocol or approval-flow change. It skips
+the speech models, so it cannot test audio or VAD; detection correctness stays
+with `benchmarks/session_replay.py`. Do it before the phone console work.
+
 ### Profile slow tests on Windows
 Run `pytest --durations=15` on Windows to recheck these audit findings:
 
@@ -126,3 +135,16 @@ correct one, on the same corpus it was found on, so it needs held-out services
 before it is adopted. Any change here is in `audio/ensemble.py`, which only the
 two-model tier runs, so the Kmynas CPU tier cannot change.
 
+
+### Quoted verses with no reference spoken
+Catch a famous verse quoted without its reference ("Nes Dievas taip pamilo
+pasaulį ...") by matching the transcript against the LTB text, e.g. SQLite FTS5
+or trigrams over `bible_ltb.sqlite`. Risks: preachers paraphrase or quote other
+translations, STT garbles words, and many nearby verses share wording (533 pairs
+within 3 verses; see the follow-along notes in `benchmarks/BASELINE_NOTES.md`).
+So it needs a high bar (a long run of consecutive matching words) and would only
+ever be a low-confidence suggestion in Pending, never auto-shown. The corpus gold
+marks cited references only, so scoring it needs quotes annotated on a few
+services first. First step, no pipeline code: search the cached transcripts of
+the 15 corpus services against LTB offline, count the hits and judge a sample by
+hand. Build it only if real quotes clearly outnumber the junk.
