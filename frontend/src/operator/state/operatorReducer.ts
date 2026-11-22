@@ -282,6 +282,13 @@ export function operatorReducer(
       const action = typeof echoed === 'string' ? echoed : ''
       const optimistic = isOptimisticAction(action)
       effects.push({ type: 'log_error', reason })
+      if (
+        action === 'set_auto_clear' &&
+        reason === 'Change applied for this session. It may be lost after restart.'
+      ) {
+        notice('error', { key: 'notice.autoClearNotSaved' })
+        break
+      }
       if (action === 'discard_pending') {
         next = { ...next, discardId: null, discardCoolingDown: false }
         effects.push({ type: 'clear_discard_timer' })

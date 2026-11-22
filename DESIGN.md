@@ -128,7 +128,7 @@ connected server confirms zero audience displays, a "No display connected"
 text-only warning chip sits next to the switch and describes it for screen readers.
 Clear uses the subtle neutral button variant, the accessible name "Clear display"
 and the B shortcut. A neutral badge beside Clear shows the confirmed auto-clear
-duration in seconds while enabled.
+duration in seconds while an enabled timer is running on an on-air passage.
 The switch is a ghost button with a filled gold dot and bold
 label when Live, and a hollow neutral dot and medium label when Off air. It has
 the shared hover fill and focus ring. Off air, the preview keeps showing the
@@ -259,8 +259,8 @@ One design for the whole dialog (`SettingsDialog.tsx`, styles in
   in its row with its caption centred under it.
 - **Controls are only the shared ones:** `.segmented` for every choice (Off/On,
   background, language, verses, theme, picture fit) and `.btn` variants. The
-  auto-clear row uses the shared `.input` as a number field for 5–600 whole seconds,
-  alongside Save and Turn off. The label shows the server-confirmed value or Off.
+  auto-clear row uses the same Off/On segmented control. While On, the next row
+  uses the shared `.input` for 5–600 whole seconds alongside Save.
 - **Segmented anatomy:** no inset or gap; options sit edge to edge inside a 1px border
   with a 1px divider between them, the track clips them, and the selected option fills
   its cell. The track keeps its own width (an inline grid), every option in one control

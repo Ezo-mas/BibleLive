@@ -1,8 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import autoClearNotSaved from '../../../backend/tests/fixtures/protocol/operator_errors/auto_clear_not_saved.json'
 import App from './App'
 import { I18nProvider } from '../shared/I18nProvider'
 import { LANGUAGE_STORAGE_KEY } from '../shared/i18n'
+import type { OperatorMessage } from '../shared/types'
 import { createMockSocket, jsonResponse, push } from '../test/operatorHarness'
 import type { MockSocket } from '../test/operatorHarness'
 
@@ -129,6 +131,20 @@ describe('console language', () => {
       screen.getByRole('menuitemcheckbox', { name: 'Automatinis patvirtinimas Išjungta' })
     ).toHaveAttribute('aria-checked', 'false')
     expect(screen.getByRole('menuitem', { name: 'Išvalyti eilę' })).toBeInTheDocument()
+  })
+
+  it('translates the full auto-clear save failure into Lithuanian', async () => {
+    window.localStorage.setItem(LANGUAGE_STORAGE_KEY, 'lt')
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      await renderConnected()
+      push(socket, autoClearNotSaved as OperatorMessage)
+      expect(screen.getByRole('alert')).toHaveTextContent(
+        'Nepavyko išsaugoti automatinio išvalymo nustatymo. Pakeitimas galios iki serverio paleidimo iš naujo.'
+      )
+    } finally {
+      log.mockRestore()
+    }
   })
 
   it('uses the launcher setting when the operator has not chosen', async () => {

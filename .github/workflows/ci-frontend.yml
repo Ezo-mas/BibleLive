@@ -1,12 +1,13 @@
 name: CI (frontend)
 
-# Backend jobs live in ci.yml; this file runs only when the frontend changes.
+# Backend jobs live in ci.yml. This file covers the frontend and its protocol fixtures.
 
 on:
   push:
     branches: [main, develop]
     paths: &frontend
       - 'frontend/**'
+      - 'backend/tests/fixtures/protocol/**'
       - '.node-version'
       - '.github/workflows/ci-frontend.yml'
   pull_request:

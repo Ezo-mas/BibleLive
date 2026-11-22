@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { act, fireEvent, render, screen, within } from '@testing-library/react'
+import autoClearNotSaved from '../../../backend/tests/fixtures/protocol/operator_errors/auto_clear_not_saved.json'
 import App from './App'
-import type { ClearMode } from '../shared/types'
+import type { ClearMode, OperatorMessage } from '../shared/types'
 import { createMockSocket, lastSent, push } from '../test/operatorHarness'
 import type { MockSocket } from '../test/operatorHarness'
 
@@ -88,15 +89,29 @@ it('reflects snapshot and other-console confirmations and disables offline choic
   expect(row.getByRole('button', { name: 'Idle picture' })).toBeDisabled()
 })
 
-it('validates the auto-clear duration and shows the confirmed value from the server', () => {
+function confirmAutoClear(seconds: number | null, live = true) {
+  push(socket, {
+    type: 'display_settings_confirmed',
+    data: { verse_limit: 3, theme: 'dark', auto_clear_seconds: seconds, live },
+  })
+}
+
+it('shows confirmed auto-clear settings and validates the duration', () => {
   open()
-  const onDisplay = within(screen.getByRole('region', { name: 'On display now' }))
-  const seconds = screen.getByRole('spinbutton', { name: 'Seconds before auto-clear' })
+  const toggle = within(screen.getByRole('group', { name: 'Auto-clear timer' }))
+  const on = toggle.getByRole('button', { name: 'On' })
+  const off = toggle.getByRole('button', { name: 'Off' })
+  expect(off).toHaveAttribute('aria-pressed', 'true')
+  fireEvent.click(on)
+  expect(lastSent(socket)).toEqual({ action: 'set_auto_clear', seconds: 60 })
+  expect(off).toHaveAttribute('aria-pressed', 'true')
+  expect(screen.queryByRole('spinbutton', { name: 'Clear after (seconds)' })).toBeNull()
+
+  confirmAutoClear(60)
+  expect(on).toHaveAttribute('aria-pressed', 'true')
+  const seconds = screen.getByRole('spinbutton', { name: 'Clear after (seconds)' })
   const save = screen.getByRole('button', { name: 'Save' })
-  const turnOff = screen.getByRole('button', { name: 'Turn off' })
   expect(seconds).toHaveValue(60)
-  expect(turnOff).toBeDisabled()
-  expect(onDisplay.queryByText('Auto-clear · 45 s')).not.toBeInTheDocument()
 
   for (const value of ['4', '601', '5.5', '']) {
     fireEvent.change(seconds, { target: { value } })
@@ -106,24 +121,23 @@ it('validates the auto-clear duration and shows the confirmed value from the ser
   fireEvent.change(seconds, { target: { value: '45' } })
   fireEvent.click(save)
   expect(lastSent(socket)).toEqual({ action: 'set_auto_clear', seconds: 45 })
-  expect(turnOff).toBeDisabled()
-  expect(onDisplay.queryByText('Auto-clear · 45 s')).not.toBeInTheDocument()
-  push(socket, {
-    type: 'display_settings_confirmed',
-    data: { verse_limit: 3, theme: 'dark', auto_clear_seconds: 45 },
-  })
-  expect(screen.getByText('45 s')).toBeInTheDocument()
-  expect(onDisplay.getByText('Auto-clear · 45 s')).toBeInTheDocument()
+  expect(save).toBeEnabled()
+  confirmAutoClear(45)
+  expect(seconds).toHaveValue(45)
   expect(save).toBeDisabled()
 
-  fireEvent.click(turnOff)
+  fireEvent.click(off)
   expect(lastSent(socket)).toEqual({ action: 'set_auto_clear', seconds: null })
-  expect(screen.getByText('45 s')).toBeInTheDocument()
-  confirm('idle')
-  expect(onDisplay.queryByText('Auto-clear · 45 s')).not.toBeInTheDocument()
-  expect(screen.queryByText('45 s')).not.toBeInTheDocument()
-  expect(seconds).toHaveValue(60)
-  expect(turnOff).toBeDisabled()
+  expect(on).toHaveAttribute('aria-pressed', 'true')
+  confirmAutoClear(null)
+  expect(off).toHaveAttribute('aria-pressed', 'true')
+  expect(seconds).not.toBeInTheDocument()
+
+  push(socket, autoClearNotSaved as OperatorMessage)
+  expect(screen.getByRole('alert')).toHaveTextContent(
+    'Couldn’t save the auto-clear setting. Your change applies until the server restarts.'
+  )
+  expect(off).toHaveAttribute('aria-pressed', 'true')
 })
 
 const passage = {
@@ -139,6 +153,24 @@ const passage = {
   created_at: '2026-01-01T00:00:00Z',
 }
 const picture = { version: '0123456789abcdef', fit: 'logo' as const }
+
+it('shows the auto-clear badge only while a passage is on air', () => {
+  render(<App />)
+  act(() => socket?.onopen?.())
+  snapshot(null)
+  const badge = () => screen.queryByText('Auto-clear · 45 s')
+
+  confirmAutoClear(45)
+  expect(badge()).not.toBeInTheDocument()
+  push(socket, { type: 'display_confirmed', data: { reference: passage } })
+  expect(badge()).toBeInTheDocument()
+  confirmAutoClear(45, false)
+  expect(badge()).not.toBeInTheDocument()
+  confirmAutoClear(45)
+  expect(badge()).toBeInTheDocument()
+  push(socket, { type: 'clear_confirmed', data: {} })
+  expect(badge()).not.toBeInTheDocument()
+})
 
 function snapshot(current_display: typeof passage | null, clear_mode: ClearMode = 'blank') {
   push(socket, {

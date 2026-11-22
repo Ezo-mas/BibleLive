@@ -91,7 +91,7 @@ export function LivePanel({
         <div className="operator-live-actions">
           {expandAction}
           {clearAction}
-          {autoClearSeconds !== null && (
+          {live && reference && autoClearSeconds !== null && (
             <StatusBadge variant="neutral">
               {t('stage.autoClear', { seconds: autoClearSeconds })}
             </StatusBadge>

@@ -6,6 +6,7 @@ from queue import Queue
 from unittest.mock import AsyncMock, Mock
 
 import pytest
+from protocol_golden import golden
 
 from core.passage import resolve_passage
 from core.server import display_session
@@ -121,10 +122,7 @@ def test_turning_off_cancels_the_timer_even_if_the_settings_cannot_be_saved(
         confirmed = operator.receive_json()
         assert confirmed["type"] == "display_settings_confirmed"
         assert confirmed["data"]["auto_clear_seconds"] is None
-        error = operator.receive_json()
-        assert error["type"] == "error"
-        assert error["data"]["action"] == "set_auto_clear"
-        assert "applied for this session" in error["data"]["message"]
+        golden("operator_errors", "auto_clear_not_saved", operator.receive_text())
 
         assert expiry.cancelled()
         snapshot = client.get("/api/state").json()
