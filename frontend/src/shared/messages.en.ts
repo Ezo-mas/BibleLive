@@ -271,6 +271,8 @@ export const en = {
     other: '+{count} more verses',
   },
   'stage.nothingOnDisplay': 'Nothing on display',
+  'stage.displayCleared': 'Display cleared',
+  'stage.jumpToPreview': 'Go to display preview',
   'stage.approvedHint': 'Approved references appear here and on the projector.',
   'stage.clearDisplay': 'Clear display',
   'stage.clear': 'Clear',

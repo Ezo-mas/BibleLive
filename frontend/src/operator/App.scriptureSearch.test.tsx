@@ -263,12 +263,14 @@ function manualReference(
   }
 }
 
+let touchLayout = false
+
 beforeEach(() => {
   window.localStorage.clear()
   vi.stubGlobal('WebSocket', MockWebSocket)
   // jsdom has no matchMedia; the theme hook reads it when the dialog mounts.
   vi.stubGlobal('matchMedia', (query: string) => ({
-    matches: false,
+    matches: query === '(hover: none) and (pointer: coarse)' && touchLayout,
     media: query,
     onchange: null,
     addEventListener: vi.fn(),
@@ -281,6 +283,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  touchLayout = false
   vi.unstubAllGlobals()
   vi.restoreAllMocks()
   socket = null
@@ -505,6 +508,20 @@ describe('Find Scripture', () => {
       within(screen.getByTestId('live-verses')).getByText('John 3:16 text')
     ).toBeInTheDocument()
     expect(screen.queryByText(/^Shown:/)).not.toBeInTheDocument()
+  })
+
+  it('shows the resolved passage from the Show button beside Plan', async () => {
+    touchLayout = true
+    openWith({ currentDisplay: romans })
+    type('john 3:16-17')
+
+    const show = await screen.findByRole('button', { name: 'Show John 3:16-17 on display' })
+    fireEvent.click(show, { detail: 1 })
+    fireEvent.click(show, { detail: 2 })
+
+    expect(sentActions()).toEqual([
+      { action: 'display_reference', book: 'John', chapter: 3, verse_start: 16, verse_end: 17 },
+    ])
   })
 
   it('adds the best result to the plan on Ctrl+Enter, and shows nothing', async () => {

@@ -6,7 +6,7 @@ import { formatReference } from '../../shared/reference'
 import type { BibleReference } from '../../shared/types'
 import { PanelHint } from './PanelHint'
 import { PanelMenu } from './PanelMenu'
-import { RowRemoveButton } from './RowButtons'
+import { RowRemoveButton, RowShowButton } from './RowButtons'
 import { samePassage } from '../passageKey'
 import { useCursorFocus } from '../hooks/useRowCursor'
 import type { PlanItem } from '../hooks/usePlan'
@@ -185,6 +185,12 @@ export function PlanPanel({
                       aria-label={t('plan.moveDown', { ref: label })}
                       disabled={index === items.length - 1}
                       onClick={() => onMove(item.id, 1)}
+                    />
+                    <RowShowButton
+                      referenceLabel={label}
+                      selected={selected}
+                      disabled={!canShow}
+                      onClick={() => onShow(item)}
                     />
                   </div>
                 </li>

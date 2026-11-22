@@ -1,9 +1,11 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Button } from '../components'
 import { useTheme } from '../hooks/useTheme'
 import { useOperatorState } from './hooks/useOperatorState'
 import { useOperatorShortcuts } from './hooks/useOperatorShortcuts'
+import { STACKED_LAYOUT, useOperatorMedia } from './hooks/useOperatorMedia'
 import { LivePanel } from './components/LivePanel'
+import { DisplayStatusBar } from './components/DisplayStatusBar'
 import { PendingQueue } from './components/PendingQueue'
 import { PlanPanel } from './components/PlanPanel'
 import { SidePanel } from './components/SidePanel'
@@ -74,6 +76,7 @@ function readExpandPassagePreference() {
  */
 export default function App() {
   const operator = useOperatorState()
+  const stackedLayout = useOperatorMedia(STACKED_LAYOUT)
   // The console's own light/dark/system setting. Applied here rather than only
   // in the settings dialog's control, so a stored choice is in effect from the
   // first paint instead of waiting for the dialog to be opened.
@@ -81,6 +84,28 @@ export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [sideTab, setSideTab] = useState<SideTab>('pending')
   const [showExpandButton, setShowExpandButton] = useState(readExpandPassagePreference)
+  const [previewAboveViewport, setPreviewAboveViewport] = useState(false)
+  const mainRef = useRef<HTMLElement>(null)
+  const livePanelRef = useRef<HTMLElement>(null)
+  const { needsToken } = operator
+
+  useEffect(() => {
+    const root = mainRef.current
+    const panel = livePanelRef.current
+    if (!stackedLayout || needsToken || !root || !panel || !window.IntersectionObserver) return
+
+    const observer = new IntersectionObserver(
+      ([entry]) =>
+        setPreviewAboveViewport(
+          !entry.isIntersecting &&
+            entry.rootBounds !== null &&
+            entry.boundingClientRect.bottom <= entry.rootBounds.top
+        ),
+      { root }
+    )
+    observer.observe(panel)
+    return () => observer.disconnect()
+  }, [stackedLayout, needsToken])
 
   const changeExpandButton = (next: boolean) => {
     setShowExpandButton(next)
@@ -126,7 +151,7 @@ export default function App() {
     if (isConnected) refreshServerLanguage()
   }, [isConnected, refreshServerLanguage])
 
-  if (operator.needsToken) {
+  if (needsToken) {
     return (
       <TokenPrompt
         authFailed={operator.authFailed}
@@ -137,11 +162,19 @@ export default function App() {
     )
   }
 
+  const search = (
+    <ScriptureSearch
+      search={operator.search}
+      disabled={!operator.isConnected}
+      directEnabled={!settingsOpen}
+    />
+  )
+
   return (
     <div className="operator-app">
       <OperatorHeader
         connectionState={operator.connectionState}
-        showLogout={operator.isAuthenticated}
+        showLogout={!stackedLayout && operator.isAuthenticated}
         onLogout={operator.logout}
         onOpenSettings={() => setSettingsOpen(true)}
         language={
@@ -152,13 +185,18 @@ export default function App() {
             inputLevels={operator.inputLevels}
           />
         }
-        search={
-          <ScriptureSearch
-            search={operator.search}
-            disabled={!operator.isConnected}
-            // Enter in the box shows a passage; not from behind the settings modal.
-            directEnabled={!settingsOpen}
-          />
+        search={stackedLayout ? undefined : search}
+        displaySummary={
+          stackedLayout &&
+          previewAboveViewport && (
+            <DisplayStatusBar
+              status={operator}
+              onJump={() => {
+                livePanelRef.current?.focus({ preventScroll: true })
+                livePanelRef.current?.scrollIntoView({ block: 'start' })
+              }}
+            />
+          )
         }
         // Action feedback hangs from the header so it can never cover the stages
         // or the queue; it is still the same single-slot live region.
@@ -170,9 +208,11 @@ export default function App() {
       {operator.status === 'closed' && <ConnectionBanner onReconnect={operator.reconnect} />}
       {/* An empty queue cannot tell a quiet sermon from a dead microphone. */}
       <PipelineBanner status={operator.pipeline} />
-      <main className="operator-main">
+      <main ref={mainRef} className="operator-main">
         <div className="operator-workspace">
           <LivePanel
+            panelRef={stackedLayout ? livePanelRef : undefined}
+            search={stackedLayout ? search : undefined}
             reference={operator.currentDisplay}
             displayMissing={operator.displayMissing}
             verseLimit={operator.verseLimit}
@@ -260,6 +300,8 @@ export default function App() {
           ) : (
             <HistoryPanel
               history={operator.history}
+              selectedId={cursor.historyCursorId}
+              onSelect={id => cursor.highlight('history', id)}
               onShow={operator.showHistory}
               onClearHistory={operator.clearHistory}
               canShow={operator.isConnected}
@@ -281,6 +323,14 @@ export default function App() {
       <SettingsDialog
         open={settingsOpen}
         onClose={() => setSettingsOpen(false)}
+        onLogout={
+          stackedLayout && operator.isAuthenticated
+            ? () => {
+                setSettingsOpen(false)
+                operator.logout()
+              }
+            : undefined
+        }
         displayTheme={operator.displayTheme}
         verseLimit={operator.verseLimit}
         onVerseLimitChange={operator.setDisplayVerseLimit}

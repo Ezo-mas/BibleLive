@@ -7,6 +7,8 @@ import type { BibleReference } from '../../shared/types'
 export interface HistoryPanelProps {
   /** Recent entries, newest first, one per passage. */
   history: BibleReference[]
+  selectedId: string | null
+  onSelect: (id: string) => void
   /** Show the entry again: coordinates only, for the server to resolve. */
   onShow: (reference: BibleReference) => void
   onClearHistory: () => void
@@ -23,6 +25,8 @@ export interface HistoryPanelProps {
  */
 export function HistoryPanel({
   history,
+  selectedId,
+  onSelect,
   onShow,
   onClearHistory,
   canShow = true,
@@ -43,6 +47,8 @@ export function HistoryPanel({
               <ReferenceCard
                 key={reference.id}
                 reference={reference}
+                selected={reference.id === selectedId}
+                onTouchSelect={() => onSelect(reference.id)}
                 showConfidence={false}
                 onShow={() => onShow(reference)}
                 showDisabled={!canShow}

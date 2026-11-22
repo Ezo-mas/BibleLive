@@ -24,6 +24,8 @@ import type {
 export interface SettingsDialogProps {
   open: boolean
   onClose: () => void
+  /** Logout lives in the dialog when the console is stacked. */
+  onLogout?: () => void
   displayTheme: DisplayTheme
   verseLimit: VerseLimit
   onVerseLimitChange: (next: VerseLimit) => void
@@ -86,6 +88,7 @@ function focusableItems(dialog: HTMLElement): HTMLElement[] {
 export function SettingsDialog({
   open,
   onClose,
+  onLogout,
   displayTheme,
   verseLimit,
   onVerseLimitChange,
@@ -307,6 +310,13 @@ export function SettingsDialog({
             </ul>
           </section>
         </div>
+        {onLogout && (
+          <div className="operator-dialog-footer">
+            <Button variant="danger" onClick={onLogout}>
+              {t('header.logout')}
+            </Button>
+          </div>
+        )}
       </div>
     </div>
   )

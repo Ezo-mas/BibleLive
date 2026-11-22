@@ -280,6 +280,8 @@ export const lt: Record<MessageKey, MessageEntry> = {
     other: 'dar {count} eilučių',
   },
   'stage.nothingOnDisplay': 'Ekrane nieko nėra',
+  'stage.displayCleared': 'Ekranas išvalytas',
+  'stage.jumpToPreview': 'Pereiti prie ekrano peržiūros',
   'stage.approvedHint': 'Patvirtintos nuorodos rodomos čia ir projektoriuje.',
   'stage.clearDisplay': 'Išvalyti ekraną',
   'stage.clear': 'Išvalyti',

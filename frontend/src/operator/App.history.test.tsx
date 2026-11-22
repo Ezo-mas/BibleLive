@@ -156,7 +156,7 @@ beforeEach(() => {
   vi.stubGlobal('WebSocket', MockWebSocket)
   // jsdom has no matchMedia; ThemeToggle's useTheme hook reads it on mount.
   vi.stubGlobal('matchMedia', (query: string) => ({
-    matches: false,
+    matches: query === '(hover: none) and (pointer: coarse)' && touchLayout,
     media: query,
     onchange: null,
     addEventListener: vi.fn(),
@@ -167,7 +167,10 @@ beforeEach(() => {
   }))
 })
 
+let touchLayout = false
+
 afterEach(() => {
+  touchLayout = false
   vi.unstubAllGlobals()
   vi.restoreAllMocks()
   socket = null
@@ -213,6 +216,23 @@ describe('history list', () => {
     expect(historyRow(/John 3:16/)).not.toHaveClass('is-selected')
     fireEvent.keyDown(window, { key: 'Enter' })
     expect(sentActions()).toEqual([])
+  })
+
+  it('selects one History row on touch and waits for its Show button', () => {
+    touchLayout = true
+    openWith({ history, currentDisplay: live })
+
+    fireEvent.click(within(historyRow(/Romans 8:28/)).getByText('Romans 8:28'))
+    fireEvent.click(within(historyRow(/John 3:16/)).getByText('John 3:16'))
+
+    expect(historyRow(/Romans 8:28/)).not.toHaveClass('is-selected')
+    expect(historyRow(/John 3:16/)).toHaveClass('is-selected')
+    expect(sentActions()).toEqual([])
+
+    fireEvent.click(historyPanel().getByRole('button', { name: 'Show John 3:16 on display' }))
+    expect(sentActions()).toEqual([
+      { action: 'display_reference', book: 'John', chapter: 3, verse_start: 16, verse_end: 16 },
+    ])
   })
 
   it('shows an empty state and no Show buttons when nothing has been shown', () => {

@@ -12,6 +12,8 @@ export interface OperatorHeaderProps {
   onOpenSettings: () => void
   /** The Find Scripture command bar, rendered in the middle of the bar. */
   search?: ReactNode
+  /** Display status while the full preview is above the stacked viewport. */
+  displaySummary?: ReactNode
   /** The spoken-language readout beside Settings. */
   language?: ReactNode
   /**
@@ -44,6 +46,7 @@ export function OperatorHeader({
   onLogout,
   onOpenSettings,
   search,
+  displaySummary,
   language,
   feedback,
 }: OperatorHeaderProps) {
@@ -88,6 +91,7 @@ export function OperatorHeader({
           </Button>
         )}
       </div>
+      {displaySummary}
     </header>
   )
 }

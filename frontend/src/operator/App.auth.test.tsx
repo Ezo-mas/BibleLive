@@ -1,11 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { act, fireEvent, render, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import App from './App'
 import { I18nProvider } from '../shared/I18nProvider'
 import { createMockSocket } from '../test/operatorHarness'
 import type { MockSocket } from '../test/operatorHarness'
+import { STACKED_LAYOUT } from './hooks/useOperatorMedia'
 
 const created: MockSocket[] = []
+let stackedLayout = false
 
 const MockWebSocket = Object.assign(
   function MockWebSocketStub(url: string) {
@@ -33,7 +35,7 @@ beforeEach(() => {
     vi.fn(async () => new Response(JSON.stringify({}), { status: 503 }))
   )
   vi.stubGlobal('matchMedia', (query: string) => ({
-    matches: false,
+    matches: stackedLayout && query === STACKED_LAYOUT,
     media: query,
     onchange: null,
     addEventListener: vi.fn(),
@@ -45,11 +47,33 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  stackedLayout = false
   vi.unstubAllGlobals()
   vi.restoreAllMocks()
 })
 
 describe('operator socket authentication', () => {
+  it('puts Logout inside Settings in the stacked layout', () => {
+    stackedLayout = true
+    window.localStorage.setItem('biblelive_operator_token', 'secret')
+    render(<App />)
+
+    expect(screen.queryByRole('button', { name: 'Logout' })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
+    const dialog = screen.getByRole('dialog', { name: 'Settings' })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Logout' }))
+
+    expect(window.localStorage.getItem('biblelive_operator_token')).toBeNull()
+    expect(screen.queryByRole('dialog', { name: 'Settings' })).not.toBeInTheDocument()
+  })
+
+  it('keeps Logout in the wide header', () => {
+    window.localStorage.setItem('biblelive_operator_token', 'secret')
+    render(<App />)
+
+    expect(within(screen.getByRole('banner')).getByRole('button', { name: 'Logout' })).toBeVisible()
+  })
+
   it('sends the token as the first message, never in the URL', () => {
     window.localStorage.setItem('biblelive_operator_token', 'secret')
     render(<App />)

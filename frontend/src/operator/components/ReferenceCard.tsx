@@ -5,6 +5,8 @@ import { StatusBadge } from '../../components'
 import { useI18n } from '../../shared/i18nContext'
 import type { MessageKey } from '../../shared/i18n'
 import type { BibleReference } from '../../shared/types'
+import { RowShowButton } from './RowButtons'
+import { TOUCH_LAYOUT } from '../hooks/useOperatorMedia'
 
 export interface ReferenceCardProps {
   reference: BibleReference
@@ -12,6 +14,8 @@ export interface ReferenceCardProps {
   selected?: boolean
   /** Highlight this row (a click or focus on it); nothing is sent. Omitted, the row is not selectable. */
   onSelect?: () => void
+  /** History keeps its replay keys and can highlight a row on a touch layout. */
+  onTouchSelect?: () => void
   /**
    * Whether the row carries the detection's confidence (a Low row's dashed edge, and
    * the word for screen readers and the tooltip). History leaves it out: confidence
@@ -64,6 +68,7 @@ export function ReferenceCard({
   reference,
   selected = false,
   onSelect,
+  onTouchSelect,
   showConfidence = true,
   onShow,
   showDisabled = false,
@@ -73,6 +78,7 @@ export function ReferenceCard({
   const confidenceId = useId()
   const badgesId = useId()
   const selectable = onSelect !== undefined
+  const label = formatReference(reference)
   const time = arrivalTime(reference.created_at)
   const detected = reference.source !== 'follow' && reference.source !== 'manual'
   const confidence =
@@ -104,13 +110,13 @@ export function ReferenceCard({
       data-confidence={confidence ? (reference.confidence ?? undefined) : undefined}
       title={confidence ?? undefined}
       // A click on the row's own buttons is theirs; anywhere else highlights the row.
-      onClick={
-        selectable
-          ? event => {
-              if (!(event.target as Element).closest('button')) onSelect()
-            }
-          : undefined
-      }
+      onClick={event => {
+        if ((event.target as Element).closest('button')) return
+        if (onSelect) onSelect()
+        else if (onTouchSelect && window.matchMedia?.(TOUCH_LAYOUT).matches) {
+          onTouchSelect()
+        }
+      }}
       // The second press of a double-click would select a word under the pointer;
       // a drag still selects text.
       onMouseDown={event => {
@@ -127,7 +133,7 @@ export function ReferenceCard({
         aria-pressed={selectable ? selected : undefined}
         aria-disabled={!selectable && showDisabled ? true : undefined}
         aria-label={t(selectable ? 'row.highlightAria' : 'history.replayAria', {
-          ref: formatReference(reference),
+          ref: label,
         })}
         aria-describedby={describedBy}
         onFocus={onSelect}
@@ -157,7 +163,7 @@ export function ReferenceCard({
       >
         <div className="ref-card-content">
           <div className="ref-card-header">
-            <h3 className="ref-card-title">{formatReference(reference)}</h3>
+            <h3 className="ref-card-title">{label}</h3>
             <div className="ref-card-badges" id={badgesId}>
               {sourceBadge === 'follow' ? (
                 <StatusBadge variant="info">
@@ -200,6 +206,12 @@ export function ReferenceCard({
             </span>
           )}
         </div>
+        <RowShowButton
+          referenceLabel={label}
+          selected={selected}
+          disabled={showDisabled}
+          onClick={onShow}
+        />
       </div>
     </div>
   )

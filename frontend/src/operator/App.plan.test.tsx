@@ -766,16 +766,19 @@ describe('adding a passage to the plan from Find Scripture', () => {
     }
   )
 
-  it('the Plan button adds the passage the same way', async () => {
+  it('keeps search focused until the Plan button adds the passage', async () => {
     openWith()
 
     type('john 3:16-17')
-    await waitFor(() =>
-      expect(
-        screen.getByRole('button', { name: 'John 3:16-17 — add to the plan' })
-      ).toBeInTheDocument()
-    )
-    fireEvent.click(screen.getByRole('button', { name: 'John 3:16-17 — add to the plan' }))
+    const planButton = await screen.findByRole('button', {
+      name: 'John 3:16-17 — add to the plan',
+    })
+    act(() => searchBox().focus())
+
+    // Some touch browsers would blur the input without focusing the button.
+    expect(fireEvent.mouseDown(planButton)).toBe(false)
+    expect(searchBox()).toHaveFocus()
+    fireEvent.click(planButton)
 
     await waitFor(() => expect(searchBox()).toHaveValue(''))
     expect(sentActions()).toEqual([])

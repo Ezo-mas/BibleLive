@@ -4,6 +4,7 @@ import { AlertCircleIcon, Button, PlusIcon, SearchIcon } from '../../components'
 import { useI18n } from '../../shared/i18nContext'
 import type { ScriptureSearchState } from '../hooks/useScriptureSearch'
 import type { ScriptureResult } from '../scriptureQuery'
+import { TOUCH_LAYOUT, useOperatorMedia } from '../hooks/useOperatorMedia'
 
 export interface ScriptureSearchProps {
   search: ScriptureSearchState
@@ -57,6 +58,7 @@ function highlighted(result: ScriptureResult): ReactNode {
  */
 export function ScriptureSearch({ search, disabled, directEnabled = true }: ScriptureSearchProps) {
   const { t } = useI18n()
+  const touchLayout = useOperatorMedia(TOUCH_LAYOUT)
   const {
     input,
     setInput,
@@ -234,17 +236,38 @@ export function ScriptureSearch({ search, disabled, directEnabled = true }: Scri
                         )}
                       </button>
                       {result.kind === 'reference' && (
-                        <Button
-                          variant="primary"
-                          size="sm"
-                          className="operator-search-plan"
-                          iconOnly
-                          icon={<PlusIcon />}
-                          onClick={() => planResult(result)}
-                          disabled={disabled}
-                          aria-label={t('search.addToPlanAria', { label: result.label })}
-                          title={t('search.addToPlan')}
-                        />
+                        <div
+                          className="operator-search-actions"
+                          // A tap can blur the input before click and hide the results.
+                          onMouseDown={event => event.preventDefault()}
+                        >
+                          <Button
+                            variant="primary"
+                            size="sm"
+                            iconOnly
+                            icon={<PlusIcon />}
+                            onClick={() => planResult(result)}
+                            disabled={disabled}
+                            aria-label={t('search.addToPlanAria', { label: result.label })}
+                            title={t('search.addToPlan')}
+                          />
+                          {touchLayout && (
+                            <Button
+                              variant="primary"
+                              size="sm"
+                              className="operator-search-show"
+                              aria-label={t('follow.showAria', { label: result.label })}
+                              disabled={disabled || !directEnabled}
+                              onClick={event => {
+                                if (event.detail > 1) return
+                                pick(result)
+                                if (event.detail > 0) inputRef.current?.blur()
+                              }}
+                            >
+                              {t('follow.show')}
+                            </Button>
+                          )}
+                        </div>
                       )}
                     </li>
                   ))}

@@ -172,7 +172,9 @@
   color: var(--color-text-secondary);
 }
 
-.operator-search-item .operator-search-plan {
+.operator-search-actions {
+  display: flex;
+  gap: var(--space-1);
   flex-shrink: 0;
   align-self: center;
 }

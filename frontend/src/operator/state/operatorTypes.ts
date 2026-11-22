@@ -13,19 +13,15 @@ import type {
   VerseLimit,
 } from '../../shared/types'
 
-/** The two lists the keyboard cursor can sit in. History has no cursor: its rows only show. */
+/** The lists that support moving the highlight with the arrow keys. */
 export type CursorList = 'pending' | 'plan'
 
 /**
- * The one keyboard cursor: the highlighted row, in Pending or in Plan, whichever the
- * operator last clicked or focused. Highlighting changes nothing on screen; Enter or the
- * row's Show displays it through the row's own door (a detection is approved by ID, a
- * plan entry is sent as coordinates). Held by ID, never by position, so a list moving
- * underneath it cannot move it to another row, and only the operator ever moves it: a
- * new detection never takes it.
+ * The highlighted row, held by ID so a list moving underneath it cannot move
+ * the highlight to another row. History can take the highlight on touch.
  */
 export interface RowCursor {
-  list: CursorList
+  list: CursorList | 'history'
   id: string
 }
 
