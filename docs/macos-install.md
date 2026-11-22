@@ -81,8 +81,9 @@ the operator page.
 
 ## 7. The Lithuanian Bible
 
-The Lithuanian Bible text is not part of the download. If you have `bible_ltb.sqlite`, copy it
-into this folder (BibleLive creates it on the first start):
+The Lithuanian Bible (`ltb`) comes with the app from the release after 0.2.1. With 0.2.1, or
+for another translation, copy the `.sqlite` file into this folder (BibleLive creates it on
+the first start):
 
 ```
 ~/Library/Application Support/BibleLive/bible_data

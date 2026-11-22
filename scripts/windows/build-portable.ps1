@@ -46,7 +46,7 @@ $Deps = Get-Content -Raw -Encoding UTF8 (Join-Path $PSScriptRoot 'deps.json') | 
 if (-not $BibleDb) { $BibleDb = Join-Path $Repo 'bible_data\biblelive.sqlite' }
 if (-not $PSBoundParameters.ContainsKey('ExtraBibleDb')) {
     # Lithuanian services need it (display text and the verse read aloud); without it the
-    # display shows the English text. Not in git, so a CI build may not have it.
+    # display shows the English text. Tracked in git, so CI builds have it too.
     $ltb = Join-Path $Repo 'bible_data\bible_ltb.sqlite'
     if (Test-Path -PathType Leaf $ltb) {
         $ExtraBibleDb = @($ltb)
@@ -344,6 +344,13 @@ try {
         Invoke-Native $Py @('-c', "import faster_whisper, ctranslate2, webrtcvad, transcribe_cpp, tkinter, webview, core.config as c; print('imports OK, PROJECT_ROOT =', c.PROJECT_ROOT)")
         Write-Host '- version stamp'
         Invoke-Native $Py @('-c', "from core.version import version_string; s = version_string(); print('version:', s); assert not s.startswith('unknown')")
+        Write-Host '- shipped Bible versions'
+        # Every shipped file must be a translation the server offers (e.g. ltb for Lithuanian).
+        $shippedNames = (@('biblelive.sqlite') + @($ExtraBibleDb | ForEach-Object { Split-Path -Leaf $_ })) -join ','
+        Invoke-Native $Py @('-c', ("from pathlib import Path; from core.bible_versions import discover_versions; " +
+            "v = discover_versions(Path('bible_data').resolve()); print('versions:', sorted(v)); " +
+            "missing = set('$shippedNames'.split(',')) - {x.path.name for x in v.values()}; " +
+            "assert not missing, f'not offered as a translation: {sorted(missing)}'"))
         Write-Host '- ffmpeg'
         Invoke-Native (Join-Path $ffDir 'ffmpeg.exe') @('-hide_banner', '-version')
     } finally { Pop-Location }

@@ -4,7 +4,8 @@
 #
 # The macOS counterpart of scripts/windows/build-portable.ps1: the pinned standalone Python (with
 # Tk), the backend's pinned audio+gguf packages, the app, the LGPL ffmpeg from build-ffmpeg.sh, the
-# English Bible built from data/kjv2.json, then a smoke test and an ad-hoc signature. Unsigned for
+# English Bible built from data/kjv2.json, the Lithuanian Bible (bible_data/bible_ltb.sqlite), then
+# a smoke test and an ad-hoc signature. Unsigned for
 # distribution (docs/macos-arm64.md, owner decision Q10): users clear the quarantine once, as the
 # install notes say (docs/macos-install.md).
 #
@@ -15,8 +16,7 @@
 #   --bible-db FILE        the English database (default: build it from data/kjv2.json)
 #
 # Needs the Xcode Command Line Tools (clang, codesign, otool) on the build machine only; the
-# app needs nothing installed on the user's Mac. The Lithuanian Bible is never bundled (it is
-# not ours to redistribute); see the install notes.
+# app needs nothing installed on the user's Mac.
 set -euo pipefail
 
 SKIP_FRONTEND=0
@@ -147,6 +147,10 @@ else
     --output "$APP/bible_data/biblelive.sqlite")
 fi
 [ -s "$APP/bible_data/biblelive.sqlite" ] || { echo "No Bible database" >&2; exit 1; }
+# The Lithuanian text the server switches to for Lithuanian and the pipeline reads verses from;
+# tracked in git, so a missing file means a broken checkout.
+[ -s "$REPO/bible_data/bible_ltb.sqlite" ] || { echo "No bible_data/bible_ltb.sqlite" >&2; exit 1; }
+cp "$REPO/bible_data/bible_ltb.sqlite" "$APP/bible_data/bible_ltb.sqlite"
 
 # ---- ffmpeg and licenses ----------------------------------------------------------------
 step "Adding ffmpeg (LGPL build) and licenses"
