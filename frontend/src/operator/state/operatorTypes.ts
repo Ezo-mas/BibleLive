@@ -37,6 +37,7 @@ export interface OperatorSettings {
   // Display background. Projectors run dark, so that is the default here too.
   theme: DisplayTheme
   clearMode: ClearMode
+  autoClearSeconds: number | null
   streamOverlay: StreamOverlaySettings
   // Whether the audience display is on air. Never set optimistically: the console
   // shows only what the server confirmed, so it can never claim a dark screen that
@@ -133,6 +134,7 @@ export type OperatorIntent =
   | { type: 'clear_history' }
   | { type: 'set_setting'; action: OptimisticSettingAction }
   | { type: 'set_live'; live: boolean }
+  | { type: 'set_auto_clear'; seconds: number | null }
   | { type: 'disconnected' }
   | { type: 'discard_settled' }
   | { type: 'set_idle_image'; image: IdleImage | null }

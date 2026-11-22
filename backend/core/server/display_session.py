@@ -1,6 +1,8 @@
 """On-screen passage, pending queue, history and authorized display paths."""
 
+import asyncio
 import logging
+from asyncio import sleep
 from collections.abc import Awaitable, Callable
 from enum import Enum
 from typing import Literal, Protocol
@@ -103,6 +105,7 @@ class DisplaySession:
     def __init__(self, owner: DisplaySessionOwner) -> None:
         self._owner = owner
         self.current_display: BibleReference | None = None
+        self._auto_clear_task: asyncio.Task[None] | None = None
         self.pending_references: list[BibleReference] = []
         self.reference_history: list[BibleReference] = []
         self._auto_approval_ids: set[str] = set()
@@ -253,6 +256,7 @@ class DisplaySession:
             return ApprovalRefusal.NO_TEXT
 
         self.current_display = ref
+        self.restart_auto_clear()
 
         # Keep history bounded to prevent unbounded growth
         self._owner._record_history(ref, auto_approved=ref.id in self._auto_approval_ids)
@@ -415,6 +419,7 @@ class DisplaySession:
         )
 
         self.current_display = ref
+        self.restart_auto_clear()
 
         self._owner._record_history(ref)
 
@@ -443,6 +448,7 @@ class DisplaySession:
         self._owner.display_settings = self._owner.display_settings.model_copy(
             update={"live": live}
         )
+        self.restart_auto_clear()
         try:
             self._owner.service_log.emit("live_changed", live=live)
         except Exception:
@@ -471,9 +477,30 @@ class DisplaySession:
         if self.current_display is not None:
             await self._owner._send_display_reference(self.current_display)
 
+    def cancel_auto_clear(self) -> None:
+        if self._auto_clear_task is not None:
+            self._auto_clear_task.cancel()
+            self._auto_clear_task = None
+
+    def restart_auto_clear(self) -> None:
+        """Give the on-air passage the full configured duration."""
+        self.cancel_auto_clear()
+        seconds = self._owner.display_settings.auto_clear_seconds
+        if seconds is not None and self._owner.display_settings.live and self.current_display:
+            self._auto_clear_task = asyncio.create_task(
+                self._clear_after(seconds, self.current_display)
+            )
+
+    async def _clear_after(self, seconds: int, passage: BibleReference) -> None:
+        await sleep(seconds)
+        self._auto_clear_task = None
+        if self.current_display is passage:
+            await self.clear_and_notify()
+
     async def clear_display(self) -> None:
         """Clear the current display"""
         self.current_display = None
+        self.cancel_auto_clear()
         try:
             self._owner.runtime_state.clear()
         except Exception:

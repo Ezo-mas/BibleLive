@@ -3,6 +3,7 @@ import type { KeyboardEvent } from 'react'
 import { Button, SegmentedOption, ThemeToggle, XIcon } from '../../components'
 import { useI18n } from '../../shared/i18nContext'
 import { DisplaySettings } from './DisplaySettings'
+import { AutoClearSettings } from './AutoClearSettings'
 import { AutoApproveControls } from './AutoApproveControls'
 import { FollowAutoControls } from './FollowAutoControls'
 import { InterfaceLanguageSettings } from './InterfaceLanguageSettings'
@@ -32,6 +33,8 @@ export interface SettingsDialogProps {
   disabled: boolean
   onThemeChange: (next: DisplayTheme) => void
   onClearModeChange: (next: ClearMode) => void
+  autoClearSeconds: number | null
+  onAutoClearChange: (next: number | null) => void
   streamOverlay: StreamOverlayLayout
   onStreamOverlayChange: (next: StreamOverlayLayout) => void
   /** The audio pipeline's spoken language: read and switched through the server. */
@@ -93,6 +96,8 @@ export function SettingsDialog({
   disabled,
   onThemeChange,
   onClearModeChange,
+  autoClearSeconds,
+  onAutoClearChange,
   streamOverlay,
   onStreamOverlayChange,
   spokenLanguage,
@@ -195,6 +200,11 @@ export function SettingsDialog({
               disabled={disabled}
               onThemeChange={onThemeChange}
               onClearModeChange={onClearModeChange}
+            />
+            <AutoClearSettings
+              seconds={autoClearSeconds}
+              disabled={disabled}
+              onChange={onAutoClearChange}
             />
             <IdleScreenSettings state={idleScreen} disabled={disabled} />
           </section>

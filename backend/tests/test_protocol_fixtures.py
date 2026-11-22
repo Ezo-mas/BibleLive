@@ -31,6 +31,7 @@ ACTIONS = {
     "set_verse_limit": {"action": "set_verse_limit", "verse_limit": 5},
     "set_display_theme": {"action": "set_display_theme", "theme": "light"},
     "set_clear_mode": {"action": "set_clear_mode", "clear_mode": "blank"},
+    "set_auto_clear": {"action": "set_auto_clear", "seconds": 60},
     "set_stream_overlay": {
         "action": "set_stream_overlay",
         "stream_overlay": {
@@ -144,7 +145,12 @@ def test_real_server_protocol_fixtures(client, app_state, kjv_db, monkeypatch):
             assert client.portal.call(app_state.offer_follow_along, "example transcript", "en")
             receive(operator, "operator", "follow_along")
 
-            for action in ("set_verse_limit", "set_display_theme", "set_stream_overlay"):
+            for action in (
+                "set_verse_limit",
+                "set_display_theme",
+                "set_auto_clear",
+                "set_stream_overlay",
+            ):
                 send(operator, action)
                 receive(
                     operator,

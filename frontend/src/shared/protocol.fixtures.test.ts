@@ -64,9 +64,10 @@ function deliver(url: string, message: OperatorMessage | DisplayMessage) {
 
 describe('checked-in protocol fixtures', () => {
   it('loads every operator action example', () => {
-    expect(Object.keys(actions)).toHaveLength(14)
+    expect(Object.keys(actions)).toHaveLength(15)
     expect(Object.values(actions)).toContainEqual({ action: 'clear_history' })
     expect(Object.values(actions)).toContainEqual({ action: 'set_clear_mode', clear_mode: 'blank' })
+    expect(Object.values(actions)).toContainEqual({ action: 'set_auto_clear', seconds: 60 })
     expect(Object.values(actions)).toContainEqual({
       action: 'set_stream_overlay',
       stream_overlay: {
@@ -113,6 +114,7 @@ describe('checked-in protocol fixtures', () => {
     deliver('/ws/operator', tracked)
     if (message.type === 'display_settings_confirmed') {
       expect(result.current.streamOverlay).toEqual(message.data.stream_overlay)
+      expect(result.current.autoClearSeconds).toBe(message.data.auto_clear_seconds)
     }
     // The two empty confirmations have observable effects without reading data.
     // All other cases consume their payload, so a silent fall-through fails too.

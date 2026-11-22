@@ -41,6 +41,7 @@ const ERROR_PREFIX_KEYS: Record<string, MessageKey> = {
   set_verse_limit: 'notice.errVerseLimit',
   set_display_theme: 'notice.errTheme',
   set_clear_mode: 'notice.errClearMode',
+  set_auto_clear: 'notice.errAutoClear',
   set_stream_overlay: 'notice.errStreamOverlay',
   set_live: 'notice.errLive',
   set_auto_mode: 'notice.errAutoMode',
@@ -79,6 +80,7 @@ export function createOperatorState(
     verseLimit,
     theme,
     clearMode: 'idle',
+    autoClearSeconds: null,
     streamOverlay: DEFAULT_STREAM_OVERLAY_OPTIONS,
     live: true,
     autoMode: 'off',
@@ -122,6 +124,7 @@ function displaySettings(data: DisplaySettings) {
     verseLimit: coerceVerseLimit(data.verse_limit),
     theme: coerceDisplayTheme(data.theme),
     clearMode: coerceClearMode(data.clear_mode),
+    autoClearSeconds: data.auto_clear_seconds ?? null,
     streamOverlay: data.stream_overlay ?? DEFAULT_STREAM_OVERLAY_OPTIONS,
     // An older server omits it, and an older server is always live.
     live: data.live !== false,
@@ -360,6 +363,9 @@ export function operatorReducer(
       break
     case 'set_live':
       effects.push({ type: 'send', action: { action: 'set_live', live: event.live } })
+      break
+    case 'set_auto_clear':
+      effects.push({ type: 'send', action: { action: 'set_auto_clear', seconds: event.seconds } })
       break
     case 'set_setting': {
       const action = event.action

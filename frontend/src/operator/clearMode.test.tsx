@@ -88,6 +88,39 @@ it('reflects snapshot and other-console confirmations and disables offline choic
   expect(row.getByRole('button', { name: 'Idle picture' })).toBeDisabled()
 })
 
+it('validates the auto-clear duration and shows the confirmed value from the server', () => {
+  open()
+  const seconds = screen.getByRole('spinbutton', { name: 'Seconds before auto-clear' })
+  const save = screen.getByRole('button', { name: 'Save' })
+  const turnOff = screen.getByRole('button', { name: 'Turn off' })
+  expect(seconds).toHaveValue(60)
+  expect(turnOff).toBeDisabled()
+
+  for (const value of ['4', '601', '5.5', '']) {
+    fireEvent.change(seconds, { target: { value } })
+    expect(save).toBeDisabled()
+  }
+
+  fireEvent.change(seconds, { target: { value: '45' } })
+  fireEvent.click(save)
+  expect(lastSent(socket)).toEqual({ action: 'set_auto_clear', seconds: 45 })
+  expect(turnOff).toBeDisabled()
+  push(socket, {
+    type: 'display_settings_confirmed',
+    data: { verse_limit: 3, theme: 'dark', auto_clear_seconds: 45 },
+  })
+  expect(screen.getByText('45 s')).toBeInTheDocument()
+  expect(save).toBeDisabled()
+
+  fireEvent.click(turnOff)
+  expect(lastSent(socket)).toEqual({ action: 'set_auto_clear', seconds: null })
+  expect(screen.getByText('45 s')).toBeInTheDocument()
+  confirm('idle')
+  expect(screen.queryByText('45 s')).not.toBeInTheDocument()
+  expect(seconds).toHaveValue(60)
+  expect(turnOff).toBeDisabled()
+})
+
 const passage = {
   id: 'passage-1',
   book: 'John',

@@ -195,6 +195,18 @@ async def _handle_set_clear_mode(
     )
 
 
+async def _handle_set_auto_clear(
+    websocket: WebSocket, app_state: AppState, message: dict[str, Any]
+) -> None:
+    """Persist the auto-clear duration after the action has been validated."""
+    if not await app_state.set_auto_clear(message["seconds"]):
+        await _ws_error(websocket, app_state, "set_auto_clear", "Could not save auto-clear setting")
+        return
+    await app_state.connection_manager.send_to_operator(
+        OperatorDisplaySettingsConfirmed(data=app_state.display_settings).model_dump()
+    )
+
+
 async def _handle_set_stream_overlay(
     _websocket: WebSocket, app_state: AppState, message: dict[str, Any]
 ) -> None:
@@ -402,6 +414,7 @@ _OPERATOR_ACTIONS: dict[str, Any] = {
     "set_verse_limit": _handle_set_verse_limit,
     "set_display_theme": _handle_set_display_theme,
     "set_clear_mode": _handle_set_clear_mode,
+    "set_auto_clear": _handle_set_auto_clear,
     "set_stream_overlay": _handle_set_stream_overlay,
     "set_live": _handle_set_live,
     "set_auto_mode": _handle_set_auto_mode,

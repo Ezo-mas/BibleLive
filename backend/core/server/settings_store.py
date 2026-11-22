@@ -24,7 +24,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Literal, TypeGuard
 
-from pydantic import ValidationError
+from pydantic import TypeAdapter, ValidationError
 
 from .idle_screen import (
     DEFAULT_IDLE_SCREEN_FIT,
@@ -34,9 +34,11 @@ from .idle_screen import (
     is_image_kind,
     is_image_version,
 )
-from .models import AutoMode, StreamOverlaySettings
+from .models import AutoClearSeconds, AutoMode, StreamOverlaySettings
 
 logger = logging.getLogger(__name__)
+
+_AUTO_CLEAR_SECONDS = TypeAdapter[AutoClearSeconds](AutoClearSeconds)
 
 # Modes the server accepts, most conservative first. Kept in step with the
 # operator console's selector; anything else is rejected so that a typo cannot
@@ -225,6 +227,17 @@ class SettingsStore:
             logger.warning("Ignoring invalid clear mode %r; using idle", value)
         return "idle"
 
+    def load_auto_clear_seconds(self) -> int | None:
+        """Return a valid saved duration, or None when off or invalid."""
+        value = self._read().get("auto_clear_seconds")
+        if value is None:
+            return None
+        try:
+            return _AUTO_CLEAR_SECONDS.validate_python(value)
+        except ValidationError:
+            logger.warning("Ignoring invalid saved auto-clear duration")
+            return None
+
     def load_stream_overlay(self) -> StreamOverlaySettings:
         """Return the saved OBS overlay layout, or the default layout."""
         settings = self._read()
@@ -252,6 +265,12 @@ class SettingsStore:
         if value not in ("idle", "blank"):
             return False
         return self._update({"clear_mode": value}, log=f"Persisted clear mode to {self.path}")
+
+    def save_auto_clear_seconds(self, seconds: int | None) -> bool:
+        """Persist the duration validated by the operator action."""
+        return self._update(
+            {"auto_clear_seconds": seconds}, log=f"Persisted auto-clear duration to {self.path}"
+        )
 
     def save_stream_overlay(self, value: StreamOverlaySettings) -> bool:
         return self._update(

@@ -87,6 +87,10 @@
   gap: var(--card-gap);
 }
 
+.auto-clear-controls .input {
+  width: 5.25rem;
+}
+
 /* The idle picture's preview, in its own row: a 16:9 box with the monitor's border
    and corners, and the current state under it. */
 .operator-setting-preview {

@@ -116,8 +116,11 @@ def create_app(bible_lookup: BibleLookup | None = None) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
-        yield
-        await app_state.shutdown()
+        app_state.restart_auto_clear()
+        try:
+            yield
+        finally:
+            await app_state.shutdown()
 
     app = FastAPI(title="BibleLive Display System", lifespan=lifespan)
     # Expose the state holder so tests and tooling can inspect/reset it without
