@@ -688,7 +688,7 @@ chapter with no book). Two models miss 4, none of them clearly from a cut.
 
 ## Fixes from the 2026-11-22 live service (2026-11-22)
 
-Session log `2026-11-22_113249` (Kmynas+Canary, 82 min; not in the corpus yet).
+Session log `2026-11-22_113249` (Kmynas+Canary, 82 min).
 Its misreads, each fixed and tested from the exact transcript:
 
 - Self-correction "antras karalius, antrą karalių knygą, šeštas skyrius" was
@@ -715,7 +715,36 @@ replay: Proverbs 16:33 found (high), Isaiah 26:3 low -> high, Luke 7:36 and
 7:50 (the repeat) low -> medium, Luke 7:50 at its first reading found (low),
 2 Kings 3:2 found (medium, was Luke 3:2 low), wrong
 2 Kings 2 (medium) -> 2 Kings 6 (low); Isaiah 7:3-6 and Isaiah 3:2 (low) gone.
-Fitted on that one service: re-check when it joins the corpus.
+PR #126 was tuned on this service. It joined the fitted corpus as
+`11-22-live-lt` with 10 gold citations, including two separate readings of
+Luke 7:50. The gold uses the operator's timings and live utterance spans.
+Run the full recording with `manifest-11-22-lt.json` and point `--audio-dir`
+at the directory containing the original `2026-11-22_113249.wav`.
+
+### Fitted benchmark on the 11-22 recording (2026-11-23)
+
+Full audio, offline with a 600 s context TTL. The benchmark transcribed the
+recording once per tier on `13af21e`. The post-fix parser (`8685c20`,
+identical detection code at `7a7f965`) used those cached transcripts.
+
+| Tier | Revision | TP | FN | FP low | FP medium+high | Runtime | rtf |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| `kmynas` (CPU, 6 threads) | Before | 6 | 4 | 2 | 1 | 362.40 s | 0.074 |
+| `kmynas` (CPU, 6 threads) | After | 9 | 1 | 1 | 0 | 0.26 s (cached) | — |
+| `kmynas+canary` (GPU) | Before | 6 | 4 | 4 | 1 | 192.51 s | 0.039 |
+| `kmynas+canary` (GPU) | After | 10 | 0 | 1 | 0 | 0.54 s (cached) | — |
+
+Both tiers recovered Proverbs 16:33, the first Luke 7:50, and 2 Kings 3:2.
+Only the two-model tier recovered the chapter-only 2 Kings 6. Both tiers
+still reported Mark 7:2 at low confidence when the speaker mentioned sending
+out 72 disciples.
+
+The two-model run promoted three correct inferred citations to medium
+(Luke 7:36, the second Luke 7:50, and 2 Kings 3:2). Neither tier left a
+false positive from the bare 2 Kings mention. The Kmynas transcripts did
+not contain “Ievutė”. The two Luke 7:50 readings were far enough apart to
+score independently. The pre-fix two-model run also emitted a duplicate
+Isaiah 26:3 from the next utterance, which the repeat rule excluded from FPs.
 
 ## Re-check on new recordings
 

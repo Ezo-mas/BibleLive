@@ -47,12 +47,10 @@ GGUF command for the shipped engines (`--stt kmynas` and
 transcription, and how to report the result. Don't hand-build a smaller run
 in its place.
 
-- The canonical corpus is 14 Lithuanian services, 171 gold references
-  (results dated before 2026-10-19 used the first 13, 158 gold; before
-  2026-10-24, 164 gold):
-  the runs listed in `benchmarks/corpus/lt-sermons.txt` (manifest, record,
-  and the `--t-range` of the sermon part where a recording has one), with
-  `--mode offline --context-ttl-s 600`. Results so far are in
+- The fitted corpus has 16 Lithuanian services and 187 gold references.
+  Run the entries in `benchmarks/corpus/lt-sermons.txt` with
+  `--mode offline --context-ttl-s 600` and the listed `--t-range` where
+  present. Results so far are in
   `benchmarks/BASELINE_NOTES.md`. Services never used for tuning are in
   `benchmarks/corpus/lt-heldout.txt` (same format); report their totals
   separately from the fitted set's. There is no English gold corpus yet: say
