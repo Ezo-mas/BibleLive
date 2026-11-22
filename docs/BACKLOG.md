@@ -30,7 +30,7 @@ Checked on a real phone at the 2026-11-22 service. Two problems, in order:
    placed in space the row already has (the timestamp line in Pending and History,
    the tools group in Plan) so nothing shifts. History rows take the highlight on
    touch so the button has a row to appear on. Rows get `touch-action: manipulation`
-   (no double-tap zoom, so double-tap still works), `user-select: none` and
+   (no double-tap zoom), `user-select: none` and
    `-webkit-touch-callout: none` on touch. Rejected: a Show button on every row
    (clutter) and a sticky bottom action bar (far from the row).
 2. **Search hides the header controls.** On a narrow screen the scripture search

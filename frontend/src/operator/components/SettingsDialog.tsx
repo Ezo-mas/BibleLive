@@ -312,7 +312,7 @@ export function SettingsDialog({
         </div>
         {onLogout && (
           <div className="operator-dialog-footer">
-            <Button variant="danger" onClick={onLogout}>
+            <Button variant="secondary" onClick={onLogout}>
               {t('header.logout')}
             </Button>
           </div>

@@ -229,6 +229,8 @@ Pending footer names them.
 compact gold Show button. The button uses the timestamp line or the Plan tools
 group, with its space reserved before selection. Touch rows suppress text
 selection and double-tap zoom.
+On touch, use the Show button after selecting a row. Mouse double-click and
+keyboard shortcuts remain available for their respective input layouts.
 
 ## Radius by element kind
 

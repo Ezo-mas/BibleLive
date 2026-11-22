@@ -61,10 +61,22 @@
     grid-template-columns: minmax(0, 1fr) auto;
   }
 
-  .operator-header:has(.operator-display-summary) {
+  .operator-header:has(.operator-display-summary, > .operator-search) {
     height: auto;
     padding-block: var(--space-2);
     row-gap: var(--space-4);
+  }
+
+  /* A focused search can stay in the header after crossing the breakpoint.
+     Give its results their own space above the display controls. */
+  .operator-header > .operator-search {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+
+  .operator-header > .operator-search .operator-search-drop {
+    position: static;
+    margin-block-start: var(--space-2);
   }
 
   .operator-display-summary {
@@ -89,14 +101,14 @@
     height: var(--icon-sm);
   }
 
-  /* Results open below the live actions, over the preview. */
-  .operator-live > .operator-search {
-    margin: var(--card-gap) var(--card-pad) 0;
-  }
-
   .operator-live .operator-search-results {
     max-height: min(260px, 40dvh);
   }
+}
+
+/* The form can stay here while focused after the viewport becomes wider. */
+.operator-live > .operator-search {
+  margin: var(--card-gap) var(--card-pad) 0;
 }
 
 @media (max-width: 800px) {

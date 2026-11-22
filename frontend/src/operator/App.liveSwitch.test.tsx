@@ -122,22 +122,38 @@ it('summarizes confirmed display state after scrolling past the stacked preview'
     }
   )
   openWith(settings(true))
-  const jumpName = 'Go to display preview'
+  const jumpName = /Go to display preview/
   const button = () => screen.getByRole('button', { name: jumpName })
   expect(screen.queryByRole('button', { name: jumpName })).not.toBeInTheDocument()
 
   act(() => reportIntersection(false))
-  expect(button()).toHaveAccessibleDescription('Live · John 3:16')
+  expect(button()).toHaveAccessibleName('Live · John 3:16 — Go to display preview')
+  expect(screen.getByText('Live · John 3:16', { selector: '.sr-only' })).toHaveAttribute(
+    'aria-live',
+    'polite'
+  )
+  act(() => button().focus())
+  expect(screen.getByText('Live · John 3:16', { selector: '.sr-only' })).toHaveAttribute(
+    'aria-live',
+    'off'
+  )
   fireEvent.click(liveSwitch())
-  expect(button()).toHaveAccessibleDescription('Live · John 3:16')
+  expect(button()).toHaveAccessibleName('Live · John 3:16 — Go to display preview')
   push(socket, { type: 'display_settings_confirmed', data: settings(false) })
-  expect(button()).toHaveAccessibleDescription('Off air · John 3:16')
+  expect(button()).toHaveAccessibleName('Off air · John 3:16 — Go to display preview')
   push(socket, { type: 'connection_status', data: { display: 0, operator: 1 } })
-  expect(button()).toHaveAccessibleDescription('No display connected')
+  expect(button()).toHaveAccessibleName('No display connected — Go to display preview')
   push(socket, { type: 'connection_status', data: { display: 1, operator: 1 } })
   push(socket, { type: 'display_settings_confirmed', data: settings(true) })
   push(socket, { type: 'clear_confirmed', data: {} })
-  expect(button()).toHaveAccessibleDescription('Display cleared')
+  expect(button()).toHaveAccessibleName('Display cleared — Go to display preview')
+
+  act(() => socket?.onclose?.({ code: 1006 }))
+  expect(button()).toHaveAccessibleName('Disconnected — Go to display preview')
+  fireEvent.click(screen.getByRole('button', { name: 'Reconnect' }))
+  expect(button()).toHaveAccessibleName('Connecting… — Go to display preview')
+  act(() => socket?.onopen?.())
+  expect(button()).toHaveAccessibleName('Connecting… — Go to display preview')
 
   const preview = screen.getByRole('region', { name: 'On display now' })
   const scrollIntoView = vi.fn()

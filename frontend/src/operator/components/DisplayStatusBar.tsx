@@ -1,4 +1,4 @@
-import { useId } from 'react'
+import { useState } from 'react'
 import { ArrowUpIcon, Button } from '../../components'
 import type { Translator } from '../../shared/i18n'
 import { useI18n } from '../../shared/i18nContext'
@@ -17,6 +17,7 @@ type DisplayStatus = Pick<
 
 function displaySummary(status: DisplayStatus, t: Translator) {
   if (status.connectionState === 'disconnected') return t('connection.disconnected')
+  if (status.connectionState === 'connecting') return t('header.connecting')
   if (status.displayMissing) return t('stage.noDisplay')
   if (!status.displayConnected) return t('header.connecting')
 
@@ -34,7 +35,7 @@ export function DisplayStatusBar({
   onJump: () => void
 }) {
   const { t } = useI18n()
-  const summaryId = useId()
+  const [focused, setFocused] = useState(false)
   const summary = displaySummary(status, t)
 
   return (
@@ -44,8 +45,9 @@ export function DisplayStatusBar({
         className="operator-display-summary"
         variant="secondary"
         size="md"
-        aria-label={t('stage.jumpToPreview')}
-        aria-describedby={summaryId}
+        aria-label={t('stage.jumpToPreview', { status: summary })}
+        onFocus={() => setFocused(true)}
+        onBlur={() => setFocused(false)}
         onClick={onJump}
       >
         <span className="operator-display-summary-text" aria-hidden="true">
@@ -53,7 +55,7 @@ export function DisplayStatusBar({
         </span>
         <ArrowUpIcon aria-hidden="true" />
       </Button>
-      <span className="sr-only" role="status" id={summaryId}>
+      <span className="sr-only" aria-live={focused ? 'off' : 'polite'} aria-atomic="true">
         {summary}
       </span>
     </>

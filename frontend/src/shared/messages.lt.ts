@@ -281,7 +281,7 @@ export const lt: Record<MessageKey, MessageEntry> = {
   },
   'stage.nothingOnDisplay': 'Ekrane nieko nėra',
   'stage.displayCleared': 'Ekranas išvalytas',
-  'stage.jumpToPreview': 'Pereiti prie ekrano peržiūros',
+  'stage.jumpToPreview': '{status} — Pereiti prie ekrano peržiūros',
   'stage.approvedHint': 'Patvirtintos nuorodos rodomos čia ir projektoriuje.',
   'stage.clearDisplay': 'Išvalyti ekraną',
   'stage.clear': 'Išvalyti',
@@ -321,6 +321,7 @@ export const lt: Record<MessageKey, MessageEntry> = {
 
   // Rows in Pending and Plan, and the controls under the display preview
   'row.highlightAria': '{ref} — pažymėti; Enter rodo',
+  'row.touchHint': 'Palieskite eilutę, tada „Rodyti“',
   'queue.remove': 'Pašalinti {ref} iš eilės',
   'stage.previewAria': 'Auditorijos ekrano peržiūra',
   'quick.versesAria': 'Ekrane rodomos eilutės',

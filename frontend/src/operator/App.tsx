@@ -84,6 +84,7 @@ export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [sideTab, setSideTab] = useState<SideTab>('pending')
   const [showExpandButton, setShowExpandButton] = useState(readExpandPassagePreference)
+  const [focusedSearchInPreview, setFocusedSearchInPreview] = useState<boolean | null>(null)
   const [previewAboveViewport, setPreviewAboveViewport] = useState(false)
   const mainRef = useRef<HTMLElement>(null)
   const livePanelRef = useRef<HTMLElement>(null)
@@ -162,9 +163,12 @@ export default function App() {
     )
   }
 
+  // Keep the same input mounted while typing across the layout breakpoint.
+  const searchInPreview = focusedSearchInPreview ?? stackedLayout
   const search = (
     <ScriptureSearch
       search={operator.search}
+      onFocusChange={focused => setFocusedSearchInPreview(focused ? searchInPreview : null)}
       disabled={!operator.isConnected}
       directEnabled={!settingsOpen}
     />
@@ -185,7 +189,7 @@ export default function App() {
             inputLevels={operator.inputLevels}
           />
         }
-        search={stackedLayout ? undefined : search}
+        search={searchInPreview ? undefined : search}
         displaySummary={
           stackedLayout &&
           previewAboveViewport && (
@@ -212,7 +216,7 @@ export default function App() {
         <div className="operator-workspace">
           <LivePanel
             panelRef={stackedLayout ? livePanelRef : undefined}
-            search={stackedLayout ? search : undefined}
+            search={searchInPreview ? search : undefined}
             reference={operator.currentDisplay}
             displayMissing={operator.displayMissing}
             verseLimit={operator.verseLimit}

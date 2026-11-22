@@ -9,6 +9,7 @@ import { PanelMenu } from './PanelMenu'
 import { RowRemoveButton, RowShowButton } from './RowButtons'
 import { samePassage } from '../passageKey'
 import { useCursorFocus } from '../hooks/useRowCursor'
+import { TOUCH_LAYOUT, useOperatorMedia } from '../hooks/useOperatorMedia'
 import type { PlanItem } from '../hooks/usePlan'
 
 export interface PlanPanelProps {
@@ -66,6 +67,7 @@ export function PlanPanel({
   onClear,
 }: PlanPanelProps) {
   const { t } = useI18n()
+  const touchLayout = useOperatorMedia(TOUCH_LAYOUT)
   const headingId = useId()
   const listRef = useRef<HTMLOListElement>(null)
   useCursorFocus(listRef, selectedId, keyboardMoves)
@@ -125,7 +127,11 @@ export function PlanPanel({
                     if (event.detail > 1) event.preventDefault()
                   }}
                   onDoubleClick={event => {
-                    if (canShow && !(event.target as Element).closest('.plan-row-tools')) {
+                    if (
+                      !touchLayout &&
+                      canShow &&
+                      !(event.target as Element).closest('.plan-row-tools')
+                    ) {
                       onSelect(item.id)
                       onShow(item)
                     }

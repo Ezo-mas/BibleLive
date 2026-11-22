@@ -18,7 +18,8 @@ export type CursorList = 'pending' | 'plan'
 
 /**
  * The highlighted row, held by ID so a list moving underneath it cannot move
- * the highlight to another row. History can take the highlight on touch.
+ * the highlight to another row. Only the operator moves it: a new detection
+ * never takes it. History can take the highlight on touch.
  */
 export interface RowCursor {
   list: CursorList | 'history'

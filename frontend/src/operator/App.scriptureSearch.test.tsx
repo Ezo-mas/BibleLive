@@ -4,6 +4,7 @@ import App from './App'
 import type { BibleReference } from '../shared/types'
 import { createMockSocket, jsonResponse, lastSent, push } from '../test/operatorHarness'
 import type { MockSocket } from '../test/operatorHarness'
+import { STACKED_LAYOUT } from './hooks/useOperatorMedia'
 
 let socket: MockSocket | null = null
 
@@ -290,6 +291,49 @@ afterEach(() => {
 })
 
 describe('Find Scripture', () => {
+  it('moves between the header and preview after search loses focus', () => {
+    let narrow = false
+    let resize = () => {}
+    vi.stubGlobal('matchMedia', (query: string) => ({
+      matches: query === STACKED_LAYOUT && narrow,
+      addEventListener: (_type: string, listener: () => void) => {
+        if (query === STACKED_LAYOUT) resize = listener
+      },
+      removeEventListener: vi.fn(),
+    }))
+    openWith()
+    const header = screen.getByRole('banner')
+    const preview = screen.getByRole('region', { name: 'On display now' })
+    const desktopInput = searchBox()
+    expect(header).toContainElement(desktopInput)
+
+    act(() => desktopInput.focus())
+    type('John 3:16')
+    act(() => {
+      narrow = true
+      resize()
+    })
+    expect(searchBox()).toBe(desktopInput)
+    expect(desktopInput).toHaveFocus()
+
+    act(() => desktopInput.blur())
+    const mobileInput = searchBox()
+    expect(preview).toContainElement(mobileInput)
+    expect(mobileInput).toHaveValue('John 3:16')
+
+    act(() => mobileInput.focus())
+    act(() => {
+      narrow = false
+      resize()
+    })
+    expect(searchBox()).toBe(mobileInput)
+    expect(mobileInput).toHaveFocus()
+
+    act(() => mobileInput.blur())
+    expect(header).toContainElement(searchBox())
+    expect(searchBox()).toHaveValue('John 3:16')
+  })
+
   it('is a single text box, and asks for nothing until it is used', () => {
     openWith()
 

@@ -234,6 +234,8 @@ function manualReference(book: string, chapter: number, verse: number): BibleRef
   }
 }
 
+let touchLayout = false
+
 beforeEach(() => {
   window.localStorage.clear()
   deferLookups = false
@@ -244,7 +246,7 @@ beforeEach(() => {
   vi.stubGlobal('fetch', fetchMock)
   // jsdom has no matchMedia; the theme hook reads it when the dialog mounts.
   vi.stubGlobal('matchMedia', (query: string) => ({
-    matches: false,
+    matches: query === '(hover: none) and (pointer: coarse)' && touchLayout,
     media: query,
     onchange: null,
     addEventListener: vi.fn(),
@@ -256,6 +258,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  touchLayout = false
   vi.unstubAllGlobals()
   vi.restoreAllMocks()
   socket = null
@@ -523,6 +526,22 @@ describe('the cursor in the plan', () => {
 })
 
 describe('plan row actions', () => {
+  it('shows a touch-selected Plan passage from its Show button', () => {
+    touchLayout = true
+    seedPlan(seeded)
+    openWith()
+
+    const row = rowHandle('John 3:16')
+    fireEvent.click(row)
+    fireEvent.doubleClick(row)
+    expect(sentActions()).toEqual([])
+
+    fireEvent.click(planPanel().getByRole('button', { name: 'Show John 3:16 on display' }))
+    expect(sentActions()).toEqual([
+      { action: 'display_reference', book: 'John', chapter: 3, verse_start: 16, verse_end: 16 },
+    ])
+  })
+
   it('each row has Remove and the reorder arrows', () => {
     seedPlan(seeded)
     openWith()

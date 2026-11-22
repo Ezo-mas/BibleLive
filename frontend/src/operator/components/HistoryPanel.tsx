@@ -3,6 +3,7 @@ import { useI18n } from '../../shared/i18nContext'
 import { PanelMenu } from './PanelMenu'
 import { ReferenceCard } from './ReferenceCard'
 import type { BibleReference } from '../../shared/types'
+import { TOUCH_LAYOUT, useOperatorMedia } from '../hooks/useOperatorMedia'
 
 export interface HistoryPanelProps {
   /** Recent entries, newest first, one per passage. */
@@ -32,6 +33,7 @@ export function HistoryPanel({
   canShow = true,
 }: HistoryPanelProps) {
   const { t } = useI18n()
+  const touchLayout = useOperatorMedia(TOUCH_LAYOUT)
   return (
     <>
       <div className="operator-section-content operator-history">
@@ -48,6 +50,7 @@ export function HistoryPanel({
                 key={reference.id}
                 reference={reference}
                 selected={reference.id === selectedId}
+                touchLayout={touchLayout}
                 onTouchSelect={() => onSelect(reference.id)}
                 showConfidence={false}
                 onShow={() => onShow(reference)}
@@ -72,7 +75,9 @@ export function HistoryPanel({
           ]}
         />
         {history.length > 0 && canShow && (
-          <span className="operator-queue-hint">{t('history.replayHint')}</span>
+          <span className="operator-queue-hint">
+            {t(touchLayout ? 'row.touchHint' : 'history.replayHint')}
+          </span>
         )}
       </div>
     </>
