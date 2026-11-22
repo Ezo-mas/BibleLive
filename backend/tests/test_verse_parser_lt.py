@@ -169,14 +169,34 @@ class TestStreaming:
 
     def test_remembered_chapter_expires_on_its_own_clock(self):
         # Other books kept the context alive, but 2 Kings was last cited 800 s
-        # ago: naming it again no longer brings back chapter 6.
+        # ago: naming it again no longer brings back chapter 6. It is named
+        # afresh instead: the book with no chapter yet.
         sp = StreamingParser(language="lt")
         sp.feed("Antra karalių šeštas skyrius dvidešimt ketvirta eilutė", 0.0)
         sp.feed("Patarlių aštuonioliktas skyrius, dvidešimta eilutė", 300.0)
         sp.feed("Romiečiams aštuntas skyrius 28 eilutė", 700.0)
         sp.feed("Taigi, Antra karalių ta istorija", 800.0)
-        assert sp.ctx.book == "Romans"
+        assert (sp.ctx.book, sp.ctx.chapter) == ("2 Kings", None)
         assert "2 Kings" not in sp.ctx.chapters
+        assert [str(r) for r in sp.feed("28 eilutė", 810.0)] == []
+
+    def test_first_named_numbered_book_takes_over_the_context(self):
+        # Live service 2026-11-22: "antra karalių" (no number) after Luke 7,
+        # then "trečias skyrius", then "antra eilutė" was read as Luke 3:2.
+        sp = StreamingParser(language="lt")
+        sp.feed("Luko septintas skyrius penkiasdešimta eilutė")
+        sp.feed("Yra istorija antra karalių apie Jehoramą karalių.")
+        sp.feed("Tai buvo Ahabo sūnus, ir trečias skyrius aprašo.")
+        got = sp.feed("Labai įdomiai tą karalių antra eilutė, jis darė piktą")
+        assert [str(r) for r in got + sp.flush()] == ["2 Kings 3:2"]
+
+    def test_two_kings_said_as_people_still_clears_only_the_book(self):
+        # "du karaliai" also reads as 2 Kings: it stops the old book's
+        # verses (a miss) but names no verse itself.
+        sp = StreamingParser(language="lt")
+        sp.feed("Luko septintas skyrius penkiasdešimta eilutė")
+        assert [str(r) for r in sp.feed("du karaliai susitiko")] == []
+        assert [str(r) for r in sp.feed("antra eilutė")] == []
 
     def test_one_word_book_name_keeps_context(self):
         # "mato" is also "sees" and "Danielius" a person: a one-word name
@@ -1369,3 +1389,31 @@ class TestLtbBookTitles:
 
     def test_jono_stays_john(self):
         assert refs("Jono 3 skyrius 16 eilutė") == ["John 3:16"]
+
+
+class TestLive20261122:
+    """Misreads from the live service of 2026-11-22."""
+
+    def test_self_corrected_numbered_book_is_not_chapter_two(self):
+        # Canary: the restated "antrą" was read as 2 Kings 2 and auto-shown.
+        text = "jeigu kas antras karalius, antrą karalių knygą, šeštas skyrius paskaityti."
+        assert refs(text) == ["2 Kings 6"]
+        # A real chapter 2 before a different book still counts.
+        assert refs("antra karalių 2 skyrius") == ["2 Kings 2"]
+
+    @pytest.mark.parametrize(
+        ("text", "expected"),
+        [
+            ("Laiškas žydams vienuoliktas skyrius, pirma eilutė", "Hebrews 11:1"),
+            ("Žydams 11 skyrius 1 eilutė", "Hebrews 11:1"),
+            ("Laiške žydams 12 skyriuje", "Hebrews 12"),
+        ],
+    )
+    def test_zydams_is_hebrews(self, text, expected):
+        assert refs(text) == [expected]
+
+    def test_the_jews_are_not_hebrews(self):
+        assert refs("Jėzus sakė žydams du dalykus") == []
+        assert refs("žydai trys kartus atėjo") == []
+        assert refs("žydų 3 tūkstančiai") == []
+        assert refs("žydai 3 skyrius") == []

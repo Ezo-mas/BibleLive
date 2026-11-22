@@ -465,9 +465,11 @@ class ReferenceParser:
 
     def _prefix_restarts_book(self, toks: list[Token], ref: Reference) -> bool:
         """True for a chapter-only ref whose chapter number is the prefix of
-        a different, numbered book starting right after it (Lithuanian only).
+        a numbered book starting right after it (Lithuanian only).
         E.g. [jono, 1, jono, laiskas, 5, ...]: "John 1" is a ghost, the
-        real reference is "1 John 5:...".
+        real reference is "1 John 5:...". The same book counts too: in a
+        self-correction ("antras karalius, antrą karalių knygą, šeštas
+        skyrius") the restated prefix is not chapter 2.
         Only a numbered name that spans prefix + name + label word (>= 3
         tokens) counts: a bare "1 jono" is too weak, as in "Jono 1, Jono 3".
         """
@@ -480,7 +482,7 @@ class ReferenceParser:
         if k >= 1 and toks[k - 1] in self._chapter_words:
             return False
         match = self._book_at(toks, k)
-        return match is not None and match[0] != ref.book and match[1] >= 3
+        return match is not None and match[1] >= 3
 
     def _verse_and_range(self, toks: list[Token], k: int) -> tuple[int, int | None, int]:
         """toks[k] is a verse number; optionally followed by 'through 30' / 'and 29'."""
@@ -1010,6 +1012,17 @@ class ReferenceParser:
                 v1, v2, end = self._verse_and_range(toks, kk)
                 if 1 <= v1 <= MAX_VERSE:
                     return Reference(ctx.book, chapter, v1, v2, "medium", inferred=True, end=end)
+            if (
+                self.language == "lt"
+                and ctx.chapter is None
+                and not kind
+                and 1 <= chapter <= self._chapters[ctx.book]
+            ):
+                # Book named without a chapter, then "trečias skyrius
+                # aprašo": the chapter of that book, not a reference yet.
+                ctx.chapter = chapter
+                ctx.chapters[ctx.book] = chapter
+                return None
             # Fallback: "skyrių aštuntai, lutė" — the number is a verse of
             # the running chapter, not a new chapter. Only when a verse
             # word follows (a bare "[CHAPTER] N" stays chapter-only), and
@@ -1092,6 +1105,19 @@ class ReferenceParser:
                         if canon != ctx.book:
                             ctx.book, ctx.chapter = canon, ctx.chapters[canon]
                         ctx.book_at = i  # also when re-scanned from the carry
+                    elif (
+                        not fuzzy
+                        and self.language == "lt"
+                        and length >= 2
+                        and canon[0].isdigit()
+                        and isinstance(toks[i], int)
+                    ):
+                        # A numbered book named for the first time ("Yra
+                        # istorija antra karalių"): the old book's verses
+                        # stop resolving, and a bare "trečias skyrius" that
+                        # follows names this book's chapter (_context_ref).
+                        ctx.book, ctx.chapter = canon, None
+                        ctx.book_at = i
                     i += length
                 continue
             ref = self._context_ref(toks, i, ctx)

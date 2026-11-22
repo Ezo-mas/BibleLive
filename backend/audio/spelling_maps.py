@@ -25,7 +25,16 @@ KMYNAS_RULES: list[tuple[str, str]] = [
     (r"\b[aA]?[fF]iziečiams\b", "efeziečiams"),
     (r"\b[gG]avatams\b", "galatams"),
     (r"\b[eE]utį\b", "eilutį"),
+    (r"\b[eE]ut(ė|ę)\b", r"eilut\1"),  # penkiasdešimtai eutė
+    (r"\b[eE]utojė\b", "eilutėje"),  # penkiasdešimtai eutojė
     (r"\b[iI]evut(ė|ę|ėje|ės)\b", r"eilut\1"),  # septinta Ievutė
+    (r"\b([pP])at[ao]li(ų|uose)\b", r"\1atarli\2"),  # Patolių knygoje
+    # "trečia eilutė" said fast: trečiautė
+    (
+        r"\b(\w*(?:pirm|antr|treči|ketvirt|penkt|šešt|septint|aštunt|devint|dešimt|likt))"
+        r"aut(ė|ę|ėje|ės)\b",
+        r"\1a eilut\2",
+    ),
 ]
 
 CANARY_RULES: list[tuple[str, str]] = [
@@ -41,7 +50,9 @@ CANARY_RULES: list[tuple[str, str]] = [
     (r"\b[jJ]onų\b", "Jono"),
     # Canary writes numbers as digits in its own formats.
     (r"(\d+)\.(?=\d)", r"\1, "),  # 17.17 -> 17, 17
-    (r"(\d+)-(?:ame|ąją|ąjį|ą|oji|asis|ojo|ojoje|uoju)\b-?", r"\1"),  # 25-ame-
+    (r"(\d+)-(?:ame|ąją|ąjį|ą|oji|asis|ojo|ojoje|uoju|os)\b-?", r"\1"),  # 25-ame-, 36-os
+    (r"\b([pP])atali(ų|uose)\b", r"\1atarli\2"),  # patalių knygoje
+    (r"\b[mM]ūko\b", "Luko"),  # Mūko septintam skyriuje
     (r"(\w+)ąjūt", r"\1ą eilut"),  # antrąjūtę
     (r"(\w{3,}?)(?:ia|a)ilut", r"\1ia eilut"),  # trečiailutė
     (r"(\w+)aj\s+l[uū]t", r"\1ai eilut"),  # trečiaj lutė

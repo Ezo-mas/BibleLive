@@ -686,6 +686,37 @@ speech-model mishearings 4 ("Ameno" for Mato, "sijono" for Jono, 65 for 45,
 "rutinai" for eilutei); parser 4 (chapter lists, a verse from context, a
 chapter with no book). Two models miss 4, none of them clearly from a cut.
 
+## Fixes from the 2026-11-22 live service (2026-11-22)
+
+Session log `2026-11-22_113249` (Kmynas+Canary, 82 min; not in the corpus yet).
+Its misreads, each fixed and tested from the exact transcript:
+
+- Self-correction "antras karalius, antrą karalių knygą, šeštas skyrius" was
+  2 Kings 2 (medium, auto-shown). `_prefix_restarts_book` now also accepts a
+  restart of the same numbered book (>= 3 tokens, as before): 2 Kings 6.
+- Both maps: "Patolių" (Kmynas) / "patalių" (Canary) -> "Patarlių".
+- Kmynas map: a verse word swallowed into an ordinal ("trečiautė" ->
+  "trečia eilutė"); only after ordinal stems. Also "eutė"/"eutojė" ->
+  "eilutė"/"eilutėje" (next to the existing "eutį").
+- Canary map: "36-os" ending stripped (it read as verses 3-6); "Mūko" -> "Luko".
+- A numbered book named for the first time with no number ("Yra istorija antra
+  karalių") now takes over the context with no chapter, and a bare "trečias
+  skyrius" then sets that chapter; before, the old book (Luke) claimed
+  "antra eilutė" two utterances later. Cost: "du karaliai" also reads as
+  2 Kings, so it drops the running book (a possible miss, never a verse).
+- Hebrews as "Laiškas žydams" / "Žydams N skyrius" (owner request). "žydams"
+  counts only after "laiškas" or with a chapter/verse word within two tokens;
+  "žydai", "žydų" and "sakė žydams du dalykus" stay words.
+
+Cached replay, 15 services: no change on either tier (`h22-before-*` vs
+`h22-after4-*`, TP/FN/FP identical: Kmynas 167/10/3/4, Kmynas+Canary
+173/4/15/1). Replays of the 10-18 and 11-15 sessions: unchanged. The 11-22
+replay: Proverbs 16:33 found (high), Isaiah 26:3 low -> high, Luke 7:36 and
+7:50 (the repeat) low -> medium, Luke 7:50 at its first reading found (low),
+2 Kings 3:2 found (medium, was Luke 3:2 low), wrong
+2 Kings 2 (medium) -> 2 Kings 6 (low); Isaiah 7:3-6 and Isaiah 3:2 (low) gone.
+Fitted on that one service: re-check when it joins the corpus.
+
 ## Re-check on new recordings
 
 These were fitted and measured on the same 14 services, so their gains are
