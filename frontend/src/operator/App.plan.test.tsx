@@ -234,6 +234,8 @@ function manualReference(book: string, chapter: number, verse: number): BibleRef
   }
 }
 
+let touchLayout = false
+
 beforeEach(() => {
   window.localStorage.clear()
   deferLookups = false
@@ -244,7 +246,7 @@ beforeEach(() => {
   vi.stubGlobal('fetch', fetchMock)
   // jsdom has no matchMedia; the theme hook reads it when the dialog mounts.
   vi.stubGlobal('matchMedia', (query: string) => ({
-    matches: false,
+    matches: query === '(hover: none) and (pointer: coarse)' && touchLayout,
     media: query,
     onchange: null,
     addEventListener: vi.fn(),
@@ -256,6 +258,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  touchLayout = false
   vi.unstubAllGlobals()
   vi.restoreAllMocks()
   socket = null
@@ -523,6 +526,22 @@ describe('the cursor in the plan', () => {
 })
 
 describe('plan row actions', () => {
+  it('shows a touch-selected Plan passage from its Show button', () => {
+    touchLayout = true
+    seedPlan(seeded)
+    openWith()
+
+    const row = rowHandle('John 3:16')
+    fireEvent.click(row)
+    fireEvent.doubleClick(row)
+    expect(sentActions()).toEqual([])
+
+    fireEvent.click(planPanel().getByRole('button', { name: 'Show John 3:16 on display' }))
+    expect(sentActions()).toEqual([
+      { action: 'display_reference', book: 'John', chapter: 3, verse_start: 16, verse_end: 16 },
+    ])
+  })
+
   it('each row has Remove and the reorder arrows', () => {
     seedPlan(seeded)
     openWith()
@@ -766,16 +785,19 @@ describe('adding a passage to the plan from Find Scripture', () => {
     }
   )
 
-  it('the Plan button adds the passage the same way', async () => {
+  it('keeps search focused until the Plan button adds the passage', async () => {
     openWith()
 
     type('john 3:16-17')
-    await waitFor(() =>
-      expect(
-        screen.getByRole('button', { name: 'John 3:16-17 — add to the plan' })
-      ).toBeInTheDocument()
-    )
-    fireEvent.click(screen.getByRole('button', { name: 'John 3:16-17 — add to the plan' }))
+    const planButton = await screen.findByRole('button', {
+      name: 'John 3:16-17 — add to the plan',
+    })
+    act(() => searchBox().focus())
+
+    // Some touch browsers would blur the input without focusing the button.
+    expect(fireEvent.mouseDown(planButton)).toBe(false)
+    expect(searchBox()).toHaveFocus()
+    fireEvent.click(planButton)
 
     await waitFor(() => expect(searchBox()).toHaveValue(''))
     expect(sentActions()).toEqual([])

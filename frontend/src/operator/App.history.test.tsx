@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { act, fireEvent, render, screen, within } from '@testing-library/react'
+import { act, createEvent, fireEvent, render, screen, within } from '@testing-library/react'
 import App from './App'
 import type { BibleReference } from '../shared/types'
 import { createMockSocket, lastSent, push } from '../test/operatorHarness'
@@ -156,7 +156,7 @@ beforeEach(() => {
   vi.stubGlobal('WebSocket', MockWebSocket)
   // jsdom has no matchMedia; ThemeToggle's useTheme hook reads it on mount.
   vi.stubGlobal('matchMedia', (query: string) => ({
-    matches: false,
+    matches: query === '(hover: none) and (pointer: coarse)' && touchLayout,
     media: query,
     onchange: null,
     addEventListener: vi.fn(),
@@ -167,7 +167,10 @@ beforeEach(() => {
   }))
 })
 
+let touchLayout = false
+
 afterEach(() => {
+  touchLayout = false
   vi.unstubAllGlobals()
   vi.restoreAllMocks()
   socket = null
@@ -213,6 +216,91 @@ describe('history list', () => {
     expect(historyRow(/John 3:16/)).not.toHaveClass('is-selected')
     fireEvent.keyDown(window, { key: 'Enter' })
     expect(sentActions()).toEqual([])
+  })
+
+  it('selects History on touch and ignores a double-tap after replay reorders the list', () => {
+    touchLayout = true
+    openWith({ history, currentDisplay: live })
+
+    fireEvent.click(within(historyRow(/Romans 8:28/)).getByText('Romans 8:28'))
+    const select = within(historyRow(/John 3:16/)).getByRole('button', {
+      name: /John 3:16.*highlight/,
+    })
+    fireEvent.click(select)
+
+    expect(historyRow(/Romans 8:28/)).not.toHaveClass('is-selected')
+    expect(select).toHaveAttribute('aria-pressed', 'true')
+    expect(sentActions()).toEqual([])
+
+    fireEvent.click(historyPanel().getByRole('button', { name: 'Show John 3:16 on display' }))
+    push(socket, {
+      type: 'display_confirmed',
+      data: { reference: entry('replayed', 'John', 3, 16, 'manual') },
+    })
+    expect(historyTitles()).toEqual(['John 3:16', 'Romans 8:28', 'Psalms 23:1'])
+    expect(historyPanel().queryByRole('button', { name: /on display$/ })).not.toBeInTheDocument()
+
+    // The replayed row moved to the top. The second tap can land on Romans.
+    fireEvent.click(historyRow(/Romans 8:28/), { detail: 2 })
+    fireEvent.doubleClick(historyRow(/Romans 8:28/), { detail: 2 })
+    expect(sentActions()).toEqual([
+      { action: 'display_reference', book: 'John', chapter: 3, verse_start: 16, verse_end: 16 },
+    ])
+  })
+
+  it('lets a focused History row select with Space and replay with Enter on touch', () => {
+    touchLayout = true
+    openWith({ history, pending: [live] })
+    const select = within(historyRow(/John 3:16/)).getByRole('button', {
+      name: /John 3:16.*highlight/,
+    })
+    act(() => select.focus())
+    fireEvent.keyDown(select, { key: ' ' })
+    expect(select).toHaveAttribute('aria-pressed', 'true')
+    fireEvent.keyDown(select, { key: 'ArrowDown' })
+    expect(select).toHaveAttribute('aria-pressed', 'true')
+    fireEvent.keyDown(window, { key: 'Enter' })
+    expect(sentActions()).toEqual([])
+    fireEvent.keyDown(select, { key: 'Enter' })
+    expect(sentActions()).toEqual([
+      { action: 'display_reference', book: 'John', chapter: 3, verse_start: 16, verse_end: 16 },
+    ])
+  })
+
+  it('approves only the intended Pending row when another slides under a second tap', () => {
+    touchLayout = true
+    openWith({ pending: [john, psalms] })
+    const panel = pendingPanel()
+    fireEvent.click(panel.getByRole('button', { name: /John 3:16.*highlight/ }))
+    fireEvent.click(panel.getByRole('button', { name: 'Show John 3:16 on display' }))
+    push(socket, { type: 'approval_confirmed', data: { reference: john } })
+    push(socket, { type: 'pending_update', data: { pending: [psalms], count: 1 } })
+
+    const replacement = panel.getByRole('button', { name: /Psalms 23:1.*highlight/ })
+    fireEvent.click(replacement, { detail: 2 })
+    fireEvent.doubleClick(replacement, { detail: 2 })
+    expect(sentActions()).toEqual([{ action: 'approve', reference_id: john.id }])
+  })
+
+  // jsdom's pointer events carry no pointerType, so set it on the event itself.
+  const pressWith = (element: Element, pointerType: string) => {
+    const event = createEvent.pointerDown(element)
+    Object.defineProperty(event, 'pointerType', { value: pointerType })
+    fireEvent(element, event)
+  }
+
+  it('ignores a finger double-tap on a hybrid touchscreen but keeps mouse double-click', () => {
+    // A touchscreen laptop reports a fine pointer, so it does not match the touch layout.
+    openWith({ pending: [john, psalms] })
+    const row = pendingPanel().getByRole('button', { name: /John 3:16.*highlight/ })
+
+    pressWith(row, 'touch')
+    fireEvent.doubleClick(row, { detail: 2 })
+    expect(sentActions()).toEqual([])
+
+    pressWith(row, 'mouse')
+    fireEvent.doubleClick(row, { detail: 2 })
+    expect(sentActions()).toEqual([{ action: 'approve', reference_id: john.id }])
   })
 
   it('shows an empty state and no Show buttons when nothing has been shown', () => {

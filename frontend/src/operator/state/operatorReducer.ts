@@ -104,15 +104,15 @@ export function createOperatorState(
 }
 
 /**
- * Keep the cursor across a queue update while its detection is still queued.
- *
- * Detections arrive while an operator is deciding, so an arrival must not move the
- * highlight; a detection that has left the queue (shown, removed, or approved by
- * another console) takes the highlight with it, so Enter can never act on a row that
- * is gone. A plan row is unaffected: the plan is not the queue.
+ * Keep the operator's highlight by ID while its row remains in the updated list.
+ * Arrivals and reordering never select another row, and removed rows clear it.
  */
-function keepCursor(cursor: RowCursor | null, pending: BibleReference[]) {
-  return cursor?.list === 'pending' && !pending.some(reference => reference.id === cursor.id)
+function keepCursor(
+  cursor: RowCursor | null,
+  list: 'pending' | 'history',
+  references: BibleReference[]
+) {
+  return cursor?.list === list && !references.some(reference => reference.id === cursor.id)
     ? null
     : cursor
 }
@@ -152,6 +152,7 @@ export function operatorReducer(
   switch (event.type) {
     case 'state_snapshot': {
       const data = event.data
+      const history = dedupeHistory(data.history)
       const settings = { ...state.settings }
       const confirmed = { ...state.confirmed }
       if (data.display_settings) {
@@ -166,7 +167,7 @@ export function operatorReducer(
       next = {
         ...state,
         pending: data.pending,
-        history: dedupeHistory(data.history),
+        history,
         pendingCount: data.pending_count,
         historyCount: data.history_count,
         currentDisplay: data.current_display,
@@ -179,7 +180,7 @@ export function operatorReducer(
         idleImage: data.display_settings ? readIdleImage(data.display_settings) : state.idleImage,
         // A reconnect can land while a row is highlighted; keep it if the queue
         // still holds it so a dropped socket does not undo the operator's work.
-        cursor: keepCursor(state.cursor, data.pending),
+        cursor: keepCursor(keepCursor(state.cursor, 'pending', data.pending), 'history', history),
       }
       break
     }
@@ -192,7 +193,7 @@ export function operatorReducer(
         ...state,
         pending: event.data.pending,
         pendingCount: event.data.count,
-        cursor: keepCursor(state.cursor, event.data.pending),
+        cursor: keepCursor(state.cursor, 'pending', event.data.pending),
         discardCoolingDown: state.discardCoolingDown || startCooldown,
       }
       if (startCooldown) effects.push({ type: 'start_discard_cooldown' })
@@ -209,10 +210,12 @@ export function operatorReducer(
       // A passage follow-along showed by itself answers no Show of this console:
       // the operator's own request stays in flight.
       const followed = event.type === 'display_confirmed' && shown.source === 'follow'
+      const history = dedupeHistory([shown, ...state.history]).slice(0, HISTORY_WINDOW)
       next = {
         ...state,
-        history: dedupeHistory([shown, ...state.history]).slice(0, HISTORY_WINDOW),
+        history,
         historyCount: state.historyCount + 1,
+        cursor: keepCursor(state.cursor, 'history', history),
         currentDisplay: shown,
         seenPassage: true,
         showInFlight: followed ? state.showInFlight : false,
@@ -232,13 +235,16 @@ export function operatorReducer(
     case 'pending_cleared':
       effects.push({ type: 'flash', target: 'clearPending' })
       break
-    case 'history_cleared':
+    case 'history_cleared': {
+      const history = dedupeHistory(event.data.history)
       next = {
         ...state,
-        history: dedupeHistory(event.data.history),
+        history,
         historyCount: event.data.history_count,
+        cursor: keepCursor(state.cursor, 'history', history),
       }
       break
+    }
     case 'connection_status':
       next = { ...state, displayConnected: event.data.display > 0 }
       break

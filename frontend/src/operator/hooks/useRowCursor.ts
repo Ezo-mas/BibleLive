@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { RefObject } from 'react'
-import type { CursorList, OperatorEvent, OperatorReducerState } from '../state/operatorTypes'
+import type {
+  CursorList,
+  OperatorEvent,
+  OperatorReducerState,
+  RowCursor,
+} from '../state/operatorTypes'
 import type { PlanItem } from './usePlan'
 
 export interface RowCursorState {
@@ -8,10 +13,12 @@ export interface RowCursorState {
   pendingCursorId: string | null
   /** The highlighted entry in Plan, or null when the cursor is not there (or it was removed). */
   planCursorId: string | null
+  /** The highlighted History row on touch. */
+  historyCursorId: string | null
   /** Keyboard moves so far; a move hands focus to the row it lands on (see useCursorFocus). */
   moves: number
   /** Highlight a row: a click or focus on it. Nothing is sent. */
-  highlight: (list: CursorList, id: string) => void
+  highlight: (list: RowCursor['list'], id: string) => void
   /** Move the highlight one row; `pendingVisible` is whether the Pending tab is open. */
   move: (step: number, pendingVisible: boolean) => void
   /** Whether Enter would show something now (a highlight in a list that is on screen). */
@@ -42,12 +49,13 @@ export function useRowCursor(
 ): RowCursorState {
   const { cursor, pending } = state
   const pendingCursorId = cursor?.list === 'pending' ? cursor.id : null
+  const historyCursorId = cursor?.list === 'history' ? cursor.id : null
   const planCursorId =
     cursor?.list === 'plan' && planItems.some(item => item.id === cursor.id) ? cursor.id : null
   const [moves, setMoves] = useState(0)
 
   const highlight = useCallback(
-    (list: CursorList, id: string) => dispatch({ type: 'set_cursor', cursor: { list, id } }),
+    (list: RowCursor['list'], id: string) => dispatch({ type: 'set_cursor', cursor: { list, id } }),
     [dispatch]
   )
 
@@ -84,7 +92,17 @@ export function useRowCursor(
 
   const clear = useCallback(() => dispatch({ type: 'set_cursor', cursor: null }), [dispatch])
 
-  return { pendingCursorId, planCursorId, moves, highlight, move, canShow, show, clear }
+  return {
+    pendingCursorId,
+    planCursorId,
+    historyCursorId,
+    moves,
+    highlight,
+    move,
+    canShow,
+    show,
+    clear,
+  }
 }
 
 /**

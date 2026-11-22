@@ -4,6 +4,7 @@ import { useI18n } from '../../shared/i18nContext'
 import type { AutoMode } from '../../shared/types'
 import { PanelMenu } from './PanelMenu'
 import type { SideTab } from './SidePanel'
+import { TOUCH_LAYOUT, useOperatorMedia } from '../hooks/useOperatorMedia'
 
 interface QueueFooterProps {
   tab: SideTab
@@ -27,6 +28,7 @@ export function QueueFooter({
   onAutoModeChange,
 }: QueueFooterProps) {
   const { t } = useI18n()
+  const touchLayout = useOperatorMedia(TOUCH_LAYOUT)
   // Turning it back on restores the last mode used during this console session.
   const lastOnMode = useRef<Exclude<AutoMode, 'off'>>('high')
   if (autoMode !== 'off') lastOnMode.current = autoMode
@@ -58,7 +60,11 @@ export function QueueFooter({
         flash={flash}
         items={[...items, clearQueue]}
       />
-      {hasPending && <span className="operator-queue-hint">{t('queue.moveHint')}</span>}
+      {hasPending && (
+        <span className="operator-queue-hint">
+          {t(touchLayout ? 'row.touchHint' : 'queue.moveHint')}
+        </span>
+      )}
     </div>
   )
 }

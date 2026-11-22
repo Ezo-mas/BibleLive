@@ -5,13 +5,18 @@ import { StatusBadge } from '../../components'
 import { useI18n } from '../../shared/i18nContext'
 import type { MessageKey } from '../../shared/i18n'
 import type { BibleReference } from '../../shared/types'
+import { RowShowButton } from './RowButtons'
+import { useMouseDoubleClick } from '../hooks/useOperatorMedia'
 
 export interface ReferenceCardProps {
   reference: BibleReference
   /** True when this row holds the keyboard cursor (the highlighted row). */
   selected?: boolean
+  touchLayout: boolean
   /** Highlight this row (a click or focus on it); nothing is sent. Omitted, the row is not selectable. */
   onSelect?: () => void
+  /** History keeps its replay keys and can highlight a row on a touch layout. */
+  onTouchSelect?: () => void
   /**
    * Whether the row carries the detection's confidence (a Low row's dashed edge, and
    * the word for screen readers and the tooltip). History leaves it out: confidence
@@ -51,7 +56,7 @@ function arrivalTime(createdAt: string): { label: string; iso: string } | null {
  * A single reference tile. Pass `onSelect` to make it selectable: a pending row
  * takes the keyboard cursor that way (a click anywhere on the row but its buttons,
  * or focus, highlights it; Enter shows the highlighted row). History rows replay
- * with Enter while focused. Double-click shows a row in either list.
+ * with Enter while focused. Mouse users can also double-click a row.
  *
  * Detection confidence is not a chip. A Low detection's row has a dashed edge;
  * Medium and High look the same. The word itself is the row's accessible description
@@ -63,7 +68,9 @@ function arrivalTime(createdAt: string): { label: string; iso: string } | null {
 export function ReferenceCard({
   reference,
   selected = false,
+  touchLayout,
   onSelect,
+  onTouchSelect,
   showConfidence = true,
   onShow,
   showDisabled = false,
@@ -72,7 +79,11 @@ export function ReferenceCard({
   const { t } = useI18n()
   const confidenceId = useId()
   const badgesId = useId()
+  const doubleClick = useMouseDoubleClick()
   const selectable = onSelect !== undefined
+  const touchSelect = touchLayout ? onTouchSelect : undefined
+  const select = onSelect ?? touchSelect
+  const label = formatReference(reference)
   const time = arrivalTime(reference.created_at)
   const detected = reference.source !== 'follow' && reference.source !== 'manual'
   const confidence =
@@ -104,41 +115,46 @@ export function ReferenceCard({
       data-confidence={confidence ? (reference.confidence ?? undefined) : undefined}
       title={confidence ?? undefined}
       // A click on the row's own buttons is theirs; anywhere else highlights the row.
-      onClick={
-        selectable
-          ? event => {
-              if (!(event.target as Element).closest('button')) onSelect()
-            }
-          : undefined
-      }
+      onClick={event => {
+        if ((event.target as Element).closest('button')) return
+        select?.()
+      }}
       // The second press of a double-click would select a word under the pointer;
       // a drag still selects text.
+      onPointerDown={doubleClick.onPointerDown}
       onMouseDown={event => {
         if (event.detail > 1) event.preventDefault()
       }}
       onDoubleClick={event => {
-        if (!showDisabled && !(event.target as Element).closest('button')) onShow()
+        // An approval or replay can move a different row under a second tap.
+        if (
+          !touchLayout &&
+          doubleClick.fromMouse() &&
+          !showDisabled &&
+          !(event.target as Element).closest('button')
+        ) {
+          onShow()
+        }
       }}
     >
       <div
         className={`ref-card ${selected ? 'ref-card-selected' : ''}`}
         role="button"
         tabIndex={0}
-        aria-pressed={selectable ? selected : undefined}
-        aria-disabled={!selectable && showDisabled ? true : undefined}
-        aria-label={t(selectable ? 'row.highlightAria' : 'history.replayAria', {
-          ref: formatReference(reference),
+        aria-pressed={selectable || touchSelect ? selected : undefined}
+        aria-disabled={!selectable && !touchSelect && showDisabled ? true : undefined}
+        aria-label={t(selectable || touchSelect ? 'row.highlightAria' : 'history.replayAria', {
+          ref: label,
         })}
         aria-describedby={describedBy}
         onFocus={onSelect}
         onKeyDown={event => {
-          if (selectable) {
-            if (event.key === ' ') {
-              event.preventDefault()
-              onSelect()
-            }
+          if (event.key === ' ' && select) {
+            event.preventDefault()
+            select()
             return
           }
+          if (selectable) return
           if (event.key !== 'Enter' && event.key !== ' ') return
           // A focused History card owns activation even if Plan has a highlighted row.
           event.preventDefault()
@@ -157,7 +173,7 @@ export function ReferenceCard({
       >
         <div className="ref-card-content">
           <div className="ref-card-header">
-            <h3 className="ref-card-title">{formatReference(reference)}</h3>
+            <h3 className="ref-card-title">{label}</h3>
             <div className="ref-card-badges" id={badgesId}>
               {sourceBadge === 'follow' ? (
                 <StatusBadge variant="info">
@@ -200,6 +216,12 @@ export function ReferenceCard({
             </span>
           )}
         </div>
+        <RowShowButton
+          referenceLabel={label}
+          selected={selected}
+          disabled={showDisabled}
+          onClick={onShow}
+        />
       </div>
     </div>
   )

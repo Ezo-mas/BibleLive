@@ -271,6 +271,8 @@ export const en = {
     other: '+{count} more verses',
   },
   'stage.nothingOnDisplay': 'Nothing on display',
+  'stage.displayCleared': 'Display cleared',
+  'stage.jumpToPreview': '{status} — Go to display preview',
   'stage.approvedHint': 'Approved references appear here and on the projector.',
   'stage.clearDisplay': 'Clear display',
   'stage.clear': 'Clear',
@@ -309,6 +311,7 @@ export const en = {
 
   // Rows in Pending and Plan, and the controls under the display preview
   'row.highlightAria': '{ref} — highlight; Enter shows it',
+  'row.touchHint': 'Tap a row, then tap Show',
   'queue.remove': 'Remove {ref} from the queue',
   'stage.previewAria': 'Audience display preview',
   'quick.versesAria': 'Verses shown on the display',

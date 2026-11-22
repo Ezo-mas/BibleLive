@@ -4,8 +4,10 @@ import App from './App'
 import type { BibleReference, DisplaySettings } from '../shared/types'
 import { createMockSocket, push } from '../test/operatorHarness'
 import type { MockSocket } from '../test/operatorHarness'
+import { STACKED_LAYOUT } from './hooks/useOperatorMedia'
 
 let socket: MockSocket | null = null
+let stackedLayout = false
 
 const MockWebSocket = Object.assign(
   function MockWebSocketStub() {
@@ -74,7 +76,7 @@ beforeEach(() => {
   vi.stubGlobal('WebSocket', MockWebSocket)
   // jsdom has no matchMedia; the theme hook reads it.
   vi.stubGlobal('matchMedia', (query: string) => ({
-    matches: false,
+    matches: stackedLayout && query === STACKED_LAYOUT,
     media: query,
     onchange: null,
     addEventListener: vi.fn(),
@@ -93,8 +95,74 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  stackedLayout = false
   vi.unstubAllGlobals()
   socket = null
+})
+
+it('summarizes confirmed display state after scrolling past the stacked preview', () => {
+  stackedLayout = true
+  let reportIntersection: (visible: boolean) => void = () => {}
+  vi.stubGlobal(
+    'IntersectionObserver',
+    class {
+      observe = vi.fn()
+      disconnect = vi.fn()
+
+      constructor(callback: (entries: unknown[]) => void) {
+        reportIntersection = visible =>
+          callback([
+            {
+              isIntersecting: visible,
+              rootBounds: { top: 52 },
+              boundingClientRect: { bottom: visible ? 250 : 51 },
+            },
+          ])
+      }
+    }
+  )
+  openWith(settings(true))
+  const jumpName = /Go to display preview/
+  const button = () => screen.getByRole('button', { name: jumpName })
+  expect(screen.queryByRole('button', { name: jumpName })).not.toBeInTheDocument()
+
+  act(() => reportIntersection(false))
+  expect(button()).toHaveAccessibleName('Live · John 3:16 — Go to display preview')
+  expect(screen.getByText('Live · John 3:16', { selector: '.sr-only' })).toHaveAttribute(
+    'aria-live',
+    'polite'
+  )
+  act(() => button().focus())
+  expect(screen.getByText('Live · John 3:16', { selector: '.sr-only' })).toHaveAttribute(
+    'aria-live',
+    'off'
+  )
+  fireEvent.click(liveSwitch())
+  expect(button()).toHaveAccessibleName('Live · John 3:16 — Go to display preview')
+  push(socket, { type: 'display_settings_confirmed', data: settings(false) })
+  expect(button()).toHaveAccessibleName('Off air · John 3:16 — Go to display preview')
+  push(socket, { type: 'connection_status', data: { display: 0, operator: 1 } })
+  expect(button()).toHaveAccessibleName('No display connected — Go to display preview')
+  push(socket, { type: 'connection_status', data: { display: 1, operator: 1 } })
+  push(socket, { type: 'display_settings_confirmed', data: settings(true) })
+  push(socket, { type: 'clear_confirmed', data: {} })
+  expect(button()).toHaveAccessibleName('Display cleared — Go to display preview')
+
+  act(() => socket?.onclose?.({ code: 1006 }))
+  expect(button()).toHaveAccessibleName('Disconnected — Go to display preview')
+  fireEvent.click(screen.getByRole('button', { name: 'Reconnect' }))
+  expect(button()).toHaveAccessibleName('Connecting… — Go to display preview')
+  act(() => socket?.onopen?.())
+  expect(button()).toHaveAccessibleName('Connecting… — Go to display preview')
+
+  const preview = screen.getByRole('region', { name: 'On display now' })
+  const scrollIntoView = vi.fn()
+  preview.scrollIntoView = scrollIntoView
+  fireEvent.click(button())
+  expect(preview).toHaveFocus()
+  expect(scrollIntoView).toHaveBeenCalledWith({ block: 'start' })
+  act(() => reportIntersection(true))
+  expect(screen.queryByRole('button', { name: jumpName })).not.toBeInTheDocument()
 })
 
 it('starts live and moves only when the server confirms', () => {

@@ -1,5 +1,5 @@
 import { useId, useRef, useState } from 'react'
-import type { ReactNode } from 'react'
+import type { ReactNode, Ref } from 'react'
 import { Button, MonitorIcon, StatusBadge } from '../../components'
 import { useI18n } from '../../shared/i18nContext'
 import { PanelHint } from './PanelHint'
@@ -12,6 +12,8 @@ import { idleImageUrl } from '../../shared/idleScreen'
 import type { IdleImage } from '../../shared/idleScreen'
 
 export interface LivePanelProps {
+  /** The compact status uses the card as its scroll and focus target. */
+  panelRef?: Ref<HTMLElement>
   /** What the server reports is on the projector right now. */
   reference: BibleReference | null
   /** True when the server confirms zero audience displays. */
@@ -22,6 +24,8 @@ export interface LivePanelProps {
   idleImage?: IdleImage | null
   clearAction?: ReactNode
   expandAction?: ReactNode
+  /** Find Scripture sits below the display actions in the stacked layout. */
+  search?: ReactNode
   /** Laid over the top of the preview frame, taking no space (the follow-along strip). */
   overlay?: ReactNode
   /** Whether the audience display is on air; off air the preview keeps showing the passage. */
@@ -43,6 +47,7 @@ export interface LivePanelProps {
  * the projector. It is presentational only: nothing here sends anything.
  */
 export function LivePanel({
+  panelRef,
   reference,
   displayMissing = false,
   verseLimit,
@@ -50,6 +55,7 @@ export function LivePanel({
   idleImage = null,
   clearAction,
   expandAction,
+  search,
   overlay,
   live = true,
   onLiveChange,
@@ -77,7 +83,12 @@ export function LivePanel({
   )
 
   return (
-    <section className="operator-stage-panel operator-live" aria-label={t('stage.onDisplayAria')}>
+    <section
+      className="operator-stage-panel operator-live"
+      ref={panelRef}
+      tabIndex={panelRef ? -1 : undefined}
+      aria-label={t('stage.onDisplayAria')}
+    >
       <div className="operator-card-head">
         <h2 className="operator-section-title">{t('stage.onDisplay')}</h2>
         {/* Shown by the server itself for follow-along, not picked by the operator. */}
@@ -132,6 +143,8 @@ export function LivePanel({
         </div>
         {!live && <span className="sr-only">{t('stage.offAirNote')}</span>}
       </div>
+
+      {search}
 
       <div className={`operator-monitor-wrap${live ? '' : ' is-off-air'}`}>
         {reference ? (

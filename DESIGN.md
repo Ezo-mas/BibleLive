@@ -54,7 +54,17 @@ modes, display verse limit and background).
 608px), so a laptop or a tablet held landscape keeps the queue, its footer, the Plan
 and the preview in view together. Below 1024px it is one column in the order ON
 DISPLAY, Plan, Pending / History; the page scrolls, and the preview takes its height
-from 16:9. The Plan and the tabbed panel are each one fixed height there: the Plan
+from 16:9. Find Scripture sits between the ON DISPLAY controls and the preview, so
+the results open below Clear, Live and +1. On touch screens a resolved result
+offers a Show button beside the Plan button.
+
+At phone sizes, Clear, Live and +1 have tap targets at least 44px across and high.
+
+Once the ON DISPLAY card scrolls out above the page, the header shows a compact
+bar with the confirmed display state and passage. Tapping it returns to the
+preview, and the bar disappears when the card comes back into view.
+
+The Plan and the tabbed panel are each one fixed height there: the Plan
 `min(420px, the visible height of the page)`, the panel `min(520px, the visible
 height)`, both with a 280px floor, so each list scrolls inside its card and the page
 does not change length as detections arrive or passages are planned. The scrolling
@@ -116,6 +126,8 @@ from it keep the page's colours.
   status. The tooltip also shows the measured input and recent peak.
 - **Settings** uses a 36px ghost button with the shared hover fill and keyboard
   focus ring. The spoken-language picker lives under Audio in the dialog.
+- **Logout** sits in the Settings footer in the stacked layout. The compact
+  display bar sits one 16px gap below the header controls.
 
 ## Cards share one anatomy
 
@@ -212,6 +224,13 @@ right-aligned group with equal spacing. The group drops below the excerpt on
 narrow cards. Double-click a Plan row or press Enter on the highlighted passage to
 show it. Plan has no hint of its own: the keys work the same in both lists, and the
 Pending footer names them.
+
+**Touch.** Tapping a Pending, History or Plan row highlights it and reveals a
+compact gold Show button. The button uses the timestamp line or the Plan tools
+group, with its space reserved before selection. Touch rows suppress text
+selection and double-tap zoom.
+On touch, use the Show button after selecting a row. Mouse double-click and
+keyboard shortcuts remain available for their respective input layouts.
 
 ## Radius by element kind
 

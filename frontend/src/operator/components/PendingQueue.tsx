@@ -3,6 +3,7 @@ import { BookIcon } from '../../components'
 import { useI18n } from '../../shared/i18nContext'
 import { formatReference } from '../../shared/reference'
 import { useCursorFocus } from '../hooks/useRowCursor'
+import { TOUCH_LAYOUT, useOperatorMedia } from '../hooks/useOperatorMedia'
 import { PanelHint } from './PanelHint'
 import { ReferenceCard } from './ReferenceCard'
 import { RowRemoveButton } from './RowButtons'
@@ -46,6 +47,7 @@ export function PendingQueue({
   canShow = true,
 }: PendingQueueProps) {
   const { t } = useI18n()
+  const touchLayout = useOperatorMedia(TOUCH_LAYOUT)
   const listRef = useRef<HTMLDivElement>(null)
   useCursorFocus(listRef, selectedId, keyboardMoves)
   return (
@@ -61,6 +63,7 @@ export function PendingQueue({
                 key={reference.id}
                 reference={reference}
                 selected={selected}
+                touchLayout={touchLayout}
                 onSelect={() => onSelect(reference.id)}
                 onShow={() => onShow(reference.id)}
                 showDisabled={!canShow}

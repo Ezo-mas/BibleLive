@@ -4,9 +4,11 @@ import { AlertCircleIcon, Button, PlusIcon, SearchIcon } from '../../components'
 import { useI18n } from '../../shared/i18nContext'
 import type { ScriptureSearchState } from '../hooks/useScriptureSearch'
 import type { ScriptureResult } from '../scriptureQuery'
+import { TOUCH_LAYOUT, useOperatorMedia } from '../hooks/useOperatorMedia'
 
 export interface ScriptureSearchProps {
   search: ScriptureSearchState
+  onFocusChange?: (focused: boolean) => void
   /** The lookup needs the server, so the box is inert while the socket is down. */
   disabled: boolean
   /**
@@ -55,8 +57,14 @@ function highlighted(result: ScriptureResult): ReactNode {
  * shortcuts stand down while a text field has focus, so none of these can approve
  * a queue item by accident.
  */
-export function ScriptureSearch({ search, disabled, directEnabled = true }: ScriptureSearchProps) {
+export function ScriptureSearch({
+  search,
+  onFocusChange,
+  disabled,
+  directEnabled = true,
+}: ScriptureSearchProps) {
   const { t } = useI18n()
+  const touchLayout = useOperatorMedia(TOUCH_LAYOUT)
   const {
     input,
     setInput,
@@ -139,7 +147,14 @@ export function ScriptureSearch({ search, disabled, directEnabled = true }: Scri
   else if (input.trim() && !error) hint = t('search.hintKeepTyping')
 
   return (
-    <section className="operator-section operator-search" aria-label={t('search.sectionAria')}>
+    <section
+      className="operator-section operator-search"
+      aria-label={t('search.sectionAria')}
+      onFocus={() => onFocusChange?.(true)}
+      onBlur={event => {
+        if (!event.currentTarget.contains(event.relatedTarget)) onFocusChange?.(false)
+      }}
+    >
       <div className="operator-section-header">
         <h2 className="operator-section-title">{t('search.title')}</h2>
         {isLookingUp && <span className="operator-search-busy">{t('search.looking')}</span>}
@@ -234,17 +249,38 @@ export function ScriptureSearch({ search, disabled, directEnabled = true }: Scri
                         )}
                       </button>
                       {result.kind === 'reference' && (
-                        <Button
-                          variant="primary"
-                          size="sm"
-                          className="operator-search-plan"
-                          iconOnly
-                          icon={<PlusIcon />}
-                          onClick={() => planResult(result)}
-                          disabled={disabled}
-                          aria-label={t('search.addToPlanAria', { label: result.label })}
-                          title={t('search.addToPlan')}
-                        />
+                        <div
+                          className="operator-search-actions"
+                          // A tap can blur the input before click and hide the results.
+                          onMouseDown={event => event.preventDefault()}
+                        >
+                          <Button
+                            variant="primary"
+                            size="sm"
+                            iconOnly
+                            icon={<PlusIcon />}
+                            onClick={() => planResult(result)}
+                            disabled={disabled}
+                            aria-label={t('search.addToPlanAria', { label: result.label })}
+                            title={t('search.addToPlan')}
+                          />
+                          {touchLayout && (
+                            <Button
+                              variant="primary"
+                              size="sm"
+                              className="operator-search-show"
+                              aria-label={t('follow.showAria', { label: result.label })}
+                              disabled={disabled || !directEnabled}
+                              onClick={event => {
+                                if (event.detail > 1) return
+                                pick(result)
+                                if (event.detail > 0) inputRef.current?.blur()
+                              }}
+                            >
+                              {t('follow.show')}
+                            </Button>
+                          )}
+                        </div>
                       )}
                     </li>
                   ))}
