@@ -6,6 +6,7 @@ import { useI18n } from '../../shared/i18nContext'
 import type { MessageKey } from '../../shared/i18n'
 import type { BibleReference } from '../../shared/types'
 import { RowShowButton } from './RowButtons'
+import { useMouseDoubleClick } from '../hooks/useOperatorMedia'
 
 export interface ReferenceCardProps {
   reference: BibleReference
@@ -78,6 +79,7 @@ export function ReferenceCard({
   const { t } = useI18n()
   const confidenceId = useId()
   const badgesId = useId()
+  const doubleClick = useMouseDoubleClick()
   const selectable = onSelect !== undefined
   const touchSelect = touchLayout ? onTouchSelect : undefined
   const select = onSelect ?? touchSelect
@@ -119,12 +121,18 @@ export function ReferenceCard({
       }}
       // The second press of a double-click would select a word under the pointer;
       // a drag still selects text.
+      onPointerDown={doubleClick.onPointerDown}
       onMouseDown={event => {
         if (event.detail > 1) event.preventDefault()
       }}
       onDoubleClick={event => {
         // An approval or replay can move a different row under a second tap.
-        if (!touchLayout && !showDisabled && !(event.target as Element).closest('button')) {
+        if (
+          !touchLayout &&
+          doubleClick.fromMouse() &&
+          !showDisabled &&
+          !(event.target as Element).closest('button')
+        ) {
           onShow()
         }
       }}

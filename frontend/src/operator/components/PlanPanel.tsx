@@ -9,7 +9,7 @@ import { PanelMenu } from './PanelMenu'
 import { RowRemoveButton, RowShowButton } from './RowButtons'
 import { samePassage } from '../passageKey'
 import { useCursorFocus } from '../hooks/useRowCursor'
-import { TOUCH_LAYOUT, useOperatorMedia } from '../hooks/useOperatorMedia'
+import { TOUCH_LAYOUT, useMouseDoubleClick, useOperatorMedia } from '../hooks/useOperatorMedia'
 import type { PlanItem } from '../hooks/usePlan'
 
 export interface PlanPanelProps {
@@ -69,6 +69,7 @@ export function PlanPanel({
   const { t } = useI18n()
   const touchLayout = useOperatorMedia(TOUCH_LAYOUT)
   const headingId = useId()
+  const doubleClick = useMouseDoubleClick()
   const listRef = useRef<HTMLOListElement>(null)
   useCursorFocus(listRef, selectedId, keyboardMoves)
   return (
@@ -123,12 +124,14 @@ export function PlanPanel({
                   className={`ref-item plan-item${selected ? ' is-selected' : ''}`}
                   onClick={event => onRowClick(event, () => onSelect(item.id))}
                   // As in Pending: a double-click shows the row without selecting a word.
+                  onPointerDown={doubleClick.onPointerDown}
                   onMouseDown={event => {
                     if (event.detail > 1) event.preventDefault()
                   }}
                   onDoubleClick={event => {
                     if (
                       !touchLayout &&
+                      doubleClick.fromMouse() &&
                       canShow &&
                       !(event.target as Element).closest('.plan-row-tools')
                     ) {

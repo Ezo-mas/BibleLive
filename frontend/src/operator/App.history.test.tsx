@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { act, fireEvent, render, screen, within } from '@testing-library/react'
+import { act, createEvent, fireEvent, render, screen, within } from '@testing-library/react'
 import App from './App'
 import type { BibleReference } from '../shared/types'
 import { createMockSocket, lastSent, push } from '../test/operatorHarness'
@@ -279,6 +279,27 @@ describe('history list', () => {
     const replacement = panel.getByRole('button', { name: /Psalms 23:1.*highlight/ })
     fireEvent.click(replacement, { detail: 2 })
     fireEvent.doubleClick(replacement, { detail: 2 })
+    expect(sentActions()).toEqual([{ action: 'approve', reference_id: john.id }])
+  })
+
+  // jsdom's pointer events carry no pointerType, so set it on the event itself.
+  const pressWith = (element: Element, pointerType: string) => {
+    const event = createEvent.pointerDown(element)
+    Object.defineProperty(event, 'pointerType', { value: pointerType })
+    fireEvent(element, event)
+  }
+
+  it('ignores a finger double-tap on a hybrid touchscreen but keeps mouse double-click', () => {
+    // A touchscreen laptop reports a fine pointer, so it does not match the touch layout.
+    openWith({ pending: [john, psalms] })
+    const row = pendingPanel().getByRole('button', { name: /John 3:16.*highlight/ })
+
+    pressWith(row, 'touch')
+    fireEvent.doubleClick(row, { detail: 2 })
+    expect(sentActions()).toEqual([])
+
+    pressWith(row, 'mouse')
+    fireEvent.doubleClick(row, { detail: 2 })
     expect(sentActions()).toEqual([{ action: 'approve', reference_id: john.id }])
   })
 
