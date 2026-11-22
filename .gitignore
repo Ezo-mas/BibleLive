@@ -27,6 +27,9 @@ ENV/
 
 # Generated databases (keep source JSON, not generated SQLite)
 bible_data/*.sqlite
+# The Lithuanian Bible has no tracked source to rebuild it from, and the installers ship it,
+# so the converted file itself is tracked.
+!bible_data/bible_ltb.sqlite
 bible_data/*.db
 bible_data/*.sqlite3*
 backend/bible_data/*.sqlite

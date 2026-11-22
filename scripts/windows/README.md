@@ -42,16 +42,18 @@ Produces `build\BibleLive\` and `dist\BibleLive-portable-<version>.zip` (version
   `licenses\`, `BibleLive.cmd` (GUI), `BibleLive-console.cmd` (CLI).
 - **Bible DB**: `-BibleDb` (default `bible_data\biblelive.sqlite`) is copied as
   `biblelive.sqlite`; `-ExtraBibleDb` adds more translations beside it under their own names.
-  By default `bible_data\bible_ltb.sqlite` is shipped when it exists (the build warns when it
-  does not): Lithuanian services need it, since the server switches the display to that
+  By default `bible_data\bible_ltb.sqlite` (tracked in git) is shipped when it exists (the
+  build warns when it does not; the CI workflow names it, so a release build fails without it):
+  Lithuanian services need it, since the server switches the display to that
   translation for Lithuanian and the pipeline picks the verse being read aloud from it. Without
   it the display shows the English text. `-ExtraBibleDb @()` ships no extra translation.
-  Release builds ship none (the Lithuanian Bible is not ours to redistribute): users copy
-  `bible_ltb.sqlite` into the per-user Bibles folder, `%APPDATA%\BibleLive\bible_data`, which
+  Shipping LTB (K. Burbulis' translation) is a stopgap for the testing phase: its
+  redistribution licence is not confirmed, so settle that before a wider release.
+  Other translations go in the per-user Bibles folder, `%APPDATA%\BibleLive\bible_data`, which
   the launcher creates and hands to the server and the pipeline.
 - **Smoke test** (fails the build): bundled Python with an empty temp `APPDATA`/`LOCALAPPDATA`:
   `launcher --dry-run`, imports (including `transcribe_cpp`), `ffmpeg -version` + dshow, and
-  `core.server` serving `/readyz`, `/display`, `/operator`.
+  every shipped Bible file offered as a translation, `core.server` serving `/readyz`, `/display`, `/operator`.
 - `-SkipCuda` leaves out the NVIDIA CUDA wheels (quick test builds). Whisper cannot run on the GPU
   then; Kmynas and Canary still do, through Vulkan.
 - `-ReuseDependencies` keeps `build\BibleLive\python` (the bundled Python and its packages, the

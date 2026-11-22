@@ -53,8 +53,10 @@ jobs:
           }
 
       - name: Build the portable folder
+        # The Lithuanian Bible is tracked in git; naming it fails the build if it is missing
+        # instead of shipping an installer without it (the default only warns).
         shell: pwsh
-        run: ./scripts/windows/build-portable.ps1 -NoZip
+        run: ./scripts/windows/build-portable.ps1 -NoZip -ExtraBibleDb bible_data/bible_ltb.sqlite
 
       - name: Check Inno Setup
         # Inno Setup 6 is preinstalled on the windows-2022/2025 images (6.7.1 at the time of writing).

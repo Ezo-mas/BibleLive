@@ -12,6 +12,13 @@ launcher and written to every service log) and attaches it to a GitHub release,
 and `.github/workflows/macos-app.yml`, which attaches the Mac disk image and zip
 to the same release.
 
+## Unreleased
+
+### Install
+- The Windows installer and the Mac app ship the Lithuanian Bible (`ltb`) again: a fresh
+  install shows Lithuanian verse text without copying `bible_ltb.sqlite` in by hand. 0.2.1
+  release builds left it out, so the server could not restore a saved `ltb` choice.
+
 ## 0.2.1 (2026-11-22)
 
 A new launcher window on Windows and Mac, a calmer operator console with a

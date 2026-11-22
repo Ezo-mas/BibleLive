@@ -111,10 +111,11 @@ databases) with a launcher that starts the server, the audio pipeline and the
 projector display. During setup you pick the Lithuanian speech model —
 **Kmynas on the processor** (no graphics card needed), **Kmynas + Canary on a
 GPU** (most accurate), or Whisper only — and the installer downloads just those
-models and tests them. The build ships the Lithuanian Bible
-(`bible_data\bible_ltb.sqlite`) when it is there. Every service is logged to
+models and tests them. The installer and the Mac app ship the English (KJV)
+and Lithuanian (`bible_data\bible_ltb.sqlite`, tracked in git) Bibles. Every
+service is logged to
 `%APPDATA%\BibleLive\logs\sessions` (transcript + audio, see "Session log").
-Translations that are not shipped (the Lithuanian Bible) go in the per-user Bibles
+Translations that are not shipped go in the per-user Bibles
 folder, `%APPDATA%\BibleLive\bible_data` (`~/Library/Application Support/BibleLive/bible_data`
 on a Mac): the launcher creates it, and the server and the pipeline read translations
 there as well as next to the app's own database. macOS: see
