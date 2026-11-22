@@ -127,7 +127,9 @@ The On display header holds Clear and the Live / Off air switch. When the
 connected server confirms zero audience displays, a "No display connected"
 text-only warning chip sits next to the switch and describes it for screen readers.
 Clear uses the subtle neutral button variant, the accessible name "Clear display"
-and the B shortcut. The switch is a ghost button with a filled gold dot and bold
+and the B shortcut. A neutral badge beside Clear shows the confirmed auto-clear
+duration in seconds while enabled.
+The switch is a ghost button with a filled gold dot and bold
 label when Live, and a hollow neutral dot and medium label when Off air. It has
 the shared hover fill and focus ring. Off air, the preview keeps showing the
 passage, dimmed and grey but still readable, with no ring or tag. Screen
@@ -242,7 +244,7 @@ One design for the whole dialog (`SettingsDialog.tsx`, styles in
 - **Header row:** the title at the left, Close (a ghost icon button, 36px) at the right,
   one control tall under `--card-pad`, with a hairline under it.
 - **Sections** are headed by the overline style of the card labels (xs, semibold,
-  uppercase, `--tracking-caps`, muted): Display (verses, background, idle screen),
+  uppercase, `--tracking-caps`, muted): Display (verses, background, auto-clear, idle screen),
   Stream overlay (OBS), This console (app theme, interface language), Audio, Auto-approve, Keyboard
   shortcuts.
 - **Every setting is one `.operator-setting` row:** the label (semibold) with a muted
@@ -256,7 +258,9 @@ One design for the whole dialog (`SettingsDialog.tsx`, styles in
   row (an error, a picture) spans the full width. The idle picture's preview is centred
   in its row with its caption centred under it.
 - **Controls are only the shared ones:** `.segmented` for every choice (Off/On,
-  background, language, verses, theme, picture fit) and `.btn` variants.
+  background, language, verses, theme, picture fit) and `.btn` variants. The
+  auto-clear row uses the shared `.input` as a number field for 5–600 whole seconds,
+  alongside Save and Turn off. The label shows the server-confirmed value or Off.
 - **Segmented anatomy:** no inset or gap; options sit edge to edge inside a 1px border
   with a 1px divider between them, the track clips them, and the selected option fills
   its cell. The track keeps its own width (an inline grid), every option in one control

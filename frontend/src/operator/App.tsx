@@ -175,6 +175,7 @@ export default function App() {
           <LivePanel
             reference={operator.currentDisplay}
             displayMissing={operator.displayMissing}
+            autoClearSeconds={operator.isConnected ? operator.autoClearSeconds : null}
             verseLimit={operator.verseLimit}
             displayTheme={operator.displayTheme}
             live={operator.live}

@@ -7,6 +7,7 @@ import sys
 import threading
 import time
 from datetime import UTC, datetime
+from queue import Queue
 from unittest.mock import AsyncMock, Mock
 
 import pytest
@@ -16,6 +17,7 @@ from core.bible_lookup import BibleLookup
 from core.bible_versions import BibleVersion
 from core.config import config
 from core.server import app as server_app
+from core.server import display_session
 from core.server import state as server_state
 from core.server.models import BibleReference, StreamOverlaySettings
 from core.server.runtime_state import RESTORE_DISPLAY_MAX_AGE_S, RuntimeReference, RuntimeStateStore
@@ -73,6 +75,31 @@ def test_restore_age_and_display_snapshot(monkeypatch, tmp_path, bible_db, age, 
             assert message["data"]["source"] == "manual"
             assert "For God so loved" in message["data"]["text"]
         assert display.receive_json()["type"] == "display_settings"
+
+
+def test_restored_passage_starts_a_fresh_auto_clear_timer(monkeypatch, tmp_path, bible_db):
+    path = recovery_file(tmp_path, age=120)
+    assert SettingsStore(tmp_path / "settings.json").save_auto_clear_seconds(45)
+    started: Queue[tuple[int, asyncio.Future[None]]] = Queue()
+
+    async def wait_for_expiry(seconds: int) -> None:
+        expiry = asyncio.get_running_loop().create_future()
+        started.put((seconds, expiry))
+        await expiry
+
+    monkeypatch.setattr(display_session, "sleep", wait_for_expiry)
+    application = startup(monkeypatch, tmp_path, bible_db)
+    with TestClient(application) as client, client.websocket_connect("/ws/display") as display:
+        assert display.receive_json()["type"] == "reference"
+        assert display.receive_json()["data"]["auto_clear_seconds"] == 45
+        seconds, expiry = started.get(timeout=5)
+        assert seconds == 45
+        assert client.portal is not None
+        client.portal.call(expiry.set_result, None)
+        assert display.receive_json() == {"type": "clear", "data": {}}
+        assert client.get("/api/state").json()["current_display"] is None
+
+    assert json.loads(path.read_text())["current"] is None
 
 
 def test_clear_history_persists_current_display_across_restart(monkeypatch, tmp_path, bible_db):

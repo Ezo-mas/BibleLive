@@ -90,11 +90,13 @@ it('reflects snapshot and other-console confirmations and disables offline choic
 
 it('validates the auto-clear duration and shows the confirmed value from the server', () => {
   open()
+  const onDisplay = within(screen.getByRole('region', { name: 'On display now' }))
   const seconds = screen.getByRole('spinbutton', { name: 'Seconds before auto-clear' })
   const save = screen.getByRole('button', { name: 'Save' })
   const turnOff = screen.getByRole('button', { name: 'Turn off' })
   expect(seconds).toHaveValue(60)
   expect(turnOff).toBeDisabled()
+  expect(onDisplay.queryByText('Auto-clear · 45 s')).not.toBeInTheDocument()
 
   for (const value of ['4', '601', '5.5', '']) {
     fireEvent.change(seconds, { target: { value } })
@@ -105,17 +107,20 @@ it('validates the auto-clear duration and shows the confirmed value from the ser
   fireEvent.click(save)
   expect(lastSent(socket)).toEqual({ action: 'set_auto_clear', seconds: 45 })
   expect(turnOff).toBeDisabled()
+  expect(onDisplay.queryByText('Auto-clear · 45 s')).not.toBeInTheDocument()
   push(socket, {
     type: 'display_settings_confirmed',
     data: { verse_limit: 3, theme: 'dark', auto_clear_seconds: 45 },
   })
   expect(screen.getByText('45 s')).toBeInTheDocument()
+  expect(onDisplay.getByText('Auto-clear · 45 s')).toBeInTheDocument()
   expect(save).toBeDisabled()
 
   fireEvent.click(turnOff)
   expect(lastSent(socket)).toEqual({ action: 'set_auto_clear', seconds: null })
   expect(screen.getByText('45 s')).toBeInTheDocument()
   confirm('idle')
+  expect(onDisplay.queryByText('Auto-clear · 45 s')).not.toBeInTheDocument()
   expect(screen.queryByText('45 s')).not.toBeInTheDocument()
   expect(seconds).toHaveValue(60)
   expect(turnOff).toBeDisabled()

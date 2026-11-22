@@ -267,6 +267,7 @@ export const en = {
   'stage.onDisplay': 'On display',
   'stage.onDisplayAria': 'On display now',
   'stage.noDisplay': 'No display connected',
+  'stage.autoClear': 'Auto-clear · {seconds} s',
   'stage.liveOn': 'Live',
   'stage.liveOff': 'Off air',
   'stage.liveOnTitle': 'Show the display to the audience again',

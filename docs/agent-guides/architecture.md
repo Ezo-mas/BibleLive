@@ -38,7 +38,7 @@ easy to break by accident.
    auto-show, so nothing can auto-approve it). The supported operator actions are
    `authenticate` (the token, as the socket's first message; it carries no
    operation and is ignored once the socket is let in), `approve`, `discard_pending`, `clear`, `clear_pending`, `clear_history`, `set_verse_limit`,
-   `set_display_theme`, `set_clear_mode`, `set_stream_overlay`, `set_live`,
+   `set_display_theme`, `set_clear_mode`, `set_auto_clear`, `set_stream_overlay`, `set_live`,
    `set_auto_mode`, `set_follow_auto`, `display_reference` — there is no
    `reject` action; `discard_pending` removes one pending row and broadcasts only `pending_update`.
    `clear_history` empties saved and in-memory history while preserving the current
@@ -47,6 +47,15 @@ easy to break by accident.
    Display settings include verse limit, theme, idle picture and persisted
    `clear_mode` (`idle` by default, or `blank` after a passage has been cleared). The
    persisted `stream_overlay` layout travels in the same display settings messages.
+   `set_auto_clear` takes a whole number of seconds from 5 through 600 or `null`
+   for Off. The server confirms the active value as `auto_clear_seconds` even
+   if the settings file cannot be saved. A save failure also sends the requesting
+   operator an error explaining that the change may be lost after restart.
+   Each passage shown on air starts a fresh countdown. Turning the timer off,
+   going off air, or clearing manually cancels it. Going back on air or saving a
+   new duration starts a full countdown for the passage already showing. Socket
+   reconnects leave the timer running. Expiration uses the same notifications as
+   manual Clear and records an `auto_cleared` service event.
    `bible_version_confirmed` (server → operators only) announces a
    translation change; it never reaches display sockets, and
    `follow_along` (server → operators only, never display sockets) is a
@@ -125,7 +134,8 @@ easy to break by accident.
    change and its send). At startup, `create_app` re-resolves a record younger
    than `RESTORE_DISPLAY_MAX_AGE_S` (600 s) into `current_display` only when its
    translation is still the active one; it sends nothing (displays get it from
-   the normal snapshot) and never restores the pending queue.
+   the normal snapshot) and never restores the pending queue. When auto-clear is
+   enabled, a restored passage gets the full configured duration at startup.
    **Show Again** (Phase 4: showing a passage from display history) is
    that same action, not a third door: the console sends a history entry's
    coordinates, so the server re-validates and re-resolves them. Consequences that are deliberate, not accidents: a

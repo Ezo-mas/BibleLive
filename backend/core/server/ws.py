@@ -198,13 +198,18 @@ async def _handle_set_clear_mode(
 async def _handle_set_auto_clear(
     websocket: WebSocket, app_state: AppState, message: dict[str, Any]
 ) -> None:
-    """Persist the auto-clear duration after the action has been validated."""
-    if not await app_state.set_auto_clear(message["seconds"]):
-        await _ws_error(websocket, app_state, "set_auto_clear", "Could not save auto-clear setting")
-        return
+    """Apply the validated duration even if it cannot be saved."""
+    saved = await app_state.set_auto_clear(message["seconds"])
     await app_state.connection_manager.send_to_operator(
         OperatorDisplaySettingsConfirmed(data=app_state.display_settings).model_dump()
     )
+    if not saved:
+        await _ws_error(
+            websocket,
+            app_state,
+            "set_auto_clear",
+            "Change applied for this session. It may be lost after restart.",
+        )
 
 
 async def _handle_set_stream_overlay(

@@ -127,10 +127,6 @@ def kjv_db(tmp_path_factory: pytest.TempPathFactory) -> Path:
     return db_path
 
 
-async def _keep_database_open() -> None:
-    """Stands in for the shared app's ``AppState.shutdown`` until the session ends."""
-
-
 @pytest.fixture(scope="session")
 def app(kjv_db: Path, tmp_path_factory: pytest.TempPathFactory):
     """Build the FastAPI app once per test session, backed by the test database.
@@ -148,13 +144,18 @@ def app(kjv_db: Path, tmp_path_factory: pytest.TempPathFactory):
     config.DB_PATH = str(kjv_db)
     config.SETTINGS_PATH = str(tmp_path_factory.mktemp("settings") / "server_settings.json")
     application = create_app()
+    state = application.state.app_state
+
+    async def keep_database_open() -> None:
+        state.cancel_auto_clear()
+
     # Every test's ``client`` enters a TestClient, which runs the app's lifespan on entry and
     # exit; its exit awaits ``AppState.shutdown()``, which closes the database, and this app is
-    # shared by the whole session. So the shared state's shutdown does nothing, and the
-    # teardown below closes the database once. Patching our own AppState rather than
+    # shared by the whole session. Stop the timer in the test client's loop and let the
+    # teardown below close the database once. Patching our own AppState rather than
     # Starlette's router keeps this independent of Starlette internals. Apps a test builds
     # itself with ``create_app()`` keep the real shutdown.
-    application.state.app_state.shutdown = _keep_database_open
+    state.shutdown = keep_database_open
     try:
         yield application
     finally:
@@ -191,6 +192,7 @@ def reset_app_state(app_state, tmp_path: Path):
     app_state.follow_along = FollowAlong()
     app_state.book_names = BookNames()
     yield
+    app_state.cancel_auto_clear()
     app_state.connection_manager = app_state.connection_manager.__class__()
 
 

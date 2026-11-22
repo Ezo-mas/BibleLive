@@ -275,6 +275,7 @@ export const lt: Record<MessageKey, MessageEntry> = {
   'stage.onDisplay': 'Ekrane',
   'stage.onDisplayAria': 'Dabar ekrane',
   'stage.noDisplay': 'Ekranas neprijungtas',
+  'stage.autoClear': 'Išvalymas po {seconds} sek.',
   'stage.liveOn': 'Eteryje',
   'stage.liveOff': 'Ne eteryje',
   'stage.liveOnTitle': 'Vėl rodyti ekraną auditorijai',

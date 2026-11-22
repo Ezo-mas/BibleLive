@@ -370,18 +370,18 @@ class AppState:
     def restart_auto_clear(self) -> None:
         self._display_session.restart_auto_clear()
 
+    def cancel_auto_clear(self) -> None:
+        self._display_session.cancel_auto_clear()
+
     async def set_auto_clear(self, seconds: int | None) -> bool:
-        """Save the validated duration before changing the running timer."""
-        if seconds == self.display_settings.auto_clear_seconds:
-            return True
-        if not self.settings_store.save_auto_clear_seconds(seconds):
-            return False
-        self.display_settings = self.display_settings.model_copy(
-            update={"auto_clear_seconds": seconds}
-        )
-        self.restart_auto_clear()
-        await self.send_display_settings()
-        return True
+        """Apply the validated duration immediately and report whether it was saved."""
+        if seconds != self.display_settings.auto_clear_seconds:
+            self.display_settings = self.display_settings.model_copy(
+                update={"auto_clear_seconds": seconds}
+            )
+            self.restart_auto_clear()
+            await self.send_display_settings()
+        return self.settings_store.save_auto_clear_seconds(seconds)
 
     async def set_live(self, live: object) -> bool:
         """Put the audience display on air or take it off. Returns False if invalid.
@@ -670,7 +670,7 @@ class AppState:
 
     async def shutdown(self) -> None:
         """Best-effort bounded flush and listener shutdown, then close the database."""
-        self._display_session.cancel_auto_clear()
+        self.cancel_auto_clear()
         try:
             try:
                 await self.runtime_state.flush()
@@ -803,11 +803,11 @@ class AppState:
             logger.warning(f"Follow-along left a hint to the operator: {e.message}")
             return None
 
-    async def clear_display(self) -> None:
-        return await self._display_session.clear_display()
+    async def clear_display(self, *, automatic: bool = False) -> None:
+        return await self._display_session.clear_display(automatic=automatic)
 
-    async def clear_and_notify(self) -> None:
-        return await self._display_session.clear_and_notify()
+    async def clear_and_notify(self, *, automatic: bool = False) -> None:
+        return await self._display_session.clear_and_notify(automatic=automatic)
 
     async def clear_pending(self) -> None:
         return await self._display_session.clear_pending()
