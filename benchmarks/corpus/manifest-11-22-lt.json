@@ -1,0 +1,23 @@
+{
+  "language": "lt",
+  "schema_version": 1,
+  "recordings": [
+    {
+      "id": "11-22-live-lt",
+      "source": "BibleLive live session 2026-11-22_113249.wav",
+      "file": "2026-11-22_113249.wav",
+      "duration_s": 4923.48,
+      "sha256": "f5665b13a8f24f497b2e295a59fe4fe3678c8ec25ebce75f5c139a6447579bbf",
+      "sample_rate_hz": 16000,
+      "channels": 1,
+      "speakers": [
+        "speaker-lt"
+      ],
+      "audio_quality": "live-event desk feed, 16 kHz mono as captured live (not loudness-normalized)",
+      "language": "lt",
+      "annotation_provenance": "partially-verified",
+      "gold_file": "gold/11-22-live-lt.gold.jsonl",
+      "notes": "Fitted service used to tune PR #126. Citations and approximate WAV positions are from the operator's notes; the timing windows use the live utterances carrying the cited verse or chapter. Luke 7:50 was cited twice, about four minutes apart. Luke 7:37–39 were follow-along and are excluded from citation gold."
+    }
+  ]
+}
