@@ -42,6 +42,13 @@ current order is probably fine.
 
 Check on a real phone; the browser pane only simulates mouse clicks.
 
+### Auto-clear timer
+A Settings option that clears the display automatically once a verse has been
+on screen for a set time, so a forgotten verse doesn't stay up. The operator
+types the time into a number field limited to a minimum and maximum; off by
+default. Showing a new verse or following along restarts the timer, and a manual
+Clear still works at any time.
+
 ## Launcher follow-ups
 
 - **Live wave from real levels.** The launcher's live-state wave (`--wave-live`)
