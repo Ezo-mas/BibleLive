@@ -20,6 +20,22 @@ to the same release.
   while an on-air passage is timed. Showing a passage, including through
   follow-along, starts a fresh timer. If a passage is restored after a server
   restart, it gets the full duration again.
+- **Phones and tablets:** tapping a row in Pending, History or Plan reveals a
+  Show button on that row. Find Scripture has separate Show and Add to Plan
+  buttons and no longer covers Clear, Live and +1. A compact bar shows what is on
+  the display when the preview scrolls out of view; tap it to jump back. Clear,
+  Live and +1 have larger touch targets, and Logout moves into Settings on narrow
+  screens. On touchscreen laptops and iPads with a trackpad, only a mouse
+  double-click shows a row, so a finger double-tap no longer shows one by
+  accident.
+
+### Detection
+- Fixes for misreads from the 2026-11-22 service: a speaker correcting a
+  numbered book ("antras karalius, antrą karalių knygą, šeštas skyrius") now
+  gives 2 Kings 6 instead of an auto-shown 2 Kings 2; a numbered book named
+  without a number ("antra karalių") takes over from the previous book; Hebrews
+  is recognised as "Laiškas žydams" / "Žydams 11 skyrius". New spelling fixes for
+  Proverbs ("Patolių"), Luke ("Mūko") and "eilutė" misheard by the speech models.
 
 ### Install
 - The Windows installer and the Mac app ship the Lithuanian Bible (`ltb`) again: a fresh
