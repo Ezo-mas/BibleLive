@@ -5,14 +5,6 @@ defects are tracked in [`TECH_DEBT.md`](TECH_DEBT.md).
 
 ## Follow-ups
 
-### Two-model speech on a 4 GB GPU with OBS running
-Kmynas + Canary has not been run with real audio on a 4 GB card next to OBS. The
-2026-10-18 attempt on a GTX 1650 Ti received digital silence, so the ~2.2 GB of
-VRAM it showed was the models at rest; while transcribing they used ~3.15 GB on
-the development PC. Test with OBS streaming and live sound: watch dedicated and
-shared GPU memory in Task Manager and the transcription times in the session
-log. If shared memory climbs or transcription lags, use the CPU tier on that PC.
-
 ### macOS: second screen, and the network prompt naming Python
 From the first Mac test (M1, 2026-11-17, PR #94). The display opening full
 screen on an extended display is untested (no USB-C adapter on hand); check it
@@ -24,27 +16,38 @@ Running the server under a BibleLive-named binary would remove it. Also
 unchecked: whether macOS asks for the microphone again after a re-downloaded
 update.
 
-### Follow-along rolling window at a service
-Check that the text size stays steady and that the next verse is offered
-promptly after a rolled passage goes up. The three-verse window shipped in
-[PR #103](https://github.com/Ezo-mas/BibleLive/pull/103).
-
 ## Planned console and display features
 
-### Show a row on touch screens
-[PR #115](https://github.com/Ezo-mas/BibleLive/pull/115) removed the rows' Show
-buttons: a row is shown by double-click or Enter. A phone or tablet (e.g. via the
-operator QR code) has no Enter and no hover hint, and double-tap is unreliable in
-some mobile browsers (iOS Safari), so showing a row there is untested and may not
-work. Agreed design, touch only (`@media (hover: none) and (pointer: coarse)`),
-desktop unchanged: a tap highlights the row and reveals one compact gold Show button
-on that row only, placed in space the row already has (the timestamp line in
-Pending and History, the tools group in Plan) so nothing shifts. History rows take
-the highlight on touch so the button has a row to appear on. Rows get
-`touch-action: manipulation` (no double-tap zoom, so double-tap still works),
-`user-select: none` and `-webkit-touch-callout: none` on touch. Rejected: a Show
-button on every row (clutter) and a sticky bottom action bar (far from the row).
+### Operator console on phones and tablets
+Checked on a real phone at the 2026-11-22 service. Two problems, in order:
+
+1. **Showing a verse.** [PR #115](https://github.com/Ezo-mas/BibleLive/pull/115)
+   removed the rows' Show buttons: a row is shown by double-click or Enter. On a
+   phone or tablet (e.g. via the operator QR code) there is no Enter and no hover
+   hint, and double-tap proved unreliable in mobile browsers. Agreed design, touch
+   only (`@media (hover: none) and (pointer: coarse)`), desktop unchanged: a tap
+   highlights the row and reveals one compact gold Show button on that row only,
+   placed in space the row already has (the timestamp line in Pending and History,
+   the tools group in Plan) so nothing shifts. History rows take the highlight on
+   touch so the button has a row to appear on. Rows get `touch-action: manipulation`
+   (no double-tap zoom, so double-tap still works), `user-select: none` and
+   `-webkit-touch-callout: none` on touch. Rejected: a Show button on every row
+   (clutter) and a sticky bottom action bar (far from the row).
+2. **Search hides the header controls.** On a narrow screen the scripture search
+   covers the Clear, Live and +1 buttons, the ones an operator needs most during
+   a service. They must stay reachable while search is open.
+
+Minor, maybe: put the detected references before the Plan on narrow screens. The
+current order is probably fine.
+
 Check on a real phone; the browser pane only simulates mouse clicks.
+
+### Auto-clear timer
+A Settings option that clears the display automatically once a verse has been
+on screen for a set time, so a forgotten verse doesn't stay up. The operator
+types the time into a number field limited to a minimum and maximum; off by
+default. Showing a new verse or following along restarts the timer, and a manual
+Clear still works at any time.
 
 ## Launcher follow-ups
 
@@ -95,6 +98,15 @@ monkeypatch `audio.pipeline.time.monotonic`, which replaces `time.monotonic`
 for every thread in the process. pytest's faulthandler printed no stack, so it
 may not be a native crash: check the job's step timing and any `os._exit` in tests.
 
+### Replay a session log into a running server
+A dev command (make target or CLI flag) that feeds a session `.jsonl` into the
+existing pipeline endpoints (transcripts and references) at 1x or 10x speed, so
+the operator queue, auto-approve timing, follow-along hints and the phone layout
+can be tested at a desk without a microphone or a 45-minute sermon. It only
+calls routes that already exist: no protocol or approval-flow change. It skips
+the speech models, so it cannot test audio or VAD; detection correctness stays
+with `benchmarks/session_replay.py`. Do it before the phone console work.
+
 ### Profile slow tests on Windows
 Run `pytest --durations=15` on Windows to recheck these audit findings:
 
@@ -123,3 +135,16 @@ correct one, on the same corpus it was found on, so it needs held-out services
 before it is adopted. Any change here is in `audio/ensemble.py`, which only the
 two-model tier runs, so the Kmynas CPU tier cannot change.
 
+
+### Quoted verses with no reference spoken
+Catch a famous verse quoted without its reference ("Nes Dievas taip pamilo
+pasaulį ...") by matching the transcript against the LTB text, e.g. SQLite FTS5
+or trigrams over `bible_ltb.sqlite`. Risks: preachers paraphrase or quote other
+translations, STT garbles words, and many nearby verses share wording (533 pairs
+within 3 verses; see the follow-along notes in `benchmarks/BASELINE_NOTES.md`).
+So it needs a high bar (a long run of consecutive matching words) and would only
+ever be a low-confidence suggestion in Pending, never auto-shown. The corpus gold
+marks cited references only, so scoring it needs quotes annotated on a few
+services first. First step, no pipeline code: search the cached transcripts of
+the 15 corpus services against LTB offline, count the hits and judge a sample by
+hand. Build it only if real quotes clearly outnumber the junk.

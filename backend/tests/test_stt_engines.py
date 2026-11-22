@@ -71,6 +71,38 @@ def test_kmynas_map_reads_ievute_as_the_verse_word():
     assert rewrite("pasakė Ievutei") == "pasakė Ievutei"
 
 
+def test_maps_read_patoliu_as_proverbs():
+    # Live service 2026-11-22: Proverbs 16:33 missed by both models.
+    kmynas, canary = spelling_map("kmynas", "lt"), spelling_map("canary", "lt")
+    assert kmynas is not None and canary is not None
+    assert kmynas("iš tikrųjų Patolių knygoje") == "iš tikrųjų Patarlių knygoje"
+    assert canary("iš tikrųjų patalių knygoje") == "iš tikrųjų patarlių knygoje"
+    # "patalų" (bedding) is a real word and stays.
+    assert canary("patalų 3") == "patalų 3"
+
+
+def test_kmynas_map_splits_a_swallowed_verse_word():
+    # Live service 2026-11-22: "Izaijo dvidešim šeštas skyrius, trečiautė".
+    rewrite = spelling_map("kmynas", "lt")
+    assert rewrite is not None
+    assert rewrite("šeštas skyrius, trečiautė, tu") == "šeštas skyrius, trečia eilutė, tu"
+    assert rewrite("septintautę") == "septinta eilutę"
+    # Same service: "ir penkiasdešimtai eutojė" (Luke 7:50).
+    assert rewrite("penkiasdešimtai eutojė") == "penkiasdešimtai eilutėje"
+    assert rewrite("penkiasdešimtai eutė") == "penkiasdešimtai eilutė"
+    # Words that merely end in "-autė" stay.
+    assert rewrite("kepurautė") == "kepurautė"
+
+
+def test_canary_map_strips_the_os_ending():
+    # Live service 2026-11-22: "nuo 36-os eilutės" was read as verses 3-6.
+    rewrite = spelling_map("canary", "lt")
+    assert rewrite is not None
+    assert rewrite("nuo 36-os eilutės") == "nuo 36 eilutės"
+    # Same utterance: "Mūko" for "Luko" left the old Isaiah context in charge.
+    assert rewrite("Mūko septintam skyriuje") == "Luko septintam skyriuje"
+
+
 # ---------------------------------------------------------------------------
 # Agreement merge
 # ---------------------------------------------------------------------------

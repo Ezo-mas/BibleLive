@@ -630,6 +630,9 @@ BOOK_STEMS: frozenset[str] = frozenset(
         "vuk",  # STT writes V for L ("Vuko" for "Luko")
         "zacharij",
         "zaj",  # STT drops the initial I ("Zajo" for "Izaijo")
+        # Hebrews as many preachers name it ("Laiškas žydams"). Only the
+        # dative folds: "žydai", "žydų" (the Jews) stay ordinary words.
+        "zydam",
     }
 )
 _STEMS_BY_LENGTH: tuple[str, ...] = tuple(sorted(BOOK_STEMS, key=len, reverse=True))
@@ -658,7 +661,8 @@ _NOT_BOOK_PREFIXES = (
 )
 
 
-_FUZZY_SKIP_STEMS = frozenset({"pastal", "apastal", "apastol", "apostol", "pradz"})
+# "zydam" is one edit from "zydai" (the Jews): never guess it.
+_FUZZY_SKIP_STEMS = frozenset({"pastal", "apastal", "apastol", "apostol", "pradz", "zydam"})
 
 
 def fuzzy_book_stem(word: str) -> str | None:
@@ -931,6 +935,26 @@ def _verse_span_before_verse_word(toks: list[Token], j: int) -> tuple[list[Token
     return None
 
 
+def _drop_plain_zydams(toks: list[Token]) -> list[Token]:
+    """Keep "žydams" as Hebrews only when it is cited as a book.
+
+    "Jėzus sakė žydams du dalykus" is "to the Jews", not Hebrews 2. The name
+    counts after "laiškas" ("Laiškas žydams") or when a chapter/verse word
+    follows within two tokens ("Žydams 11 skyrius"); anywhere else it goes
+    back to a plain word.
+    """
+    out = list(toks)
+    for k, t in enumerate(out):
+        if t != "zydam":
+            continue
+        cited = (k and out[k - 1] == "laiskas") or any(
+            w in CHAPTER_WORDS or w in VERSE_WORDS for w in out[k + 1 : k + 3]
+        )
+        if not cited:
+            out[k] = "zydams"
+    return out
+
+
 def postprocess(toks: list[Token]) -> list[Token]:
     """Move postpositional chapter/verse/psalm words before their number.
 
@@ -945,6 +969,7 @@ def postprocess(toks: list[Token]) -> list[Token]:
     not re-run it.
     """
     toks = _collapse_psalm_stutter(toks)
+    toks = _drop_plain_zydams(toks)
     # A dash right after the chapter word is punctuation, not a range: there
     # is no number before it ("pirmas skyrius – trisdešim penkta ...").
     toks = [t for k, t in enumerate(toks) if not (t == "-" and k and toks[k - 1] == CHAPTER)]
@@ -1178,7 +1203,16 @@ BOOKS: list[tuple[str, int, list[str]]] = [
     (
         "Hebrews",
         13,
-        ["laiskas hebraj", "hebraj", "laiskas hebrej", "hebrej", "laiskas jebraj", "jebraj"],
+        [
+            "laiskas hebraj",
+            "hebraj",
+            "laiskas hebrej",
+            "hebrej",
+            "laiskas jebraj",
+            "jebraj",
+            "laiskas zydam",
+            "zydam",
+        ],
     ),
     ("James", 5, ["jokub laiskas", "jokub"]),
     ("1 Peter", 5, ["petr laiskas", "petr"]),
