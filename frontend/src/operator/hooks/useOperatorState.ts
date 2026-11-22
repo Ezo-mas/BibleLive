@@ -331,6 +331,10 @@ export function useOperatorState(): OperatorState {
       dispatch({ type: 'set_setting', action: { action: 'set_clear_mode', clear_mode: next } }),
     [dispatch]
   )
+  const setAutoClearSeconds = useCallback(
+    (seconds: number | null) => dispatch({ type: 'set_auto_clear', seconds }),
+    [dispatch]
+  )
   const setStreamOverlay = useCallback(
     (next: StreamOverlaySettings) =>
       dispatch({
@@ -421,11 +425,13 @@ export function useOperatorState(): OperatorState {
     verseLimit: state.settings.verseLimit,
     displayTheme: state.settings.theme,
     clearMode: state.settings.clearMode,
+    autoClearSeconds: state.confirmed.autoClearSeconds,
     streamOverlay: state.settings.streamOverlay,
     idleImage: state.idleImage,
     setDisplayVerseLimit,
     setDisplayBackground,
     setDisplayClearMode,
+    setAutoClearSeconds,
     setStreamOverlay,
     live: state.confirmed.live,
     setLive,

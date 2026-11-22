@@ -35,6 +35,7 @@ EVENT_FIELDS = {
         "auto_approved",
     },
     "cleared": set(),
+    "auto_cleared": set(),
     "live_changed": {"live"},
     "queue_cleared": {"count"},
     "history_cleared": {"count"},

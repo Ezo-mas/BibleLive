@@ -219,6 +219,7 @@ export default function App() {
             search={searchInPreview ? search : undefined}
             reference={operator.currentDisplay}
             displayMissing={operator.displayMissing}
+            autoClearSeconds={operator.isConnected ? operator.autoClearSeconds : null}
             verseLimit={operator.verseLimit}
             displayTheme={operator.displayTheme}
             live={operator.live}
@@ -342,6 +343,8 @@ export default function App() {
         onThemeChange={operator.setDisplayBackground}
         clearMode={operator.clearMode}
         onClearModeChange={operator.setDisplayClearMode}
+        autoClearSeconds={operator.autoClearSeconds}
+        onAutoClearChange={operator.setAutoClearSeconds}
         streamOverlay={operator.streamOverlay}
         onStreamOverlayChange={operator.setStreamOverlay}
         spokenLanguage={operator.spokenLanguage}

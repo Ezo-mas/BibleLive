@@ -14,6 +14,13 @@ to the same release.
 
 ## Unreleased
 
+### Operator console
+- **Auto-clear timer** in Settings → Display clears a passage after 5–600 seconds
+  on air. It starts Off. The console shows the selected duration beside Clear
+  while an on-air passage is timed. Showing a passage, including through
+  follow-along, starts a fresh timer. If a passage is restored after a server
+  restart, it gets the full duration again.
+
 ### Install
 - The Windows installer and the Mac app ship the Lithuanian Bible (`ltb`) again: a fresh
   install shows Lithuanian verse text without copying `bible_ltb.sqlite` in by hand. 0.2.1

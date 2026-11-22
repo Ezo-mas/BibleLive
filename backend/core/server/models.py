@@ -170,6 +170,9 @@ class StreamOverlaySettings(BaseModel):
     align: Literal["left", "center"] = "left"
 
 
+AutoClearSeconds = Annotated[int, Field(strict=True, ge=5, le=600)]
+
+
 class DisplaySettings(BaseModel):
     """Operator-controlled presentation settings for the audience display.
 
@@ -189,6 +192,7 @@ class DisplaySettings(BaseModel):
         default="idle",
         description="After a passage is cleared, show the idle picture or a blank screen",
     )
+    auto_clear_seconds: AutoClearSeconds | None = None
     stream_overlay: StreamOverlaySettings = Field(default_factory=StreamOverlaySettings)
     idle_image: IdleScreenPicture | None = Field(
         default=None,
@@ -504,6 +508,13 @@ class OperatorSetClearModeAction(BaseModel):
     clear_mode: Literal["idle", "blank"]
 
 
+class OperatorSetAutoClearAction(BaseModel):
+    """Action to set the display timeout in seconds, or turn it off with null."""
+
+    action: Literal["set_auto_clear"]
+    seconds: AutoClearSeconds | None
+
+
 class OperatorSetStreamOverlayAction(BaseModel):
     """Action to replace the OBS overlay layout."""
 
@@ -586,6 +597,7 @@ OperatorAction = Annotated[
     | OperatorSetVerseLimitAction
     | OperatorSetDisplayThemeAction
     | OperatorSetClearModeAction
+    | OperatorSetAutoClearAction
     | OperatorSetStreamOverlayAction
     | OperatorSetLiveAction
     | OperatorSetAutoModeAction

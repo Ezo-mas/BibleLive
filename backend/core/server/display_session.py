@@ -1,6 +1,8 @@
 """On-screen passage, pending queue, history and authorized display paths."""
 
+import asyncio
 import logging
+from asyncio import sleep
 from collections.abc import Awaitable, Callable
 from enum import Enum
 from typing import Literal, Protocol
@@ -86,7 +88,13 @@ class DisplaySessionOwner(Protocol):
         on_no_text: Callable[[], Awaitable[None]] | None = None,
     ) -> BibleReference | ApprovalRefusal | None: ...
 
-    async def clear_display(self) -> None: ...
+    def restart_auto_clear(self) -> None: ...
+
+    def cancel_auto_clear(self) -> None: ...
+
+    async def clear_display(self, *, automatic: bool = False) -> None: ...
+
+    async def clear_and_notify(self, *, automatic: bool = False) -> None: ...
 
     async def clear_pending(self) -> None: ...
 
@@ -103,6 +111,7 @@ class DisplaySession:
     def __init__(self, owner: DisplaySessionOwner) -> None:
         self._owner = owner
         self.current_display: BibleReference | None = None
+        self._auto_clear_task: asyncio.Task[None] | None = None
         self.pending_references: list[BibleReference] = []
         self.reference_history: list[BibleReference] = []
         self._auto_approval_ids: set[str] = set()
@@ -253,6 +262,7 @@ class DisplaySession:
             return ApprovalRefusal.NO_TEXT
 
         self.current_display = ref
+        self._owner.restart_auto_clear()
 
         # Keep history bounded to prevent unbounded growth
         self._owner._record_history(ref, auto_approved=ref.id in self._auto_approval_ids)
@@ -415,6 +425,7 @@ class DisplaySession:
         )
 
         self.current_display = ref
+        self._owner.restart_auto_clear()
 
         self._owner._record_history(ref)
 
@@ -443,6 +454,7 @@ class DisplaySession:
         self._owner.display_settings = self._owner.display_settings.model_copy(
             update={"live": live}
         )
+        self._owner.restart_auto_clear()
         try:
             self._owner.service_log.emit("live_changed", live=live)
         except Exception:
@@ -471,22 +483,51 @@ class DisplaySession:
         if self.current_display is not None:
             await self._owner._send_display_reference(self.current_display)
 
-    async def clear_display(self) -> None:
+    def cancel_auto_clear(self) -> None:
+        if self._auto_clear_task is not None:
+            self._auto_clear_task.cancel()
+            self._auto_clear_task = None
+
+    def restart_auto_clear(self) -> None:
+        """Give the on-air passage the full configured duration."""
+        self._owner.cancel_auto_clear()
+        seconds = self._owner.display_settings.auto_clear_seconds
+        if seconds is not None and self._owner.display_settings.live and self.current_display:
+            self._auto_clear_task = asyncio.create_task(
+                self._clear_after(seconds, self.current_display)
+            )
+
+    async def _clear_after(self, seconds: int, passage: BibleReference) -> None:
+        task = asyncio.current_task()
+        try:
+            await sleep(seconds)
+            if self._auto_clear_task is task and self.current_display is passage:
+                # The clear path cancels the outstanding timer. Detach this task first.
+                self._auto_clear_task = None
+                await self._owner.clear_and_notify(automatic=True)
+        except Exception:
+            logger.exception("Could not auto-clear the display")
+        finally:
+            if self._auto_clear_task is task:
+                self._auto_clear_task = None
+
+    async def clear_display(self, *, automatic: bool = False) -> None:
         """Clear the current display"""
         self.current_display = None
+        self._owner.cancel_auto_clear()
         try:
             self._owner.runtime_state.clear()
         except Exception:
             logger.warning("Could not record cleared display", exc_info=True)
         try:
-            self._owner.service_log.emit("cleared")
+            self._owner.service_log.emit("auto_cleared" if automatic else "cleared")
         except Exception:
             logger.warning("Could not log cleared display", exc_info=True)
         await self._owner._send_display_clear()
 
-    async def clear_and_notify(self) -> None:
+    async def clear_and_notify(self, *, automatic: bool = False) -> None:
         """Clear the display and confirm it to operators."""
-        await self._owner.clear_display()
+        await self._owner.clear_display(automatic=automatic)
         await self._owner.connection_manager.send_to_operator(
             OperatorClearConfirmed(data={}).model_dump()
         )

@@ -18,6 +18,7 @@ export interface LivePanelProps {
   reference: BibleReference | null
   /** True when the server confirms zero audience displays. */
   displayMissing?: boolean
+  autoClearSeconds?: number | null
   verseLimit: VerseLimit
   displayTheme: DisplayTheme
   /** The picture the display shows while idle, shown here too while nothing is on screen. */
@@ -50,6 +51,7 @@ export function LivePanel({
   panelRef,
   reference,
   displayMissing = false,
+  autoClearSeconds = null,
   verseLimit,
   displayTheme,
   idleImage = null,
@@ -100,6 +102,11 @@ export function LivePanel({
         <div className="operator-live-actions">
           {expandAction}
           {clearAction}
+          {live && reference && autoClearSeconds !== null && (
+            <StatusBadge variant="neutral">
+              {t('stage.autoClear', { seconds: autoClearSeconds })}
+            </StatusBadge>
+          )}
           {onLiveChange && (
             <Button
               type="button"

@@ -112,6 +112,8 @@ export interface DisplaySettings {
   theme: DisplayTheme
   /** An older server omits it, which keeps the idle picture after clearing. */
   clear_mode?: ClearMode
+  /** Null or absent means automatic clearing is off. */
+  auto_clear_seconds?: number | null
   /** An older server omits it, which keeps the default layout. */
   stream_overlay?: StreamOverlaySettings
   /** Optional and additive: an older server omits it, which means a blank screen. */
@@ -237,6 +239,11 @@ export interface SetClearModeAction {
   clear_mode: ClearMode
 }
 
+export interface SetAutoClearAction {
+  action: 'set_auto_clear'
+  seconds: number | null
+}
+
 /**
  * Put the audience display on air (`live: true`) or take it off. Off air the server
  * sends displays no passage and they show a black screen; the console keeps its
@@ -292,6 +299,7 @@ export type OperatorAction =
   | SetVerseLimitAction
   | SetDisplayThemeAction
   | SetClearModeAction
+  | SetAutoClearAction
   | SetStreamOverlayAction
   | SetLiveAction
   | SetAutoModeAction
