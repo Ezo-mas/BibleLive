@@ -5,6 +5,7 @@ so a CLI (or a later GUI) can sit on top.
 """
 
 import contextlib
+import json
 import logging
 import os
 import signal as signal
@@ -53,6 +54,34 @@ class RestartMessage(str):
         )
         message.attempt = attempt
         message.delay = delay
+        return message
+
+
+class PortInUseMessage(str):
+    """CLI guidance and the translation key for the launcher windows."""
+
+    key: str
+    values: dict[str, object]
+
+    def __new__(
+        cls, port: int, owner: platform.PortOwner | None, bible_live: bool
+    ) -> "PortInUseMessage":
+        values: dict[str, object] = {"detail": port}
+        if bible_live:
+            key = "err.port_in_use_biblelive"
+            reason = f"Another BibleLive is already running on port {port}."
+        elif owner:
+            key = "err.port_in_use_program"
+            values["program"] = owner.program
+            reason = f"Port {port} is in use by {owner.program} (PID {owner.pid})."
+        else:
+            key = "err.port_in_use"
+            reason = f"Port {port} is already in use."
+        action = (
+            "Close it" if owner or bible_live else "Close the other BibleLive (or whatever uses it)"
+        )
+        message = super().__new__(cls, f"{reason} {action} or choose another port with --port.")
+        message.key, message.values = key, values
         return message
 
 
@@ -242,6 +271,26 @@ def port_in_use(port: int, host: str = LOOPBACK) -> bool:
         return sock.connect_ex((host, port)) == 0
 
 
+class _NoHealthRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, *_args: object, **_kwargs: object) -> None:
+        return None
+
+
+def bible_live_on_port(port: int) -> bool:
+    """Identify the local listener from its own health response."""
+    try:
+        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), _NoHealthRedirect())
+        with opener.open(f"http://{LOOPBACK}:{port}/healthz", timeout=1) as response:
+            payload = response.read(4097)
+        if len(payload) > 4096:
+            return False
+        data = json.loads(payload)
+        return isinstance(data, dict) and data.get("status") == "healthy" and "version" in data
+    except Exception:
+        # An unrelated listener may time out, close mid-response, or send arbitrary bytes.
+        return False
+
+
 def http_ready(url: str, timeout: float = 2.0) -> bool:
     try:
         with urllib.request.urlopen(url, timeout=timeout) as resp:  # noqa: S310 (loopback)
@@ -296,6 +345,7 @@ class Launcher:
         ready_timeout: float = READY_TIMEOUT_S,
         poll_interval: float = 0.5,
         clock: Callable[[], float] = time.monotonic,
+        health_probe: Callable[[int], bool] = bible_live_on_port,
     ) -> None:
         self.plan = plan
         self._on_event = on_event or _ignore_event
@@ -303,6 +353,7 @@ class Launcher:
         self._ready_timeout = ready_timeout
         self._poll_interval = poll_interval
         self._clock = clock
+        self._health_probe = health_probe
         self._stop = threading.Event()
         self._server: subprocess.Popen[bytes] | None = None
         self._audio: subprocess.Popen[bytes] | None = None
@@ -388,10 +439,10 @@ class Launcher:
         for warning in self.plan.warnings:
             self._emit("warning", warning)
         if port_in_use(self.plan.port):
+            owner = platform.port_owner(self.plan.port)
             self._fail(
                 "port_in_use",
-                f"Port {self.plan.port} is already in use. Close the other BibleLive "
-                "(or whatever uses it) or choose another port with --port.",
+                PortInUseMessage(self.plan.port, owner, self._health_probe(self.plan.port)),
                 str(self.plan.port),
             )
             return 2

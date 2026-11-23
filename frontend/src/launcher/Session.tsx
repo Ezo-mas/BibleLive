@@ -15,6 +15,7 @@ import { Icon } from './Icon'
 import type { LauncherData } from './launcherReducer'
 import { METER_TICKS, speechTargetPosition } from './levelEnvelope'
 import { noSignal } from './noSignal'
+import type { PortConflict } from './usePortCheck'
 
 const liveWave = [
   7, 13, 9, 19, 27, 16, 31, 52, 37, 71, 34, 49, 21, 12, 22, 44, 78, 61, 95, 69, 47, 26, 38, 51, 24,
@@ -52,6 +53,7 @@ interface HeroProps {
   pending: 'start' | 'stop' | null
   stopped: boolean
   error?: string
+  portConflict: PortConflict | null
   onSession: () => void
   onOperator: () => void
   onDetails: () => void
@@ -63,6 +65,7 @@ export function Hero({
   pending,
   stopped,
   error,
+  portConflict,
   onSession,
   onOperator,
   onDetails,
@@ -99,14 +102,16 @@ export function Hero({
             <span className="bl-dot" aria-hidden="true" />
             {status}
           </span>
-          {warning && (
+          {warning ? (
             <span className="bl-warning">
               <span role="status">{warning}</span>
               <button type="button" onClick={onDetails}>
                 {t('launcher.showDetails')}
               </button>
             </span>
-          )}
+          ) : portConflict ? (
+            <PortWarning conflict={portConflict} />
+          ) : null}
         </div>
         <h1 id="bl-session">
           {t(
@@ -156,6 +161,26 @@ export function Hero({
       </div>
       <Waveform waveRef={waveRef} />
     </section>
+  )
+}
+
+export function PortWarning({ conflict, id }: { conflict: PortConflict; id?: string }) {
+  const { t } = useI18n()
+  const key = conflict.bibleLive
+    ? 'launcher.portBusyBibleLive'
+    : conflict.program
+      ? 'launcher.portBusyProgram'
+      : 'launcher.portBusy'
+  const text = t(key, { port: String(Number(conflict.port)), program: conflict.program ?? '' })
+  return (
+    <span
+      className="bl-warning bl-port-warning"
+      id={id}
+      role={id ? undefined : 'status'}
+      title={text}
+    >
+      {text}
+    </span>
   )
 }
 
@@ -254,6 +279,7 @@ interface SetupProps {
   onMicrophone: (device: Form['input_device']) => void
   onRefresh: () => void
   onProjector: () => void
+  onIdentify: () => void
   /** The audience QR toggle; absent when the displays cannot show one (no network address). */
   audienceQr?: { shown: boolean; busy: boolean; onToggle: () => void }
 }
@@ -269,6 +295,7 @@ export function Setup({
   onMicrophone,
   onRefresh,
   onProjector,
+  onIdentify,
   audienceQr,
 }: SetupProps) {
   const { t } = useI18n()
@@ -342,6 +369,17 @@ export function Setup({
           >
             <Icon name="monitor" />
           </button>
+          {data.state.has_monitors && (
+            <button
+              type="button"
+              className="bl-button"
+              aria-label={t('launcher.identifyScreens')}
+              title={t('launcher.identifyScreens')}
+              onClick={onIdentify}
+            >
+              <Icon name="identify" />
+            </button>
+          )}
           {audienceQr && (
             <button
               type="button"

@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import { App } from './App'
-import type { SpeechCheck } from './bridge'
+import type { PortCheck, SpeechCheck } from './bridge'
 import { createDemoBridge } from './demoBridge'
 
 describe('launcher App', () => {
@@ -73,6 +73,97 @@ describe('launcher App', () => {
     expect(button).toBeEnabled()
     fireEvent.click(screen.getByRole('button', { name: 'Start session' }))
     expect(button).toBeDisabled()
+  })
+
+  it('identifies screens through the bridge when monitors are listed', async () => {
+    const bridge = createDemoBridge()
+    const identify = vi.spyOn(bridge, 'identify_screens')
+    render(<App bridge={bridge} />)
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Identify screens' }))
+    expect(identify).toHaveBeenCalledOnce()
+  })
+
+  it('checks on launch and Network, debounces port edits, and ignores stale replies', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance'] })
+    try {
+      const bridge = createDemoBridge()
+      const pending = new Map<string, (value: PortCheck) => void>()
+      const check = vi
+        .spyOn(bridge, 'check_port')
+        .mockImplementation(port => new Promise(resolve => pending.set(port, resolve)))
+      const app = render(<App bridge={bridge} />)
+      await act(async () => {})
+      expect(check.mock.calls).toEqual([['8000']])
+      fireEvent.click(screen.getByRole('button', { name: 'Advanced' }))
+      fireEvent.click(screen.getByRole('tab', { name: 'Network' }))
+      expect(check.mock.calls).toEqual([['8000'], ['8000']])
+
+      const port = screen.getByRole('spinbutton', { name: 'Server port' })
+      fireEvent.change(port, { target: { value: '8001' } })
+      await act(() => vi.advanceTimersByTimeAsync(200))
+      fireEvent.change(port, { target: { value: '8002' } })
+      await act(() => vi.advanceTimersByTimeAsync(399))
+      expect(check).toHaveBeenCalledTimes(2)
+      await act(() => vi.advanceTimersByTimeAsync(1))
+      expect(check).toHaveBeenLastCalledWith('8002')
+
+      const busy = { free: false, program: 'obs64.exe', pid: 1234, bibleLive: false }
+      await act(async () => pending.get('8002')?.(busy))
+      const warning = 'Port 8002 is in use by obs64.exe.'
+      expect(screen.getAllByText(warning)).toHaveLength(2)
+      expect(
+        screen.getAllByText(warning).filter(node => node.closest('.bl-status-strip'))
+      ).toHaveLength(1)
+      expect(port).toHaveAccessibleDescription(warning)
+      expect(screen.getByRole('button', { name: 'Start session' })).toBeEnabled()
+      await act(async () => pending.get('8000')?.(busy))
+      expect(screen.getAllByText(warning)).toHaveLength(2)
+      expect(screen.queryByText('Port 8000 is in use by obs64.exe.')).not.toBeInTheDocument()
+      fireEvent.focus(window)
+      expect(check).toHaveBeenCalledTimes(3)
+      await act(() => vi.advanceTimersByTimeAsync(3000))
+      fireEvent.focus(window)
+      fireEvent.focus(window)
+      expect(check.mock.calls).toEqual([['8000'], ['8000'], ['8002'], ['8002']])
+      app.unmount()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('shows only the Start-time error when a subsequent port check confirms the conflict', async () => {
+    const bridge = createDemoBridge()
+    const warning = 'Port 8000 is in use by obs64.exe.'
+    vi.spyOn(bridge, 'check_port').mockResolvedValue({
+      free: false,
+      program: 'obs64.exe',
+      pid: 1234,
+      bibleLive: false,
+    })
+    const poll = bridge.poll
+    let failed = false
+    vi.spyOn(bridge, 'start').mockImplementation(async () => {
+      failed = true
+      return { ok: true }
+    })
+    vi.spyOn(bridge, 'poll').mockImplementation(async () => {
+      const result = await poll()
+      return failed
+        ? { ...result, state: { ...result.state, error: { text: warning, port: 8000 } } }
+        : result
+    })
+    render(<App bridge={bridge} />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Advanced' }))
+    fireEvent.click(screen.getByRole('tab', { name: 'Network' }))
+    await waitFor(() => expect(screen.getAllByText(warning)).toHaveLength(2))
+    fireEvent.click(screen.getByRole('button', { name: 'Start session' }))
+    await screen.findByRole('button', { name: 'Show details' })
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Start session' })).toBeEnabled())
+    expect(screen.getAllByText(warning)).toHaveLength(1)
+    expect(screen.getByRole('spinbutton', { name: 'Server port' })).not.toHaveAccessibleDescription(
+      warning
+    )
   })
 
   it('renders Simple and persists the switch to Advanced with its three tabs', async () => {
@@ -311,7 +402,9 @@ describe('launcher App', () => {
       { timeout: 3000 }
     )
     const show = screen.getByRole('button', { name: 'Show on projector' })
-    expect(show.nextElementSibling).toBe(toggle)
+    const identify = screen.getByRole('button', { name: 'Identify screens' })
+    expect(show.nextElementSibling).toBe(identify)
+    expect(identify.nextElementSibling).toBe(toggle)
     expect(toggle).toHaveAttribute('aria-pressed', 'false')
     fireEvent.click(toggle)
     expect(setAudienceQr).toHaveBeenLastCalledWith(true)

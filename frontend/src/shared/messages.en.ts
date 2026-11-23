@@ -409,6 +409,10 @@ export const en = {
   'launcher.projector': 'Projector',
   'launcher.projectorUnavailable': 'Start a session first to show the projector.',
   'launcher.showProjector': 'Show on projector',
+  'launcher.identifyScreens': 'Identify screens',
+  'launcher.portBusy': 'Port {port} is in use.',
+  'launcher.portBusyProgram': 'Port {port} is in use by {program}.',
+  'launcher.portBusyBibleLive': 'Another BibleLive is already running on port {port}.',
   'launcher.showProjectorHint':
     'Opens the audience display full-screen on the projector, or brings it back to the front if it is already open',
   'launcher.audienceQr': 'QR code on the projector',

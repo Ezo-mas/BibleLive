@@ -171,6 +171,7 @@
 }
 #bl-launcher .bl-status {
   display: inline-flex;
+  flex: none;
   gap: 7px;
   align-items: center;
   color: #ffda9f;
@@ -335,7 +336,7 @@
 }
 #bl-launcher .bl-projector-field {
   display: grid;
-  /* The picker, then its buttons (Show on projector, and the QR code when there is one). */
+  /* The picker, then the available screen and QR actions. */
   grid-template-columns: minmax(0, 1fr);
   grid-auto-columns: auto;
   grid-auto-flow: column;
@@ -717,8 +718,16 @@ body {
 #bl-launcher .bl-status-strip {
   display: flex;
   align-items: center;
+  min-height: 24px;
   flex-wrap: wrap;
   gap: 5px 10px;
+}
+#bl-launcher .bl-status-strip:has(.bl-port-warning) {
+  flex-wrap: nowrap;
+}
+#bl-launcher .bl-port-message {
+  min-height: 24px;
+  min-width: 0;
 }
 #bl-launcher .bl-warning {
   display: inline-flex;
@@ -732,6 +741,14 @@ body {
   background: var(--warning-bg);
   overflow-wrap: anywhere;
   font-size: 12px;
+}
+#bl-launcher .bl-port-warning {
+  display: block;
+  width: fit-content;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 #bl-launcher .bl-warning button {
   padding: 0;

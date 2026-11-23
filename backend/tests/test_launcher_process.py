@@ -1,15 +1,18 @@
 """Launcher command/env building, CLI precedence, readiness wait, port check."""
 
+import io
 import os
 import socket
 import subprocess
 import sys
 import threading
 import time
+from unittest.mock import Mock
 
 import launcher.process as process
 import pytest
 from launcher.cli import apply_overrides, build_parser, main
+from launcher.platform import PortOwner
 from launcher.process import build_plan, port_in_use, wait_for_ready
 from launcher.settings import LauncherSettings, save_settings
 
@@ -200,8 +203,19 @@ def test_launcher_reports_early_server_death(tmp_path, monkeypatch):
     assert (plan.log_dir / "server.log").exists()
 
 
-def test_launcher_port_in_use_is_clear_error(tmp_path):
+@pytest.mark.parametrize(
+    ("owner", "healthy", "text"),
+    [
+        (None, False, "is already in use"),
+        (PortOwner(1234, "python.exe"), False, "is in use by python.exe (PID 1234)"),
+        (None, True, "Another BibleLive is already running"),
+    ],
+)
+def test_launcher_port_in_use_is_clear_error(tmp_path, monkeypatch, owner, healthy, text):
     from launcher.process import Launcher
+    from launcher.viewmodel import describe_event
+
+    monkeypatch.setattr(process.platform, "port_owner", lambda _: owner)
 
     with socket.socket() as srv:
         srv.bind(("127.0.0.1", 0))
@@ -210,11 +224,45 @@ def test_launcher_port_in_use_is_clear_error(tmp_path):
         events = []
         spawned = []
         launcher = Launcher(
-            plan, lambda k, m: events.append((k, m)), popen=lambda *a, **k: spawned.append(1)
+            plan,
+            lambda k, m: events.append((k, m)),
+            popen=lambda *a, **k: spawned.append(1),
+            health_probe=lambda _: healthy,
         )
         assert launcher.run() == 2
+    assert launcher.error_code == "port_in_use"
+    assert launcher.error_detail == str(plan.port)
     assert not spawned
-    assert any(k == "error" and "already in use" in m for k, m in events)
+    message = next(message for kind, message in events if kind == "error")
+    assert text in message
+    assert "--port" in message
+    description = describe_event("error", message, launcher.error_code, launcher.error_detail)
+    assert description is not None and str(plan.port) in description[1]
+    assert "--port" not in description[1]
+
+
+@pytest.mark.parametrize(
+    ("response", "healthy"),
+    [
+        (b'{"status":"healthy","version":"1.0"}', True),
+        (b'{"status":"healthy"}', False),
+        (b'{"status":"ok","version":"1.0"}', False),
+        (b'["healthy"]', False),
+        (b"not JSON", False),
+        (TimeoutError(), False),
+    ],
+)
+def test_health_probe_checks_local_response(monkeypatch, response, healthy):
+    opener = Mock()
+    if isinstance(response, Exception):
+        opener.open.side_effect = response
+    else:
+        opener.open.return_value = io.BytesIO(response)
+    build = Mock(return_value=opener)
+    monkeypatch.setattr(process.urllib.request, "build_opener", build)
+    assert process.bible_live_on_port(8012) is healthy
+    assert build.call_args.args[0].proxies == {}
+    opener.open.assert_called_once_with("http://127.0.0.1:8012/healthz", timeout=1)
 
 
 class _Supervision:

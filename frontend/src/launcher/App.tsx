@@ -12,6 +12,7 @@ import { Hero, Setup } from './Session'
 import { Settings } from './Settings'
 import type { SettingsTab } from './Settings'
 import { useLevelEnvelope } from './useLevelEnvelope'
+import { usePortCheck } from './usePortCheck'
 
 interface Connection {
   bridge: Bridge
@@ -81,6 +82,15 @@ function Launcher({ bridge, initial }: Connection) {
   const { state } = data
   const locked = state.session !== 'idle' || pending !== null
   const canProject = state.session === 'live' && pending !== 'stop'
+  const checkedPort = usePortCheck(
+    bridge,
+    form.port,
+    !locked,
+    view === 'advanced' && tab === 'network'
+  )
+  // A failed Start already names the program on this port: don't say it twice.
+  const portConflict =
+    checkedPort && state.error?.port === Number(checkedPort.port) ? null : checkedPort
   const { waveRef, meterRef, acceptLevels } = useLevelEnvelope(data.meter === 'on' && !locked)
 
   useLayoutEffect(() => {
@@ -317,6 +327,7 @@ function Launcher({ bridge, initial }: Connection) {
           pending={pending}
           stopped={data.sessionStopped}
           error={error?.field === null ? error.text : undefined}
+          portConflict={portConflict}
           onSession={() => void toggleSession()}
           onOperator={() => void runAction(() => bridge.open_operator())}
           onDetails={() => {
@@ -335,6 +346,7 @@ function Launcher({ bridge, initial }: Connection) {
           onMicrophone={changeMicrophone}
           onRefresh={() => void runAction(() => bridge.refresh_devices())}
           onProjector={() => void runAction(() => bridge.show_projector())}
+          onIdentify={() => void runAction(() => bridge.identify_screens())}
           audienceQr={
             state.network?.display_url
               ? {
@@ -359,6 +371,7 @@ function Launcher({ bridge, initial }: Connection) {
             platform={initial.platform}
             network={state.network}
             error={error}
+            portConflict={portConflict}
             portRef={portRef}
             argsRef={argsRef}
             onChange={change}

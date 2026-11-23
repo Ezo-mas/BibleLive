@@ -1,5 +1,6 @@
 """Platform selection, compatibility imports and native-operation dispatch."""
 
+import struct
 import subprocess
 import sys
 from types import SimpleNamespace
@@ -7,6 +8,25 @@ from types import SimpleNamespace
 import pytest
 from launcher import monitors, network, platform, process, projector, settings
 from launcher.platform import fallback, macos, posix, windows
+
+
+def test_parse_lsof_owner():
+    assert posix.parse_lsof_owner("cunknown\npbad\ncskip\np1234\ncobs\np2345\ncother\n") == (
+        platform.PortOwner(1234, "obs")
+    )
+    assert posix.parse_lsof_owner("p1234\n") is None
+
+
+@pytest.mark.parametrize(("ipv6", "row_size", "offset"), [(False, 24, 8), (True, 56, 20)])
+def test_tcp_listener_pids(ipv6, row_size, offset):
+    table = bytearray(4 + 2 * row_size)
+    struct.pack_into("<I", table, 0, 2)
+    for row, port, pid in [(0, 8001, 99), (1, 8000, 1234)]:
+        start = 4 + row * row_size
+        struct.pack_into("!H", table, start + offset, port)
+        struct.pack_into("<I", table, start + row_size - 4, pid)
+    assert windows.tcp_listener_pids(bytes(table), 8000, ipv6=ipv6) == [1234]
+    assert windows.tcp_listener_pids(bytes(table[:-1]), 8000, ipv6=ipv6) == []
 
 
 @pytest.mark.parametrize(

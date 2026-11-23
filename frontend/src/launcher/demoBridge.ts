@@ -20,6 +20,7 @@ const idle: State = {
   speech_fallback: false,
   self_test: { status: 'idle', text: null },
   started_at: null,
+  has_monitors: true,
   network: null,
   error: null,
 }
@@ -176,6 +177,11 @@ export function createDemoBridge(): Bridge {
       }, 600)
       return { ok: true }
     },
+    async check_port(port) {
+      const value = Number(port)
+      if (!Number.isInteger(value) || value < 1 || value > 65535) return { error: 'invalid_port' }
+      return { free: true, program: null, pid: null, bibleLive: false }
+    },
     async start(next) {
       if (state.self_test.status === 'running') {
         return {
@@ -264,6 +270,9 @@ export function createDemoBridge(): Bridge {
       return null
     },
     async show_projector() {
+      return null
+    },
+    async identify_screens() {
       return null
     },
     async open_logs() {

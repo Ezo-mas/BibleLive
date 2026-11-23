@@ -40,8 +40,17 @@ from .network import (
     qr_png,
 )
 from .platform.macos import microphone_access
-from .process import Launcher, LaunchPlan, _default_app_root, build_plan, python_child_env
+from .process import (
+    Launcher,
+    LaunchPlan,
+    _default_app_root,
+    bible_live_on_port,
+    build_plan,
+    port_in_use,
+    python_child_env,
+)
 from .projector import ProjectorBrowser, ProjectorError, operator_url
+from .screen_labels import identify_screens
 from .settings import (
     COMPUTE_TYPES,
     DEVICES,
@@ -84,6 +93,7 @@ from .viewmodel import (
     settings_from_form,
     speech_engine_options,
     ui_language_options,
+    validate_port,
 )
 
 logger = logging.getLogger(__name__)
@@ -170,6 +180,10 @@ class LauncherController:
         copy: Callable[[str], None] = _copy_text,
         post_audience_qr: Callable[[int, str, bool], bool] = _post_audience_qr,
         self_test_popen: Callable[..., subprocess.Popen[bytes]] = subprocess.Popen,
+        identify: Callable[[list[Monitor]], None] | None = None,
+        port_owner: Callable[[int], platform.PortOwner | None] = platform.port_owner,
+        port_in_use: Callable[[int], bool] = port_in_use,
+        health_probe: Callable[[int], bool] = bible_live_on_port,
     ) -> None:
         self._lock = threading.RLock()
         self._save = save
@@ -189,6 +203,11 @@ class LauncherController:
         self._copy = copy
         self._post_audience_qr = post_audience_qr
         self._self_test_popen = self_test_popen
+        self._identify = identify
+        self._identifying = False
+        self._port_owner = port_owner
+        self._port_in_use = port_in_use
+        self._health_probe = health_probe
         self._fit_window: Callable[[float, float], None] | None = None
         self._projector = (
             projector if projector is not None else ProjectorBrowser(open_default=open_browser)
@@ -209,6 +228,7 @@ class LauncherController:
         self._status = StatusState()
         self._started_at: int | None = None
         self._error: str | None = None
+        self._error_port: int | None = None  # set when the error is a busy port
         self._no_gpu_logged = False
         self._network: NetworkView | None = None
         # The operator page's QR code (token included) for Advanced > Network, as a data URI.
@@ -279,8 +299,11 @@ class LauncherController:
             "speech_fallback": bool(plan and plan.speech_fallback),
             "self_test": {"status": self._self_test_status, "text": self._self_test_text},
             "started_at": self._started_at,
+            "has_monitors": bool(self._monitors),
             "network": network,
-            "error": {"text": self._error} if self._error is not None else None,
+            "error": {"text": self._error, "port": self._error_port}
+            if self._error is not None
+            else None,
         }
 
     def init(self) -> dict[str, Any]:
@@ -430,6 +453,31 @@ class LauncherController:
             "error": {"code": code, "text": text, "field": _ERROR_FIELDS.get(code)},
         }
 
+    def check_port(self, port: str) -> dict[str, Any]:
+        free = {"free": True, "program": None, "pid": None, "bibleLive": False}
+        with self._lock:
+            if self._closed or self._session != "idle":
+                return free
+        try:
+            if not isinstance(port, str):
+                raise FormError("invalid_port")
+            number = validate_port(port)
+        except FormError as exc:
+            return {"error": exc.code}
+        if not self._port_in_use(number):
+            return free
+        owner = self._port_owner(number)
+        bible_live = self._health_probe(number)
+        with self._lock:
+            if self._closed or self._session != "idle":
+                return free
+        return {
+            "free": False,
+            "program": owner.program if owner else None,
+            "pid": owner.pid if owner else None,
+            "bibleLive": bible_live,
+        }
+
     def start(self, form: FormValues) -> dict[str, Any]:
         with self._lock:
             if self._closed or self._session != "idle":
@@ -437,6 +485,7 @@ class LauncherController:
             if self._self_test_status == "running":
                 return self._start_error("self_test_busy", t("err.self_test_busy"))
             self._error = None
+            self._error_port = None
             self._no_gpu_logged = False
             try:
                 settings = settings_from_form(self._settings, form, include_session_audio=True)
@@ -639,6 +688,9 @@ class LauncherController:
                 self._log.append("launcher", level.upper(), text)
                 if kind == "error":
                     self._error = text
+                    self._error_port = (
+                        int(detail) if code == "port_in_use" and detail.isdigit() else None
+                    )
             if kind == "ready" and self._session == "starting" and plan is not None:
                 self._session = "live"
                 self._started_at = int(self._clock() * 1000)
@@ -757,6 +809,18 @@ class LauncherController:
             )
             self._open_browser(url)
 
+    def identify_screens(self) -> None:
+        with self._lock:
+            if self._closed or self._identifying or not self._monitors or self._identify is None:
+                return
+            self._identifying = True
+            monitors = self._monitors.copy()
+        try:
+            self._identify(monitors)
+        finally:
+            with self._lock:
+                self._identifying = False
+
     def show_projector(self) -> None:
         with self._lock:
             if self._closed or self._session != "live":
@@ -855,6 +919,9 @@ class LauncherApi:
     def run_self_test(self, form: dict[str, Any]) -> dict[str, Any]:
         return self._controller.run_self_test(FormValues(**form))
 
+    def check_port(self, port: str) -> dict[str, Any]:
+        return self._controller.check_port(port)
+
     def stop(self) -> None:
         self._controller.stop()
 
@@ -869,6 +936,9 @@ class LauncherApi:
 
     def show_projector(self) -> None:
         self._controller.show_projector()
+
+    def identify_screens(self) -> None:
+        self._controller.identify_screens()
 
     def open_logs(self) -> None:
         self._controller.open_logs()
@@ -1117,7 +1187,9 @@ def main(*, smoke: bool = False) -> int:
             (s for s in screens if s.x == 0 and s.y == 0), screens[0] if screens else None
         )
         max_height = primary.height - 60 if primary is not None else None
-        controller = LauncherController()
+        controller = LauncherController(
+            identify=lambda monitors: identify_screens(webview, monitors, primary)
+        )
         height = 600 if controller.view == "simple" else 800
         if max_height is not None:
             height = max(_MIN_WINDOW_SIZE[1], min(height, max_height))

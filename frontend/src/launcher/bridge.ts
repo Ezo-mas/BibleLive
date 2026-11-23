@@ -66,8 +66,10 @@ export interface State {
   speech_fallback: boolean
   self_test: SelfTest
   started_at: number | null
+  has_monitors: boolean
   network: Network | null
-  error: { text: string } | null
+  /** port: set when the error is a busy port (the Start-time port check). */
+  error: { text: string; port?: number | null } | null
 }
 
 export interface SpeechCheck {
@@ -112,17 +114,23 @@ export interface StartError {
   field: 'port' | 'extra_args' | 'input_device' | null
 }
 
+export type PortCheck =
+  | { free: boolean; program: string | null; pid: number | null; bibleLive: boolean }
+  | { error: 'invalid_port' }
+
 export interface Bridge {
   init(): Promise<InitResult>
   poll(): Promise<PollResult>
   start(form: Form): Promise<{ ok: true } | { ok: false; error: StartError }>
   check_speech(engine: string, device: string): Promise<SpeechCheck>
   run_self_test(form: Form): Promise<{ ok: true } | { ok: false; error: StartError }>
+  check_port(port: string): Promise<PortCheck>
   stop(): Promise<null>
   refresh_devices(): Promise<null>
   set_microphone(device: string | null): Promise<null>
   open_operator(): Promise<null>
   show_projector(): Promise<null>
+  identify_screens(): Promise<null>
   open_logs(): Promise<null>
   allow_firewall(): Promise<null>
   set_audience_qr(visible: boolean): Promise<null>

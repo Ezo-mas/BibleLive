@@ -17,6 +17,7 @@ from .posix import kill_pid_tree as kill_pid_tree
 from .posix import kill_tree as kill_tree
 from .posix import log_dir as log_dir
 from .posix import open_projector as open_projector
+from .posix import port_owner as port_owner
 
 
 def find_browser(env: Mapping[str, str] | None = None) -> Browser | None:

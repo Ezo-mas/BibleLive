@@ -18,6 +18,12 @@ class Browser:
 
 
 @dataclass(frozen=True)
+class PortOwner:
+    pid: int
+    program: str
+
+
+@dataclass(frozen=True)
 class Monitor:
     device: str  # e.g. "\\\\.\\DISPLAY2"
     x: int
@@ -27,9 +33,16 @@ class Monitor:
     primary: bool
 
     @property
+    def name(self) -> str:
+        return self.device.lstrip("\\.") or self.device
+
+    @property
+    def resolution(self) -> str:
+        return f"{self.width}x{self.height}"
+
+    @property
     def label(self) -> str:
-        name = self.device.lstrip("\\.") or self.device
-        return f"{name} ({self.width}x{self.height}){' *' if self.primary else ''}"
+        return f"{self.name} ({self.resolution}){' *' if self.primary else ''}"
 
 
 class Platform(Protocol):
@@ -58,6 +71,8 @@ class Platform(Protocol):
     def kill_pid_tree(self, pid: int) -> None: ...
 
     def enumerate_monitors(self) -> list[Monitor]: ...
+
+    def port_owner(self, port: int) -> PortOwner | None: ...
 
     def kill_tree(self, proc: subprocess.Popen[bytes], *, grace: float = 5.0) -> None: ...
 
@@ -99,3 +114,8 @@ def current(name: str | None = None) -> Platform:
     from . import fallback
 
     return fallback
+
+
+def port_owner(port: int) -> PortOwner | None:
+    """Best-effort local TCP listener identity."""
+    return current().port_owner(port)

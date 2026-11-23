@@ -12,9 +12,11 @@ from types import SimpleNamespace
 from unittest.mock import Mock
 
 import pytest
-from launcher import cli, i18n, micmeter, speech, webui
+from launcher import cli, i18n, micmeter, screen_labels, speech, webui
 from launcher.logtail import LogBuffer, LogTail
+from launcher.platform import Monitor, PortOwner
 from launcher.process import LaunchPlan
+from launcher.screen_labels import label_window_rect
 from launcher.settings import LauncherSettings, load_settings, save_settings
 from launcher.webui import LauncherApi, LauncherController
 
@@ -509,6 +511,10 @@ def test_network_and_error_state(bridge):
     assert wait_for(lambda: api.poll()["state"]["network"]["firewall"])["button_enabled"]
     session.launches[0].emit("error", "The audio exited")
     assert api.poll()["state"]["error"]["text"]
+    assert api.poll()["state"]["error"]["port"] is None  # not a busy-port error
+    session.launches[0].error_code, session.launches[0].error_detail = "port_in_use", "8000"
+    session.launches[0].emit("error", "Port 8000 is already in use.")
+    assert api.poll()["state"]["error"]["port"] == 8000
     session.finish.set()
     wait_for(lambda: api.poll()["state"]["session"] == "idle")
     assert api.poll()["state"]["error"]["text"]
@@ -647,11 +653,13 @@ def test_api_exposes_only_contract_methods(bridge):
         "start",
         "check_speech",
         "run_self_test",
+        "check_port",
         "stop",
         "refresh_devices",
         "set_microphone",
         "open_operator",
         "show_projector",
+        "identify_screens",
         "open_logs",
         "allow_firewall",
         "set_audience_qr",
@@ -660,6 +668,93 @@ def test_api_exposes_only_contract_methods(bridge):
         "fit_window",
         "copy_text",
     }
+
+
+def test_identify_screens_uses_listed_monitors_and_ignores_repeat_and_close():
+    monitors = [Monitor("Built-in", 0, 0, 1920, 1080, True)]
+    identify = Mock()
+    controller = LauncherController(load=LauncherSettings, identify=identify)
+    controller.identify_screens()
+    identify.assert_not_called()
+    controller._monitors = monitors
+    identify.side_effect = lambda _: controller.identify_screens()
+    controller.identify_screens()
+    controller.close()
+    controller.identify_screens()
+    identify.assert_called_once_with(monitors)
+
+
+@pytest.mark.parametrize(
+    ("monitor", "scale", "expected"),
+    [
+        (Monitor("DISPLAY1", 0, 0, 1920, 1080, True), 1.5, (645, 345, 630, 390)),
+        (Monitor("DISPLAY2", -1600, -900, 1600, 900, False), 1, (-1010, -580, 420, 260)),
+        (Monitor("DISPLAY3", 1920, 0, 1920, 1080, False), 1, (2670, 410, 420, 260)),
+    ],
+)
+def test_label_window_rect(monitor, scale, expected):
+    assert label_window_rect(monitor, scale) == expected
+
+
+@pytest.mark.parametrize("fail_second", [False, True])
+def test_identify_screens_closes_every_created_window(monkeypatch, fail_second):
+    monitors = [
+        Monitor("Built-in", 0, 0, 1920, 1080, True),
+        Monitor("Display 2", -1600, -900, 1600, 900, False),
+    ]
+    events = []
+
+    def create(title, **options):
+        events.append(("create", title))
+        assert options["frameless"] and options["on_top"] and not options["focus"]
+        if title == monitors[0].label:
+            assert i18n.t("screen.main") in options["html"]
+        else:
+            assert (options["x"], options["y"]) == (-1010, -580)
+            if fail_second:
+                raise RuntimeError("screen disconnected")
+        return SimpleNamespace(destroy=lambda: events.append(("destroy", title)))
+
+    monkeypatch.setattr(screen_labels, "_place_windows_label", lambda *_: None)
+    monkeypatch.setattr(
+        screen_labels.time, "sleep", lambda seconds: events.append(("wait", seconds))
+    )
+    webview = SimpleNamespace(create_window=create)
+    if fail_second:
+        with pytest.raises(RuntimeError, match="screen disconnected"):
+            screen_labels.identify_screens(webview, monitors, None)
+    else:
+        screen_labels.identify_screens(webview, monitors, None)
+    expected = [("create", monitor.label) for monitor in monitors]
+    if not fail_second:
+        expected.append(("wait", 3))
+    expected.extend(
+        ("destroy", monitor.label) for monitor in (monitors[:1] if fail_second else monitors)
+    )
+    assert events == expected
+
+
+def test_check_port_validates_and_only_checks_when_idle():
+    busy = Mock(side_effect=[False, True, True])
+    owner = Mock(side_effect=[PortOwner(1234, "obs64.exe"), None])
+    health = Mock(side_effect=[False, True])
+    api = LauncherApi(
+        LauncherController(
+            load=LauncherSettings, port_owner=owner, port_in_use=busy, health_probe=health
+        )
+    )
+    free = {"free": True, "program": None, "pid": None, "bibleLive": False}
+    assert api.check_port("65536") == {"error": "invalid_port"}
+    assert api.check_port(" 8000 ") == free
+    owner.assert_not_called()
+    health.assert_not_called()
+    assert api.check_port("8000") == {**free, "free": False, "program": "obs64.exe", "pid": 1234}
+    assert api.check_port("8000") == {**free, "free": False, "bibleLive": True}
+    api._controller._session = "live"
+    assert api.check_port("8000") == free
+    assert [call.args for call in busy.call_args_list] == [(8000,), (8000,), (8000,)]
+    assert owner.call_count == 2
+    assert health.call_count == 2
 
 
 def test_fit_window_keeps_width_clamps_height_and_skips_expanded_window(bridge, monkeypatch):
@@ -777,7 +872,7 @@ def test_webview_main_checks_dev_url_and_registers_closing_handler(
     monkeypatch.setattr(webui, "_default_app_root", lambda: tmp_path)
     monkeypatch.setattr(webui, "models_dir", lambda: tmp_path / "models")
     monkeypatch.setenv("BIBLELIVE_LAUNCHER_URL", url)
-    monkeypatch.setattr(webui, "LauncherController", lambda: controller)
+    monkeypatch.setattr(webui, "LauncherController", lambda *, identify: controller)
     monkeypatch.setitem(
         sys.modules, "launcher.gui", SimpleNamespace(_enable_dpi_awareness=lambda: None)
     )

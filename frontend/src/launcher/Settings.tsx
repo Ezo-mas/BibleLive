@@ -14,6 +14,8 @@ import type {
 } from './bridge'
 import { Choice } from './Choice'
 import { Icon } from './Icon'
+import { PortWarning } from './Session'
+import type { PortConflict } from './usePortCheck'
 
 const tabs = ['speech', 'network', 'launch'] as const
 const tabIcons = { speech: 'speech', network: 'network', launch: 'sliders' } as const
@@ -31,6 +33,7 @@ interface Props {
   platform: Platform
   network: Network | null
   error: StartError | null
+  portConflict: PortConflict | null
   portRef: RefObject<HTMLInputElement>
   argsRef: RefObject<HTMLInputElement>
   onChange: <K extends keyof Form>(key: K, value: Form[K]) => void
@@ -198,6 +201,7 @@ export function Settings({
   platform,
   network,
   error,
+  portConflict,
   portRef,
   argsRef,
   onChange,
@@ -373,21 +377,28 @@ export function Settings({
               <option value="true">{t('launcher.networkAccess')}</option>
             </select>
           </label>
-          <label className="bl-field">
-            <span>{t('launcher.port')}</span>
-            <input
-              ref={portRef}
-              type="number"
-              min={1}
-              max={65535}
-              step={1}
-              value={form.port}
-              disabled={locked}
-              aria-invalid={portError ? true : undefined}
-              aria-describedby={portError ? 'bl-port-error' : undefined}
-              onChange={event => onChange('port', event.currentTarget.value)}
-            />
-          </label>
+          <div className="bl-field">
+            <label className="bl-field">
+              <span>{t('launcher.port')}</span>
+              <input
+                ref={portRef}
+                type="number"
+                min={1}
+                max={65535}
+                step={1}
+                value={form.port}
+                disabled={locked}
+                aria-invalid={portError ? true : undefined}
+                aria-describedby={
+                  portError ? 'bl-port-error' : portConflict ? 'bl-port-warning' : undefined
+                }
+                onChange={event => onChange('port', event.currentTarget.value)}
+              />
+            </label>
+            <div className="bl-port-message">
+              {portConflict && <PortWarning conflict={portConflict} id="bl-port-warning" />}
+            </div>
+          </div>
         </div>
         {portError && (
           <p id="bl-port-error" className="bl-error" role="alert">

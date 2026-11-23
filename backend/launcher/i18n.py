@@ -11,6 +11,7 @@ EN: dict[str, str] = {
     "label.speech_language": "Spoken language",
     "label.microphone": "Microphone",
     "label.projector": "Projector screen",
+    "screen.main": "Main screen",
     "label.auto_approve": "Auto-approve",
     "label.ui_language": "Interface language",
     "label.open_display": "Open the display on the projector when starting",
@@ -145,6 +146,8 @@ EN: dict[str, str] = {
         "Port {detail} is already in use. Close the other BibleLive window or the "
         "program using it, or change the port under Advanced."
     ),
+    "err.port_in_use_program": "Port {detail} is in use by {program}.",
+    "err.port_in_use_biblelive": "Another BibleLive is already running on port {detail}.",
     "err.server_failed": "The server failed to start. See the log: {detail}",
     "err.server_timeout": "The server did not become ready in time. See the log: {detail}",
     "err.server_exited": "The server stopped unexpectedly. See the log: {detail}",
@@ -176,6 +179,7 @@ LT: dict[str, str] = {
     "label.speech_language": "Šnekamoji kalba",
     "label.microphone": "Mikrofonas",
     "label.projector": "Projektoriaus ekranas",
+    "screen.main": "Pagrindinis ekranas",
     "label.auto_approve": "Automatinis patvirtinimas",
     "label.ui_language": "Programos kalba",
     "label.open_display": "Paleidžiant atidaryti vaizdą projektoriuje",
@@ -319,6 +323,8 @@ LT: dict[str, str] = {
         "Prievadas {detail} jau naudojamas. Uždarykite kitą BibleLive langą arba "
         "jį naudojančią programą, arba pakeiskite prievadą skiltyje „Papildomi nustatymai“."
     ),
+    "err.port_in_use_program": "Prievadą {detail} naudoja programa {program}.",
+    "err.port_in_use_biblelive": "Prievadą {detail} jau naudoja kita paleista „BibleLive“ programa.",
     "err.server_failed": "Serveris nepasileido. Žr. žurnalą: {detail}",
     "err.server_timeout": "Serveris laiku nepasiruošė. Žr. žurnalą: {detail}",
     "err.server_exited": "Serveris netikėtai sustojo. Žr. žurnalą: {detail}",

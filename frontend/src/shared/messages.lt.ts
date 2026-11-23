@@ -424,6 +424,10 @@ export const lt: Record<MessageKey, MessageEntry> = {
   'launcher.projectorUnavailable':
     'Pirmiausia pradėkite sesiją. Tada galėsite atidaryti žiūrovų langą.',
   'launcher.showProjector': 'Rodyti pasirinktame ekrane',
+  'launcher.identifyScreens': 'Atpažinti ekranus',
+  'launcher.portBusy': 'Prievadas {port} jau naudojamas.',
+  'launcher.portBusyProgram': 'Prievadą {port} naudoja programa {program}.',
+  'launcher.portBusyBibleLive': 'Prievadą {port} jau naudoja kita paleista „BibleLive“ programa.',
   'launcher.showProjectorHint':
     'Atidaro žiūrovų langą per visą pasirinkto ekrano plotą. Jei langas jau atidarytas, iškelia jį į priekį.',
   'launcher.audienceQr': 'QR kodas projektoriuje',
