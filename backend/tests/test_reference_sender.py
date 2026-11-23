@@ -30,7 +30,7 @@ def make_ref(book="John", chapter=3, verse_start=16, verse_end=None, confidence=
 
 
 @pytest.fixture
-def sender(monkeypatch):
+def sender():
     cfg = AudioPipelineConfig(api_max_retries=2, api_retry_base_delay=0.0, api_retry_max_delay=0.0)
     return ReferenceSender("http://server", cfg, PipelineMetrics())
 
@@ -84,7 +84,6 @@ def test_server_error_retries_then_succeeds(monkeypatch, sender):
         return responses.pop(0)
 
     monkeypatch.setattr("audio.sender.requests.post", fake_post)
-    monkeypatch.setattr("audio.sender.time.sleep", lambda _s: None)
 
     sender.send(make_ref())
 
@@ -127,7 +126,6 @@ def test_timeout_and_connection_error_retried(monkeypatch, sender, exc):
         return FakeResponse(201)
 
     monkeypatch.setattr("audio.sender.requests.post", fake_post)
-    monkeypatch.setattr("audio.sender.time.sleep", lambda _s: None)
 
     sender.send(make_ref())
 
@@ -141,7 +139,6 @@ def test_retries_exhausted_marks_failure(monkeypatch, sender):
         raise requests.exceptions.ConnectionError("refused")
 
     monkeypatch.setattr("audio.sender.requests.post", fake_post)
-    monkeypatch.setattr("audio.sender.time.sleep", lambda _s: None)
 
     sender.send(make_ref())
 
@@ -309,9 +306,11 @@ def test_reference_too_old_to_matter_is_dropped_not_sent(monkeypatch):
     monkeypatch.setattr(
         "audio.sender.requests.post", lambda *a, **k: posted.append(1) or FakeResponse(201)
     )
-    sender = _background_sender(send_max_age_s=0.05)
+    now = 100.0
+    monkeypatch.setattr("audio.sender.time", SimpleNamespace(time=time.time, monotonic=lambda: now))
+    sender = _background_sender(send_max_age_s=10)
     sender.submit(make_ref())
-    time.sleep(0.1)
+    now += 11
 
     sender.start()
     try:
@@ -324,21 +323,24 @@ def test_reference_too_old_to_matter_is_dropped_not_sent(monkeypatch):
 
 def test_retries_stop_once_the_reference_is_stale(monkeypatch):
     posted = []
+    now = 100.0
+    monkeypatch.setattr("audio.sender.time", SimpleNamespace(time=time.time, monotonic=lambda: now))
 
     def failing_post(*args, **kwargs):
+        nonlocal now
         posted.append(1)
-        time.sleep(0.06)
+        now += 6
         return FakeResponse(503)
 
     monkeypatch.setattr("audio.sender.requests.post", failing_post)
-    sender = _background_sender(send_max_age_s=0.1, api_max_retries=10)
+    sender = _background_sender(send_max_age_s=10, api_max_retries=10)
     sender.submit(make_ref())
     sender.start()
     try:
         _wait_for(lambda: sender.metrics.references_dropped == 1)
     finally:
         sender.stop()
-    assert 1 <= len(posted) < 11
+    assert len(posted) == 2
 
 
 def test_stop_cuts_a_retry_backoff_short(monkeypatch):

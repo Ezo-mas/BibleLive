@@ -194,7 +194,7 @@ def test_unusable_translation_keeps_previous_lookup(processor, monkeypatch, fail
 def test_missing_file_is_retried_without_another_version_change(processor, monkeypatch):
     proc = processor
     clock = [100.0]
-    monkeypatch.setattr("audio.pipeline.time.monotonic", lambda: clock[0])
+    monkeypatch.setattr("audio.pipeline.time", SimpleNamespace(monotonic=lambda: clock[0]))
     _reply(monkeypatch, proc.heartbeat, b'{"bible_version":"new"}')
     proc._follow_bible_version()
     assert proc.health_report()["issues"][0]["code"] == "bible_version_unavailable"
@@ -219,7 +219,7 @@ def test_invalid_heartbeat_version_is_ignored_and_logged_once(monkeypatch, caplo
 def test_retry_warning_is_logged_once_per_requested_id(processor, monkeypatch, caplog):
     proc = processor
     clock = [100.0]
-    monkeypatch.setattr("audio.pipeline.time.monotonic", lambda: clock[0])
+    monkeypatch.setattr("audio.pipeline.time", SimpleNamespace(monotonic=lambda: clock[0]))
     for requested in ("missing", "missing", "other", "other", "missing"):
         _reply(monkeypatch, proc.heartbeat, json.dumps({"bible_version": requested}).encode())
         proc._follow_bible_version()

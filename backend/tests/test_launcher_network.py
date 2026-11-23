@@ -294,14 +294,14 @@ def _close_window(root, threads_before):
         child.destroy()
 
 
-@pytest.fixture(autouse=True)
-def _collect_on_the_main_thread():
+@pytest.fixture
+def window_root(tk_root):
     """Free a closed window's App here, after the test has let go of it, never later on a worker."""
-    yield
+    yield tk_root
     gc.collect()
 
 
-def test_window_shows_addresses_token_and_operator_fragment(tk_root, tmp_path, monkeypatch):
+def test_window_shows_addresses_token_and_operator_fragment(window_root, tmp_path, monkeypatch):
     for var in ("APPDATA", "LOCALAPPDATA", "USERPROFILE", "HOME"):
         monkeypatch.setenv(var, str(tmp_path))
     monkeypatch.setattr("launcher.gui.load_microphones", lambda settings: [])
@@ -312,7 +312,7 @@ def test_window_shows_addresses_token_and_operator_fragment(tk_root, tmp_path, m
     )
     from launcher.gui import App
 
-    root = tk_root
+    root = window_root
     threads_before = set(threading.enumerate())
     try:
         app = App(root)
@@ -405,7 +405,7 @@ def test_no_qr_without_a_network_address(encoded_texts):
 
 
 @pytest.fixture
-def qr_window(tk_root, tmp_path, monkeypatch):
+def qr_window(window_root, tmp_path, monkeypatch):
     """A launcher window in network mode with a LAN address (a test may change the address)."""
     for var in ("APPDATA", "LOCALAPPDATA", "USERPROFILE", "HOME"):
         monkeypatch.setenv(var, str(tmp_path))
@@ -422,7 +422,7 @@ def qr_window(tk_root, tmp_path, monkeypatch):
     )
     from launcher.gui import App
 
-    root = tk_root
+    root = window_root
     threads_before = set(threading.enumerate())
     try:
         yield App(root)
@@ -679,7 +679,7 @@ def test_console_hint_only_on_windows_without_the_rule(monkeypatch):
 
 
 @pytest.fixture
-def firewall_window(tk_root, tmp_path, monkeypatch):
+def firewall_window(window_root, tmp_path, monkeypatch):
     """A launcher window in network mode; microphones, addresses and firewall are fakes."""
     for var in ("APPDATA", "LOCALAPPDATA", "USERPROFILE", "HOME"):
         monkeypatch.setenv(var, str(tmp_path))
@@ -699,7 +699,7 @@ def firewall_window(tk_root, tmp_path, monkeypatch):
     )
     from launcher.gui import App
 
-    root = tk_root
+    root = window_root
     threads_before = set(threading.enumerate())
     try:
         yield App(root)

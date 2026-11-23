@@ -9,6 +9,7 @@ import threading
 import time
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import Mock
 
 import pytest
 from launcher import cli, i18n, micmeter, webui
@@ -649,6 +650,9 @@ def test_webview_main_checks_dev_url_and_registers_closing_handler(
 
 
 def test_cli_falls_back_to_tk_when_page_missing(tmp_path, monkeypatch, caplog):
+    # A real smoke watchdog exits the entire process, even after main() returns.
+    watchdog = Mock()
+    monkeypatch.setattr(webui, "faulthandler", SimpleNamespace(dump_traceback_later=watchdog))
     monkeypatch.delenv("BIBLELIVE_LAUNCHER_URL", raising=False)
     monkeypatch.delenv("BIBLELIVE_LAUNCHER_UI", raising=False)
     monkeypatch.setattr(webui, "_default_app_root", lambda: tmp_path)
@@ -659,6 +663,7 @@ def test_cli_falls_back_to_tk_when_page_missing(tmp_path, monkeypatch, caplog):
     original_language = i18n.get_language()
     try:
         assert cli.main(["--smoke"]) == 0
+        watchdog.assert_called_once_with(webui._SMOKE_TIMEOUT_S, exit=True)
         assert calls == [True]
         assert "Launcher page missing" in caplog.text
         assert "Opening the Tk launcher" in caplog.text

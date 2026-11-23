@@ -175,10 +175,16 @@ class _FakeProc:
         self.exit_code = 0
 
 
-def test_launcher_reports_early_server_death(tmp_path):
+def test_launcher_reports_early_server_death(tmp_path, monkeypatch):
     from launcher.process import Launcher
 
-    plan = _plan(tmp_path, LauncherSettings(port=_free_port()))
+    monkeypatch.setattr(process, "port_in_use", lambda *_: False)
+    monkeypatch.setattr(
+        process,
+        "wait_for_ready",
+        lambda *args, **kw: wait_for_ready(*args, check=lambda _: False, **kw),
+    )
+    plan = _plan(tmp_path)
     events = []
     launcher = Launcher(
         plan,
@@ -189,6 +195,7 @@ def test_launcher_reports_early_server_death(tmp_path):
     )
     assert launcher.run() == 1
     kinds = [k for k, _ in events]
+    assert launcher.error_code == "server_failed"
     assert "error" in kinds and "running" not in kinds and kinds[-1] == "stopped"
     assert (plan.log_dir / "server.log").exists()
 
@@ -208,12 +215,6 @@ def test_launcher_port_in_use_is_clear_error(tmp_path):
         assert launcher.run() == 2
     assert not spawned
     assert any(k == "error" and "already in use" in m for k, m in events)
-
-
-def _free_port():
-    with socket.socket() as s:
-        s.bind(("127.0.0.1", 0))
-        return s.getsockname()[1]
 
 
 class _Supervision:
