@@ -278,7 +278,8 @@ def test_vad_loop_resumes_after_ffmpeg_dies(monkeypatch):
     vad_thread.start()
     try:
         deadline = time.monotonic() + 5
-        while proc.metrics.audio_chunks_captured < 50 and time.monotonic() < deadline:
+        # The first stream contains five frames. The sixth proves capture resumed.
+        while proc.metrics.audio_chunks_captured <= 5 and time.monotonic() < deadline:
             time.sleep(0.01)
     finally:
         proc.is_running = False
@@ -288,7 +289,7 @@ def test_vad_loop_resumes_after_ffmpeg_dies(monkeypatch):
 
     assert proc.metrics.capture_failures == 1
     assert proc.metrics.capture_restarts == 1
-    assert proc.metrics.audio_chunks_captured >= 50  # frames flowed again after the restart
+    assert proc.metrics.audio_chunks_captured > 5
     assert not vad_thread.is_alive()
 
 

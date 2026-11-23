@@ -54,21 +54,6 @@ reproduced in an empty project); 5.0.5 installs. `package.json` allows
 `^5.0.5`, so only `package-lock.json` holds it at 5.0.5: before an
 `npm update` that moves vitest, check that it installs, or upgrade npm first.
 
-### Windows CI: pytest exits silently mid-run
-The "Windows backend tests" job has ended with exit code 1 and no traceback or
-FAILED line, mid-test, three times: on PR #114 (2026-11-21, after
-`test_working_references.py` at 99%), on PR #122 (2026-11-21, during
-`test_translation_follow.py::test_retry_warning_is_logged_once_per_requested_id`
-at 85%) and on PR #129 (2026-11-22, commit b373a34, during
-`test_translation_follow.py::test_unusable_translation_keeps_previous_lookup[open]`
-at 84%; that file passed locally on Windows). None of the PRs touched those tests;
-a rerun passed on #114 and #122. The full
-suite passes locally on Windows. Cause unknown. Two of the three stopped in
-`test_translation_follow.py`, so start there. Another lead: some tests
-monkeypatch `audio.pipeline.time.monotonic`, which replaces `time.monotonic`
-for every thread in the process. pytest's faulthandler printed no stack, so it
-may not be a native crash: check the job's step timing and any `os._exit` in tests.
-
 ### Replay a session log into a running server
 A dev command (make target or CLI flag) that feeds a session `.jsonl` into the
 existing pipeline endpoints (transcripts and references) at 1x or 10x speed, so
@@ -77,16 +62,6 @@ can be tested at a desk without a microphone or a 45-minute sermon. It only
 calls routes that already exist: no protocol or approval-flow change. It skips
 the speech models, so it cannot test audio or VAD; detection correctness stays
 with `benchmarks/session_replay.py`.
-
-### Profile slow tests on Windows
-Run `pytest --durations=15` on Windows to recheck these audit findings:
-
-- `test_db_path_resolution.py` (3–4.6 s per test on Windows on 2026-10-20)
-  and `test_launcher_process.py` (1.5–2.5 s). Both were under 0.2 s per test
-  on Linux.
-- `test_capture_recovery.py::test_vad_loop_resumes_after_ffmpeg_dies` takes
-  ~2.2 s on Windows (0.5 s on Linux), mostly in thread joins. The frame wait
-  is already patched to 0.05 s in this test.
 
 ## Experiments
 
