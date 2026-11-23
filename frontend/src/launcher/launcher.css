@@ -486,6 +486,22 @@
   gap: 7px;
   font-size: 14px;
 }
+#bl-launcher .bl-speech-check {
+  min-block-size: 3em;
+}
+#bl-launcher .bl-speech-check ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+#bl-launcher .bl-self-test {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+  overflow-wrap: anywhere;
+}
 #bl-launcher .bl-details {
   border: 1px solid var(--line);
   border-radius: 9px;

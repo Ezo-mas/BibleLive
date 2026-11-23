@@ -23,6 +23,8 @@ from typing import Any
 from urllib.parse import urlsplit
 
 from . import i18n, platform
+from .commands import apply_model_env
+from .gpu import cuda_supported_compute_types
 from .i18n import t
 from .logtail import LogBuffer, LogTail
 from .micmeter import MicMeter
@@ -38,10 +40,15 @@ from .network import (
     qr_png,
 )
 from .platform.macos import microphone_access
-from .process import Launcher, LaunchPlan, _default_app_root, build_plan
+from .process import Launcher, LaunchPlan, _default_app_root, build_plan, python_child_env
 from .projector import ProjectorBrowser, ProjectorError, operator_url
 from .settings import (
+    COMPUTE_TYPES,
+    DEVICES,
+    LANGUAGES,
     LAUNCHER_VIEWS,
+    MODELS,
+    SPEECH_ENGINES,
     UI_LANGUAGES,
     LauncherSettings,
     app_data_dir,
@@ -49,6 +56,7 @@ from .settings import (
     models_dir,
     save_settings,
 )
+from .speech import speech_check
 from .viewmodel import (
     LOG_LEVEL_OPTIONS,
     FormError,
@@ -82,6 +90,7 @@ logger = logging.getLogger(__name__)
 FALLBACK = 2
 _MIN_WINDOW_SIZE = (760, 480)
 _AUDIENCE_QR_TIMEOUT_S = 5.0
+_SELF_TEST_TIMEOUT_S = 180.0
 _ERROR_FIELDS = {
     "invalid_port": "port",
     "invalid_args": "extra_args",
@@ -160,6 +169,7 @@ class LauncherController:
         projector: ProjectorBrowser | None = None,
         copy: Callable[[str], None] = _copy_text,
         post_audience_qr: Callable[[int, str, bool], bool] = _post_audience_qr,
+        self_test_popen: Callable[..., subprocess.Popen[bytes]] = subprocess.Popen,
     ) -> None:
         self._lock = threading.RLock()
         self._save = save
@@ -178,6 +188,7 @@ class LauncherController:
         self._access = access
         self._copy = copy
         self._post_audience_qr = post_audience_qr
+        self._self_test_popen = self_test_popen
         self._fit_window: Callable[[float, float], None] | None = None
         self._projector = (
             projector if projector is not None else ProjectorBrowser(open_default=open_browser)
@@ -211,6 +222,10 @@ class LauncherController:
         self._plan: LaunchPlan | None = None
         self._launcher: Launcher | None = None
         self._worker: threading.Thread | None = None
+        self._self_test_status = "idle"
+        self._self_test_text: str | None = None
+        self._self_test_process: subprocess.Popen[bytes] | None = None
+        self._self_test_worker: threading.Thread | None = None
         self._cancel = threading.Event()
         self._tail: LogTail | None = None
 
@@ -255,8 +270,14 @@ class LauncherController:
             if plan
             else None,
             "speech_warning": bool(
-                plan and plan.speech_engine == "whisper" and plan.device == "cpu"
+                plan
+                and (
+                    plan.speech_fallback
+                    or (plan.speech_engine == "whisper" and plan.device == "cpu")
+                )
             ),
+            "speech_fallback": bool(plan and plan.speech_fallback),
+            "self_test": {"status": self._self_test_status, "text": self._self_test_text},
             "started_at": self._started_at,
             "network": network,
             "error": {"text": self._error} if self._error is not None else None,
@@ -413,6 +434,8 @@ class LauncherController:
         with self._lock:
             if self._closed or self._session != "idle":
                 return self._start_error("session_busy", t("err.session_busy"))
+            if self._self_test_status == "running":
+                return self._start_error("self_test_busy", t("err.self_test_busy"))
             self._error = None
             self._no_gpu_logged = False
             try:
@@ -431,6 +454,117 @@ class LauncherController:
             self._worker = threading.Thread(target=self._run, args=(settings,), daemon=True)
             self._worker.start()
             return {"ok": True}
+
+    def check_speech(self, engine: str, device: str) -> dict[str, Any]:  # noqa: ARG002
+        # build_plan looks at hardware for Auto even with an explicitly selected CPU device.
+        requested = engine if engine in SPEECH_ENGINES else "auto"
+        return asdict(speech_check(requested, models_dir(), cuda_supported_compute_types))
+
+    def run_self_test(self, form: FormValues) -> dict[str, Any]:
+        with self._lock:
+            if self._closed or self._session != "idle":
+                return self._start_error("session_busy", t("err.session_busy"))
+            if self._self_test_status == "running":
+                return self._start_error("self_test_busy", t("err.self_test_busy"))
+            try:
+                settings = settings_from_form(self._settings, form)
+            except FormError as exc:
+                return self._start_error(exc.code, describe_error(exc.code, exc.detail))
+            if (
+                settings.speech_engine not in SPEECH_ENGINES
+                or settings.device not in DEVICES
+                or settings.compute_type not in COMPUTE_TYPES
+                or settings.model not in MODELS
+                or settings.language not in LANGUAGES
+            ):
+                return self._start_error("invalid_speech", t("err.invalid_speech"))
+
+            self._self_test_status, self._self_test_text = "running", None
+            self._self_test_worker = threading.Thread(
+                target=self._run_self_test, args=(settings,), daemon=True
+            )
+            self._self_test_worker.start()
+            return {"ok": True}
+
+    def _run_self_test(self, settings: LauncherSettings) -> None:
+        app_root = _default_app_root()
+        env = python_child_env(app_root, dict(os.environ))
+        apply_model_env(models_dir(), env)
+        env.setdefault("HF_HUB_VERBOSITY", "error")
+        cmd = [
+            sys.executable,
+            "-m",
+            "launcher",
+            "--gpu-self-test",
+            "--speech-engine",
+            settings.speech_engine,
+            "--device",
+            settings.device,
+            "--compute-type",
+            settings.compute_type,
+            "--model",
+            settings.model,
+            "--language",
+            settings.language,
+        ]
+        timed_out = threading.Event()
+        result = None
+        failure = None
+        status = "fail"
+        try:
+            with self._lock:
+                if self._closed:
+                    return
+                process = self._self_test_popen(
+                    cmd,
+                    cwd=str(app_root),
+                    env=env,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    stdin=subprocess.DEVNULL,
+                    **platform.current().child_process_options(),
+                )
+                self._self_test_process = process
+
+            def timeout() -> None:
+                if process.poll() is None:
+                    timed_out.set()
+                    with contextlib.suppress(ProcessLookupError):
+                        process.kill()
+
+            timer = threading.Timer(_SELF_TEST_TIMEOUT_S, timeout)
+            timer.daemon = True
+            timer.start()
+            try:
+                with process:
+                    assert process.stdout is not None
+                    for raw in process.stdout:
+                        line = raw.decode("utf-8", errors="replace").rstrip()
+                        if line.startswith(("SELFTEST OK:", "SELFTEST FAIL:")):
+                            result = line
+                        level = "ERROR" if line.startswith("SELFTEST FAIL:") else "INFO"
+                        with self._lock:
+                            self._log.append("launcher", level, line)
+                    exit_code = process.wait()
+            finally:
+                timer.cancel()
+                timer.join()
+
+            if timed_out.is_set():
+                failure = t("err.self_test_timeout")
+            elif exit_code == 0 and result and result.startswith("SELFTEST OK:"):
+                status = "ok"
+            elif not result or not result.startswith("SELFTEST FAIL:"):
+                failure = t("err.self_test_exit", detail=exit_code)
+        except Exception as exc:  # OSError from Popen, or anything else: say why, never hang
+            logger.exception("Speech self-test failed to run")
+            failure = t("err.self_test_exit", detail=exc)
+        finally:
+            with self._lock:
+                if failure is not None:
+                    self._log.append("launcher", "ERROR", failure)
+                self._self_test_process = None
+                self._self_test_status, self._self_test_text = status, failure or result
 
     def _run(self, settings: LauncherSettings) -> None:
         try:
@@ -680,15 +814,21 @@ class LauncherController:
         with self._lock:
             self._closed = True
             self._cancel.set()
+            process = self._self_test_process
+            if process is not None and process.poll() is None:
+                with contextlib.suppress(ProcessLookupError):
+                    process.kill()
 
     def close(self) -> None:
         self.request_close()
         with self._lock:
-            worker, launcher = self._worker, self._launcher
+            worker, launcher, self_test = self._worker, self._launcher, self._self_test_worker
         if launcher is not None:
             launcher.stop()
         if worker is not None:
             worker.join()
+        if self_test is not None:
+            self_test.join()
         self._meter.stop()
         with self._lock:
             self._close_session_resources()
@@ -708,6 +848,12 @@ class LauncherApi:
 
     def start(self, form: dict[str, Any]) -> dict[str, Any]:
         return self._controller.start(FormValues(**form))
+
+    def check_speech(self, engine: str, device: str) -> dict[str, Any]:
+        return self._controller.check_speech(engine, device)
+
+    def run_self_test(self, form: dict[str, Any]) -> dict[str, Any]:
+        return self._controller.run_self_test(FormValues(**form))
 
     def stop(self) -> None:
         self._controller.stop()

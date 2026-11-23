@@ -81,6 +81,7 @@ class LaunchPlan:
     speech_engine: str = "whisper"  # the Lithuanian engine actually run (after fallbacks)
     network_token: str | None = None  # set only in network mode (see network.py)
     user_bible_dir: Path | None = None  # created at launch, so the user can find it
+    speech_fallback: bool = False
 
     @property
     def base_url(self) -> str:
@@ -92,6 +93,16 @@ class LaunchPlan:
 
 
 LITHUANIAN_VERSION = "ltb"
+
+
+def python_child_env(app_root: Path, env: dict[str, str]) -> dict[str, str]:
+    backend = str(app_root / "backend")
+    existing = [p for p in env.get("PYTHONPATH", "").split(os.pathsep) if p and p != backend]
+    env["PYTHONPATH"] = os.pathsep.join([backend, *existing])
+    env["PYTHONUNBUFFERED"] = "1"
+    # Windows' default pipe encoding cannot hold all Lithuanian letters.
+    env["PYTHONIOENCODING"] = "utf-8"
+    return env
 
 
 def user_bible_dir(data_dir: Path) -> Path:
@@ -116,7 +127,7 @@ def build_plan(
     """Resolve settings into concrete commands and environment (no side effects)."""
     app_root = app_root or _default_app_root()
     data_dir = data_dir or app_data_dir()
-    env = dict(base_env if base_env is not None else os.environ)
+    env = python_child_env(app_root, dict(base_env if base_env is not None else os.environ))
     python = python or sys.executable
 
     device, device_warnings = resolve_device(settings.device, probe)
@@ -130,9 +141,6 @@ def build_plan(
         warnings.append("Kmynas + Canary on the processor will be slow; use an NVIDIA GPU for it.")
     warnings += speech.warnings
 
-    backend = str(app_root / "backend")
-    existing = [p for p in env.get("PYTHONPATH", "").split(os.pathsep) if p and p != backend]
-    env["PYTHONPATH"] = os.pathsep.join([backend, *existing])
     network_token = settings.network_token if settings.allow_network else None
     if settings.allow_network and not network_token:
         raise ValueError("network mode needs a token; see network.ensure_network_token")
@@ -155,10 +163,6 @@ def build_plan(
     env["BIBLELIVE_LOG_LEVEL"] = settings.log_level
     # The server opens this language's Bible at startup (the pipeline gets --language).
     env["BIBLELIVE_START_LANGUAGE"] = settings.language
-    env["PYTHONUNBUFFERED"] = "1"
-    # Output goes to log files; Windows would otherwise write them in cp1252, which
-    # cannot hold Lithuanian letters ("ų"), and every such log line would fail.
-    env["PYTHONIOENCODING"] = "utf-8"
     # faster-whisper (huggingface_hub) caches models under HF_HOME/hub: keep them in the
     # machine-local models dir, not the user profile's ~/.cache.
     env["HF_HOME"] = str(hf_models)
@@ -225,6 +229,7 @@ def build_plan(
         compute_type=compute_type,
         warnings=warnings,
         speech_engine=speech.engine,
+        speech_fallback=speech.fallback,
         network_token=network_token,
         user_bible_dir=bibles,
     )

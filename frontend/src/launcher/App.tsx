@@ -63,6 +63,7 @@ function Launcher({ bridge, initial }: Connection) {
   const [tab, setTab] = useState<SettingsTab>('speech')
   const [data, dispatch] = useReducer(launcherReducer, initial, initialData)
   const [pending, setPending] = useState<'start' | 'stop' | null>(null)
+  const [selfTestPending, setSelfTestPending] = useState(false)
   const [error, setError] = useState<StartError | null>(null)
   const [pollFailed, setPollFailed] = useState(false)
   const [actionFailed, setActionFailed] = useState(false)
@@ -74,6 +75,7 @@ function Launcher({ bridge, initial }: Connection) {
   const languageRequest = useRef(Promise.resolve())
   const microphoneRequest = useRef({ pending: false, done: Promise.resolve() })
   const sessionRequest = useRef<{ readyForPoll: boolean } | null>(null)
+  const selfTestRequest = useRef<{ readyForPoll: boolean } | null>(null)
   const pollNow = useRef<(() => void) | null>(null)
 
   const { state } = data
@@ -123,6 +125,8 @@ function Launcher({ bridge, initial }: Connection) {
       const visible = !document.hidden
       const request = sessionRequest.current
       const releasePending = request?.readyForPoll
+      const testRequest = selfTestRequest.current
+      const releaseSelfTest = testRequest?.readyForPoll
       const microphone = microphoneRequest.current
       const microphoneReady = !microphone.pending
       try {
@@ -147,6 +151,10 @@ function Launcher({ bridge, initial }: Connection) {
           if (releasePending && sessionRequest.current === request) {
             sessionRequest.current = null
             setPending(null)
+          }
+          if (releaseSelfTest && selfTestRequest.current === testRequest) {
+            selfTestRequest.current = null
+            setSelfTestPending(false)
           }
         }
       } catch {
@@ -275,6 +283,24 @@ function Launcher({ bridge, initial }: Connection) {
     }
   }
 
+  async function runSelfTest(): Promise<string | null> {
+    if (selfTestRequest.current) return null
+    const request = { readyForPoll: false }
+    selfTestRequest.current = request
+    setSelfTestPending(true)
+    let error: string | null = null
+    await runAction(async () => {
+      const result = await bridge.run_self_test(form)
+      if (result.ok) request.readyForPoll = true
+      else error = result.error.text
+    })
+    if (!request.readyForPoll) {
+      selfTestRequest.current = null
+      setSelfTestPending(false)
+    }
+    return error
+  }
+
   return (
     <LauncherI18nProvider language={language}>
       <LauncherFrame
@@ -324,6 +350,7 @@ function Launcher({ bridge, initial }: Connection) {
         />
         <div className="bl-workspace" hidden={view !== 'advanced'}>
           <Settings
+            visible={view === 'advanced'}
             tab={tab}
             onTab={setTab}
             form={form}
@@ -337,6 +364,9 @@ function Launcher({ bridge, initial }: Connection) {
             onChange={change}
             onLanguage={changeLanguage}
             bridge={bridge}
+            selfTest={state.self_test}
+            selfTestPending={selfTestPending}
+            onSelfTest={runSelfTest}
             onFirewall={() => void runAction(() => bridge.allow_firewall())}
           />
           <Console

@@ -12,6 +12,7 @@ import os
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Literal
 
 from .gpu import SupportedProbe, cuda_supported_compute_types, pick_compute_type
 
@@ -129,6 +130,20 @@ class SpeechChoice:
     engine: str  # "whisper" | "kmynas" | "kmynas+canary"
     model_paths: dict[str, str] = field(default_factory=dict)  # GGUF model name -> local file
     warnings: list[str] = field(default_factory=list)
+    fallback: bool = False
+
+
+@dataclass(frozen=True)
+class SpeechModelStatus:
+    name: str
+    state: Literal["ok", "old", "missing"]
+
+
+@dataclass(frozen=True)
+class SpeechCheck:
+    wanted: str
+    runs: str
+    models: list[SpeechModelStatus]
 
 
 def engine_models(engine: str) -> list[str]:
@@ -247,6 +262,33 @@ def whisper_model_arg(model: str, models_dir: Path) -> str:
     return cached_whisper_dir(model, models_dir) or model
 
 
+def _check_speech_files(
+    requested: str, models_dir: Path, probe: SupportedProbe
+) -> tuple[SpeechCheck, dict[str, str]]:
+    wanted = resolve_speech_engine(requested, probe)
+    paths: dict[str, str] = {}
+    models = []
+    for name in engine_models(wanted):
+        path = cached_gguf_path(name, models_dir)
+        if path is None:
+            models.append(SpeechModelStatus(name, "missing"))
+        else:
+            paths[name] = path
+            models.append(SpeechModelStatus(name, "ok" if is_pinned_path(name, path) else "old"))
+    runs = wanted
+    if len(paths) != len(models):
+        runs = "kmynas" if "kmynas" in paths else "whisper"
+    return SpeechCheck(wanted, runs, models), paths
+
+
+def speech_check(
+    requested: str, models_dir: Path, probe: SupportedProbe = cuda_supported_compute_types
+) -> SpeechCheck:
+    """Report cached model status and the engine Start would use, without downloading."""
+    report, _paths = _check_speech_files(requested, models_dir, probe)
+    return report
+
+
 def resolve_speech(
     requested: str,
     models_dir: Path,
@@ -258,17 +300,9 @@ def resolve_speech(
     loses Canary and runs Kmynas alone; anything else runs Whisper for Lithuanian until the
     download is done (a warning says so).
     """
-    engine = resolve_speech_engine(requested, probe)
-    needed = engine_models(engine)
-    if not needed:
-        return SpeechChoice("whisper")
-    paths: dict[str, str] = {}
-    for name in needed:
-        path = cached_gguf_path(name, models_dir)
-        if path is not None:
-            paths[name] = path
-    missing = [name for name in needed if name not in paths]
-    unpinned = [name for name, path in paths.items() if not is_pinned_path(name, path)]
+    report, paths = _check_speech_files(requested, models_dir, probe)
+    missing = [model.name for model in report.models if model.state == "missing"]
+    unpinned = [model.name for model in report.models if model.state == "old"]
     pin_warnings = (
         [
             f"Lithuanian speech model {', '.join(unpinned)} is an older download, not the "
@@ -278,15 +312,18 @@ def resolve_speech(
         else []
     )
     if not missing:
-        return SpeechChoice(engine, paths, pin_warnings)
+        return SpeechChoice(report.runs, paths, pin_warnings)
     warning = (
         f"Lithuanian speech model {', '.join(missing)} is not downloaded. Run the launcher "
         "with --download-model to download it."
     )
-    if engine == _GPU_ENGINE and "kmynas" in paths:
+    if report.runs == "kmynas":
         return SpeechChoice(
-            "kmynas",
+            report.runs,
             {"kmynas": paths["kmynas"]},
             [warning + " Using Kmynas alone.", *pin_warnings],
+            fallback=True,
         )
-    return SpeechChoice("whisper", {}, [warning + " Using Whisper for Lithuanian instead."])
+    return SpeechChoice(
+        report.runs, {}, [warning + " Using Whisper for Lithuanian instead."], fallback=True
+    )

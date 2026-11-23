@@ -87,7 +87,9 @@ export function Hero({
         ? t('launcher.audioError')
         : state.audio === 'starting' && audioWasRunning
           ? t('launcher.audioRestarting')
-          : null)
+          : state.speech_fallback
+            ? t('launcher.speechFallbackWarning')
+            : null)
 
   return (
     <section className="bl-hero" aria-labelledby="bl-session">

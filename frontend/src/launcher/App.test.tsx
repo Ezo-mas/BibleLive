@@ -1,10 +1,79 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import { App } from './App'
+import type { SpeechCheck } from './bridge'
 import { createDemoBridge } from './demoBridge'
 
 describe('launcher App', () => {
   const speechTarget = 'Aim for speech peaks between -24 and -12 dB'
+
+  it('shows downloaded models and fallback for the latest Speech settings', async () => {
+    const bridge = createDemoBridge()
+    const init = bridge.init
+    vi.spyOn(bridge, 'init').mockImplementation(async () => {
+      const initial = await init()
+      return { ...initial, form: { ...initial.form, language: 'lt' } }
+    })
+    let finishFirst!: (result: SpeechCheck) => void
+    const latest: SpeechCheck = {
+      wanted: 'kmynas+canary',
+      runs: 'kmynas',
+      models: [
+        { name: 'kmynas', state: 'old' },
+        { name: 'canary', state: 'missing' },
+      ],
+    }
+    const check = vi
+      .spyOn(bridge, 'check_speech')
+      .mockImplementationOnce(() => new Promise(resolve => (finishFirst = resolve)))
+      .mockResolvedValue(latest)
+    render(<App bridge={bridge} />)
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Advanced' }))
+    expect(screen.getByText('Checking downloaded models…')).toBeVisible()
+    expect(screen.queryByText('Canary — not downloaded')).not.toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText('Processing device'), { target: { value: 'cpu' } })
+    expect(await screen.findByText('Canary — not downloaded')).toHaveClass('bl-warning')
+    expect(screen.getByText('Kmynas — older download')).toBeVisible()
+    expect(screen.getByText('Canary is missing. Kmynas alone will run.')).toBeVisible()
+    expect(screen.getByText(/--download-model --speech-engine kmynas\+canary/)).toBeVisible()
+    expect(check.mock.calls).toEqual([
+      ['auto', 'auto'],
+      ['auto', 'cpu'],
+    ])
+    await act(async () =>
+      finishFirst({
+        wanted: 'kmynas',
+        runs: 'kmynas',
+        models: [{ name: 'kmynas', state: 'ok' }],
+      })
+    )
+    expect(screen.getByText('Canary — not downloaded')).toBeVisible()
+    fireEvent.change(screen.getByLabelText('Lithuanian engine'), { target: { value: 'whisper' } })
+    expect(screen.queryByText('Canary — not downloaded')).not.toBeInTheDocument()
+  })
+
+  it('runs the self-test on demand and disables its button while testing or starting a session', async () => {
+    const bridge = createDemoBridge()
+    const run = vi.spyOn(bridge, 'run_self_test')
+    render(<App bridge={bridge} />)
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Advanced' }))
+    fireEvent.click(screen.getByText('Troubleshooting'))
+    const button = screen.getByRole('button', { name: 'Test speech models' })
+    expect(button).toBeEnabled()
+    expect(run).not.toHaveBeenCalled()
+    fireEvent.click(button)
+    expect(button).toBeDisabled()
+    expect(screen.getByText('Testing speech models…')).toBeVisible()
+    expect(run).toHaveBeenCalledWith(expect.objectContaining({ speech_engine: 'auto' }))
+    expect(
+      await screen.findByText('Speech models passed the demo test.', { selector: '[role=status]' })
+    ).toBeVisible()
+    expect(button).toBeEnabled()
+    fireEvent.click(screen.getByRole('button', { name: 'Start session' }))
+    expect(button).toBeDisabled()
+  })
 
   it('renders Simple and persists the switch to Advanced with its three tabs', async () => {
     const bridge = createDemoBridge()

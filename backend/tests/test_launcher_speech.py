@@ -34,6 +34,7 @@ from launcher.speech import (
     physical_cores,
     resolve_speech,
     resolve_speech_engine,
+    speech_check,
     speech_threads,
     whisper_model_arg,
 )
@@ -197,7 +198,7 @@ def test_checksum_mismatch_deletes_the_file(tmp_path):
 
 def test_missing_models_fall_back_to_whisper(tmp_path):
     choice = resolve_speech("kmynas", tmp_path, NO_GPU)
-    assert choice == SpeechChoice("whisper", {}, choice.warnings)
+    assert choice == SpeechChoice("whisper", {}, choice.warnings, fallback=True)
     assert choice.warnings and "--download-model" in choice.warnings[0]
 
 
@@ -207,6 +208,29 @@ def test_missing_canary_keeps_kmynas(tmp_path):
     assert choice.engine == "kmynas"
     assert {k: Path(v) for k, v in choice.model_paths.items()} == {"kmynas": kmynas}
     assert choice.warnings and "canary" in choice.warnings[0]
+
+
+def test_speech_check_reports_pins_and_the_same_fallback_as_start(tmp_path):
+    models = tmp_path / "models"
+    canary = _cache(models, CANARY)
+    report = speech_check("auto", models, NVIDIA)
+    assert (report.wanted, report.runs) == ("kmynas+canary", "whisper")
+    assert [(m.name, m.state) for m in report.models] == [("kmynas", "missing"), ("canary", "ok")]
+
+    _cache(models, KMYNAS, pinned=False)
+    canary.unlink()
+    report = speech_check("auto", models, NVIDIA)
+    assert (report.wanted, report.runs) == ("kmynas+canary", "kmynas")
+    assert [(m.name, m.state) for m in report.models] == [("kmynas", "old"), ("canary", "missing")]
+    plan = _plan(tmp_path, LauncherSettings(language="lt", device="cpu"), NVIDIA)
+    assert plan.speech_engine == report.runs
+    assert plan.speech_fallback
+
+    _cache(models, CANARY)
+    assert speech_check("auto", models, NVIDIA).runs == "kmynas+canary"
+    assert not _plan(tmp_path, LauncherSettings(language="lt"), NVIDIA).speech_fallback
+    report = speech_check("whisper", models, NVIDIA)
+    assert (report.wanted, report.runs, report.models) == ("whisper", "whisper", [])
 
 
 def test_speech_threads_leave_one_core_capped_at_six(monkeypatch):
@@ -559,3 +583,19 @@ def test_whisper_pins_use_faster_whispers_repo_ids():
 
     for name, pin in WHISPER_MODELS.items():
         assert _MODELS[name] == pin.repo_id, name
+
+
+def test_selftest_never_loads_a_whisper_model_that_is_not_downloaded(tmp_path):
+    # Loading by name would let faster-whisper download it (multi-GB from one button click).
+    loaded: list = []
+    out = io.StringIO()
+    code = gpu_self_test_command(
+        LauncherSettings(speech_engine="whisper", device="cpu"),
+        tmp_path / "models",
+        probe=NO_GPU,
+        loader=lambda *a: loaded.append(a),
+        whisper_cached=lambda _m, _d: False,
+        out=out,
+    )
+    assert code == EXIT_FAIL and loaded == []
+    assert "whisper model large-v3-turbo not downloaded" in out.getvalue()

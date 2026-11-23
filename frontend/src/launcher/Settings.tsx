@@ -1,7 +1,17 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { RefObject } from 'react'
 import { useI18n } from '../shared/i18nContext'
-import type { Bridge, Form, Network, Options, Platform, StartError, UILanguage } from './bridge'
+import type {
+  Bridge,
+  Form,
+  Network,
+  Options,
+  Platform,
+  SelfTest,
+  SpeechCheck,
+  StartError,
+  UILanguage,
+} from './bridge'
 import { Choice } from './Choice'
 import { Icon } from './Icon'
 
@@ -12,6 +22,7 @@ type SelectKey =
   'speech_engine' | 'device' | 'model' | 'compute_type' | 'auto_mode' | 'ui_language' | 'log_level'
 
 interface Props {
+  visible: boolean
   tab: SettingsTab
   onTab: (tab: SettingsTab) => void
   form: Form
@@ -25,6 +36,9 @@ interface Props {
   onChange: <K extends keyof Form>(key: K, value: Form[K]) => void
   onLanguage: (code: UILanguage) => void
   bridge: Bridge
+  selfTest: SelfTest
+  selfTestPending: boolean
+  onSelfTest: () => Promise<string | null>
   onFirewall: () => void
 }
 
@@ -109,7 +123,73 @@ function NetworkDetails({
   )
 }
 
+const downloadCommand: Record<Platform, string> = {
+  win32: 'BibleLive-console.cmd',
+  darwin: '/Applications/BibleLive.app/Contents/MacOS/BibleLive',
+  linux: 'python -m launcher',
+}
+
+function SpeechModels({
+  bridge,
+  engine,
+  device,
+  platform,
+}: Pick<Props, 'bridge' | 'platform'> & { engine: string; device: string }) {
+  const { t } = useI18n()
+  const [check, setCheck] = useState<SpeechCheck | 'failed' | null>(null)
+  useEffect(() => {
+    let active = true
+    void bridge.check_speech(engine, device).then(
+      result => {
+        if (active) setCheck(result)
+      },
+      () => {
+        if (active) setCheck('failed')
+      }
+    )
+    return () => {
+      active = false
+    }
+  }, [bridge, engine, device])
+
+  return (
+    <section className="bl-speech-check bl-muted" aria-live="polite">
+      {check === null || check === 'failed' ? (
+        <p>{t(check === null ? 'launcher.checkingModels' : 'launcher.modelCheckFailed')}</p>
+      ) : (
+        <>
+          <ul>
+            {check.models.map(({ name, state }) => (
+              <li key={name}>
+                <span className={state === 'missing' ? 'bl-warning' : undefined}>
+                  {t('launcher.speechModelStatus', {
+                    name: t(`launcher.speechModel.${name}`),
+                    state: t(`launcher.speechModelState.${state}`),
+                  })}
+                </span>
+              </li>
+            ))}
+          </ul>
+          {check.runs !== check.wanted && (
+            <p>
+              {t(check.runs === 'kmynas' ? 'launcher.fallbackKmynas' : 'launcher.fallbackWhisper')}
+            </p>
+          )}
+          {check.models.some(model => model.state !== 'ok') && (
+            <p>
+              {t('launcher.downloadSpeechModels', {
+                command: `${downloadCommand[platform]} --download-model --speech-engine ${engine === 'auto' ? check.wanted : engine}`,
+              })}
+            </p>
+          )}
+        </>
+      )}
+    </section>
+  )
+}
+
 export function Settings({
+  visible,
   tab,
   onTab,
   form,
@@ -123,10 +203,14 @@ export function Settings({
   onChange,
   onLanguage,
   bridge,
+  selfTest,
+  selfTestPending,
+  onSelfTest,
   onFirewall,
 }: Props) {
   const { t } = useI18n()
   const tabRefs = useRef<(HTMLButtonElement | null)[]>([])
+  const [selfTestError, setSelfTestError] = useState<string | null>(null)
   const lithuanian = form.language === 'lt'
   const usesWhisper = form.language === 'en' || form.speech_engine === 'whisper'
   const portError = error?.field === 'port' ? error.text : null
@@ -208,6 +292,15 @@ export function Settings({
             )}
           </p>
           {lithuanian && select('speech_engine', t('launcher.engine'))}
+          {visible && tab === 'speech' && lithuanian && form.speech_engine !== 'whisper' && (
+            <SpeechModels
+              key={form.speech_engine}
+              bridge={bridge}
+              engine={form.speech_engine}
+              device={form.device}
+              platform={platform}
+            />
+          )}
         </div>
         {select('device', t('launcher.processingDevice'))}
         {usesWhisper && (
@@ -239,6 +332,25 @@ export function Settings({
               {argsError}
             </p>
           )}
+          <div className="bl-self-test">
+            <button
+              type="button"
+              className="bl-button"
+              disabled={locked || selfTestPending || selfTest.status === 'running'}
+              onClick={() => {
+                setSelfTestError(null)
+                void onSelfTest().then(setSelfTestError)
+              }}
+            >
+              {t('launcher.testSpeechModels')}
+            </button>
+            <span className="bl-muted" role="status">
+              {selfTestError ??
+                (selfTestPending || selfTest.status === 'running'
+                  ? t('launcher.selfTestRunning')
+                  : selfTest.text)}
+            </span>
+          </div>
         </details>
       </section>
       <section

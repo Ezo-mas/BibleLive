@@ -63,9 +63,22 @@ export interface State {
   audio: 'stopped' | 'starting' | 'running' | 'error'
   speech: string | null
   speech_warning: boolean
+  speech_fallback: boolean
+  self_test: SelfTest
   started_at: number | null
   network: Network | null
   error: { text: string } | null
+}
+
+export interface SpeechCheck {
+  wanted: string
+  runs: string
+  models: { name: 'kmynas' | 'canary'; state: 'ok' | 'old' | 'missing' }[]
+}
+
+export interface SelfTest {
+  status: 'idle' | 'running' | 'ok' | 'fail'
+  text: string | null
 }
 
 export interface LogLine {
@@ -103,6 +116,8 @@ export interface Bridge {
   init(): Promise<InitResult>
   poll(): Promise<PollResult>
   start(form: Form): Promise<{ ok: true } | { ok: false; error: StartError }>
+  check_speech(engine: string, device: string): Promise<SpeechCheck>
+  run_self_test(form: Form): Promise<{ ok: true } | { ok: false; error: StartError }>
   stop(): Promise<null>
   refresh_devices(): Promise<null>
   set_microphone(device: string | null): Promise<null>

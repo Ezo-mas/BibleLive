@@ -17,6 +17,8 @@ const idle: State = {
   audio: 'stopped',
   speech: null,
   speech_warning: false,
+  speech_fallback: false,
+  self_test: { status: 'idle', text: null },
   started_at: null,
   network: null,
   error: null,
@@ -142,7 +144,45 @@ export function createDemoBridge(): Bridge {
       refreshed = false
       return result
     },
+    async check_speech(engine) {
+      const wanted = engine === 'auto' ? 'kmynas' : engine
+      return {
+        wanted,
+        runs: wanted,
+        models: [
+          ...(wanted === 'whisper' ? [] : [{ name: 'kmynas', state: 'ok' } as const]),
+          ...(wanted === 'kmynas+canary' ? [{ name: 'canary', state: 'ok' } as const] : []),
+        ],
+      }
+    },
+    async run_self_test() {
+      if (state.session !== 'idle') {
+        return {
+          ok: false,
+          error: { code: 'session_busy', field: null, text: t('launcher.demo.sessionBusy') },
+        }
+      }
+      if (state.self_test.status === 'running') {
+        return {
+          ok: false,
+          error: { code: 'self_test_busy', field: null, text: t('launcher.demo.selfTestBusy') },
+        }
+      }
+      state = { ...state, self_test: { status: 'running', text: null } }
+      window.setTimeout(() => {
+        const text = t('launcher.demo.selfTestOk')
+        state = { ...state, self_test: { status: 'ok', text } }
+        writeLog('launcher', text)
+      }, 600)
+      return { ok: true }
+    },
     async start(next) {
+      if (state.self_test.status === 'running') {
+        return {
+          ok: false,
+          error: { code: 'self_test_busy', field: null, text: t('launcher.demo.selfTestBusy') },
+        }
+      }
       const port = Number(next.port)
       if (!/^\d+$/.test(next.port.trim()) || port < 1 || port > 65_535) {
         return {

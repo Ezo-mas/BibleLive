@@ -12,7 +12,7 @@ from types import SimpleNamespace
 from unittest.mock import Mock
 
 import pytest
-from launcher import cli, i18n, micmeter, webui
+from launcher import cli, i18n, micmeter, speech, webui
 from launcher.logtail import LogBuffer, LogTail
 from launcher.process import LaunchPlan
 from launcher.settings import LauncherSettings, load_settings, save_settings
@@ -56,6 +56,9 @@ def bridge(tmp_path, monkeypatch):
         processes=[],
         qr_calls=[],
         qr_answer=lambda visible: visible,
+        speech_engine="whisper",
+        speech_fallback=False,
+        self_test_popen=Mock(),
     )
     session.meter_exit.set()
     session.allow_ready.set()
@@ -105,6 +108,8 @@ def bridge(tmp_path, monkeypatch):
             network_token=settings.network_token if settings.allow_network else None,
             # Two device warnings, as build_plan gives on a PC without CUDA.
             warnings=["CUDA not found", "Using int8"],
+            speech_engine=session.speech_engine,
+            speech_fallback=session.speech_fallback,
         )
 
     class Launch:
@@ -153,6 +158,7 @@ def bridge(tmp_path, monkeypatch):
         post_audience_qr=lambda port, token, visible: (
             session.qr_calls.append((port, token, visible)) or session.qr_answer(visible)
         ),
+        self_test_popen=session.self_test_popen,
     )
     try:
         yield LauncherApi(controller), settings_path, trace, session
@@ -162,6 +168,146 @@ def bridge(tmp_path, monkeypatch):
         session.allow_ready.set()
         controller.close()
         i18n.set_language(original_language)
+
+
+def test_speech_check_uses_unsaved_engine_and_matches_auto_on_cpu(bridge, monkeypatch, tmp_path):
+    api, _, _, _ = bridge
+    monkeypatch.setattr(webui, "models_dir", lambda: tmp_path)
+    monkeypatch.setattr(webui, "cuda_supported_compute_types", lambda: ["float16"])
+    kmynas = str(tmp_path / speech.GGUF_MODELS["kmynas"].revision / "kmynas.gguf")
+    monkeypatch.setattr(
+        speech, "cached_gguf_path", lambda name, _: kmynas if name == "kmynas" else None
+    )
+    assert api.check_speech("unknown", "cpu") == {
+        "wanted": "kmynas+canary",
+        "runs": "kmynas",
+        "models": [{"name": "kmynas", "state": "ok"}, {"name": "canary", "state": "missing"}],
+    }
+    assert api.check_speech("whisper", "cpu") == {
+        "wanted": "whisper",
+        "runs": "whisper",
+        "models": [],
+    }
+
+
+def test_speech_fallback_warns_even_when_kmynas_runs(bridge):
+    api, _, _, session = bridge
+    session.speech_engine = "kmynas"
+    session.speech_fallback = True
+    api.init()
+    state = wait_for(lambda: (state := api.poll()["state"])["speech"] and state)
+    assert state["speech_warning"] is True
+    assert state["speech_fallback"] is True
+
+
+class SelfTestProcess:
+    def __init__(self, output, exit_code):
+        self.stdout = io.BytesIO(output)
+        self.exit_code = exit_code
+        self.exited = threading.Event()
+        self.killed = False
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_):
+        self.stdout.close()
+
+    def poll(self):
+        return self.exit_code if self.exited.is_set() else None
+
+    def wait(self):
+        assert self.exited.wait(3)
+        return self.exit_code
+
+    def kill(self):
+        self.killed = True
+        self.exit_code = 1
+        self.exited.set()
+
+
+@pytest.mark.parametrize(
+    ("marker", "exit_code", "status", "level"),
+    [
+        ("SELFTEST OK: Kmynas", 0, "ok", "INFO"),
+        ("SELFTEST FAIL: model not downloaded", 1, "fail", "ERROR"),
+    ],
+)
+def test_self_test_streams_and_refuses_start_until_child_exits(
+    bridge, monkeypatch, tmp_path, marker, exit_code, status, level
+):
+    api, _, _, session = bridge
+    monkeypatch.setattr(webui, "models_dir", lambda: tmp_path)
+    child = SelfTestProcess(f"Loading model\n{marker}\n".encode(), exit_code)
+    session.self_test_popen.return_value = child
+    form = {**api.init()["form"], "speech_engine": "kmynas", "device": "cpu", "language": "lt"}
+    assert api.run_self_test(form) == {"ok": True}
+    seen = []
+
+    def read_log():
+        seen.extend(api.poll()["log"])
+        return any(line["text"] == marker for line in seen)
+
+    wait_for(read_log)
+    assert api.poll()["state"]["self_test"] == {"status": "running", "text": None}
+    assert api.start(form)["error"]["code"] == "self_test_busy"
+    assert api.run_self_test(form)["error"]["code"] == "self_test_busy"
+    assert [
+        (line["text"], line["level"]) for line in seen if line["text"] in (marker, "Loading model")
+    ] == [
+        ("Loading model", "INFO"),
+        (marker, level),
+    ]
+    args, kwargs = session.self_test_popen.call_args
+    assert args[0] == [
+        sys.executable,
+        "-m",
+        "launcher",
+        "--gpu-self-test",
+        "--speech-engine",
+        "kmynas",
+        "--device",
+        "cpu",
+        "--compute-type",
+        form["compute_type"],
+        "--model",
+        form["model"],
+        "--language",
+        "lt",
+    ]
+    assert kwargs["env"]["HF_HOME"] == str(tmp_path)
+    assert kwargs["stderr"] == subprocess.STDOUT
+    for key, value in webui.platform.current().child_process_options().items():
+        assert kwargs[key] == value
+    child.exited.set()
+    wait_for(lambda: api.poll()["state"]["self_test"] == {"status": status, "text": marker})
+
+
+def test_self_test_is_refused_while_live_and_with_invalid_speech_settings(bridge):
+    api, _, _, session = bridge
+    form = api.init()["form"]
+    assert api.run_self_test({**form, "model": "--save"})["error"]["code"] == "invalid_speech"
+    assert api.start(form) == {"ok": True}
+    assert session.running.wait(3)
+    assert api.run_self_test(form)["error"]["code"] == "session_busy"
+    session.self_test_popen.assert_not_called()
+
+
+@pytest.mark.parametrize("timeout", [True, False])
+def test_self_test_is_killed_on_timeout_or_close(bridge, monkeypatch, timeout):
+    api, _, _, session = bridge
+    child = SelfTestProcess(b"", 0)
+    session.self_test_popen.return_value = child
+    if timeout:
+        monkeypatch.setattr(webui, "_SELF_TEST_TIMEOUT_S", 0.02)
+    assert api.run_self_test(api.init()["form"]) == {"ok": True}
+    wait_for(lambda: session.self_test_popen.called)
+    if timeout:
+        wait_for(lambda: api.poll()["state"]["self_test"]["status"] == "fail")
+        assert api.poll()["state"]["self_test"]["text"] == "The speech self-test timed out."
+    else:
+        api._controller.close()
+    assert child.killed
 
 
 def test_contract_validation_and_device_refresh(bridge):
@@ -499,6 +645,8 @@ def test_api_exposes_only_contract_methods(bridge):
         "init",
         "poll",
         "start",
+        "check_speech",
+        "run_self_test",
         "stop",
         "refresh_devices",
         "set_microphone",
