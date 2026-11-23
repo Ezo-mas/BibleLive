@@ -392,6 +392,21 @@ and added to the benchmark corpus. The WAV stays playable if the PC loses power,
 and a logging failure never stops detection. The Windows launcher keeps sessions
 in `%APPDATA%\BibleLive\logs\sessions`.
 
+To exercise the operator console with a recorded service, start a local test
+server with a Bible loaded, then run from the repo root:
+
+```bash
+python -m backend.scripts.replay_session_log path/to/session.jsonl --speed 10
+```
+
+Replay starts immediately and follows the recorded gaps at 1× by default, or
+10× with the option above. Use `--port` if the local server uses a port other
+than 8000. If the server requires authentication, set
+`BIBLELIVE_OPERATOR_TOKEN` in the replay process's environment. The server
+applies its current auto-approve and follow-along settings on their usual
+timers. The log contains final transcripts and detected references. Replay
+doesn't include partial transcripts, audio, or operator actions.
+
 ## HTTP API
 
 | Method | Endpoint            | Description                              |
