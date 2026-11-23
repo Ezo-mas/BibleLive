@@ -250,15 +250,6 @@ def _not_json():
     raise ValueError("no JSON here")
 
 
-def test_a_success_reply_with_the_flag_true_arms_the_sender(posts):
-    posts.answers.append(_armed_reply(True))
-    sender = _sender()
-
-    sender._post(TEXT, "lt")
-
-    assert sender.armed is True
-
-
 def test_a_success_reply_with_the_flag_false_disarms_it(posts):
     posts.answers.extend([_armed_reply(True), _armed_reply(False)])
     sender = _sender()
@@ -279,9 +270,12 @@ def test_a_success_reply_with_the_flag_false_disarms_it(posts):
     ],
     ids=["missing-field", "string-flag", "not-an-object", "not-json"],
 )
-def test_a_reply_that_does_not_say_armed_leaves_it_disarmed(posts, reply):
-    posts.answers.append(reply)
+def test_a_reply_that_does_not_say_armed_disarms_it(posts, reply):
+    """Armed first, so a reply that merely kept the previous state would fail here."""
+    posts.answers.extend([_armed_reply(True), reply])
     sender = _sender()
+    sender._post(TEXT, "lt")
+    assert sender.armed is True
 
     sender._post(TEXT, "lt")
 

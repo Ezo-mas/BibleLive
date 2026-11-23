@@ -49,18 +49,11 @@ class TestResolveCanonicalBook:
     def test_tolerates_case_and_whitespace(self):
         assert resolve_canonical_book(" JN ", "  john ").name == "John"
 
-    @pytest.mark.parametrize(
-        ("abbrev", "name"),
-        [
-            ("jud", "Judges"),  # exact kjv.json mislabeling
-            ("jn", "Jonah"),
-            ("jo", "John"),
-            ("jd", "Jude"),
-        ],
-    )
-    def test_conflicting_pair_raises(self, abbrev, name):
+    def test_conflicting_pair_raises(self):
+        # One representative; all four historical kjv.json mislabelings are checked
+        # at the SQLite import layer in TestListFormatIdentity.
         with pytest.raises(ImportValidationError, match="Conflicting book identity"):
-            resolve_canonical_book(abbrev, name)
+            resolve_canonical_book("jud", "Judges")  # exact kjv.json mislabeling
 
     def test_unknown_abbrev_raises(self):
         with pytest.raises(ImportValidationError, match="Unknown book abbreviation"):

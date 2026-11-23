@@ -171,8 +171,20 @@ def app_state(app):
 
 
 @pytest.fixture(autouse=True)
-def reset_app_state(app_state, tmp_path: Path):
-    """Reset the shared server state before and after every test."""
+def reset_app_state(request: pytest.FixtureRequest):
+    """Reset the shared server state before and after every test that uses the shared app.
+
+    ``request.fixturenames`` is the test's whole fixture closure, so a test that reaches
+    the app through ``client``, ``app_state`` or any other fixture is reset too. Other
+    tests (parser, capture, sender ...) skip it and never build the app or the KJV
+    database. Tests do not request fixtures dynamically (``getfixturevalue``); one that
+    starts to must name ``app`` in its signature to keep this reset.
+    """
+    if "app" not in request.fixturenames:
+        yield
+        return
+    app_state = request.getfixturevalue("app_state")
+    tmp_path: Path = request.getfixturevalue("tmp_path")
     app_state.current_display = None
     app_state.pending_references.clear()
     app_state.reference_history.clear()
