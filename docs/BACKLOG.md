@@ -54,15 +54,6 @@ reproduced in an empty project); 5.0.5 installs. `package.json` allows
 `^5.0.5`, so only `package-lock.json` holds it at 5.0.5: before an
 `npm update` that moves vitest, check that it installs, or upgrade npm first.
 
-### Replay a session log into a running server
-A dev command (make target or CLI flag) that feeds a session `.jsonl` into the
-existing pipeline endpoints (transcripts and references) at 1x or 10x speed, so
-the operator queue, auto-approve timing, follow-along hints and the phone layout
-can be tested at a desk without a microphone or a 45-minute sermon. It only
-calls routes that already exist: no protocol or approval-flow change. It skips
-the speech models, so it cannot test audio or VAD; detection correctness stays
-with `benchmarks/session_replay.py`.
-
 ## Experiments
 
 ### More recordings for the parser
