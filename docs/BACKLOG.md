@@ -16,39 +16,6 @@ Running the server under a BibleLive-named binary would remove it. Also
 unchecked: whether macOS asks for the microphone again after a re-downloaded
 update.
 
-## Planned console and display features
-
-### Operator console on phones and tablets
-Checked on a real phone at the 2026-11-22 service. Two problems, in order:
-
-1. **Showing a verse.** [PR #115](https://github.com/Ezo-mas/BibleLive/pull/115)
-   removed the rows' Show buttons: a row is shown by double-click or Enter. On a
-   phone or tablet (e.g. via the operator QR code) there is no Enter and no hover
-   hint, and double-tap proved unreliable in mobile browsers. Agreed design, touch
-   only (`@media (hover: none) and (pointer: coarse)`), desktop unchanged: a tap
-   highlights the row and reveals one compact gold Show button on that row only,
-   placed in space the row already has (the timestamp line in Pending and History,
-   the tools group in Plan) so nothing shifts. History rows take the highlight on
-   touch so the button has a row to appear on. Rows get `touch-action: manipulation`
-   (no double-tap zoom), `user-select: none` and
-   `-webkit-touch-callout: none` on touch. Rejected: a Show button on every row
-   (clutter) and a sticky bottom action bar (far from the row).
-2. **Search hides the header controls.** On a narrow screen the scripture search
-   covers the Clear, Live and +1 buttons, the ones an operator needs most during
-   a service. They must stay reachable while search is open.
-
-Minor, maybe: put the detected references before the Plan on narrow screens. The
-current order is probably fine.
-
-Check on a real phone; the browser pane only simulates mouse clicks.
-
-### Auto-clear timer
-A Settings option that clears the display automatically once a verse has been
-on screen for a set time, so a forgotten verse doesn't stay up. The operator
-types the time into a number field limited to a minimum and maximum; off by
-default. Showing a new verse or following along restarts the timer, and a manual
-Clear still works at any time.
-
 ## Launcher follow-ups
 
 - **Live wave from real levels.** The launcher's live-state wave (`--wave-live`)
@@ -94,7 +61,7 @@ the operator queue, auto-approve timing, follow-along hints and the phone layout
 can be tested at a desk without a microphone or a 45-minute sermon. It only
 calls routes that already exist: no protocol or approval-flow change. It skips
 the speech models, so it cannot test audio or VAD; detection correctness stays
-with `benchmarks/session_replay.py`. Do it before the phone console work.
+with `benchmarks/session_replay.py`.
 
 ## Experiments
 
