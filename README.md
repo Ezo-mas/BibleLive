@@ -404,7 +404,9 @@ Replay starts immediately and follows the recorded gaps at 1× by default, or
 than 8000. If the server requires authentication, set
 `BIBLELIVE_OPERATOR_TOKEN` in the replay process's environment. The server
 applies its current auto-approve and follow-along settings on their usual
-timers. The log contains final transcripts and detected references. Replay
+timers. A reference the server rejects, such as one missing from the Bible it
+has loaded, is skipped with a warning; any other error stops the replay. The
+log contains final transcripts and detected references. Replay
 doesn't include partial transcripts, audio, or operator actions.
 
 ## HTTP API

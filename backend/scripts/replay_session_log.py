@@ -15,6 +15,10 @@ import requests
 
 from core.server.models import ReferenceSubmitRequest, TranscriptSubmitRequest
 
+# Rejections of one event's content (no such passage, invalid data). Anything else
+# (auth, redirects, server errors) would fail every event, so replay stops.
+SKIPPABLE_STATUSES = (404, 422)
+
 
 @dataclass(frozen=True)
 class Event:
@@ -72,8 +76,12 @@ def read_events(lines: Iterable[str]) -> list[Event]:
     return events
 
 
-def replay(events: list[Event], port: int, speed: int, token: str | None) -> None:
-    """Send the first event immediately and scale the gaps between events."""
+def replay(events: list[Event], port: int, speed: int, token: str | None) -> int:
+    """Send the first event immediately and scale the gaps between events.
+
+    Returns how many events the server rejected and replay skipped.
+    """
+    skipped = 0
     origin_s = events[0].at_s
     start = time.monotonic()
     with requests.Session() as session:
@@ -93,6 +101,16 @@ def replay(events: list[Event], port: int, speed: int, token: str | None) -> Non
                 )
             except requests.RequestException:
                 raise ValueError(f"line {event.line}: could not POST {event.route}") from None
+            if response.status_code in SKIPPABLE_STATUSES:
+                # One event the server will not take, e.g. a reference missing from the
+                # Bible it has loaded. The live pipeline logs these and carries on too.
+                skipped += 1
+                print(
+                    f"Skipped line {event.line}: POST {event.route} "
+                    f"returned HTTP {response.status_code}",
+                    file=sys.stderr,
+                )
+                continue
             if not 200 <= response.status_code < 300:
                 message = (
                     f"line {event.line}: POST {event.route} returned HTTP {response.status_code}"
@@ -100,6 +118,7 @@ def replay(events: list[Event], port: int, speed: int, token: str | None) -> Non
                 if response.status_code == 401:
                     message += ". Check BIBLELIVE_OPERATOR_TOKEN"
                 raise ValueError(message)
+    return skipped
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -117,14 +136,17 @@ def main(argv: list[str] | None = None) -> int:
             events = read_events(lines)
         if not events:
             raise ValueError("the session contains no replayable events")
-        replay(events, args.port, args.speed, os.environ.get("BIBLELIVE_OPERATOR_TOKEN"))
+        skipped = replay(events, args.port, args.speed, os.environ.get("BIBLELIVE_OPERATOR_TOKEN"))
     except (OSError, ValueError) as error:
         print(f"Replay stopped: {error}", file=sys.stderr)
         return 1
     except KeyboardInterrupt:
         print("Replay stopped", file=sys.stderr)
         return 130
-    print(f"Replayed {len(events)} event(s)")
+    summary = f"Replayed {len(events) - skipped} event(s)"
+    if skipped:
+        summary += f", skipped {skipped} the server rejected"
+    print(summary)
     return 0
 
 

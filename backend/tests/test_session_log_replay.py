@@ -99,7 +99,26 @@ def test_replay_validates_the_file_before_posting(tmp_path, monkeypatch, capsys)
     assert "line 2" in capsys.readouterr().err
 
 
-@pytest.mark.parametrize("status", [307, 401])
+@pytest.mark.parametrize("status", [404, 422])
+def test_replay_skips_an_event_the_server_rejects(tmp_path, monkeypatch, capsys, status):
+    path = tmp_path / "session.jsonl"
+    record = {"type": "utterance", "references": [JOHN, {**JOHN, "chapter": 4}]}
+    path.write_text(json.dumps(record), encoding="utf-8")
+    chapters = []
+
+    def post(session, url, *, json, **kwargs):
+        chapters.append(json["chapter"])
+        return SimpleNamespace(status_code=status if json["chapter"] == 3 else 201)
+
+    monkeypatch.setattr(replay_session_log.requests.Session, "post", post)
+    assert replay_session_log.main([str(path)]) == 0
+    assert chapters == [3, 4]  # The rejected reference did not stop the one after it.
+    out, err = capsys.readouterr()
+    assert f"Skipped line 1: POST /api/reference returned HTTP {status}" in err
+    assert "Replayed 1 event(s), skipped 1 the server rejected" in out
+
+
+@pytest.mark.parametrize("status", [307, 401, 500])
 def test_replay_stops_after_a_rejected_post(tmp_path, monkeypatch, capsys, status):
     path = tmp_path / "session.jsonl"
     record = {"type": "utterance", "references": [JOHN, JOHN]}
