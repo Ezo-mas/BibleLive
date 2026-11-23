@@ -70,6 +70,11 @@ export interface State {
   network: Network | null
   /** port: set when the error is a busy port (the Start-time port check). */
   error: { text: string; port?: number | null } | null
+  diagnostics: {
+    status: 'idle' | 'running' | 'done' | 'error'
+    file: string | null
+    text: string | null
+  }
 }
 
 export interface SpeechCheck {
@@ -132,6 +137,7 @@ export interface Bridge {
   show_projector(): Promise<null>
   identify_screens(): Promise<null>
   open_logs(): Promise<null>
+  collect_diagnostics(): Promise<{ ok: true } | { ok: false; error: string }>
   allow_firewall(): Promise<null>
   set_audience_qr(visible: boolean): Promise<null>
   set_ui_language(code: UILanguage): Promise<{ language: Language; options: Options }>

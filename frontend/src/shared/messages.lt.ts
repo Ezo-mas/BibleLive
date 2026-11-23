@@ -506,6 +506,10 @@ export const lt: Record<MessageKey, MessageEntry> = {
   'launcher.checkbox.session_audio': 'Saugoti sesijos garso įrašą šiame kompiuteryje',
   'launcher.console': 'Įvykių žurnalas',
   'launcher.logFiles': 'Atidaryti žurnalų aplanką',
+  'launcher.diagnostics': 'Diagnostika',
+  'launcher.diagnosticsCollecting': 'Renkami duomenys…',
+  'launcher.diagnosticsHint':
+    'Į ZIP archyvą įtraukiami žurnalai, paskutinių pamaldų stenogramos ir nustatymai. Garso įrašai ir prieigos raktas neįtraukiami.',
   'launcher.logSources': 'Įvykių šaltiniai',
   'launcher.minimumLevel': 'Rodyti nuo lygio',
   'launcher.sessionLog': 'Sesijos žurnalas',

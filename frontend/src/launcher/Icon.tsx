@@ -1,4 +1,5 @@
 const paths = {
+  archive: 'M3 4h18v4H3zM5 8v12h14V8m-10 4h6',
   book: 'M12 7v14M3 18V4h3a6 6 0 0 1 6 3 6 6 0 0 1 6-3h3v14h-3a8 8 0 0 0-6 3 8 8 0 0 0-6-3H3Z',
   external: 'M13 5h6v6m0-6-9 9m9 0v5H5V5h5',
   refresh: 'M20 7v5h-5M4 17v-5h5m-4-4a8 8 0 0 1 14-1l1 2M4 15l1 2a8 8 0 0 0 14-1',

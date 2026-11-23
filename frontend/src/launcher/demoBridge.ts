@@ -23,6 +23,7 @@ const idle: State = {
   has_monitors: true,
   network: null,
   error: null,
+  diagnostics: { status: 'idle', file: null, text: null },
 }
 
 const defaults: Form = {
@@ -198,7 +199,13 @@ export function createDemoBridge(): Bridge {
       }
       if (state.session !== 'idle') return { ok: true }
       form = { ...next }
-      state = { ...idle, session: 'starting', server: 'starting', audio: 'starting' }
+      state = {
+        ...idle,
+        diagnostics: state.diagnostics,
+        session: 'starting',
+        server: 'starting',
+        audio: 'starting',
+      }
       writeLog('launcher', t('launcher.demo.starting', { port }))
       window.setTimeout(() => {
         if (state.session !== 'starting') return
@@ -236,7 +243,7 @@ export function createDemoBridge(): Bridge {
       if (state.session === 'idle' || state.session === 'stopping') return null
       state = { ...state, session: 'stopping', network: null }
       window.setTimeout(() => {
-        state = idle
+        state = { ...idle, diagnostics: state.diagnostics }
         lastLevelAt = Date.now() - LEVEL_INTERVAL
         speechBlock = 0
         writeLog('launcher', t('launcher.sessionStopped'))
@@ -277,6 +284,21 @@ export function createDemoBridge(): Bridge {
     },
     async open_logs() {
       return null
+    },
+    async collect_diagnostics() {
+      if (state.diagnostics.status === 'running') return { ok: true }
+      state = { ...state, diagnostics: { status: 'running', file: null, text: null } }
+      window.setTimeout(() => {
+        state = {
+          ...state,
+          diagnostics: {
+            status: 'done',
+            file: 'BibleLive-diagnostics-20261124-120000.zip',
+            text: null,
+          },
+        }
+      }, 500)
+      return { ok: true }
     },
     async allow_firewall() {
       return null

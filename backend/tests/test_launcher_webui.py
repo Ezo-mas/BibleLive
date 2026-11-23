@@ -10,9 +10,10 @@ import time
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock
+from zipfile import ZipFile
 
 import pytest
-from launcher import cli, i18n, micmeter, screen_labels, speech, webui
+from launcher import cli, diagnostics, i18n, micmeter, screen_labels, speech, webui
 from launcher.logtail import LogBuffer, LogTail
 from launcher.platform import Monitor, PortOwner
 from launcher.process import LaunchPlan
@@ -30,6 +31,90 @@ def wait_for(check):
             return value
         time.sleep(0.01)
     pytest.fail("Timed out waiting for launcher worker")
+
+
+@pytest.mark.parametrize("fail", [False, True])
+def test_collect_diagnostics(tmp_path, monkeypatch, fail):
+    entered = threading.Event()
+    finish = threading.Event()
+    reveal = Mock()
+    monkeypatch.setattr(i18n, "_current", i18n.get_language())
+    monkeypatch.setattr(webui, "app_data_dir", lambda: tmp_path)
+    monkeypatch.setattr(
+        webui, "system_info", lambda settings, monitors, engine: {"monitors": monitors}
+    )
+
+    def build(data_dir, log_dir, settings, out_path, *, extra_info, now, plan_token):
+        entered.set()
+        assert finish.wait(3)
+        assert data_dir == tmp_path
+        assert out_path.parent == log_dir / "diagnostics"
+        if fail:
+            raise OSError("disk full")
+        return out_path
+
+    controller = LauncherController(
+        load=lambda: LauncherSettings(ui_language="en"),
+        bundle_builder=build,
+        reveal_file=reveal,
+    )
+    api = LauncherApi(controller)
+    assert api.poll()["state"]["diagnostics"]["status"] == "idle"
+    assert api.collect_diagnostics() == {"ok": True}
+    try:
+        assert entered.wait(3)
+        assert api.poll()["state"]["diagnostics"]["status"] == "running"
+        assert api.collect_diagnostics()["ok"] is False
+    finally:
+        finish.set()
+    expected = "error" if fail else "done"
+
+    def completed():
+        poll = api.poll()
+        return poll if poll["state"]["diagnostics"]["status"] == expected else None
+
+    result = wait_for(completed)
+    status = result["state"]["diagnostics"]
+    if fail:
+        reveal.assert_not_called()
+        assert status["file"] is None
+        assert status["text"] == "Could not create the diagnostics bundle."
+    else:
+        reveal.assert_called_once()
+        path = reveal.call_args.args[0]
+        assert status["file"] == path.name
+        assert path.name.startswith("BibleLive-diagnostics-")
+        assert any(line["level"] == "INFO" and str(path) in line["text"] for line in result["log"])
+    controller.close()
+
+
+def test_diagnostics_uses_live_plan_and_finishes_after_reveal_error(tmp_path, monkeypatch, caplog):
+    monkeypatch.setattr(webui, "app_data_dir", lambda: tmp_path)
+    monkeypatch.setattr(diagnostics, "query_gpus", lambda run: [])
+    reveal = Mock(side_effect=RuntimeError("file manager unavailable"))
+    controller = LauncherController(
+        load=lambda: LauncherSettings(language="en", speech_engine="whisper"), reveal_file=reveal
+    )
+    controller._plan = LaunchPlan(
+        [],
+        [],
+        {"BIBLELIVE_OPERATOR_TOKEN": "plan-only-secret"},
+        tmp_path,
+        tmp_path,
+        8000,
+        "cpu",
+        "int8",
+        speech_engine="kmynas",
+    )
+    (tmp_path / "server.log").write_text("plan-only-secret", encoding="utf-8")
+    assert controller.collect_diagnostics()["ok"]
+    wait_for(lambda: controller.poll()["state"]["diagnostics"]["status"] == "done")
+    assert "Revealing diagnostics failed" in caplog.text
+    with ZipFile(reveal.call_args.args[0]) as archive:
+        assert archive.read("server.log") == b"[REDACTED]"
+        speech = json.loads(archive.read("diagnostics.json"))["speech"]
+        assert speech["resolved"] == "kmynas"
+        assert speech["settings_resolved"] == "whisper"
 
 
 @pytest.fixture
@@ -661,6 +746,7 @@ def test_api_exposes_only_contract_methods(bridge):
         "show_projector",
         "identify_screens",
         "open_logs",
+        "collect_diagnostics",
         "allow_firewall",
         "set_audience_qr",
         "set_ui_language",

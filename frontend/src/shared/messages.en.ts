@@ -486,6 +486,10 @@ export const en = {
   'launcher.checkbox.session_audio': 'Save session audio locally',
   'launcher.console': 'Console',
   'launcher.logFiles': 'Log files',
+  'launcher.diagnostics': 'Diagnostics',
+  'launcher.diagnosticsCollecting': 'Collecting…',
+  'launcher.diagnosticsHint':
+    'Collect logs, recent service transcripts, and settings in a ZIP. Audio and the access token are excluded.',
   'launcher.logSources': 'Log sources',
   'launcher.minimumLevel': 'Minimum level',
   'launcher.sessionLog': 'Session log',

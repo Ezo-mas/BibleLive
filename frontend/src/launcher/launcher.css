@@ -532,8 +532,38 @@
   overflow: hidden;
 }
 #bl-launcher .bl-console-head {
+  white-space: nowrap;
   padding: 7px 12px;
   border-bottom: 1px solid var(--line);
+}
+#bl-launcher .bl-console {
+  container-type: inline-size;
+}
+#bl-launcher .bl-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+#bl-launcher .bl-diagnostics {
+  width: 108px;
+}
+@media (prefers-reduced-motion: no-preference) {
+  #bl-launcher .bl-diagnostics[aria-busy='true'] .bl-icon {
+    animation: bl-diagnostics-spin 1s linear infinite;
+  }
+}
+@keyframes bl-diagnostics-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@container (max-width: 455px) {
+  #bl-launcher .bl-log-files-label {
+    display: none;
+  }
 }
 #bl-launcher .bl-console-head h2,
 #bl-launcher .bl-console-foot > span {

@@ -392,6 +392,7 @@ function Launcher({ bridge, initial }: Connection) {
             logRef={logRef}
             visible={view === 'advanced'}
             onLogs={() => void runAction(() => bridge.open_logs())}
+            onDiagnostics={() => void runAction(() => bridge.collect_diagnostics())}
           />
         </div>
       </LauncherFrame>

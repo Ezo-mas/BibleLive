@@ -12,14 +12,21 @@ interface Props {
   logRef: RefObject<HTMLDivElement>
   visible: boolean
   onLogs: () => void
+  onDiagnostics: () => void
 }
 
-export function Console({ data, logRef, visible, onLogs }: Props) {
+export function Console({ data, logRef, visible, onLogs, onDiagnostics }: Props) {
   const { t } = useI18n()
   const [source, setSource] = useState<LogSourceFilter>('all')
   const [minimum, setMinimum] = useState<LogLine['level']>('DEBUG')
   const follow = useRef(true)
   const { log, logCount, state } = data
+  const { diagnostics } = state
+  const collecting = diagnostics.status === 'running'
+  const hint = t('launcher.diagnosticsHint')
+  const detail = collecting
+    ? t('launcher.diagnosticsCollecting')
+    : (diagnostics.file ?? diagnostics.text)
   const entries = useMemo(() => {
     const visibleLines = new Set(filterLog(log, source, minimum))
     return log.flatMap((line, index) =>
@@ -50,9 +57,32 @@ export function Console({ data, logRef, visible, onLogs }: Props) {
         <h2 id="bl-console-heading">
           <Icon name="terminal" /> {t('launcher.console')}
         </h2>
-        <button type="button" className="bl-button bl-quiet" onClick={onLogs}>
-          <Icon name="folder" /> {t('launcher.logFiles')}
-        </button>
+        <div className="bl-actions">
+          <button
+            type="button"
+            className="bl-button bl-quiet"
+            onClick={onLogs}
+            aria-label={t('launcher.logFiles')}
+            title={t('launcher.logFiles')}
+          >
+            <Icon name="folder" />{' '}
+            <span className="bl-log-files-label">{t('launcher.logFiles')}</span>
+          </button>
+          <button
+            type="button"
+            className="bl-button bl-quiet bl-diagnostics"
+            onClick={onDiagnostics}
+            disabled={collecting}
+            aria-busy={collecting}
+            title={detail ? `${hint}\n${detail}` : hint}
+          >
+            <Icon name={collecting ? 'refresh' : 'archive'} /> {t('launcher.diagnostics')}
+          </button>
+          {/* Announces progress and the result; the visible place for them is the console log. */}
+          <span className="bl-sr-only" role="status">
+            {detail}
+          </span>
+        </div>
       </div>
       <div className="bl-services">
         <span>

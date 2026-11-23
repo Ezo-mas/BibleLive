@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import { App } from './App'
-import type { PortCheck, SpeechCheck } from './bridge'
+import type { PortCheck, SpeechCheck, State } from './bridge'
 import { createDemoBridge } from './demoBridge'
 
 describe('launcher App', () => {
@@ -185,6 +185,44 @@ describe('launcher App', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Show details' }))
     expect(screen.queryByRole('button', { name: 'Change port' })).not.toBeInTheDocument()
     await waitFor(() => expect(screen.getByRole('region', { name: 'Session log' })).toHaveFocus())
+  })
+
+  it('collects diagnostics and shows the polled progress, filename and error', async () => {
+    const bridge = createDemoBridge()
+    const poll = bridge.poll
+    let diagnostics: State['diagnostics'] = { status: 'idle', file: null, text: null }
+    const collect = vi.spyOn(bridge, 'collect_diagnostics').mockImplementation(async () => {
+      if (diagnostics.status === 'running') return { ok: false, error: 'Already collecting' }
+      diagnostics = { status: 'running', file: null, text: null }
+      return { ok: true }
+    })
+    vi.spyOn(bridge, 'poll').mockImplementation(async () => {
+      const result = await poll()
+      return { ...result, state: { ...result.state, diagnostics } }
+    })
+    render(<App bridge={bridge} />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Advanced' }))
+    const button = screen.getByRole('button', { name: 'Diagnostics' })
+    const hint =
+      'Collect logs, recent service transcripts, and settings in a ZIP. Audio and the access token are excluded.'
+    expect(button).toHaveAttribute('title', hint)
+    fireEvent.click(button)
+    fireEvent.click(button)
+    expect(collect).toHaveBeenCalledTimes(2)
+    await waitFor(() => expect(button).toBeDisabled())
+    expect(button).toHaveAttribute('aria-busy', 'true')
+    expect(button).toHaveAccessibleName('Diagnostics')
+    expect(screen.queryByText('Could not communicate with the launcher.')).not.toBeInTheDocument()
+    const file = 'BibleLive-diagnostics-20261124-120000.zip'
+    diagnostics = { status: 'done', file, text: null }
+    await waitFor(() => expect(button).toHaveAttribute('title', `${hint}\n${file}`))
+    // Only announced to screen readers; the header shows no result text (no layout jump).
+    expect(screen.getByText(file)).toHaveClass('bl-sr-only')
+    expect(button).toBeEnabled()
+    fireEvent.click(button)
+    diagnostics = { status: 'error', file: null, text: 'Could not create the diagnostics bundle.' }
+    await waitFor(() => expect(button).toHaveAttribute('title', `${hint}\n${diagnostics.text}`))
+    expect(button).toBeEnabled()
   })
 
   it('renders Simple and persists the switch to Advanced with its three tabs', async () => {

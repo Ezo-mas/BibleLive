@@ -18,12 +18,15 @@ import urllib.request
 import webbrowser
 from collections.abc import Callable
 from dataclasses import asdict, replace
+from datetime import datetime
+from functools import partial
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
 
 from . import i18n, platform
 from .commands import apply_model_env
+from .diagnostics import build_bundle, system_info
 from .gpu import cuda_supported_compute_types
 from .i18n import t
 from .logtail import LogBuffer, LogTail
@@ -116,6 +119,15 @@ def _open_folder(path: Path) -> None:
         webbrowser.open(path.as_uri())
 
 
+def _reveal_file(path: Path) -> None:
+    if sys.platform == "win32":
+        subprocess.Popen(["explorer.exe", f"/select,{path}"])
+    elif sys.platform == "darwin":
+        subprocess.Popen(["open", "-R", str(path)])
+    else:
+        _open_folder(path.parent)
+
+
 def _copy_text(text: str) -> None:
     if sys.platform == "win32":
         cmd, data = ["clip.exe"], text.encode("utf-16")
@@ -184,6 +196,8 @@ class LauncherController:
         port_owner: Callable[[int], platform.PortOwner | None] = platform.port_owner,
         port_in_use: Callable[[int], bool] = port_in_use,
         health_probe: Callable[[int], bool] = bible_live_on_port,
+        bundle_builder: Callable[..., Path] | None = None,
+        reveal_file: Callable[[Path], None] = _reveal_file,
     ) -> None:
         self._lock = threading.RLock()
         self._save = save
@@ -208,6 +222,10 @@ class LauncherController:
         self._port_owner = port_owner
         self._port_in_use = port_in_use
         self._health_probe = health_probe
+        self._build_bundle = bundle_builder or partial(
+            build_bundle, env_token=os.environ.get("BIBLELIVE_OPERATOR_TOKEN")
+        )
+        self._reveal_file = reveal_file
         self._fit_window: Callable[[float, float], None] | None = None
         self._projector = (
             projector if projector is not None else ProjectorBrowser(open_default=open_browser)
@@ -229,6 +247,7 @@ class LauncherController:
         self._started_at: int | None = None
         self._error: str | None = None
         self._error_port: int | None = None  # set when the error is a busy port
+        self._diagnostics: dict[str, str | None] = {"status": "idle", "file": None, "text": None}
         self._no_gpu_logged = False
         self._network: NetworkView | None = None
         # The operator page's QR code (token included) for Advanced > Network, as a data URI.
@@ -304,6 +323,7 @@ class LauncherController:
             "error": {"text": self._error, "port": self._error_port}
             if self._error is not None
             else None,
+            "diagnostics": self._diagnostics,
         }
 
     def init(self) -> dict[str, Any]:
@@ -849,6 +869,62 @@ class LauncherController:
             )
         self._open_folder(directory)
 
+    def collect_diagnostics(self) -> dict[str, Any]:
+        with self._lock:
+            if self._closed or self._diagnostics["status"] == "running":
+                return {"ok": False, "error": t("diagnostics.busy")}
+            self._diagnostics = {"status": "running", "file": None, "text": None}
+            worker = threading.Thread(
+                target=self._collect_diagnostics,
+                args=(self._settings, self._monitors.copy(), self._plan),
+                daemon=True,
+            )
+            try:
+                worker.start()
+            except RuntimeError:
+                self._diagnostics_failed()
+                return {"ok": False, "error": self._diagnostics["text"]}
+            return {"ok": True}
+
+    def _diagnostics_failed(self) -> None:
+        message = t("diagnostics.failed")
+        self._log.append("launcher", "ERROR", message)
+        self._diagnostics = {"status": "error", "file": None, "text": message}
+
+    def _collect_diagnostics(
+        self, settings: LauncherSettings, monitors: list[Monitor], plan: LaunchPlan | None
+    ) -> None:
+        try:
+            data_dir = app_data_dir()
+            log_dir = plan.log_dir if plan else platform.current().log_dir(data_dir)
+            now = datetime.fromtimestamp(self._clock()).astimezone()
+            out_path = log_dir / "diagnostics" / f"BibleLive-diagnostics-{now:%Y%m%d-%H%M%S}.zip"
+            info = system_info(settings, monitors, plan.speech_engine if plan else None)
+            path = self._build_bundle(
+                data_dir,
+                log_dir,
+                settings,
+                out_path,
+                extra_info=info,
+                now=now,
+                plan_token=plan.env.get("BIBLELIVE_OPERATOR_TOKEN") if plan else None,
+            )
+        except Exception:
+            logger.exception("Collecting diagnostics failed")
+            with self._lock:
+                self._diagnostics_failed()
+            return
+
+        try:
+            self._reveal_file(path)
+        except Exception:
+            logger.exception("Revealing diagnostics failed")
+            with self._lock:
+                self._log.append("launcher", "WARNING", t("diagnostics.reveal_failed"))
+        with self._lock:
+            self._log.append("launcher", "INFO", t("diagnostics.saved", detail=path))
+            self._diagnostics = {"status": "done", "file": path.name, "text": None}
+
     def copy_text(self, text: str) -> None:
         try:
             self._copy(text)
@@ -942,6 +1018,9 @@ class LauncherApi:
 
     def open_logs(self) -> None:
         self._controller.open_logs()
+
+    def collect_diagnostics(self) -> dict[str, Any]:
+        return self._controller.collect_diagnostics()
 
     def allow_firewall(self) -> None:
         self._controller.allow_firewall()
