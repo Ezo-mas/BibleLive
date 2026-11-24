@@ -361,21 +361,50 @@ def test_stop_cuts_a_retry_backoff_short(monkeypatch):
 
 
 def test_stop_delivers_what_is_already_queued(monkeypatch):
-    """The pipeline flushes held references on shutdown, right before stop()."""
+    """The pipeline flushes held references on shutdown, right before stop().
+
+    Stop is requested while the first POST is still in flight and the second
+    reference is waiting in the queue: the worker must deliver it, not exit.
+    """
+    in_flight = threading.Event()
+    release = threading.Event()
     posted = []
-    monkeypatch.setattr(
-        "audio.sender.requests.post",
-        lambda url, json, timeout, **kw: posted.append(json["chapter"]) or FakeResponse(201),
-    )
+
+    def post(url, json, timeout, **kw):
+        posted.append(json["chapter"])
+        if json["chapter"] == 7:
+            in_flight.set()
+            release.wait(5)
+        return FakeResponse(201)
+
+    monkeypatch.setattr("audio.sender.requests.post", post)
     sender = _background_sender()
-    sender.submit(make_ref(chapter=7))
-    sender.submit(make_ref(chapter=8))
-
-    # Stop straight after starting: the worker sees the stop request before it
-    # has taken anything off the queue, and must still empty it.
     sender.start()
-    sender.stop()
+    worker = sender._thread
+    assert worker is not None
+    stopper = threading.Thread(target=sender.stop, kwargs={"timeout": 5.0})
+    try:
+        sender.submit(make_ref(chapter=7))
+        assert in_flight.wait(3), "the first POST never started"
+        sender.submit(make_ref(chapter=8))
+        assert sender._queue.qsize() == 1  # chapter 8 waits behind the POST in flight
 
+        stopper.start()
+        _wait_for(sender._stop.is_set)  # stop() has been called; chapter 7 is still in flight
+        assert posted == [7]
+        release.set()
+
+        stopper.join(5)
+        assert not stopper.is_alive(), "stop() did not return"
+    finally:
+        release.set()  # never leave the worker parked in the POST
+        if stopper.ident is None:
+            sender.stop()  # an assertion failed before stop() was called
+        else:
+            stopper.join(5)
+        worker.join(5)
+
+    assert not worker.is_alive()
     assert posted == [7, 8]
     assert sender._queue.qsize() == 0
 
