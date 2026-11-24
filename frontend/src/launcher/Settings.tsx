@@ -45,6 +45,73 @@ interface Props {
   onFirewall: () => void
 }
 
+/**
+ * Replace the operator token, which locks out every device that has the old one. Only while
+ * stopped: the server reads the token when it starts. Asks once before it goes ahead.
+ */
+function TokenRenewal({ bridge, locked }: Pick<Props, 'bridge' | 'locked'>) {
+  const { t } = useI18n()
+  const [step, setStep] = useState<'idle' | 'confirm' | 'busy' | 'done' | 'failed'>('idle')
+
+  // Starting a session ends the question; the new token then shows in the details below.
+  useEffect(() => {
+    if (locked) setStep(current => (current === 'busy' ? current : 'idle'))
+  }, [locked])
+
+  async function regenerate() {
+    setStep('busy')
+    try {
+      const result = await bridge.regenerate_token()
+      setStep(result.ok ? 'done' : 'failed')
+    } catch {
+      setStep('failed')
+    }
+  }
+
+  const message =
+    step === 'confirm'
+      ? t('launcher.newTokenConfirm')
+      : step === 'done'
+        ? t('launcher.newTokenDone')
+        : step === 'failed'
+          ? t('launcher.newTokenFailed')
+          : locked
+            ? t('launcher.newTokenStopFirst')
+            : t('launcher.newTokenHint')
+
+  return (
+    <div className="bl-token-renewal">
+      {step === 'confirm' ? (
+        <>
+          <button
+            type="button"
+            className="bl-button"
+            disabled={locked}
+            onClick={() => void regenerate()}
+          >
+            {t('launcher.newTokenYes')}
+          </button>
+          <button type="button" className="bl-button" onClick={() => setStep('idle')}>
+            {t('launcher.cancel')}
+          </button>
+        </>
+      ) : (
+        <button
+          type="button"
+          className="bl-button"
+          disabled={locked || step === 'busy'}
+          onClick={() => setStep('confirm')}
+        >
+          {t('launcher.newToken')}
+        </button>
+      )}
+      <span className={step === 'failed' ? 'bl-error' : 'bl-muted'} role="status">
+        {message}
+      </span>
+    </div>
+  )
+}
+
 function NetworkDetails({
   network,
   bridge,
@@ -411,6 +478,7 @@ export function Settings({
             <p>{t('launcher.macNote')}</p>
           </div>
         )}
+        {form.allow_network && <TokenRenewal bridge={bridge} locked={locked} />}
         {tab === 'network' && network && (
           <NetworkDetails network={network} bridge={bridge} onFirewall={onFirewall} />
         )}

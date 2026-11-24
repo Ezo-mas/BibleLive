@@ -134,6 +134,8 @@ export interface Bridge {
   start(form: Form): Promise<{ ok: true } | { ok: false; error: StartError }>
   check_speech(engine: string, device: string): Promise<SpeechCheck>
   run_self_test(form: Form): Promise<{ ok: true } | { ok: false; error: StartError }>
+  /** A new operator token, saved for the next start; refused (ok: false) while a session runs. */
+  regenerate_token(): Promise<{ ok: boolean }>
   check_port(port: string): Promise<PortCheck>
   stop(): Promise<null>
   refresh_devices(): Promise<null>

@@ -745,6 +745,38 @@ def test_audience_qr_is_shown_and_hidden_through_the_server(bridge):
     assert session.qr_calls[1] == (8000, token, False)
 
 
+def test_regenerate_token_replaces_saved_token_and_next_start_uses_it(bridge):
+    api, settings_path, _, session = bridge
+    form = api.init()["form"]
+    old = api._controller._settings.network_token
+
+    assert api.regenerate_token() == {"ok": True}
+    new = load_settings(settings_path).network_token
+    assert new and new != old
+    lines = [line["text"] for line in api.poll()["log"]]
+    assert i18n.t("log.token_regenerated") in lines
+    assert not any(new in line for line in lines)
+
+    assert api.start({**form, "allow_network": True}) == {"ok": True}
+    assert session.running.wait(3)
+    assert session.launches[-1].plan.network_token == new
+    assert api.poll()["state"]["network"]["token"] == new
+    # While live the server already holds the token: no new one until it is stopped.
+    assert api.regenerate_token() == {"ok": False}
+    assert load_settings(settings_path).network_token == new
+
+
+def test_regenerate_token_keeps_the_old_token_when_saving_fails():
+    def save(_settings):
+        raise OSError("disk full")
+
+    controller = LauncherController(
+        load=lambda: LauncherSettings(network_token="oldtoken"), save=save
+    )
+    assert LauncherApi(controller).regenerate_token() == {"ok": False}
+    assert controller._settings.network_token == "oldtoken"
+
+
 def test_audience_qr_failure_and_no_address_are_logged(bridge):
     api, _, _, session = bridge
     form = api.init()["form"]
@@ -793,6 +825,7 @@ def test_api_exposes_only_contract_methods(bridge):
         "start",
         "check_speech",
         "run_self_test",
+        "regenerate_token",
         "check_port",
         "stop",
         "refresh_devices",

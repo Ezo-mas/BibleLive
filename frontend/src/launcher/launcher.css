@@ -499,7 +499,8 @@
   padding: 0;
   list-style: none;
 }
-#bl-launcher .bl-self-test {
+#bl-launcher .bl-self-test,
+#bl-launcher .bl-token-renewal {
   display: flex;
   align-items: center;
   flex-wrap: wrap;

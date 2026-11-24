@@ -327,6 +327,9 @@ export function createDemoBridge(): Bridge {
       }, 500)
       return { ok: true }
     },
+    async regenerate_token() {
+      return { ok: state.session === 'idle' }
+    },
     async allow_firewall() {
       return null
     },

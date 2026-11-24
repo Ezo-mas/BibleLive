@@ -17,11 +17,6 @@ Running the server under a BibleLive-named binary would remove it. Also
 unchecked: whether macOS asks for the microphone again after a re-downloaded
 update.
 
-## Launcher follow-ups
-
-- **Regenerate the operator token.** Revokes access for devices it was shared
-  with. Needs a security review.
-
 ## Maintenance
 
 ### npm 10.9 cannot install vitest 4.1.11 or later

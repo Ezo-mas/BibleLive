@@ -550,6 +550,39 @@ describe('launcher App', () => {
     )
   })
 
+  it('makes a new operator token only after confirming, and only while stopped', async () => {
+    const bridge = createDemoBridge()
+    const regenerate = vi
+      .spyOn(bridge, 'regenerate_token')
+      .mockResolvedValueOnce({ ok: true })
+      .mockResolvedValueOnce({ ok: false })
+    render(<App bridge={bridge} />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Advanced' }))
+    fireEvent.click(screen.getByRole('tab', { name: 'Network' }))
+    // Local only: no token, no button.
+    expect(screen.queryByRole('button', { name: 'New operator token' })).toBeNull()
+    fireEvent.change(screen.getByLabelText('Access'), { target: { value: 'true' } })
+
+    fireEvent.click(screen.getByRole('button', { name: 'New operator token' }))
+    expect(screen.getByText(/lose operator access until they enter the new one/)).toBeVisible()
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    expect(regenerate).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByRole('button', { name: 'New operator token' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Make new token' }))
+    expect(await screen.findByText('New token made. It works from the next Start.')).toBeVisible()
+    fireEvent.click(screen.getByRole('button', { name: 'New operator token' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Make new token' }))
+    expect(
+      await screen.findByText('Could not make a new token. The current one still works.')
+    ).toHaveClass('bl-error')
+    expect(regenerate).toHaveBeenCalledTimes(2)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Start session' }))
+    expect(screen.getByRole('button', { name: 'New operator token' })).toBeDisabled()
+    expect(screen.getByText('Stop BibleLive to make a new token.')).toBeVisible()
+  })
+
   it('slows down when hidden and coalesces resume and action polls behind an in-flight poll', async () => {
     vi.useFakeTimers()
     let hidden = false
