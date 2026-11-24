@@ -94,26 +94,23 @@ class LauncherSettings:
     advanced_tab: str = "speech"  # the Advanced settings tab left open
     console_source: str = "all"  # Advanced console filters: source and minimum level
     console_level: str = "DEBUG"
-    # Window rectangle [x, y, width, height] in screen pixels, per launcher view.
-    window_geometry: dict[str, list[int]] = field(default_factory=dict)
+    # The window's last rectangle [x, y, width, height] in the monitors list's coordinates.
+    # One for both views: switching views keeps the window where it is. Only x, y and width
+    # are restored; the height always comes from fitting the page's content.
+    window_rect: list[int] | None = None
 
 
-def clean_geometry(raw: Any) -> dict[str, list[int]]:
-    """Keep only the views with a usable [x, y, width, height]; drop anything else."""
-    if not isinstance(raw, dict):
-        return {}
-    cleaned: dict[str, list[int]] = {}
-    for view in LAUNCHER_VIEWS:
-        rect = raw.get(view)
-        if (
-            isinstance(rect, list)
-            and len(rect) == 4
-            and all(isinstance(v, int) and not isinstance(v, bool) for v in rect)
-            and rect[2] > 0
-            and rect[3] > 0
-        ):
-            cleaned[view] = list(rect)
-    return cleaned
+def clean_rect(raw: Any) -> list[int] | None:
+    """A usable [x, y, width, height], or None."""
+    if (
+        isinstance(raw, list)
+        and len(raw) == 4
+        and all(isinstance(v, int) and not isinstance(v, bool) for v in raw)
+        and raw[2] > 0
+        and raw[3] > 0
+    ):
+        return list(raw)
+    return None
 
 
 def _coerce(value: Any, default: Any) -> Any:
@@ -148,6 +145,9 @@ def load_settings(path: Path | None = None) -> LauncherSettings:
     for f in fields(LauncherSettings):
         if f.name not in raw:
             continue
+        if f.name == "window_rect":
+            values[f.name] = clean_rect(raw[f.name])
+            continue
         default = getattr(defaults, f.name)
         value = _coerce(raw[f.name], default)
         allowed = _ALLOWED.get(f.name)
@@ -156,8 +156,6 @@ def load_settings(path: Path | None = None) -> LauncherSettings:
         if value == default and raw[f.name] != default:
             logger.warning("Launcher setting %r has an invalid value; using default", f.name)
         values[f.name] = value
-    if "window_geometry" in values:
-        values["window_geometry"] = clean_geometry(values["window_geometry"])
     return LauncherSettings(**values)
 
 

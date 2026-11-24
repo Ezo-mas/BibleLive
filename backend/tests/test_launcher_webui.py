@@ -1229,34 +1229,30 @@ def test_settings_without_the_new_keys_and_with_bad_values_load(tmp_path):
     old = load_settings(path)
     assert old.launcher_view == "advanced"
     assert (old.advanced_tab, old.console_source, old.console_level) == ("speech", "all", "DEBUG")
-    assert old.window_geometry == {}
+    assert old.window_rect is None
     path.write_text(
         json.dumps(
             {
                 "advanced_tab": "x",
                 "console_source": 3,
                 "console_level": "TRACE",
-                "window_geometry": {
-                    "simple": [10, 20, 1120, 600],
-                    "advanced": [1, 2, 3],
-                    "other": [1, 2, 3, 4],
-                },
+                "window_rect": [10, 20, 1120],
             }
         ),
         encoding="utf-8",
     )
     bad = load_settings(path)
     assert (bad.advanced_tab, bad.console_source, bad.console_level) == ("speech", "all", "DEBUG")
-    assert bad.window_geometry == {"simple": [10, 20, 1120, 600]}
-    path.write_text(json.dumps({"window_geometry": [1, 2, 3, 4]}), encoding="utf-8")
-    assert load_settings(path).window_geometry == {}
+    assert bad.window_rect is None
+    for broken in ([1, 2, 0, 4], [1, 2, True, 4], [1, 2, "3", 4], {"simple": [1, 2, 3, 4]}):
+        path.write_text(json.dumps({"window_rect": broken}), encoding="utf-8")
+        assert load_settings(path).window_rect is None
 
 
-def test_window_geometry_round_trips(tmp_path):
+def test_window_rect_round_trips(tmp_path):
     path = tmp_path / "launcher.json"
-    geometry = {"simple": [-1800, 40, 1120, 600], "advanced": [100, 50, 1120, 800]}
-    save_settings(LauncherSettings(window_geometry=geometry), path)
-    assert load_settings(path).window_geometry == geometry
+    save_settings(LauncherSettings(window_rect=[-1800, 40, 1120, 600]), path)
+    assert load_settings(path).window_rect == [-1800, 40, 1120, 600]
 
 
 MAIN = Monitor("DISPLAY1", 0, 0, 1920, 1080, True)
@@ -1345,19 +1341,38 @@ def test_mac_window_geometry_reads_and_places_in_quartz_points(monkeypatch):
     assert webui._window_geometry(window) is None
     native.mini = False
 
-    # On the main thread (before_show) the frame is set directly.
-    webui._place_window(window, (-1800, -200, 1000, 700))
-    assert native.frames == [(-1800, 400, 1000, 700)]
-    assert webui._window_geometry(window) == (-1800, -200, 1000, 700)
-
-    # A view switch keeps the current height (fit_window owns it): the top edge stays put.
-    webui._place_window(window, (50, 60, 1120, 900), keep_height=True)
-    assert native.frames[-1] == (50, 140, 1120, 700)
-    assert webui._window_geometry(window) == (50, 60, 1120, 700)
+    # On the main thread (before_show) the frame is set directly. Position and width come
+    # from the saved rectangle; the height stays the window's own (the page fits it).
+    webui._place_window(window, (-1800, -200, 1000, 900))
+    assert native.frames == [(-1800, 500, 1000, 600)]
+    assert webui._window_geometry(window) == (-1800, -200, 1000, 600)
 
     native.zoomed = True
     webui._place_window(window, (0, 0, 1120, 600))
-    assert len(native.frames) == 2  # never un-zooms the window
+    assert len(native.frames) == 1  # never un-zooms the window
+
+
+def test_windows_placement_keeps_the_window_height(monkeypatch):
+    monkeypatch.setattr(sys, "platform", "win32")
+    calls = []
+    monkeypatch.setattr(
+        webui,
+        "ctypes",
+        SimpleNamespace(
+            windll=SimpleNamespace(
+                user32=SimpleNamespace(SetWindowPos=lambda *args: calls.append(args[2:6]))
+            )
+        ),
+    )
+    native = SimpleNamespace(
+        WindowState="Normal", Height=800, Handle=SimpleNamespace(ToInt32=lambda: 7)
+    )
+    window = SimpleNamespace(native=native)
+    webui._place_window(window, (-1800, 40, 1200, 600))
+    assert calls == [(-1800, 40, 1200, 800)]  # the page fits the height, not the saved one
+    native.WindowState = "Maximized"
+    webui._place_window(window, (0, 0, 1120, 600))
+    assert len(calls) == 1
 
 
 def test_mac_window_is_placed_on_the_main_thread_from_other_threads(monkeypatch):
@@ -1424,7 +1439,7 @@ def geometry_controller(path, monitors=(MAIN,)):
     saves = []
 
     def save(settings):
-        saves.append(settings.window_geometry)
+        saves.append(settings.window_rect)
         return save_settings(settings, path)
 
     controller = LauncherController(
@@ -1437,58 +1452,23 @@ def geometry_controller(path, monitors=(MAIN,)):
     return controller, saves
 
 
-def test_geometry_is_debounced_and_saved_per_view(tmp_path):
+def test_geometry_is_debounced_and_shared_by_both_views(tmp_path):
     path = tmp_path / "launcher.json"
     controller, saves = geometry_controller(path)
-    placed = []
-    controller.attach_window(lambda *_: None, placed.append)
     for x in range(100, 110):  # a drag: many events, one write
         controller.note_geometry([x, 50, 1120, 600])
     assert saves == []
     assert [t.cancelled for t in FakeTimer.timers] == [True] * 9 + [False]
     FakeTimer.timers[-1].fire()
-    assert saves == [{"simple": [109, 50, 1120, 600]}]
+    assert saves == [[109, 50, 1120, 600]]
 
-    controller.note_geometry([120, 60, 1120, 640])  # still pending when the view changes
+    # Switching views keeps the one saved position: the window does not move.
     controller.set_view("advanced")
-    assert load_settings(path).window_geometry == {"simple": [120, 60, 1120, 640]}
-    assert placed == []  # Advanced has no saved rectangle yet
-    controller.note_geometry([300, 80, 1200, 800])
+    controller.note_geometry([300, 80, 1120, 800])
+    FakeTimer.timers[-1].fire()
     controller.set_view("simple")
-    assert load_settings(path).window_geometry == {
-        "simple": [120, 60, 1120, 640],
-        "advanced": [300, 80, 1200, 800],
-    }
-    assert placed == [(120, 60, 1120, 640)]
-    controller.set_view("advanced")
-    assert placed[-1] == (300, 80, 1200, 800)
-    controller.set_view("advanced")  # no change: no move
-    assert len(placed) == 2
-
-
-def test_view_switch_places_the_window_without_holding_the_lock(tmp_path):
-    # A cross-thread SetWindowPos waits on the UI thread, whose closing handler takes the
-    # controller lock: placing while holding it could hang a close.
-    path = tmp_path / "launcher.json"
-    controller, _ = geometry_controller(path)
-    held = []
-
-    def try_lock():
-        got = controller._lock.acquire(timeout=1)
-        held.append(not got)
-        if got:
-            controller._lock.release()
-
-    def place(rect):
-        probe = threading.Thread(target=try_lock)
-        probe.start()
-        probe.join()
-
-    controller.attach_window(lambda *_: None, place)
-    controller.note_geometry([300, 80, 1200, 800])
-    controller.set_view("advanced")
-    controller.set_view("simple")
-    assert held == [False]
+    assert load_settings(path).window_rect == [300, 80, 1120, 800]
+    assert controller.saved_geometry() == (300, 80, 1120, 800)
 
 
 def test_geometry_is_flushed_on_close_and_not_saved_afterwards(tmp_path):
@@ -1496,7 +1476,7 @@ def test_geometry_is_flushed_on_close_and_not_saved_afterwards(tmp_path):
     controller, _ = geometry_controller(path)
     controller.note_geometry([10, 10, 1120, 600])
     controller.request_close()
-    assert load_settings(path).window_geometry == {"simple": [10, 10, 1120, 600]}
+    assert load_settings(path).window_rect == [10, 10, 1120, 600]
     controller.note_geometry([50, 50, 1120, 600])
     assert len(FakeTimer.timers) == 1
     assert controller.saved_geometry() == (10, 10, 1120, 600)
@@ -1504,7 +1484,7 @@ def test_geometry_is_flushed_on_close_and_not_saved_afterwards(tmp_path):
 
 def test_off_screen_saved_geometry_is_not_restored(tmp_path):
     path = tmp_path / "launcher.json"
-    save_settings(LauncherSettings(window_geometry={"simple": [-1800, 40, 1120, 600]}), path)
+    save_settings(LauncherSettings(window_rect=[-1800, 40, 1120, 600]), path)
     controller, _ = geometry_controller(path, monitors=(MAIN,))
     assert controller.saved_geometry() is None
     controller, _ = geometry_controller(path, monitors=(MAIN, LEFT))

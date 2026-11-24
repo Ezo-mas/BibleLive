@@ -235,7 +235,6 @@ class LauncherController:
         )
         self._reveal_file = reveal_file
         self._fit_window: Callable[[float, float], None] | None = None
-        self._place_window: Callable[[tuple[int, int, int, int]], None] | None = None
         self._timer = timer
         self._geometry_delay = geometry_delay
         self._geometry_timer: threading.Timer | None = None
@@ -458,20 +457,10 @@ class LauncherController:
             self._save(settings)
 
     def set_view(self, view: str) -> None:
-        rect = None
+        # The window stays where it is; the page refits its height to the new view.
         with self._lock:
             if view in LAUNCHER_VIEWS and not self._closed:
-                # What was moved or resized so far belongs to the view being left.
-                self.flush_geometry()
-                changed = view != self._settings.launcher_view
                 self._persist(replace(self._settings, launcher_view=view))
-                if changed and self._place_window is not None:
-                    rect = self.saved_geometry(view)
-            place = self._place_window
-        # Outside the lock: a cross-thread SetWindowPos waits for the UI thread, whose
-        # closing handler takes this lock (request_close), so holding it could deadlock.
-        if rect is not None and place is not None:
-            place(rect)
 
     def set_advanced_tab(self, tab: str) -> None:
         with self._lock:
@@ -488,10 +477,10 @@ class LauncherController:
             ):
                 self._persist(replace(self._settings, console_source=source, console_level=level))
 
-    def saved_geometry(self, view: str | None = None) -> tuple[int, int, int, int] | None:
-        """The view's saved window rectangle if it is still on a connected monitor."""
+    def saved_geometry(self) -> tuple[int, int, int, int] | None:
+        """The saved window rectangle if it is still on a connected monitor."""
         with self._lock:
-            rect = self._settings.window_geometry.get(view or self._settings.launcher_view)
+            rect = self._settings.window_rect
         if rect is None:
             return None
         try:
@@ -515,34 +504,21 @@ class LauncherController:
             timer.start()
 
     def flush_geometry(self) -> None:
-        """Write the pending window rectangle now (also when the view changes or on close)."""
+        """Write the pending window rectangle now (also on close)."""
         with self._lock:
             if self._geometry_timer is not None:
                 self._geometry_timer.cancel()
                 self._geometry_timer = None
             rect, self._pending_geometry = self._pending_geometry, None
-            if rect is None:
-                return
-            view = self._settings.launcher_view
-            if self._settings.window_geometry.get(view) != rect:
-                self._persist(
-                    replace(
-                        self._settings,
-                        window_geometry={**self._settings.window_geometry, view: rect},
-                    )
-                )
+            if rect is not None and rect != self._settings.window_rect:
+                self._persist(replace(self._settings, window_rect=rect))
 
     @property
     def view(self) -> str:
         return self._settings.launcher_view
 
-    def attach_window(
-        self,
-        fit: Callable[[float, float], None],
-        place: Callable[[tuple[int, int, int, int]], None] | None = None,
-    ) -> None:
+    def attach_window(self, fit: Callable[[float, float], None]) -> None:
         self._fit_window = fit
-        self._place_window = place
 
     def fit_window(self, content_height: float, viewport_height: float) -> None:
         if (
@@ -1229,25 +1205,22 @@ def _window_geometry(window: Any) -> tuple[int, int, int, int] | None:
     return native.Left, native.Top, native.Width, native.Height
 
 
-def _place_window(
-    window: Any, rect: tuple[int, int, int, int], *, keep_height: bool = False
-) -> None:
-    """Put the window at a rectangle from _window_geometry (Windows and macOS).
+def _place_window(window: Any, rect: tuple[int, int, int, int]) -> None:
+    """Move the window to a saved rectangle's position and width (Windows and macOS).
 
-    ``keep_height`` on a view switch: the page refits the height to the new view's content
-    right after (fit_window), so restoring the saved height too would fight that fit.
+    The height stays the view's starting height: the page fits it to its content once
+    loaded, and a saved height would fight that fit (a scrollbar until the view changes).
     """
     native = window.native
     if sys.platform not in _GEOMETRY_PLATFORMS or native is None:
         return
     if sys.platform == "darwin":
-        _place_mac_window(native, rect, keep_height=keep_height)
+        _place_mac_window(native, rect)
         return
     if str(native.WindowState) != "Normal":
         return
-    x, y, width, height = rect
-    if keep_height:
-        height = native.Height
+    x, y, width, _ = rect
+    height = native.Height
     # SWP_NOZORDER | SWP_NOACTIVATE
     ctypes.windll.user32.SetWindowPos(native.Handle.ToInt32(), None, x, y, width, height, 0x0014)
 
@@ -1279,20 +1252,19 @@ def _mac_expanded(native: Any) -> bool:
     return bool(native.isZoomed() or native.styleMask() & (1 << 14))
 
 
-def _place_mac_window(native: Any, rect: tuple[int, int, int, int], *, keep_height: bool) -> None:
+def _place_mac_window(native: Any, rect: tuple[int, int, int, int]) -> None:
     def place() -> None:
         if native.isMiniaturized() or _mac_expanded(native):
             return
-        x, y, width, height = rect
-        if keep_height:
-            height = round(native.frame().size.height)
+        x, y, width, _ = rect
+        height = round(native.frame().size.height)
         left, bottom, width, height = _appkit_to_top_left(
             (x, y, width, height), _mac_main_screen_height()
         )
         native.setFrame_display_(((left, bottom), (width, height)), True)
 
-    # AppKit windows may only be changed on the main thread: before_show already runs there,
-    # a view switch comes from a page-call thread.
+    # AppKit windows may only be changed on the main thread. before_show runs there; any
+    # other caller is deferred to it.
     if threading.current_thread() is threading.main_thread():
         place()
     else:
@@ -1498,8 +1470,7 @@ def main(*, smoke: bool = False) -> int:
         if window is None:
             return FALLBACK
         controller.attach_window(
-            lambda content, viewport: _fit_window(window, content, viewport, max_height),
-            lambda rect: _place_window(window, rect, keep_height=True),
+            lambda content, viewport: _fit_window(window, content, viewport, max_height)
         )
         window.events.before_show += _solid_title_bar
         if sys.platform in _GEOMETRY_PLATFORMS:
