@@ -486,6 +486,11 @@ export const en = {
   'launcher.checkbox.session_audio': 'Save session audio locally',
   'launcher.console': 'Console',
   'launcher.logFiles': 'Log files',
+  'launcher.copyLogs': 'Copy logs',
+  'launcher.copyLogsDone': 'Copied',
+  'launcher.copyLogsFailed': 'Copy failed',
+  'launcher.logPaused': 'Paused — jump to latest',
+  'launcher.logPausedNew': 'Paused — jump to latest ({count} new)',
   'launcher.diagnostics': 'Diagnostics',
   'launcher.diagnosticsCollecting': 'Collecting…',
   'launcher.diagnosticsHint':

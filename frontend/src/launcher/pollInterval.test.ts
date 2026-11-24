@@ -6,7 +6,7 @@ describe('launcher poll interval', () => {
   const visible: Record<State['session'], Record<Meter, number>> = {
     idle: { off: 250, starting: 50, on: 50, error: 250 },
     starting: { off: 250, starting: 250, on: 250, error: 250 },
-    live: { off: 250, starting: 250, on: 250, error: 250 },
+    live: { off: 100, starting: 100, on: 100, error: 100 },
     stopping: { off: 250, starting: 250, on: 250, error: 250 },
   }
 

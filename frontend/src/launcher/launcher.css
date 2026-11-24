@@ -1,31 +1,34 @@
+/* Every colour lives in src/styles/tokens.css (the launcher palette, scoped to
+   :root.bl-launcher-page, light and dark). These are the launcher's own short names for
+   them, so the rules below read the same in both themes. */
 :root {
-  --wave-light: #ffe5b7;
-  --wave-dark: #d0873c;
-  --wave-live-light: #e1ffda;
-  --wave-live-dark: #71cba0;
-  --warning-bg: #553a26;
-  --warning-ink: #ffda9f;
-  --hero-danger: #ffb4a6;
-  --surface: #faf8f4;
-  --panel: #fffdfa;
-  --soft: #f0ede6;
-  --ink: #231f19;
-  --secondary: #625b50;
-  --line: #ded8ce;
-  --gold: #f7bc62;
-  --deep: #221e1a;
-  --deep-text: #fbf2e3;
-  --deep-muted: #d0c1ae;
-  --signal: #23734d;
-  --meter-green: #237347;
-  --meter-yellow: #866000;
-  --meter-red: #b2302b;
-  --meter-green-idle: #c9e0cd;
-  --meter-yellow-idle: #eddfa9;
-  --meter-red-idle: #efcdca;
-  --danger: #9e362d;
-  --focus: #7d510a;
-  --accent: #8b5915;
+  --wave-light: var(--color-wave-light);
+  --wave-dark: var(--color-wave-dark);
+  --wave-live-light: var(--color-wave-live-light);
+  --wave-live-dark: var(--color-wave-live-dark);
+  --warning-bg: var(--color-band-warning-bg);
+  --warning-ink: var(--color-band-warning);
+  --hero-danger: var(--color-band-danger);
+  --surface: var(--color-canvas);
+  --panel: var(--color-surface);
+  --soft: var(--color-surface-muted);
+  --ink: var(--color-text);
+  --secondary: var(--color-text-secondary);
+  --line: var(--color-border);
+  --gold: var(--color-primary);
+  --deep: var(--color-band);
+  --deep-text: var(--color-band-text);
+  --deep-muted: var(--color-band-muted);
+  --signal: var(--color-signal);
+  --meter-green: var(--color-meter-green);
+  --meter-yellow: var(--color-meter-yellow);
+  --meter-red: var(--color-meter-red);
+  --meter-green-idle: var(--color-meter-green-idle);
+  --meter-yellow-idle: var(--color-meter-yellow-idle);
+  --meter-red-idle: var(--color-meter-red-idle);
+  --danger: var(--color-danger);
+  --focus: var(--color-border-focus);
+  --accent: var(--accent-text);
   --radius: 18px;
 }
 #bl-launcher {
@@ -110,7 +113,7 @@
   width: 28px;
   height: 28px;
   border-radius: 8px;
-  color: #30200c;
+  color: var(--color-mark-text);
   background: var(--gold);
 }
 #bl-launcher .bl-switch {
@@ -145,7 +148,7 @@
   color: var(--ink);
   background: var(--panel);
   border-color: var(--line);
-  box-shadow: 0 1px 2px #160e0a12;
+  box-shadow: 0 1px 2px var(--color-shadow-soft);
 }
 #bl-launcher .bl-body {
   display: grid;
@@ -161,7 +164,8 @@
   align-items: stretch;
   min-height: 206px;
   border-radius: var(--radius);
-  background: radial-gradient(ellipse at 95% 20%, #4b3522 0, transparent 62%), var(--deep);
+  background:
+    radial-gradient(ellipse at 95% 20%, var(--color-band-glow) 0, transparent 62%), var(--deep);
   color: var(--deep-text);
 }
 #bl-launcher .bl-hero-copy {
@@ -174,7 +178,7 @@
   flex: none;
   gap: 7px;
   align-items: center;
-  color: #ffda9f;
+  color: var(--color-band-warning);
   font-size: 12px;
   font-weight: 650;
 }
@@ -187,7 +191,7 @@
   background: currentColor;
 }
 #bl-launcher[data-status='live'] .bl-status {
-  color: #8bdfac;
+  color: var(--color-band-success);
 }
 #bl-launcher h1 {
   margin-top: 9px;
@@ -236,19 +240,19 @@
 #bl-launcher .bl-primary {
   background: var(--gold);
   border-color: transparent;
-  color: #2d200e;
+  color: var(--color-on-primary);
 }
 #bl-launcher .bl-primary:hover:not(:disabled, [aria-disabled='true']) {
-  background: #ffce81;
+  background: var(--color-primary-hover);
 }
 #bl-launcher .bl-hero-secondary {
   --disabled-opacity: 0.35;
-  background: #fff4dc13;
+  background: var(--color-band-control);
   color: var(--deep-text);
-  border-color: #f8dfb54a;
+  border-color: var(--color-band-control-border);
 }
 #bl-launcher .bl-hero-secondary:hover:not(:disabled, [aria-disabled='true']) {
-  background: #fff4dc24;
+  background: var(--color-band-control-hover);
 }
 #bl-launcher .bl-quiet {
   background: transparent;
@@ -274,8 +278,8 @@
 #bl-launcher .bl-signal {
   position: relative;
   background:
-    repeating-linear-gradient(90deg, #ffd69c14 0 1px, transparent 1px 28px),
-    repeating-linear-gradient(0deg, #ffd69c14 0 1px, transparent 1px 28px);
+    repeating-linear-gradient(90deg, var(--color-band-grid) 0 1px, transparent 1px 28px),
+    repeating-linear-gradient(0deg, var(--color-band-grid) 0 1px, transparent 1px 28px);
   mask-image: linear-gradient(90deg, transparent, black 22%, black 94%, transparent);
 }
 #bl-launcher .bl-wave {
@@ -287,7 +291,7 @@
   gap: 2px;
   background: linear-gradient(
     transparent calc(50% - 0.5px),
-    #ffd69c36 50%,
+    var(--color-band-axis) 50%,
     transparent calc(50% + 1px)
   );
 }
@@ -518,13 +522,13 @@
 }
 
 #bl-launcher .bl-console {
-  --panel: #221f1b;
-  --surface: #1b1815;
-  --soft: #302921;
-  --line: #42382f;
-  --ink: #f8eddb;
-  --secondary: #cebea9;
-  --focus: #ffc879;
+  --panel: var(--color-console);
+  --surface: var(--color-console-canvas);
+  --soft: var(--color-console-muted);
+  --line: var(--color-console-border);
+  --ink: var(--color-console-text);
+  --secondary: var(--color-console-secondary);
+  --focus: var(--color-console-focus);
   color-scheme: dark;
   color: var(--ink);
   display: grid;
@@ -550,6 +554,47 @@
 #bl-launcher .bl-diagnostics {
   width: 108px;
 }
+#bl-launcher .bl-copy-logs {
+  width: 132px;
+}
+#bl-launcher .bl-copy-logs[data-state='failed'] {
+  color: var(--hero-danger);
+}
+#bl-launcher .bl-log,
+#bl-launcher .bl-log-paused {
+  grid-row: 4;
+  grid-column: 1;
+}
+#bl-launcher .bl-console-foot {
+  grid-row: 5;
+  grid-column: 1;
+}
+/* Overlays the bottom of the log (same grid cell), so showing it never moves a line. */
+#bl-launcher .bl-log-paused {
+  z-index: 1;
+  align-self: end;
+  justify-self: center;
+  margin-bottom: 14px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 11px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--ink);
+  background: var(--soft);
+  box-shadow: 0 2px 8px var(--color-shadow-overlay);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+#bl-launcher .bl-log-paused:hover {
+  border-color: var(--focus);
+}
+#bl-launcher .bl-log-paused:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
 @media (prefers-reduced-motion: no-preference) {
   #bl-launcher .bl-diagnostics[aria-busy='true'] .bl-icon {
     animation: bl-diagnostics-spin 1s linear infinite;
@@ -560,9 +605,22 @@
     transform: rotate(360deg);
   }
 }
-@container (max-width: 455px) {
+/* Hide the Log files / Copy logs labels before the header's buttons would wrap
+   onto a second row; the Lithuanian labels are longer, so they go sooner. */
+@container (max-width: 560px) {
   #bl-launcher .bl-log-files-label {
     display: none;
+  }
+  #bl-launcher .bl-copy-logs {
+    width: auto;
+  }
+}
+@container (max-width: 680px) {
+  :root[lang='lt'] #bl-launcher .bl-log-files-label {
+    display: none;
+  }
+  :root[lang='lt'] #bl-launcher .bl-copy-logs {
+    width: auto;
   }
 }
 #bl-launcher .bl-console-head h2,
@@ -629,14 +687,14 @@
   color: var(--secondary);
 }
 #bl-launcher .bl-log b {
-  color: #9ddab2;
+  color: var(--color-log-info);
   font-weight: 500;
 }
 #bl-launcher .bl-log [data-level='WARNING'] b {
-  color: #ffcf80;
+  color: var(--color-log-warning);
 }
 #bl-launcher .bl-log [data-level='DEBUG'] b {
-  color: #d4bef4;
+  color: var(--color-log-debug);
 }
 #bl-launcher .bl-console-foot {
   flex-wrap: wrap;
@@ -718,22 +776,6 @@ html {
 @media (prefers-color-scheme: dark) {
   :root {
     color-scheme: dark;
-    --surface: #1c1b19;
-    --panel: #24221f;
-    --soft: #2e2b26;
-    --ink: #faf2e4;
-    --secondary: #bdb2a1;
-    --line: #403a32;
-    --signal: #81d8a6;
-    --meter-green: #60cf85;
-    --meter-yellow: #f2cc52;
-    --meter-red: #ff7670;
-    --meter-green-idle: #284e35;
-    --meter-yellow-idle: #51441f;
-    --meter-red-idle: #572e2a;
-    --danger: #ff9f92;
-    --focus: #ffc879;
-    --accent: #f7bc62;
   }
 }
 body {
@@ -928,7 +970,6 @@ body {
 }
 #bl-launcher[data-status='live'] .bl-wave span {
   background: linear-gradient(var(--wave-live-light), var(--wave-live-dark));
-  transform: scaleY(var(--wave-live));
 }
 #bl-launcher .bl-firewall,
 #bl-launcher .bl-copy-row {

@@ -1,5 +1,7 @@
 import type { Language } from '../shared/i18n'
+import type { LogSourceFilter } from './consoleFilter'
 import { createDemoBridge } from './demoBridge'
+import type { SettingsTab } from './Settings'
 
 export interface Option {
   value: string | null
@@ -99,6 +101,9 @@ export interface InitResult {
   platform: Platform
   language: Language
   view: View
+  /** The Advanced settings tab and console filters as last left. */
+  tab: SettingsTab
+  console: { source: LogSourceFilter; level: LogLine['level'] }
   form: Form
   options: Options
   state: State
@@ -142,6 +147,8 @@ export interface Bridge {
   set_audience_qr(visible: boolean): Promise<null>
   set_ui_language(code: UILanguage): Promise<{ language: Language; options: Options }>
   set_view(view: View): Promise<null>
+  set_advanced_tab(tab: SettingsTab): Promise<null>
+  set_console_filters(source: LogSourceFilter, level: LogLine['level']): Promise<null>
   fit_window(contentHeight: number, viewportHeight: number): Promise<null>
   copy_text(text: string): Promise<null>
 }

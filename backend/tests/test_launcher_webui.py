@@ -15,6 +15,7 @@ from zipfile import ZipFile
 import pytest
 from launcher import cli, diagnostics, i18n, micmeter, screen_labels, speech, webui
 from launcher.logtail import LogBuffer, LogTail
+from launcher.monitors import usable_geometry
 from launcher.platform import Monitor, PortOwner
 from launcher.process import LaunchPlan
 from launcher.screen_labels import label_window_rect
@@ -117,6 +118,24 @@ def test_diagnostics_uses_live_plan_and_finishes_after_reveal_error(tmp_path, mo
         assert speech["settings_resolved"] == "whisper"
 
 
+class FakeLiveLevels:
+    """Stands in for the operator WebSocket reader (see test_launcher_livelevels.py)."""
+
+    def __init__(self):
+        self.calls = []
+        self.pending = []
+
+    def start(self, port, token):
+        self.calls.append(("start", port, token))
+
+    def stop(self, timeout=0.0):  # noqa: ARG002
+        self.calls.append(("stop",))
+
+    def drain(self):
+        drained, self.pending = self.pending, []
+        return drained
+
+
 @pytest.fixture
 def bridge(tmp_path, monkeypatch):
     # The fake devices use Windows inputs explicitly, avoiding default-device discovery.
@@ -146,6 +165,7 @@ def bridge(tmp_path, monkeypatch):
         speech_engine="whisper",
         speech_fallback=False,
         self_test_popen=Mock(),
+        live_levels=FakeLiveLevels(),
     )
     session.meter_exit.set()
     session.allow_ready.set()
@@ -246,6 +266,7 @@ def bridge(tmp_path, monkeypatch):
             session.qr_calls.append((port, token, visible)) or session.qr_answer(visible)
         ),
         self_test_popen=session.self_test_popen,
+        live_levels=session.live_levels,
     )
     try:
         yield LauncherApi(controller), settings_path, trace, session
@@ -609,6 +630,40 @@ def test_network_and_error_state(bridge):
     assert api.poll()["state"]["error"] is None
 
 
+def test_live_wave_gets_pipeline_levels_only_while_live(bridge):
+    api, _, _, session = bridge
+    live = session.live_levels
+    form = api.init()["form"]
+    live.pending = [0.9]
+    assert api.poll()["levels"] == []  # idle: the launcher's own meter, not the pipeline
+    assert live.pending == [0.9]
+
+    assert api.start({**form, "allow_network": True}) == {"ok": True}
+    assert session.running.wait(3)
+    token = api.poll()["state"]["network"]["token"]
+    assert live.calls == [("start", 8000, token)]
+    live.pending = [0.2, 0.5]
+    result = api.poll()
+    assert (result["levels"], result["meter"], result["meter_error"]) == ([0.2, 0.5], "off", None)
+    assert api.poll()["levels"] == []  # drained
+
+    api.stop()
+    assert live.calls[1] == ("stop",)
+    live.pending = [0.7]
+    assert api.poll()["levels"] == []  # stopping: no more live levels
+    wait_for(lambda: api.poll()["state"]["session"] == "idle")
+
+
+def test_live_levels_connect_without_a_token_off_the_network(bridge):
+    api, _, _, session = bridge
+    assert api.start(api.init()["form"]) == {"ok": True}
+    assert session.running.wait(3)
+    assert session.live_levels.calls == [("start", 8000, None)]
+    session.finish.set()  # the session ends by itself (e.g. the server exited)
+    wait_for(lambda: api.poll()["state"]["session"] == "idle")
+    assert ("stop",) in session.live_levels.calls
+
+
 @pytest.mark.parametrize(("peak", "level"), [(0, 0), (-32768, 1), (32767, 1), (1036, 0.5)])
 def test_pcm_block_level(peak, level):
     block = struct.pack("<h", peak) + bytes(2 * (BLOCK_SAMPLES - 1))
@@ -751,6 +806,8 @@ def test_api_exposes_only_contract_methods(bridge):
         "set_audience_qr",
         "set_ui_language",
         "set_view",
+        "set_advanced_tab",
+        "set_console_filters",
         "fit_window",
         "copy_text",
     }
@@ -937,7 +994,9 @@ def test_webview_main_checks_dev_url_and_registers_closing_handler(
     def create_window(title, url, **options):
         observed.update(title=title, url=url, **options)
         return SimpleNamespace(
-            events=SimpleNamespace(closing=closing, before_show=Closing()),
+            events=SimpleNamespace(
+                closing=closing, before_show=Closing(), moved=Closing(), resized=Closing()
+            ),
             destroy=lambda: observed.update(destroyed=True),
         )
 
@@ -1141,3 +1200,194 @@ def test_audience_qr_request_goes_to_this_computer_with_the_token(monkeypatch):
         "body": {"visible": True},
         "timeout": webui._AUDIENCE_QR_TIMEOUT_S,
     }
+
+
+def test_advanced_tab_and_console_filters_are_saved_and_restored(bridge):
+    api, path, _, _ = bridge
+    first = api.init()
+    assert first["tab"] == "speech"
+    assert first["console"] == {"source": "all", "level": "DEBUG"}
+    api.set_advanced_tab("network")
+    api.set_console_filters("server", "WARNING")
+    api.set_advanced_tab("bogus")
+    api.set_console_filters("bogus", "WARNING")
+    api.set_console_filters("audio", "TRACE")
+    saved = load_settings(path)
+    assert (saved.advanced_tab, saved.console_source, saved.console_level) == (
+        "network",
+        "server",
+        "WARNING",
+    )
+    again = api.init()
+    assert again["tab"] == "network"
+    assert again["console"] == {"source": "server", "level": "WARNING"}
+
+
+def test_settings_without_the_new_keys_and_with_bad_values_load(tmp_path):
+    path = tmp_path / "launcher.json"
+    path.write_text(json.dumps({"launcher_view": "advanced", "port": 8100}), encoding="utf-8")
+    old = load_settings(path)
+    assert old.launcher_view == "advanced"
+    assert (old.advanced_tab, old.console_source, old.console_level) == ("speech", "all", "DEBUG")
+    assert old.window_geometry == {}
+    path.write_text(
+        json.dumps(
+            {
+                "advanced_tab": "x",
+                "console_source": 3,
+                "console_level": "TRACE",
+                "window_geometry": {
+                    "simple": [10, 20, 1120, 600],
+                    "advanced": [1, 2, 3],
+                    "other": [1, 2, 3, 4],
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    bad = load_settings(path)
+    assert (bad.advanced_tab, bad.console_source, bad.console_level) == ("speech", "all", "DEBUG")
+    assert bad.window_geometry == {"simple": [10, 20, 1120, 600]}
+    path.write_text(json.dumps({"window_geometry": [1, 2, 3, 4]}), encoding="utf-8")
+    assert load_settings(path).window_geometry == {}
+
+
+def test_window_geometry_round_trips(tmp_path):
+    path = tmp_path / "launcher.json"
+    geometry = {"simple": [-1800, 40, 1120, 600], "advanced": [100, 50, 1120, 800]}
+    save_settings(LauncherSettings(window_geometry=geometry), path)
+    assert load_settings(path).window_geometry == geometry
+
+
+MAIN = Monitor("DISPLAY1", 0, 0, 1920, 1080, True)
+LEFT = Monitor("DISPLAY2", -1920, -200, 1920, 1080, False)
+
+
+@pytest.mark.parametrize(
+    ("rect", "monitors", "expected"),
+    [
+        ([100, 100, 1120, 600], [MAIN], (100, 100, 1120, 600)),
+        ([-1800, 40, 1120, 600], [MAIN, LEFT], (-1800, 40, 1120, 600)),
+        ([-1800, 40, 1120, 600], [MAIN], None),  # the second monitor is gone
+        ([3000, 100, 1120, 600], [MAIN], None),
+        ([-32000, -32000, 1120, 600], [MAIN, LEFT], None),  # a minimized window's coordinates
+        ([1500, 100, 1120, 600], [MAIN], None),  # mostly off the right edge
+        ([700, 100, 1120, 600], [MAIN], (700, 100, 1120, 600)),
+        ([100, 100, 300, 200], [MAIN], None),  # too small to be a launcher window
+        ([100, 100, 2000, 1100], [MAIN], (0, 0, 1920, 1080)),  # bigger than the screen: trimmed
+        ([100, 100, 1120, 600], [], None),  # monitors unknown
+        ([100, 100, 1120], [MAIN], None),
+    ],
+)
+def test_usable_geometry(rect, monitors, expected):
+    assert usable_geometry(rect, monitors, webui._MIN_WINDOW_SIZE) == expected
+
+
+class FakeTimer:
+    timers: list = []
+
+    def __init__(self, delay, action):
+        self.delay, self.action, self.cancelled, self.daemon = delay, action, False, False
+        FakeTimer.timers.append(self)
+
+    def start(self):
+        pass
+
+    def cancel(self):
+        self.cancelled = True
+
+    def fire(self):
+        if not self.cancelled:
+            self.action()
+
+
+def geometry_controller(path, monitors=(MAIN,)):
+    FakeTimer.timers = []
+    saves = []
+
+    def save(settings):
+        saves.append(settings.window_geometry)
+        return save_settings(settings, path)
+
+    controller = LauncherController(
+        load=lambda: load_settings(path),
+        save=save,
+        monitor_lister=lambda: list(monitors),
+        mic_lister=lambda settings: [],
+        timer=FakeTimer,
+    )
+    return controller, saves
+
+
+def test_geometry_is_debounced_and_saved_per_view(tmp_path):
+    path = tmp_path / "launcher.json"
+    controller, saves = geometry_controller(path)
+    placed = []
+    controller.attach_window(lambda *_: None, placed.append)
+    for x in range(100, 110):  # a drag: many events, one write
+        controller.note_geometry([x, 50, 1120, 600])
+    assert saves == []
+    assert [t.cancelled for t in FakeTimer.timers] == [True] * 9 + [False]
+    FakeTimer.timers[-1].fire()
+    assert saves == [{"simple": [109, 50, 1120, 600]}]
+
+    controller.note_geometry([120, 60, 1120, 640])  # still pending when the view changes
+    controller.set_view("advanced")
+    assert load_settings(path).window_geometry == {"simple": [120, 60, 1120, 640]}
+    assert placed == []  # Advanced has no saved rectangle yet
+    controller.note_geometry([300, 80, 1200, 800])
+    controller.set_view("simple")
+    assert load_settings(path).window_geometry == {
+        "simple": [120, 60, 1120, 640],
+        "advanced": [300, 80, 1200, 800],
+    }
+    assert placed == [(120, 60, 1120, 640)]
+    controller.set_view("advanced")
+    assert placed[-1] == (300, 80, 1200, 800)
+    controller.set_view("advanced")  # no change: no move
+    assert len(placed) == 2
+
+
+def test_view_switch_places_the_window_without_holding_the_lock(tmp_path):
+    # A cross-thread SetWindowPos waits on the UI thread, whose closing handler takes the
+    # controller lock: placing while holding it could hang a close.
+    path = tmp_path / "launcher.json"
+    controller, _ = geometry_controller(path)
+    held = []
+
+    def try_lock():
+        got = controller._lock.acquire(timeout=1)
+        held.append(not got)
+        if got:
+            controller._lock.release()
+
+    def place(rect):
+        probe = threading.Thread(target=try_lock)
+        probe.start()
+        probe.join()
+
+    controller.attach_window(lambda *_: None, place)
+    controller.note_geometry([300, 80, 1200, 800])
+    controller.set_view("advanced")
+    controller.set_view("simple")
+    assert held == [False]
+
+
+def test_geometry_is_flushed_on_close_and_not_saved_afterwards(tmp_path):
+    path = tmp_path / "launcher.json"
+    controller, _ = geometry_controller(path)
+    controller.note_geometry([10, 10, 1120, 600])
+    controller.request_close()
+    assert load_settings(path).window_geometry == {"simple": [10, 10, 1120, 600]}
+    controller.note_geometry([50, 50, 1120, 600])
+    assert len(FakeTimer.timers) == 1
+    assert controller.saved_geometry() == (10, 10, 1120, 600)
+
+
+def test_off_screen_saved_geometry_is_not_restored(tmp_path):
+    path = tmp_path / "launcher.json"
+    save_settings(LauncherSettings(window_geometry={"simple": [-1800, 40, 1120, 600]}), path)
+    controller, _ = geometry_controller(path, monitors=(MAIN,))
+    assert controller.saved_geometry() is None
+    controller, _ = geometry_controller(path, monitors=(MAIN, LEFT))
+    assert controller.saved_geometry() == (-1800, 40, 1120, 600)

@@ -13,6 +13,9 @@ const paths = {
   sliders: 'M3 6h6m4 0h8M3 12h12m4 0h2M3 18h3m4 0h11M9 3v6m6 0v6m-9 0v6',
   terminal: 'm4 6 6 6-6 6m9 0h7',
   folder: 'M3 18V5h6l2 2h10v3M3 18l4-8h15l-3 8H3Z',
+  copy: 'M8 8h12v13H8zM4 16V3h12',
+  arrowDown: 'M12 4v15m-6-6 6 6 6-6',
+  check: 'm4 12 5 5 11-11',
   qr: 'M4 4h6v6H4zm10 0h6v6h-6zM4 14h6v6H4zm10 0h2v2h-2zm4 0h2v2h-2zm-4 4h2v2h-2zm4 0h2v2h-2zM7 7h0m10 0h0M7 17h0',
 } as const
 

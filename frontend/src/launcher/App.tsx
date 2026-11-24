@@ -1,7 +1,17 @@
 import { useEffect, useLayoutEffect, useReducer, useRef, useState } from 'react'
 import { useI18n } from '../shared/i18nContext'
 import { getBridge } from './bridge'
-import type { Bridge, Form, InitResult, Meter, StartError, UILanguage, View } from './bridge'
+import type {
+  Bridge,
+  Form,
+  InitResult,
+  LogLine,
+  Meter,
+  StartError,
+  UILanguage,
+  View,
+} from './bridge'
+import type { LogSourceFilter } from './consoleFilter'
 import { Console } from './Console'
 import { isDemoBridge } from './demoBridge'
 import { Icon } from './Icon'
@@ -61,7 +71,7 @@ function Launcher({ bridge, initial }: Connection) {
   const [language, setLanguage] = useState(initial.language)
   const [form, setForm] = useState(initial.form)
   const [view, setView] = useState(initial.view)
-  const [tab, setTab] = useState<SettingsTab>('speech')
+  const [tab, setTab] = useState<SettingsTab>(initial.tab)
   const [data, dispatch] = useReducer(launcherReducer, initial, initialData)
   const [pending, setPending] = useState<'start' | 'stop' | null>(null)
   const [selfTestPending, setSelfTestPending] = useState(false)
@@ -91,7 +101,13 @@ function Launcher({ bridge, initial }: Connection) {
   // A failed Start already names the program on this port: don't say it twice.
   const portConflict =
     checkedPort && state.error?.port === Number(checkedPort.port) ? null : checkedPort
-  const { waveRef, meterRef, acceptLevels } = useLevelEnvelope(data.meter === 'on' && !locked)
+  const { waveRef, meterRef, acceptLevels } = useLevelEnvelope(
+    !locked && data.meter === 'on'
+      ? 'microphone'
+      : state.session === 'live' && pending === null
+        ? 'pipeline'
+        : null
+  )
 
   useLayoutEffect(() => {
     const frame = window.requestAnimationFrame(() => {
@@ -150,8 +166,7 @@ function Launcher({ bridge, initial }: Connection) {
           acceptLevels(
             visible &&
               !document.hidden &&
-              meter === 'on' &&
-              session === 'idle' &&
+              ((meter === 'on' && session === 'idle') || session === 'live') &&
               (!request || releasePending)
               ? levels
               : null
@@ -215,6 +230,15 @@ function Launcher({ bridge, initial }: Connection) {
     } finally {
       pollNow.current?.()
     }
+  }
+
+  function chooseTab(next: SettingsTab) {
+    setTab(next)
+    void bridge.set_advanced_tab(next).catch(() => {})
+  }
+
+  function changeFilters(source: LogSourceFilter, level: LogLine['level']) {
+    void bridge.set_console_filters(source, level).catch(() => {})
   }
 
   function chooseView(next: View) {
@@ -369,7 +393,7 @@ function Launcher({ bridge, initial }: Connection) {
           <Settings
             visible={view === 'advanced'}
             tab={tab}
-            onTab={setTab}
+            onTab={chooseTab}
             form={form}
             options={data.options}
             locked={locked}
@@ -391,6 +415,9 @@ function Launcher({ bridge, initial }: Connection) {
             data={data}
             logRef={logRef}
             visible={view === 'advanced'}
+            initialFilters={initial.console}
+            onFilters={changeFilters}
+            bridge={bridge}
             onLogs={() => void runAction(() => bridge.open_logs())}
             onDiagnostics={() => void runAction(() => bridge.collect_diagnostics())}
           />

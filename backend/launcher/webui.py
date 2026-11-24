@@ -16,7 +16,7 @@ import threading
 import time
 import urllib.request
 import webbrowser
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import asdict, replace
 from datetime import datetime
 from functools import partial
@@ -29,9 +29,10 @@ from .commands import apply_model_env
 from .diagnostics import build_bundle, system_info
 from .gpu import cuda_supported_compute_types
 from .i18n import t
+from .livelevels import LiveLevels
 from .logtail import LogBuffer, LogTail
 from .micmeter import MicMeter
-from .monitors import Monitor, choose_projector, enumerate_monitors
+from .monitors import Monitor, choose_projector, enumerate_monitors, usable_geometry
 from .network import (
     allow_through_firewall,
     ensure_network_token,
@@ -55,10 +56,13 @@ from .process import (
 from .projector import ProjectorBrowser, ProjectorError, operator_url
 from .screen_labels import identify_screens
 from .settings import (
+    ADVANCED_TABS,
     COMPUTE_TYPES,
+    CONSOLE_SOURCES,
     DEVICES,
     LANGUAGES,
     LAUNCHER_VIEWS,
+    LOG_LEVELS,
     MODELS,
     SPEECH_ENGINES,
     UI_LANGUAGES,
@@ -102,6 +106,7 @@ from .viewmodel import (
 logger = logging.getLogger(__name__)
 FALLBACK = 2
 _MIN_WINDOW_SIZE = (760, 480)
+_GEOMETRY_SAVE_DELAY_S = 0.8  # wait for a drag or resize to settle before writing
 _AUDIENCE_QR_TIMEOUT_S = 5.0
 _SELF_TEST_TIMEOUT_S = 180.0
 _ERROR_FIELDS = {
@@ -198,6 +203,9 @@ class LauncherController:
         health_probe: Callable[[int], bool] = bible_live_on_port,
         bundle_builder: Callable[..., Path] | None = None,
         reveal_file: Callable[[Path], None] = _reveal_file,
+        live_levels: LiveLevels | None = None,
+        timer: Callable[[float, Callable[[], object]], threading.Timer] = threading.Timer,
+        geometry_delay: float = _GEOMETRY_SAVE_DELAY_S,
     ) -> None:
         self._lock = threading.RLock()
         self._save = save
@@ -227,10 +235,17 @@ class LauncherController:
         )
         self._reveal_file = reveal_file
         self._fit_window: Callable[[float, float], None] | None = None
+        self._place_window: Callable[[tuple[int, int, int, int]], None] | None = None
+        self._timer = timer
+        self._geometry_delay = geometry_delay
+        self._geometry_timer: threading.Timer | None = None
+        self._pending_geometry: list[int] | None = None
         self._projector = (
             projector if projector is not None else ProjectorBrowser(open_default=open_browser)
         )
         self._meter = MicMeter(popen=popen, access=access)
+        # While live the pipeline holds the microphone: its own peaks drive the wave.
+        self._live_levels = live_levels if live_levels is not None else LiveLevels()
         self._log = LogBuffer(clock)
 
         self._settings = ensure_network_token(load())
@@ -338,6 +353,11 @@ class LauncherController:
                 "platform": sys.platform,
                 "language": i18n.get_language(),
                 "view": self._settings.launcher_view,
+                "tab": self._settings.advanced_tab,
+                "console": {
+                    "source": self._settings.console_source,
+                    "level": self._settings.console_level,
+                },
                 "form": asdict(
                     form_from_settings(replace(self._settings, input_device=self._selected_mic))
                 ),
@@ -353,7 +373,8 @@ class LauncherController:
             self._options_changed = False
             meter, error, levels = self._meter.snapshot()
             if self._session != "idle":
-                meter, error, levels = "off", None, []
+                meter, error = "off", None
+                levels = self._live_levels.drain() if self._session == "live" else []
             return {
                 "state": self._state(),
                 "levels": levels,
@@ -437,16 +458,91 @@ class LauncherController:
             self._save(settings)
 
     def set_view(self, view: str) -> None:
+        rect = None
         with self._lock:
             if view in LAUNCHER_VIEWS and not self._closed:
+                # What was moved or resized so far belongs to the view being left.
+                self.flush_geometry()
+                changed = view != self._settings.launcher_view
                 self._persist(replace(self._settings, launcher_view=view))
+                if changed and self._place_window is not None:
+                    rect = self.saved_geometry(view)
+            place = self._place_window
+        # Outside the lock: a cross-thread SetWindowPos waits for the UI thread, whose
+        # closing handler takes this lock (request_close), so holding it could deadlock.
+        if rect is not None and place is not None:
+            place(rect)
+
+    def set_advanced_tab(self, tab: str) -> None:
+        with self._lock:
+            if tab in ADVANCED_TABS and not self._closed and tab != self._settings.advanced_tab:
+                self._persist(replace(self._settings, advanced_tab=tab))
+
+    def set_console_filters(self, source: str, level: str) -> None:
+        with self._lock:
+            if (
+                source in CONSOLE_SOURCES
+                and level in LOG_LEVELS
+                and not self._closed
+                and (source, level) != (self._settings.console_source, self._settings.console_level)
+            ):
+                self._persist(replace(self._settings, console_source=source, console_level=level))
+
+    def saved_geometry(self, view: str | None = None) -> tuple[int, int, int, int] | None:
+        """The view's saved window rectangle if it is still on a connected monitor."""
+        with self._lock:
+            rect = self._settings.window_geometry.get(view or self._settings.launcher_view)
+        if rect is None:
+            return None
+        try:
+            monitors = self._monitor_lister()
+        except Exception:
+            logger.exception("Monitor enumeration failed")
+            return None
+        return usable_geometry(rect, monitors, _MIN_WINDOW_SIZE)
+
+    def note_geometry(self, rect: Sequence[int]) -> None:
+        """The window moved or was resized: save it for the current view after a pause."""
+        with self._lock:
+            if self._closed:
+                return
+            self._pending_geometry = [int(v) for v in rect]
+            if self._geometry_timer is not None:
+                self._geometry_timer.cancel()
+            timer = self._timer(self._geometry_delay, self.flush_geometry)
+            timer.daemon = True
+            self._geometry_timer = timer
+            timer.start()
+
+    def flush_geometry(self) -> None:
+        """Write the pending window rectangle now (also when the view changes or on close)."""
+        with self._lock:
+            if self._geometry_timer is not None:
+                self._geometry_timer.cancel()
+                self._geometry_timer = None
+            rect, self._pending_geometry = self._pending_geometry, None
+            if rect is None:
+                return
+            view = self._settings.launcher_view
+            if self._settings.window_geometry.get(view) != rect:
+                self._persist(
+                    replace(
+                        self._settings,
+                        window_geometry={**self._settings.window_geometry, view: rect},
+                    )
+                )
 
     @property
     def view(self) -> str:
         return self._settings.launcher_view
 
-    def attach_window(self, fit: Callable[[float, float], None]) -> None:
+    def attach_window(
+        self,
+        fit: Callable[[float, float], None],
+        place: Callable[[tuple[int, int, int, int]], None] | None = None,
+    ) -> None:
         self._fit_window = fit
+        self._place_window = place
 
     def fit_window(self, content_height: float, viewport_height: float) -> None:
         if (
@@ -714,6 +810,9 @@ class LauncherController:
             if kind == "ready" and self._session == "starting" and plan is not None:
                 self._session = "live"
                 self._started_at = int(self._clock() * 1000)
+                # The server wants the token whenever it has one (network mode sets it).
+                token = plan.env.get("BIBLELIVE_OPERATOR_TOKEN") or plan.network_token
+                self._live_levels.start(plan.port, token)
                 self._on_server_ready(plan)
 
     def _on_server_ready(self, plan: LaunchPlan) -> None:
@@ -939,12 +1038,14 @@ class LauncherController:
             self._session = "stopping"
             self._cancel.set()
             self._clear_network()
+            self._live_levels.stop()
             launcher = self._launcher
             self._projector.close()
         if launcher is not None:
             launcher.stop()
 
     def _close_session_resources(self) -> None:
+        self._live_levels.stop()
         self._projector.close()
         if self._tail is not None:
             self._tail.stop()
@@ -952,6 +1053,7 @@ class LauncherController:
 
     def request_close(self) -> None:
         with self._lock:
+            self.flush_geometry()
             self._closed = True
             self._cancel.set()
             process = self._self_test_process
@@ -970,6 +1072,7 @@ class LauncherController:
         if self_test is not None:
             self_test.join()
         self._meter.stop()
+        self._live_levels.stop(timeout=1.0)
         with self._lock:
             self._close_session_resources()
 
@@ -1034,6 +1137,12 @@ class LauncherApi:
     def set_view(self, view: str) -> None:
         self._controller.set_view(view)
 
+    def set_advanced_tab(self, tab: str) -> None:
+        self._controller.set_advanced_tab(tab)
+
+    def set_console_filters(self, source: str, level: str) -> None:
+        self._controller.set_console_filters(source, level)
+
     def fit_window(self, content_height: float, viewport_height: float) -> None:
         self._controller.fit_window(content_height, viewport_height)
 
@@ -1084,6 +1193,43 @@ def _fit_window(window: Any, content: float, viewport: float, max_height: int | 
     height = max(height, _MIN_WINDOW_SIZE[1])
     if height != current_height:
         window.resize(window.width, height)
+
+
+def _window_geometry(window: Any) -> tuple[int, int, int, int] | None:
+    """The window's rectangle in physical screen pixels, like the monitors list.
+
+    Only Windows has the monitor list the saved position is checked against (elsewhere it is
+    empty), so other platforms save and restore nothing. None while the window is minimized,
+    maximized or fullscreen: its rectangle then is not the one to bring back.
+    """
+    if sys.platform != "win32":
+        return None
+    native = window.native
+    if native is None or window.maximized or window.fullscreen:
+        return None
+    if native.is_fullscreen or str(native.WindowState) != "Normal":
+        return None
+    # The native form's Left/Top/Width/Height are physical pixels (pywebview's own x, width
+    # are logical, divided by the DPI scale of the monitor the window is on).
+    return native.Left, native.Top, native.Width, native.Height
+
+
+def _place_window(
+    window: Any, rect: tuple[int, int, int, int], *, keep_height: bool = False
+) -> None:
+    """Put the window at a physical-pixel rectangle (Windows only; see _window_geometry).
+
+    ``keep_height`` on a view switch: the page refits the height to the new view's content
+    right after (fit_window), so restoring the saved height too would fight that fit.
+    """
+    native = window.native
+    if sys.platform != "win32" or native is None or str(native.WindowState) != "Normal":
+        return
+    x, y, width, height = rect
+    if keep_height:
+        height = native.Height
+    # SWP_NOZORDER | SWP_NOACTIVATE
+    ctypes.windll.user32.SetWindowPos(native.Handle.ToInt32(), None, x, y, width, height, 0x0014)
 
 
 def _colorref(color: str) -> int:
@@ -1283,9 +1429,32 @@ def main(*, smoke: bool = False) -> int:
         if window is None:
             return FALLBACK
         controller.attach_window(
-            lambda content, viewport: _fit_window(window, content, viewport, max_height)
+            lambda content, viewport: _fit_window(window, content, viewport, max_height),
+            lambda rect: _place_window(window, rect, keep_height=True),
         )
         window.events.before_show += _solid_title_bar
+        if sys.platform == "win32":
+
+            def restore_window() -> None:
+                try:
+                    if rect := controller.saved_geometry():
+                        _place_window(window, rect)
+                except Exception:
+                    # Opening at the default place beats not opening.
+                    logger.exception("Could not restore the window position")
+
+            def remember_window(*_args: Any) -> None:
+                try:
+                    rect = _window_geometry(window)
+                except Exception:
+                    logger.exception("Could not read the window rectangle")
+                    return
+                if rect:
+                    controller.note_geometry(rect)
+
+            window.events.before_show += restore_window
+            window.events.moved += remember_window
+            window.events.resized += remember_window
         # Let the native window close before the finally block waits for cleanup.
         window.events.closing += lambda: _on_closing(window, controller)
         if smoke:

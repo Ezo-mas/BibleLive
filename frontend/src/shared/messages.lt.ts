@@ -506,6 +506,11 @@ export const lt: Record<MessageKey, MessageEntry> = {
   'launcher.checkbox.session_audio': 'Saugoti sesijos garso įrašą šiame kompiuteryje',
   'launcher.console': 'Įvykių žurnalas',
   'launcher.logFiles': 'Atidaryti žurnalų aplanką',
+  'launcher.copyLogs': 'Kopijuoti žurnalą',
+  'launcher.copyLogsDone': 'Nukopijuota',
+  'launcher.copyLogsFailed': 'Nepavyko',
+  'launcher.logPaused': 'Sustabdyta — pereiti į naujausius',
+  'launcher.logPausedNew': 'Sustabdyta — pereiti į naujausius (naujų: {count})',
   'launcher.diagnostics': 'Diagnostika',
   'launcher.diagnosticsCollecting': 'Renkami duomenys…',
   'launcher.diagnosticsHint':

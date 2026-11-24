@@ -17,25 +17,24 @@ import { METER_TICKS, speechTargetPosition } from './levelEnvelope'
 import { noSignal } from './noSignal'
 import type { PortConflict } from './usePortCheck'
 
-const liveWave = [
+const waveHeights = [
   7, 13, 9, 19, 27, 16, 31, 52, 37, 71, 34, 49, 21, 12, 22, 44, 78, 61, 95, 69, 47, 26, 38, 51, 24,
   17, 31, 56, 38, 73, 53, 28, 18, 28, 51, 36, 21, 28, 13, 18, 7, 10,
 ]
-const WAVE_LENGTH = liveWave.length
+const WAVE_LENGTH = waveHeights.length
 
 function Waveform({ waveRef }: { waveRef: RefObject<HTMLDivElement> }) {
   return (
     <div className="bl-signal" aria-hidden="true">
       <div className="bl-wave" ref={waveRef}>
-        {liveWave.map((height, index) => {
-          const profile = (height + liveWave[WAVE_LENGTH - 1 - index]) / 2
+        {waveHeights.map((height, index) => {
+          const profile = (height + waveHeights[WAVE_LENGTH - 1 - index]) / 2
           return (
             <span
               key={index}
               style={
                 {
                   '--wave-profile': (profile * 0.85) / 100,
-                  '--wave-live': (height * 0.64) / 100,
                   opacity: 0.3 + Math.sin((Math.PI * index) / (WAVE_LENGTH - 1)) * 0.68,
                 } as CSSProperties
               }

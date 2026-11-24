@@ -32,6 +32,8 @@ AUTO_MODES = ("off", "high", "medium_and_up", "all")
 LOG_LEVELS = ("DEBUG", "INFO", "WARNING", "ERROR")
 UI_LANGUAGES = ("auto", "en", "lt")
 LAUNCHER_VIEWS = ("simple", "advanced")
+ADVANCED_TABS = ("speech", "network", "launch")
+CONSOLE_SOURCES = ("all", "launcher", "server", "audio")
 # Lithuanian speech model (--stt): "auto" = by graphics card, see launcher/speech.py.
 SPEECH_ENGINES = ("auto", "whisper", "kmynas", "kmynas+canary")
 
@@ -44,6 +46,9 @@ _ALLOWED: dict[str, tuple[str, ...]] = {
     "log_level": LOG_LEVELS,
     "ui_language": UI_LANGUAGES,
     "launcher_view": LAUNCHER_VIEWS,
+    "advanced_tab": ADVANCED_TABS,
+    "console_source": CONSOLE_SOURCES,
+    "console_level": LOG_LEVELS,
     "speech_engine": SPEECH_ENGINES,
 }
 
@@ -86,6 +91,29 @@ class LauncherSettings:
     allow_network: bool = False
     network_token: str | None = None  # made the first time network mode is on
     launcher_view: str = "simple"
+    advanced_tab: str = "speech"  # the Advanced settings tab left open
+    console_source: str = "all"  # Advanced console filters: source and minimum level
+    console_level: str = "DEBUG"
+    # Window rectangle [x, y, width, height] in screen pixels, per launcher view.
+    window_geometry: dict[str, list[int]] = field(default_factory=dict)
+
+
+def clean_geometry(raw: Any) -> dict[str, list[int]]:
+    """Keep only the views with a usable [x, y, width, height]; drop anything else."""
+    if not isinstance(raw, dict):
+        return {}
+    cleaned: dict[str, list[int]] = {}
+    for view in LAUNCHER_VIEWS:
+        rect = raw.get(view)
+        if (
+            isinstance(rect, list)
+            and len(rect) == 4
+            and all(isinstance(v, int) and not isinstance(v, bool) for v in rect)
+            and rect[2] > 0
+            and rect[3] > 0
+        ):
+            cleaned[view] = list(rect)
+    return cleaned
 
 
 def _coerce(value: Any, default: Any) -> Any:
@@ -128,6 +156,8 @@ def load_settings(path: Path | None = None) -> LauncherSettings:
         if value == default and raw[f.name] != default:
             logger.warning("Launcher setting %r has an invalid value; using default", f.name)
         values[f.name] = value
+    if "window_geometry" in values:
+        values["window_geometry"] = clean_geometry(values["window_geometry"])
     return LauncherSettings(**values)
 
 

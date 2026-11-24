@@ -225,6 +225,36 @@ describe('launcher App', () => {
     expect(button).toBeEnabled()
   })
 
+  it('restores the Advanced tab and console filters and saves changes to them', async () => {
+    const bridge = createDemoBridge()
+    const init = bridge.init.bind(bridge)
+    bridge.init = async () => ({
+      ...(await init()),
+      view: 'advanced',
+      tab: 'launch',
+      console: { source: 'server', level: 'WARNING' },
+    })
+    const setTab = vi.spyOn(bridge, 'set_advanced_tab')
+    const setFilters = vi.spyOn(bridge, 'set_console_filters')
+    render(<App bridge={bridge} />)
+
+    expect(await screen.findByRole('tab', { name: 'Launch' })).toHaveAttribute(
+      'aria-selected',
+      'true'
+    )
+    expect(screen.getByRole('button', { name: 'Server' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByLabelText('Minimum level')).toHaveValue('WARNING')
+    expect(setTab).not.toHaveBeenCalled()
+    expect(setFilters).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Network' }))
+    expect(setTab).toHaveBeenCalledWith('network')
+    fireEvent.click(screen.getByRole('button', { name: 'Audio' }))
+    expect(setFilters).toHaveBeenLastCalledWith('audio', 'WARNING')
+    fireEvent.change(screen.getByLabelText('Minimum level'), { target: { value: 'ERROR' } })
+    expect(setFilters).toHaveBeenLastCalledWith('audio', 'ERROR')
+  })
+
   it('renders Simple and persists the switch to Advanced with its three tabs', async () => {
     const bridge = createDemoBridge()
     const setView = vi.spyOn(bridge, 'set_view')
@@ -302,6 +332,42 @@ describe('launcher App', () => {
       expect(status.closest('.bl-meter-label')).toBe(readout?.parentElement)
       expect(within(status).queryByText('Mic level')).not.toBeInTheDocument()
     })
+  })
+
+  it('moves the live wave with the pipeline levels, flat without them, the meter at rest', async () => {
+    const bridge = createDemoBridge()
+    const poll = bridge.poll
+    let pipeline: number[] = []
+    vi.spyOn(bridge, 'poll').mockImplementation(async () => {
+      const result = await poll()
+      return { ...result, levels: result.state.session === 'live' ? pipeline : [] }
+    })
+    const { container } = render(<App bridge={bridge} />)
+    await screen.findByRole('meter', { name: 'Mic level' })
+    const root = container.querySelector('#bl-launcher')
+    const bars = Array.from(container.querySelectorAll<HTMLElement>('.bl-wave span'))
+    const centre = bars[bars.length / 2]
+    const flat = () => bars.every(bar => bar.style.getPropertyValue('--wave-level') === '0')
+    expect(bars.every(bar => bar.style.getPropertyValue('--wave-live') === '')).toBe(true)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Start session' }))
+    await waitFor(() => expect(root).toHaveAttribute('data-status', 'live'), { timeout: 3000 })
+    const meter = screen.getByRole('meter', { name: 'In use by the session' })
+    const fill = meter.querySelector<HTMLElement>('.bl-meter-fill')
+    // Live, but the pipeline has sent nothing yet: a still, flat wave.
+    await new Promise(resolve => window.setTimeout(resolve, 300))
+    expect(flat()).toBe(true)
+
+    pipeline = [0.8]
+    await waitFor(() =>
+      expect(Number(centre.style.getPropertyValue('--wave-level'))).toBeGreaterThan(0.5)
+    )
+    // The meter says the session holds the microphone: it does not move.
+    expect(meter).toHaveAttribute('aria-valuenow', '-60')
+    expect(fill?.style.clipPath).toBe('inset(0 100% 0 0)')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Stop session' }))
+    await waitFor(() => expect(flat()).toBe(true))
   })
 
   it('replaces the meter caption with a no-sound warning and keeps the readout in the row', async () => {

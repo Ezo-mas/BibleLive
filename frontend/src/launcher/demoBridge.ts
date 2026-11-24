@@ -2,6 +2,8 @@ import { translatorFor } from '../shared/i18n'
 import type { Language } from '../shared/i18n'
 import type { Bridge, Form, LogLine, Option, Options, State } from './bridge'
 import { LEVEL_INTERVAL } from '../shared/levels'
+import type { LogSourceFilter } from './consoleFilter'
+import type { SettingsTab } from './Settings'
 
 // A stand-in picture for the preview: the real code is drawn by the Python side.
 const DEMO_QR =
@@ -102,6 +104,11 @@ export function createDemoBridge(): Bridge {
   const clock = new Intl.DateTimeFormat('en-GB', { timeStyle: 'medium', hourCycle: 'h23' })
   let language: Language = navigator.language.toLowerCase().startsWith('lt') ? 'lt' : 'en'
   let view: 'simple' | 'advanced' = 'simple'
+  let tab: SettingsTab = 'speech'
+  let consoleFilters: { source: LogSourceFilter; level: LogLine['level'] } = {
+    source: 'all',
+    level: 'DEBUG',
+  }
   let form = { ...defaults }
   let state = idle
   let lastLevelAt = Date.now() - LEVEL_INTERVAL
@@ -119,19 +126,31 @@ export function createDemoBridge(): Bridge {
   const bridge: Bridge = {
     async init() {
       writeLog('launcher', t('launcher.demo.ready'))
-      return { platform: 'win32', language, view, form, options: demoOptions(language), state }
+      return {
+        platform: 'win32',
+        language,
+        view,
+        tab,
+        console: consoleFilters,
+        form,
+        options: demoOptions(language),
+        state,
+      }
     },
     async poll() {
       const now = Date.now()
       const meter = state.session === 'idle' ? 'on' : 'off'
       const levels = []
       const numLevels = Math.min(100, Math.floor((now - lastLevelAt) / LEVEL_INTERVAL))
-      if (meter === 'on') {
+      // Idle the launcher's meter listens; live the pipeline does (the wave shows it).
+      if (meter === 'on' || state.session === 'live') {
         for (let sample = 0; sample < numLevels; sample++) {
           lastLevelAt += LEVEL_INTERVAL
           levels.push(microphone === 'built-in' ? 0.04 : (syllables[speechBlock] ?? 0.04))
           speechBlock = (speechBlock + 1) % 36
         }
+      } else {
+        lastLevelAt = now // nobody listens while starting or stopping: no backlog
       }
       const { microphone: mics, projector } = demoOptions(language)
       const result = {
@@ -262,6 +281,14 @@ export function createDemoBridge(): Bridge {
     },
     async set_view(next) {
       view = next
+      return null
+    },
+    async set_advanced_tab(next) {
+      tab = next
+      return null
+    },
+    async set_console_filters(source, level) {
+      consoleFilters = { source, level }
       return null
     },
     async fit_window() {
