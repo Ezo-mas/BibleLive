@@ -447,7 +447,16 @@ def gpu_self_test_command(
             return EXIT_FAIL
         print(f"SELFTEST OK: {tag} threads={threads}", file=out, flush=True)
 
-    if engine == "whisper" or whisper_cached(settings.model, models_dir):
+    whisper_ready = whisper_cached(settings.model, models_dir)
+    if engine == "whisper" and not whisper_ready:
+        # Loading a model by name lets faster-whisper download it: the self-test never does.
+        print(
+            f"SELFTEST FAIL: whisper model {settings.model} not downloaded ({tag})",
+            file=out,
+            flush=True,
+        )
+        return EXIT_FAIL
+    if whisper_ready:
         try:
             # What the pipeline loads: the pinned folder, else the name.
             transcribe = loader(whisper_model_arg(settings.model, models_dir), device, compute_type)

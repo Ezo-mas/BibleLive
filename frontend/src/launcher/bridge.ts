@@ -1,5 +1,7 @@
 import type { Language } from '../shared/i18n'
+import type { LogSourceFilter } from './consoleFilter'
 import { createDemoBridge } from './demoBridge'
+import type { SettingsTab } from './Settings'
 
 export interface Option {
   value: string | null
@@ -63,9 +65,29 @@ export interface State {
   audio: 'stopped' | 'starting' | 'running' | 'error'
   speech: string | null
   speech_warning: boolean
+  speech_fallback: boolean
+  self_test: SelfTest
   started_at: number | null
+  has_monitors: boolean
   network: Network | null
-  error: { text: string } | null
+  /** port: set when the error is a busy port (the Start-time port check). */
+  error: { text: string; port?: number | null } | null
+  diagnostics: {
+    status: 'idle' | 'running' | 'done' | 'error'
+    file: string | null
+    text: string | null
+  }
+}
+
+export interface SpeechCheck {
+  wanted: string
+  runs: string
+  models: { name: 'kmynas' | 'canary'; state: 'ok' | 'old' | 'missing' }[]
+}
+
+export interface SelfTest {
+  status: 'idle' | 'running' | 'ok' | 'fail'
+  text: string | null
 }
 
 export interface LogLine {
@@ -79,6 +101,9 @@ export interface InitResult {
   platform: Platform
   language: Language
   view: View
+  /** The Advanced settings tab and console filters as last left. */
+  tab: SettingsTab
+  console: { source: LogSourceFilter; level: LogLine['level'] }
   form: Form
   options: Options
   state: State
@@ -99,20 +124,31 @@ export interface StartError {
   field: 'port' | 'extra_args' | 'input_device' | null
 }
 
+export type PortCheck =
+  | { free: boolean; program: string | null; pid: number | null; bibleLive: boolean }
+  | { error: 'invalid_port' }
+
 export interface Bridge {
   init(): Promise<InitResult>
   poll(): Promise<PollResult>
   start(form: Form): Promise<{ ok: true } | { ok: false; error: StartError }>
+  check_speech(engine: string, device: string): Promise<SpeechCheck>
+  run_self_test(form: Form): Promise<{ ok: true } | { ok: false; error: StartError }>
+  check_port(port: string): Promise<PortCheck>
   stop(): Promise<null>
   refresh_devices(): Promise<null>
   set_microphone(device: string | null): Promise<null>
   open_operator(): Promise<null>
   show_projector(): Promise<null>
+  identify_screens(): Promise<null>
   open_logs(): Promise<null>
+  collect_diagnostics(): Promise<{ ok: true } | { ok: false; error: string }>
   allow_firewall(): Promise<null>
   set_audience_qr(visible: boolean): Promise<null>
   set_ui_language(code: UILanguage): Promise<{ language: Language; options: Options }>
   set_view(view: View): Promise<null>
+  set_advanced_tab(tab: SettingsTab): Promise<null>
+  set_console_filters(source: LogSourceFilter, level: LogLine['level']): Promise<null>
   fit_window(contentHeight: number, viewportHeight: number): Promise<null>
   copy_text(text: string): Promise<null>
 }

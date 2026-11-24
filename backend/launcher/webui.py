@@ -16,17 +16,23 @@ import threading
 import time
 import urllib.request
 import webbrowser
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import asdict, replace
+from datetime import datetime
+from functools import partial
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
 
 from . import i18n, platform
+from .commands import apply_model_env
+from .diagnostics import build_bundle, system_info
+from .gpu import cuda_supported_compute_types
 from .i18n import t
+from .livelevels import LiveLevels
 from .logtail import LogBuffer, LogTail
 from .micmeter import MicMeter
-from .monitors import Monitor, choose_projector, enumerate_monitors
+from .monitors import Monitor, choose_projector, enumerate_monitors, usable_geometry
 from .network import (
     allow_through_firewall,
     ensure_network_token,
@@ -38,10 +44,27 @@ from .network import (
     qr_png,
 )
 from .platform.macos import microphone_access
-from .process import Launcher, LaunchPlan, _default_app_root, build_plan
+from .process import (
+    Launcher,
+    LaunchPlan,
+    _default_app_root,
+    bible_live_on_port,
+    build_plan,
+    port_in_use,
+    python_child_env,
+)
 from .projector import ProjectorBrowser, ProjectorError, operator_url
+from .screen_labels import identify_screens
 from .settings import (
+    ADVANCED_TABS,
+    COMPUTE_TYPES,
+    CONSOLE_SOURCES,
+    DEVICES,
+    LANGUAGES,
     LAUNCHER_VIEWS,
+    LOG_LEVELS,
+    MODELS,
+    SPEECH_ENGINES,
     UI_LANGUAGES,
     LauncherSettings,
     app_data_dir,
@@ -49,6 +72,7 @@ from .settings import (
     models_dir,
     save_settings,
 )
+from .speech import speech_check
 from .viewmodel import (
     LOG_LEVEL_OPTIONS,
     FormError,
@@ -76,12 +100,15 @@ from .viewmodel import (
     settings_from_form,
     speech_engine_options,
     ui_language_options,
+    validate_port,
 )
 
 logger = logging.getLogger(__name__)
 FALLBACK = 2
 _MIN_WINDOW_SIZE = (760, 480)
+_GEOMETRY_SAVE_DELAY_S = 0.8  # wait for a drag or resize to settle before writing
 _AUDIENCE_QR_TIMEOUT_S = 5.0
+_SELF_TEST_TIMEOUT_S = 180.0
 _ERROR_FIELDS = {
     "invalid_port": "port",
     "invalid_args": "extra_args",
@@ -95,6 +122,15 @@ def _open_folder(path: Path) -> None:
         os.startfile(path)
     else:
         webbrowser.open(path.as_uri())
+
+
+def _reveal_file(path: Path) -> None:
+    if sys.platform == "win32":
+        subprocess.Popen(["explorer.exe", f"/select,{path}"])
+    elif sys.platform == "darwin":
+        subprocess.Popen(["open", "-R", str(path)])
+    else:
+        _open_folder(path.parent)
 
 
 def _copy_text(text: str) -> None:
@@ -160,6 +196,16 @@ class LauncherController:
         projector: ProjectorBrowser | None = None,
         copy: Callable[[str], None] = _copy_text,
         post_audience_qr: Callable[[int, str, bool], bool] = _post_audience_qr,
+        self_test_popen: Callable[..., subprocess.Popen[bytes]] = subprocess.Popen,
+        identify: Callable[[list[Monitor]], None] | None = None,
+        port_owner: Callable[[int], platform.PortOwner | None] = platform.port_owner,
+        port_in_use: Callable[[int], bool] = port_in_use,
+        health_probe: Callable[[int], bool] = bible_live_on_port,
+        bundle_builder: Callable[..., Path] | None = None,
+        reveal_file: Callable[[Path], None] = _reveal_file,
+        live_levels: LiveLevels | None = None,
+        timer: Callable[[float, Callable[[], object]], threading.Timer] = threading.Timer,
+        geometry_delay: float = _GEOMETRY_SAVE_DELAY_S,
     ) -> None:
         self._lock = threading.RLock()
         self._save = save
@@ -178,11 +224,27 @@ class LauncherController:
         self._access = access
         self._copy = copy
         self._post_audience_qr = post_audience_qr
+        self._self_test_popen = self_test_popen
+        self._identify = identify
+        self._identifying = False
+        self._port_owner = port_owner
+        self._port_in_use = port_in_use
+        self._health_probe = health_probe
+        self._build_bundle = bundle_builder or partial(
+            build_bundle, env_token=os.environ.get("BIBLELIVE_OPERATOR_TOKEN")
+        )
+        self._reveal_file = reveal_file
         self._fit_window: Callable[[float, float], None] | None = None
+        self._timer = timer
+        self._geometry_delay = geometry_delay
+        self._geometry_timer: threading.Timer | None = None
+        self._pending_geometry: list[int] | None = None
         self._projector = (
             projector if projector is not None else ProjectorBrowser(open_default=open_browser)
         )
         self._meter = MicMeter(popen=popen, access=access)
+        # While live the pipeline holds the microphone: its own peaks drive the wave.
+        self._live_levels = live_levels if live_levels is not None else LiveLevels()
         self._log = LogBuffer(clock)
 
         self._settings = ensure_network_token(load())
@@ -198,6 +260,8 @@ class LauncherController:
         self._status = StatusState()
         self._started_at: int | None = None
         self._error: str | None = None
+        self._error_port: int | None = None  # set when the error is a busy port
+        self._diagnostics: dict[str, str | None] = {"status": "idle", "file": None, "text": None}
         self._no_gpu_logged = False
         self._network: NetworkView | None = None
         # The operator page's QR code (token included) for Advanced > Network, as a data URI.
@@ -211,6 +275,10 @@ class LauncherController:
         self._plan: LaunchPlan | None = None
         self._launcher: Launcher | None = None
         self._worker: threading.Thread | None = None
+        self._self_test_status = "idle"
+        self._self_test_text: str | None = None
+        self._self_test_process: subprocess.Popen[bytes] | None = None
+        self._self_test_worker: threading.Thread | None = None
         self._cancel = threading.Event()
         self._tail: LogTail | None = None
 
@@ -255,11 +323,21 @@ class LauncherController:
             if plan
             else None,
             "speech_warning": bool(
-                plan and plan.speech_engine == "whisper" and plan.device == "cpu"
+                plan
+                and (
+                    plan.speech_fallback
+                    or (plan.speech_engine == "whisper" and plan.device == "cpu")
+                )
             ),
+            "speech_fallback": bool(plan and plan.speech_fallback),
+            "self_test": {"status": self._self_test_status, "text": self._self_test_text},
             "started_at": self._started_at,
+            "has_monitors": bool(self._monitors),
             "network": network,
-            "error": {"text": self._error} if self._error is not None else None,
+            "error": {"text": self._error, "port": self._error_port}
+            if self._error is not None
+            else None,
+            "diagnostics": self._diagnostics,
         }
 
     def init(self) -> dict[str, Any]:
@@ -274,6 +352,11 @@ class LauncherController:
                 "platform": sys.platform,
                 "language": i18n.get_language(),
                 "view": self._settings.launcher_view,
+                "tab": self._settings.advanced_tab,
+                "console": {
+                    "source": self._settings.console_source,
+                    "level": self._settings.console_level,
+                },
                 "form": asdict(
                     form_from_settings(replace(self._settings, input_device=self._selected_mic))
                 ),
@@ -289,7 +372,8 @@ class LauncherController:
             self._options_changed = False
             meter, error, levels = self._meter.snapshot()
             if self._session != "idle":
-                meter, error, levels = "off", None, []
+                meter, error = "off", None
+                levels = self._live_levels.drain() if self._session == "live" else []
             return {
                 "state": self._state(),
                 "levels": levels,
@@ -373,9 +457,61 @@ class LauncherController:
             self._save(settings)
 
     def set_view(self, view: str) -> None:
+        # The window stays where it is; the page refits its height to the new view.
         with self._lock:
             if view in LAUNCHER_VIEWS and not self._closed:
                 self._persist(replace(self._settings, launcher_view=view))
+
+    def set_advanced_tab(self, tab: str) -> None:
+        with self._lock:
+            if tab in ADVANCED_TABS and not self._closed and tab != self._settings.advanced_tab:
+                self._persist(replace(self._settings, advanced_tab=tab))
+
+    def set_console_filters(self, source: str, level: str) -> None:
+        with self._lock:
+            if (
+                source in CONSOLE_SOURCES
+                and level in LOG_LEVELS
+                and not self._closed
+                and (source, level) != (self._settings.console_source, self._settings.console_level)
+            ):
+                self._persist(replace(self._settings, console_source=source, console_level=level))
+
+    def saved_geometry(self) -> tuple[int, int, int, int] | None:
+        """The saved window rectangle if it is still on a connected monitor."""
+        with self._lock:
+            rect = self._settings.window_rect
+        if rect is None:
+            return None
+        try:
+            monitors = self._monitor_lister()
+        except Exception:
+            logger.exception("Monitor enumeration failed")
+            return None
+        return usable_geometry(rect, monitors, _MIN_WINDOW_SIZE)
+
+    def note_geometry(self, rect: Sequence[int]) -> None:
+        """The window moved or was resized: save it for the current view after a pause."""
+        with self._lock:
+            if self._closed:
+                return
+            self._pending_geometry = [int(v) for v in rect]
+            if self._geometry_timer is not None:
+                self._geometry_timer.cancel()
+            timer = self._timer(self._geometry_delay, self.flush_geometry)
+            timer.daemon = True
+            self._geometry_timer = timer
+            timer.start()
+
+    def flush_geometry(self) -> None:
+        """Write the pending window rectangle now (also on close)."""
+        with self._lock:
+            if self._geometry_timer is not None:
+                self._geometry_timer.cancel()
+                self._geometry_timer = None
+            rect, self._pending_geometry = self._pending_geometry, None
+            if rect is not None and rect != self._settings.window_rect:
+                self._persist(replace(self._settings, window_rect=rect))
 
     @property
     def view(self) -> str:
@@ -409,11 +545,39 @@ class LauncherController:
             "error": {"code": code, "text": text, "field": _ERROR_FIELDS.get(code)},
         }
 
+    def check_port(self, port: str) -> dict[str, Any]:
+        free = {"free": True, "program": None, "pid": None, "bibleLive": False}
+        with self._lock:
+            if self._closed or self._session != "idle":
+                return free
+        try:
+            if not isinstance(port, str):
+                raise FormError("invalid_port")
+            number = validate_port(port)
+        except FormError as exc:
+            return {"error": exc.code}
+        if not self._port_in_use(number):
+            return free
+        owner = self._port_owner(number)
+        bible_live = self._health_probe(number)
+        with self._lock:
+            if self._closed or self._session != "idle":
+                return free
+        return {
+            "free": False,
+            "program": owner.program if owner else None,
+            "pid": owner.pid if owner else None,
+            "bibleLive": bible_live,
+        }
+
     def start(self, form: FormValues) -> dict[str, Any]:
         with self._lock:
             if self._closed or self._session != "idle":
                 return self._start_error("session_busy", t("err.session_busy"))
+            if self._self_test_status == "running":
+                return self._start_error("self_test_busy", t("err.self_test_busy"))
             self._error = None
+            self._error_port = None
             self._no_gpu_logged = False
             try:
                 settings = settings_from_form(self._settings, form, include_session_audio=True)
@@ -431,6 +595,117 @@ class LauncherController:
             self._worker = threading.Thread(target=self._run, args=(settings,), daemon=True)
             self._worker.start()
             return {"ok": True}
+
+    def check_speech(self, engine: str, device: str) -> dict[str, Any]:  # noqa: ARG002
+        # build_plan looks at hardware for Auto even with an explicitly selected CPU device.
+        requested = engine if engine in SPEECH_ENGINES else "auto"
+        return asdict(speech_check(requested, models_dir(), cuda_supported_compute_types))
+
+    def run_self_test(self, form: FormValues) -> dict[str, Any]:
+        with self._lock:
+            if self._closed or self._session != "idle":
+                return self._start_error("session_busy", t("err.session_busy"))
+            if self._self_test_status == "running":
+                return self._start_error("self_test_busy", t("err.self_test_busy"))
+            try:
+                settings = settings_from_form(self._settings, form)
+            except FormError as exc:
+                return self._start_error(exc.code, describe_error(exc.code, exc.detail))
+            if (
+                settings.speech_engine not in SPEECH_ENGINES
+                or settings.device not in DEVICES
+                or settings.compute_type not in COMPUTE_TYPES
+                or settings.model not in MODELS
+                or settings.language not in LANGUAGES
+            ):
+                return self._start_error("invalid_speech", t("err.invalid_speech"))
+
+            self._self_test_status, self._self_test_text = "running", None
+            self._self_test_worker = threading.Thread(
+                target=self._run_self_test, args=(settings,), daemon=True
+            )
+            self._self_test_worker.start()
+            return {"ok": True}
+
+    def _run_self_test(self, settings: LauncherSettings) -> None:
+        app_root = _default_app_root()
+        env = python_child_env(app_root, dict(os.environ))
+        apply_model_env(models_dir(), env)
+        env.setdefault("HF_HUB_VERBOSITY", "error")
+        cmd = [
+            sys.executable,
+            "-m",
+            "launcher",
+            "--gpu-self-test",
+            "--speech-engine",
+            settings.speech_engine,
+            "--device",
+            settings.device,
+            "--compute-type",
+            settings.compute_type,
+            "--model",
+            settings.model,
+            "--language",
+            settings.language,
+        ]
+        timed_out = threading.Event()
+        result = None
+        failure = None
+        status = "fail"
+        try:
+            with self._lock:
+                if self._closed:
+                    return
+                process = self._self_test_popen(
+                    cmd,
+                    cwd=str(app_root),
+                    env=env,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    stdin=subprocess.DEVNULL,
+                    **platform.current().child_process_options(),
+                )
+                self._self_test_process = process
+
+            def timeout() -> None:
+                if process.poll() is None:
+                    timed_out.set()
+                    with contextlib.suppress(ProcessLookupError):
+                        process.kill()
+
+            timer = threading.Timer(_SELF_TEST_TIMEOUT_S, timeout)
+            timer.daemon = True
+            timer.start()
+            try:
+                with process:
+                    assert process.stdout is not None
+                    for raw in process.stdout:
+                        line = raw.decode("utf-8", errors="replace").rstrip()
+                        if line.startswith(("SELFTEST OK:", "SELFTEST FAIL:")):
+                            result = line
+                        level = "ERROR" if line.startswith("SELFTEST FAIL:") else "INFO"
+                        with self._lock:
+                            self._log.append("launcher", level, line)
+                    exit_code = process.wait()
+            finally:
+                timer.cancel()
+                timer.join()
+
+            if timed_out.is_set():
+                failure = t("err.self_test_timeout")
+            elif exit_code == 0 and result and result.startswith("SELFTEST OK:"):
+                status = "ok"
+            elif not result or not result.startswith("SELFTEST FAIL:"):
+                failure = t("err.self_test_exit", detail=exit_code)
+        except Exception as exc:  # OSError from Popen, or anything else: say why, never hang
+            logger.exception("Speech self-test failed to run")
+            failure = t("err.self_test_exit", detail=exc)
+        finally:
+            with self._lock:
+                if failure is not None:
+                    self._log.append("launcher", "ERROR", failure)
+                self._self_test_process = None
+                self._self_test_status, self._self_test_text = status, failure or result
 
     def _run(self, settings: LauncherSettings) -> None:
         try:
@@ -505,9 +780,15 @@ class LauncherController:
                 self._log.append("launcher", level.upper(), text)
                 if kind == "error":
                     self._error = text
+                    self._error_port = (
+                        int(detail) if code == "port_in_use" and detail.isdigit() else None
+                    )
             if kind == "ready" and self._session == "starting" and plan is not None:
                 self._session = "live"
                 self._started_at = int(self._clock() * 1000)
+                # The server wants the token whenever it has one (network mode sets it).
+                token = plan.env.get("BIBLELIVE_OPERATOR_TOKEN") or plan.network_token
+                self._live_levels.start(plan.port, token)
                 self._on_server_ready(plan)
 
     def _on_server_ready(self, plan: LaunchPlan) -> None:
@@ -623,6 +904,18 @@ class LauncherController:
             )
             self._open_browser(url)
 
+    def identify_screens(self) -> None:
+        with self._lock:
+            if self._closed or self._identifying or not self._monitors or self._identify is None:
+                return
+            self._identifying = True
+            monitors = self._monitors.copy()
+        try:
+            self._identify(monitors)
+        finally:
+            with self._lock:
+                self._identifying = False
+
     def show_projector(self) -> None:
         with self._lock:
             if self._closed or self._session != "live":
@@ -651,11 +944,70 @@ class LauncherController:
             )
         self._open_folder(directory)
 
+    def collect_diagnostics(self) -> dict[str, Any]:
+        with self._lock:
+            if self._closed or self._diagnostics["status"] == "running":
+                return {"ok": False, "error": t("diagnostics.busy")}
+            self._diagnostics = {"status": "running", "file": None, "text": None}
+            worker = threading.Thread(
+                target=self._collect_diagnostics,
+                args=(self._settings, self._monitors.copy(), self._plan),
+                daemon=True,
+            )
+            try:
+                worker.start()
+            except RuntimeError:
+                self._diagnostics_failed()
+                return {"ok": False, "error": self._diagnostics["text"]}
+            return {"ok": True}
+
+    def _diagnostics_failed(self) -> None:
+        message = t("diagnostics.failed")
+        self._log.append("launcher", "ERROR", message)
+        self._diagnostics = {"status": "error", "file": None, "text": message}
+
+    def _collect_diagnostics(
+        self, settings: LauncherSettings, monitors: list[Monitor], plan: LaunchPlan | None
+    ) -> None:
+        try:
+            data_dir = app_data_dir()
+            log_dir = plan.log_dir if plan else platform.current().log_dir(data_dir)
+            now = datetime.fromtimestamp(self._clock()).astimezone()
+            out_path = log_dir / "diagnostics" / f"BibleLive-diagnostics-{now:%Y%m%d-%H%M%S}.zip"
+            info = system_info(settings, monitors, plan.speech_engine if plan else None)
+            path = self._build_bundle(
+                data_dir,
+                log_dir,
+                settings,
+                out_path,
+                extra_info=info,
+                now=now,
+                plan_token=plan.env.get("BIBLELIVE_OPERATOR_TOKEN") if plan else None,
+            )
+        except Exception:
+            logger.exception("Collecting diagnostics failed")
+            with self._lock:
+                self._diagnostics_failed()
+            return
+
+        try:
+            self._reveal_file(path)
+        except Exception:
+            logger.exception("Revealing diagnostics failed")
+            with self._lock:
+                self._log.append("launcher", "WARNING", t("diagnostics.reveal_failed"))
+        with self._lock:
+            self._log.append("launcher", "INFO", t("diagnostics.saved", detail=path))
+            self._diagnostics = {"status": "done", "file": path.name, "text": None}
+
     def copy_text(self, text: str) -> None:
         try:
             self._copy(text)
-        except (OSError, subprocess.SubprocessError):
+        except (OSError, subprocess.SubprocessError) as exc:
             logger.warning("Could not copy text to the clipboard", exc_info=True)
+            # Fail the page's bridge call so its copy buttons say "Copy failed", not "Copied".
+            # The message carries no clipboard text.
+            raise RuntimeError("Could not copy to the clipboard") from exc
 
     def stop(self) -> None:
         with self._lock:
@@ -665,12 +1017,14 @@ class LauncherController:
             self._session = "stopping"
             self._cancel.set()
             self._clear_network()
+            self._live_levels.stop()
             launcher = self._launcher
             self._projector.close()
         if launcher is not None:
             launcher.stop()
 
     def _close_session_resources(self) -> None:
+        self._live_levels.stop()
         self._projector.close()
         if self._tail is not None:
             self._tail.stop()
@@ -678,18 +1032,26 @@ class LauncherController:
 
     def request_close(self) -> None:
         with self._lock:
+            self.flush_geometry()
             self._closed = True
             self._cancel.set()
+            process = self._self_test_process
+            if process is not None and process.poll() is None:
+                with contextlib.suppress(ProcessLookupError):
+                    process.kill()
 
     def close(self) -> None:
         self.request_close()
         with self._lock:
-            worker, launcher = self._worker, self._launcher
+            worker, launcher, self_test = self._worker, self._launcher, self._self_test_worker
         if launcher is not None:
             launcher.stop()
         if worker is not None:
             worker.join()
+        if self_test is not None:
+            self_test.join()
         self._meter.stop()
+        self._live_levels.stop(timeout=1.0)
         with self._lock:
             self._close_session_resources()
 
@@ -709,6 +1071,15 @@ class LauncherApi:
     def start(self, form: dict[str, Any]) -> dict[str, Any]:
         return self._controller.start(FormValues(**form))
 
+    def check_speech(self, engine: str, device: str) -> dict[str, Any]:
+        return self._controller.check_speech(engine, device)
+
+    def run_self_test(self, form: dict[str, Any]) -> dict[str, Any]:
+        return self._controller.run_self_test(FormValues(**form))
+
+    def check_port(self, port: str) -> dict[str, Any]:
+        return self._controller.check_port(port)
+
     def stop(self) -> None:
         self._controller.stop()
 
@@ -724,8 +1095,14 @@ class LauncherApi:
     def show_projector(self) -> None:
         self._controller.show_projector()
 
+    def identify_screens(self) -> None:
+        self._controller.identify_screens()
+
     def open_logs(self) -> None:
         self._controller.open_logs()
+
+    def collect_diagnostics(self) -> dict[str, Any]:
+        return self._controller.collect_diagnostics()
 
     def allow_firewall(self) -> None:
         self._controller.allow_firewall()
@@ -738,6 +1115,12 @@ class LauncherApi:
 
     def set_view(self, view: str) -> None:
         self._controller.set_view(view)
+
+    def set_advanced_tab(self, tab: str) -> None:
+        self._controller.set_advanced_tab(tab)
+
+    def set_console_filters(self, source: str, level: str) -> None:
+        self._controller.set_console_filters(source, level)
 
     def fit_window(self, content_height: float, viewport_height: float) -> None:
         self._controller.fit_window(content_height, viewport_height)
@@ -789,6 +1172,107 @@ def _fit_window(window: Any, content: float, viewport: float, max_height: int | 
     height = max(height, _MIN_WINDOW_SIZE[1])
     if height != current_height:
         window.resize(window.width, height)
+
+
+_GEOMETRY_PLATFORMS = ("win32", "darwin")
+
+
+def _window_geometry(window: Any) -> tuple[int, int, int, int] | None:
+    """The window's rectangle in the monitors list's coordinates.
+
+    Windows: physical pixels. macOS: global points with the main display's top-left at 0,0
+    (Quartz, like ``platform/macos.py``). Other platforms have no monitor list to check a saved
+    position against, so they save and restore nothing. None while the window is minimized,
+    maximized/zoomed or fullscreen: its rectangle then is not the one to bring back.
+    """
+    native = window.native
+    if sys.platform not in _GEOMETRY_PLATFORMS or native is None:
+        return None
+    if window.maximized or window.fullscreen:
+        return None
+    if sys.platform == "darwin":
+        if native.isMiniaturized() or _mac_expanded(native):
+            return None
+        frame = native.frame()
+        return _appkit_to_top_left(
+            (frame.origin.x, frame.origin.y, frame.size.width, frame.size.height),
+            _mac_main_screen_height(),
+        )
+    if native.is_fullscreen or str(native.WindowState) != "Normal":
+        return None
+    # The native form's Left/Top/Width/Height are physical pixels (pywebview's own x, width
+    # are logical, divided by the DPI scale of the monitor the window is on).
+    return native.Left, native.Top, native.Width, native.Height
+
+
+def _place_window(window: Any, rect: tuple[int, int, int, int]) -> None:
+    """Move the window to a saved rectangle's position and width (Windows and macOS).
+
+    The height stays the view's starting height: the page fits it to its content once
+    loaded, and a saved height would fight that fit (a scrollbar until the view changes).
+    """
+    native = window.native
+    if sys.platform not in _GEOMETRY_PLATFORMS or native is None:
+        return
+    if sys.platform == "darwin":
+        _place_mac_window(native, rect)
+        return
+    # A literal platform check, so type checkers on other systems skip the Windows-only
+    # ctypes.windll below (``not in _GEOMETRY_PLATFORMS`` does not narrow).
+    if sys.platform != "win32" or str(native.WindowState) != "Normal":
+        return
+    x, y, width, _ = rect
+    height = native.Height
+    # SWP_NOZORDER | SWP_NOACTIVATE
+    ctypes.windll.user32.SetWindowPos(native.Handle.ToInt32(), None, x, y, width, height, 0x0014)
+
+
+def _appkit_to_top_left(
+    frame: tuple[float, float, float, float], main_height: float
+) -> tuple[int, int, int, int]:
+    """An AppKit frame (bottom-left origin, y up) as a Quartz rectangle (top-left, y down).
+
+    Both are global points anchored on the main display; only the y axis flips, around
+    the main display's height. Its own inverse, so it converts back as well.
+    """
+    x, y, width, height = frame
+    return round(x), round(main_height - y - height), round(width), round(height)
+
+
+def _mac_main_screen_height() -> float:
+    import AppKit  # type: ignore[import-not-found,unused-ignore]  # pyobjc, pywebview's Cocoa backend
+
+    screens = AppKit.NSScreen.screens()
+    if not screens:
+        raise RuntimeError("No screens")
+    # screens()[0] is the main display (the menu bar's), the origin of both coordinate systems.
+    return float(screens[0].frame().size.height)
+
+
+def _mac_expanded(native: Any) -> bool:
+    # isZoomed: the green button's "fill"; style bit 14: NSWindowStyleMaskFullScreen.
+    return bool(native.isZoomed() or native.styleMask() & (1 << 14))
+
+
+def _place_mac_window(native: Any, rect: tuple[int, int, int, int]) -> None:
+    def place() -> None:
+        if native.isMiniaturized() or _mac_expanded(native):
+            return
+        x, y, width, _ = rect
+        height = round(native.frame().size.height)
+        left, bottom, width, height = _appkit_to_top_left(
+            (x, y, width, height), _mac_main_screen_height()
+        )
+        native.setFrame_display_(((left, bottom), (width, height)), True)
+
+    # AppKit windows may only be changed on the main thread. before_show runs there; any
+    # other caller is deferred to it.
+    if threading.current_thread() is threading.main_thread():
+        place()
+    else:
+        from PyObjCTools import AppHelper  # type: ignore[import-not-found,unused-ignore]
+
+        AppHelper.callAfter(place)
 
 
 def _colorref(color: str) -> int:
@@ -971,7 +1455,9 @@ def main(*, smoke: bool = False) -> int:
             (s for s in screens if s.x == 0 and s.y == 0), screens[0] if screens else None
         )
         max_height = primary.height - 60 if primary is not None else None
-        controller = LauncherController()
+        controller = LauncherController(
+            identify=lambda monitors: identify_screens(webview, monitors, primary)
+        )
         height = 600 if controller.view == "simple" else 800
         if max_height is not None:
             height = max(_MIN_WINDOW_SIZE[1], min(height, max_height))
@@ -989,6 +1475,28 @@ def main(*, smoke: bool = False) -> int:
             lambda content, viewport: _fit_window(window, content, viewport, max_height)
         )
         window.events.before_show += _solid_title_bar
+        if sys.platform in _GEOMETRY_PLATFORMS:
+
+            def restore_window() -> None:
+                try:
+                    if rect := controller.saved_geometry():
+                        _place_window(window, rect)
+                except Exception:
+                    # Opening at the default place beats not opening.
+                    logger.exception("Could not restore the window position")
+
+            def remember_window(*_args: Any) -> None:
+                try:
+                    rect = _window_geometry(window)
+                except Exception:
+                    logger.exception("Could not read the window rectangle")
+                    return
+                if rect:
+                    controller.note_geometry(rect)
+
+            window.events.before_show += restore_window
+            window.events.moved += remember_window
+            window.events.resized += remember_window
         # Let the native window close before the finally block waits for cleanup.
         window.events.closing += lambda: _on_closing(window, controller)
         if smoke:

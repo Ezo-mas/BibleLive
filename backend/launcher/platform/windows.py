@@ -5,15 +5,95 @@ import logging
 import ntpath
 import os
 import shutil
+import struct
 import subprocess
 import sys
 from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 
-from . import Browser, Monitor, RunFn, ShellExecuteFn
+from . import Browser, Monitor, PortOwner, RunFn, ShellExecuteFn
 from .chromium import build_command
 
 logger = logging.getLogger("launcher.projector")
+
+
+def tcp_listener_pids(table: bytes, port: int, *, ipv6: bool = False) -> list[int]:
+    if len(table) < 4:
+        return []
+    # MIB_TCPROW_OWNER_PID and MIB_TCP6ROW_OWNER_PID have different layouts.
+    row_size, port_offset = (56, 20) if ipv6 else (24, 8)
+    count = min(struct.unpack_from("<I", table)[0], (len(table) - 4) // row_size)
+    pids = []
+    for row in range(count):
+        start = 4 + row * row_size
+        if struct.unpack_from("!H", table, start + port_offset)[0] == port:
+            pid = struct.unpack_from("<I", table, start + row_size - 4)[0]
+            if pid and pid not in pids:
+                pids.append(pid)
+    return pids
+
+
+def port_owner(port: int) -> PortOwner | None:
+    if sys.platform != "win32":
+        return None
+    from ctypes import wintypes
+
+    try:
+        tcp_table = ctypes.WinDLL("iphlpapi", use_last_error=True).GetExtendedTcpTable
+        tcp_table.argtypes = [
+            ctypes.c_void_p,
+            ctypes.POINTER(wintypes.DWORD),
+            wintypes.BOOL,
+            wintypes.ULONG,
+            ctypes.c_int,
+            wintypes.ULONG,
+        ]
+        tcp_table.restype = wintypes.DWORD
+        for family, ipv6 in ((2, False), (23, True)):  # AF_INET, AF_INET6
+            size = wintypes.DWORD()
+            table = None
+            for _ in range(3):  # The table can grow between sizing and reading.
+                status = tcp_table(table, ctypes.byref(size), False, family, 3, 0)
+                if status != 122:  # ERROR_INSUFFICIENT_BUFFER
+                    break
+                table = ctypes.create_string_buffer(size.value)
+            if status == 0 and table is not None:
+                for pid in tcp_listener_pids(table.raw, port, ipv6=ipv6):
+                    if executable := _process_image(pid):
+                        return PortOwner(pid, ntpath.basename(executable))
+    except (AttributeError, OSError, ValueError):
+        pass
+    return None
+
+
+def _process_image(pid: int) -> str | None:
+    if sys.platform != "win32":
+        return None
+    from ctypes import wintypes
+
+    kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+    kernel.OpenProcess.restype = wintypes.HANDLE
+    kernel.QueryFullProcessImageNameW.argtypes = [
+        wintypes.HANDLE,
+        wintypes.DWORD,
+        wintypes.LPWSTR,
+        ctypes.POINTER(wintypes.DWORD),
+    ]
+    kernel.CloseHandle.argtypes = [wintypes.HANDLE]
+    handle = kernel.OpenProcess(0x1000, False, pid)  # PROCESS_QUERY_LIMITED_INFORMATION
+    if not handle:
+        return None
+    try:
+        path = ctypes.create_unicode_buffer(32768)
+        size = wintypes.DWORD(len(path))
+        return (
+            path.value
+            if kernel.QueryFullProcessImageNameW(handle, 0, path, ctypes.byref(size))
+            else None
+        )
+    finally:
+        kernel.CloseHandle(handle)
 
 
 def find_browser(env: Mapping[str, str] | None = None) -> Browser | None:
@@ -107,7 +187,7 @@ def bring_projector_to_front(profile_dir: Path) -> bool:
     pids = set(find_profile_processes(profile_dir))
     if not pids:
         return False
-    user32 = ctypes.windll.user32  # type: ignore[attr-defined,unused-ignore]
+    user32 = ctypes.WinDLL("user32", use_last_error=True)
     callback_type = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
     user32.EnumWindows.argtypes = [callback_type, wintypes.LPARAM]
     user32.GetWindowThreadProcessId.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.DWORD)]
@@ -167,7 +247,7 @@ def _enumerate_windows() -> list[Monitor]:
         ctypes.POINTER(wintypes.RECT),
         wintypes.LPARAM,
     )
-    user32 = ctypes.windll.user32  # type: ignore[attr-defined,unused-ignore]
+    user32 = ctypes.WinDLL("user32", use_last_error=True)
     user32.GetMonitorInfoW.argtypes = [wintypes.HANDLE, ctypes.POINTER(MONITORINFOEXW)]
     found: list[Monitor] = []
 

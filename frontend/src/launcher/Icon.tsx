@@ -1,4 +1,5 @@
 const paths = {
+  archive: 'M3 4h18v4H3zM5 8v12h14V8m-10 4h6',
   book: 'M12 7v14M3 18V4h3a6 6 0 0 1 6 3 6 6 0 0 1 6-3h3v14h-3a8 8 0 0 0-6 3 8 8 0 0 0-6-3H3Z',
   external: 'M13 5h6v6m0-6-9 9m9 0v5H5V5h5',
   refresh: 'M20 7v5h-5M4 17v-5h5m-4-4a8 8 0 0 1 14-1l1 2M4 15l1 2a8 8 0 0 0 14-1',
@@ -6,11 +7,15 @@ const paths = {
   mic: 'M9 5a3 3 0 0 1 6 0v6a3 3 0 0 1-6 0V5Zm-4 6a7 7 0 0 0 14 0m-7 7v4m-3 0h6',
   warning: 'M12 3 2 21h20L12 3Zm0 6v5m0 3v.1',
   monitor: 'M3 4h18v12H3zM8 21h8m-4-5v5',
+  identify: 'M3 4h18v12H3zM8 21h8m-4-5v5m-2-11 2-2v5',
   speech: 'M3 10v4m4-7v10m5-14v18m5-14v10m4-7v4',
   network: 'M9 3h6v5H9zM3 16h6v5H3zm12 0h6v5h-6zM6 16v-4h12v4m-6-8v4',
   sliders: 'M3 6h6m4 0h8M3 12h12m4 0h2M3 18h3m4 0h11M9 3v6m6 0v6m-9 0v6',
   terminal: 'm4 6 6 6-6 6m9 0h7',
   folder: 'M3 18V5h6l2 2h10v3M3 18l4-8h15l-3 8H3Z',
+  copy: 'M8 8h12v13H8zM4 16V3h12',
+  arrowDown: 'M12 4v15m-6-6 6 6 6-6',
+  check: 'm4 12 5 5 11-11',
   qr: 'M4 4h6v6H4zm10 0h6v6h-6zM4 14h6v6H4zm10 0h2v2h-2zm4 0h2v2h-2zm-4 4h2v2h-2zm4 0h2v2h-2zM7 7h0m10 0h0M7 17h0',
 } as const
 

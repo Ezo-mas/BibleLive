@@ -10,11 +10,15 @@ import time
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock
+from zipfile import ZipFile
 
 import pytest
-from launcher import cli, i18n, micmeter, webui
+from launcher import cli, diagnostics, i18n, micmeter, screen_labels, speech, webui
 from launcher.logtail import LogBuffer, LogTail
+from launcher.monitors import usable_geometry
+from launcher.platform import Monitor, PortOwner
 from launcher.process import LaunchPlan
+from launcher.screen_labels import label_window_rect
 from launcher.settings import LauncherSettings, load_settings, save_settings
 from launcher.webui import LauncherApi, LauncherController
 
@@ -28,6 +32,108 @@ def wait_for(check):
             return value
         time.sleep(0.01)
     pytest.fail("Timed out waiting for launcher worker")
+
+
+@pytest.mark.parametrize("fail", [False, True])
+def test_collect_diagnostics(tmp_path, monkeypatch, fail):
+    entered = threading.Event()
+    finish = threading.Event()
+    reveal = Mock()
+    monkeypatch.setattr(i18n, "_current", i18n.get_language())
+    monkeypatch.setattr(webui, "app_data_dir", lambda: tmp_path)
+    monkeypatch.setattr(
+        webui, "system_info", lambda settings, monitors, engine: {"monitors": monitors}
+    )
+
+    def build(data_dir, log_dir, settings, out_path, *, extra_info, now, plan_token):
+        entered.set()
+        assert finish.wait(3)
+        assert data_dir == tmp_path
+        assert out_path.parent == log_dir / "diagnostics"
+        if fail:
+            raise OSError("disk full")
+        return out_path
+
+    controller = LauncherController(
+        load=lambda: LauncherSettings(ui_language="en"),
+        bundle_builder=build,
+        reveal_file=reveal,
+    )
+    api = LauncherApi(controller)
+    assert api.poll()["state"]["diagnostics"]["status"] == "idle"
+    assert api.collect_diagnostics() == {"ok": True}
+    try:
+        assert entered.wait(3)
+        assert api.poll()["state"]["diagnostics"]["status"] == "running"
+        assert api.collect_diagnostics()["ok"] is False
+    finally:
+        finish.set()
+    expected = "error" if fail else "done"
+
+    def completed():
+        poll = api.poll()
+        return poll if poll["state"]["diagnostics"]["status"] == expected else None
+
+    result = wait_for(completed)
+    status = result["state"]["diagnostics"]
+    if fail:
+        reveal.assert_not_called()
+        assert status["file"] is None
+        assert status["text"] == "Could not create the diagnostics bundle."
+    else:
+        reveal.assert_called_once()
+        path = reveal.call_args.args[0]
+        assert status["file"] == path.name
+        assert path.name.startswith("BibleLive-diagnostics-")
+        assert any(line["level"] == "INFO" and str(path) in line["text"] for line in result["log"])
+    controller.close()
+
+
+def test_diagnostics_uses_live_plan_and_finishes_after_reveal_error(tmp_path, monkeypatch, caplog):
+    monkeypatch.setattr(webui, "app_data_dir", lambda: tmp_path)
+    monkeypatch.setattr(diagnostics, "query_gpus", lambda run: [])
+    reveal = Mock(side_effect=RuntimeError("file manager unavailable"))
+    controller = LauncherController(
+        load=lambda: LauncherSettings(language="en", speech_engine="whisper"), reveal_file=reveal
+    )
+    controller._plan = LaunchPlan(
+        [],
+        [],
+        {"BIBLELIVE_OPERATOR_TOKEN": "plan-only-secret"},
+        tmp_path,
+        tmp_path,
+        8000,
+        "cpu",
+        "int8",
+        speech_engine="kmynas",
+    )
+    (tmp_path / "server.log").write_text("plan-only-secret", encoding="utf-8")
+    assert controller.collect_diagnostics()["ok"]
+    wait_for(lambda: controller.poll()["state"]["diagnostics"]["status"] == "done")
+    assert "Revealing diagnostics failed" in caplog.text
+    with ZipFile(reveal.call_args.args[0]) as archive:
+        assert archive.read("server.log") == b"[REDACTED]"
+        speech = json.loads(archive.read("diagnostics.json"))["speech"]
+        assert speech["resolved"] == "kmynas"
+        assert speech["settings_resolved"] == "whisper"
+
+
+class FakeLiveLevels:
+    """Stands in for the operator WebSocket reader (see test_launcher_livelevels.py)."""
+
+    def __init__(self):
+        self.calls = []
+        self.pending = []
+
+    def start(self, port, token):
+        self.calls.append(("start", port, token))
+
+    def stop(self, timeout=0.0):  # noqa: ARG002
+        self.calls.append(("stop",))
+
+    def drain(self):
+        drained, self.pending = self.pending, []
+        return drained
 
 
 @pytest.fixture
@@ -56,6 +162,10 @@ def bridge(tmp_path, monkeypatch):
         processes=[],
         qr_calls=[],
         qr_answer=lambda visible: visible,
+        speech_engine="whisper",
+        speech_fallback=False,
+        self_test_popen=Mock(),
+        live_levels=FakeLiveLevels(),
     )
     session.meter_exit.set()
     session.allow_ready.set()
@@ -105,6 +215,8 @@ def bridge(tmp_path, monkeypatch):
             network_token=settings.network_token if settings.allow_network else None,
             # Two device warnings, as build_plan gives on a PC without CUDA.
             warnings=["CUDA not found", "Using int8"],
+            speech_engine=session.speech_engine,
+            speech_fallback=session.speech_fallback,
         )
 
     class Launch:
@@ -153,6 +265,8 @@ def bridge(tmp_path, monkeypatch):
         post_audience_qr=lambda port, token, visible: (
             session.qr_calls.append((port, token, visible)) or session.qr_answer(visible)
         ),
+        self_test_popen=session.self_test_popen,
+        live_levels=session.live_levels,
     )
     try:
         yield LauncherApi(controller), settings_path, trace, session
@@ -162,6 +276,146 @@ def bridge(tmp_path, monkeypatch):
         session.allow_ready.set()
         controller.close()
         i18n.set_language(original_language)
+
+
+def test_speech_check_uses_unsaved_engine_and_matches_auto_on_cpu(bridge, monkeypatch, tmp_path):
+    api, _, _, _ = bridge
+    monkeypatch.setattr(webui, "models_dir", lambda: tmp_path)
+    monkeypatch.setattr(webui, "cuda_supported_compute_types", lambda: ["float16"])
+    kmynas = str(tmp_path / speech.GGUF_MODELS["kmynas"].revision / "kmynas.gguf")
+    monkeypatch.setattr(
+        speech, "cached_gguf_path", lambda name, _: kmynas if name == "kmynas" else None
+    )
+    assert api.check_speech("unknown", "cpu") == {
+        "wanted": "kmynas+canary",
+        "runs": "kmynas",
+        "models": [{"name": "kmynas", "state": "ok"}, {"name": "canary", "state": "missing"}],
+    }
+    assert api.check_speech("whisper", "cpu") == {
+        "wanted": "whisper",
+        "runs": "whisper",
+        "models": [],
+    }
+
+
+def test_speech_fallback_warns_even_when_kmynas_runs(bridge):
+    api, _, _, session = bridge
+    session.speech_engine = "kmynas"
+    session.speech_fallback = True
+    api.init()
+    state = wait_for(lambda: (state := api.poll()["state"])["speech"] and state)
+    assert state["speech_warning"] is True
+    assert state["speech_fallback"] is True
+
+
+class SelfTestProcess:
+    def __init__(self, output, exit_code):
+        self.stdout = io.BytesIO(output)
+        self.exit_code = exit_code
+        self.exited = threading.Event()
+        self.killed = False
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_):
+        self.stdout.close()
+
+    def poll(self):
+        return self.exit_code if self.exited.is_set() else None
+
+    def wait(self):
+        assert self.exited.wait(3)
+        return self.exit_code
+
+    def kill(self):
+        self.killed = True
+        self.exit_code = 1
+        self.exited.set()
+
+
+@pytest.mark.parametrize(
+    ("marker", "exit_code", "status", "level"),
+    [
+        ("SELFTEST OK: Kmynas", 0, "ok", "INFO"),
+        ("SELFTEST FAIL: model not downloaded", 1, "fail", "ERROR"),
+    ],
+)
+def test_self_test_streams_and_refuses_start_until_child_exits(
+    bridge, monkeypatch, tmp_path, marker, exit_code, status, level
+):
+    api, _, _, session = bridge
+    monkeypatch.setattr(webui, "models_dir", lambda: tmp_path)
+    child = SelfTestProcess(f"Loading model\n{marker}\n".encode(), exit_code)
+    session.self_test_popen.return_value = child
+    form = {**api.init()["form"], "speech_engine": "kmynas", "device": "cpu", "language": "lt"}
+    assert api.run_self_test(form) == {"ok": True}
+    seen = []
+
+    def read_log():
+        seen.extend(api.poll()["log"])
+        return any(line["text"] == marker for line in seen)
+
+    wait_for(read_log)
+    assert api.poll()["state"]["self_test"] == {"status": "running", "text": None}
+    assert api.start(form)["error"]["code"] == "self_test_busy"
+    assert api.run_self_test(form)["error"]["code"] == "self_test_busy"
+    assert [
+        (line["text"], line["level"]) for line in seen if line["text"] in (marker, "Loading model")
+    ] == [
+        ("Loading model", "INFO"),
+        (marker, level),
+    ]
+    args, kwargs = session.self_test_popen.call_args
+    assert args[0] == [
+        sys.executable,
+        "-m",
+        "launcher",
+        "--gpu-self-test",
+        "--speech-engine",
+        "kmynas",
+        "--device",
+        "cpu",
+        "--compute-type",
+        form["compute_type"],
+        "--model",
+        form["model"],
+        "--language",
+        "lt",
+    ]
+    assert kwargs["env"]["HF_HOME"] == str(tmp_path)
+    assert kwargs["stderr"] == subprocess.STDOUT
+    for key, value in webui.platform.current().child_process_options().items():
+        assert kwargs[key] == value
+    child.exited.set()
+    wait_for(lambda: api.poll()["state"]["self_test"] == {"status": status, "text": marker})
+
+
+def test_self_test_is_refused_while_live_and_with_invalid_speech_settings(bridge):
+    api, _, _, session = bridge
+    form = api.init()["form"]
+    assert api.run_self_test({**form, "model": "--save"})["error"]["code"] == "invalid_speech"
+    assert api.start(form) == {"ok": True}
+    assert session.running.wait(3)
+    assert api.run_self_test(form)["error"]["code"] == "session_busy"
+    session.self_test_popen.assert_not_called()
+
+
+@pytest.mark.parametrize("timeout", [True, False])
+def test_self_test_is_killed_on_timeout_or_close(bridge, monkeypatch, timeout):
+    api, _, _, session = bridge
+    child = SelfTestProcess(b"", 0)
+    session.self_test_popen.return_value = child
+    if timeout:
+        monkeypatch.setattr(webui, "_SELF_TEST_TIMEOUT_S", 0.02)
+    assert api.run_self_test(api.init()["form"]) == {"ok": True}
+    wait_for(lambda: session.self_test_popen.called)
+    if timeout:
+        wait_for(lambda: api.poll()["state"]["self_test"]["status"] == "fail")
+        assert api.poll()["state"]["self_test"]["text"] == "The speech self-test timed out."
+    else:
+        api._controller.close()
+    assert child.killed
 
 
 def test_contract_validation_and_device_refresh(bridge):
@@ -363,6 +617,10 @@ def test_network_and_error_state(bridge):
     assert wait_for(lambda: api.poll()["state"]["network"]["firewall"])["button_enabled"]
     session.launches[0].emit("error", "The audio exited")
     assert api.poll()["state"]["error"]["text"]
+    assert api.poll()["state"]["error"]["port"] is None  # not a busy-port error
+    session.launches[0].error_code, session.launches[0].error_detail = "port_in_use", "8000"
+    session.launches[0].emit("error", "Port 8000 is already in use.")
+    assert api.poll()["state"]["error"]["port"] == 8000
     session.finish.set()
     wait_for(lambda: api.poll()["state"]["session"] == "idle")
     assert api.poll()["state"]["error"]["text"]
@@ -370,6 +628,40 @@ def test_network_and_error_state(bridge):
     session.running.clear()
     assert api.start(form) == {"ok": True}
     assert api.poll()["state"]["error"] is None
+
+
+def test_live_wave_gets_pipeline_levels_only_while_live(bridge):
+    api, _, _, session = bridge
+    live = session.live_levels
+    form = api.init()["form"]
+    live.pending = [0.9]
+    assert api.poll()["levels"] == []  # idle: the launcher's own meter, not the pipeline
+    assert live.pending == [0.9]
+
+    assert api.start({**form, "allow_network": True}) == {"ok": True}
+    assert session.running.wait(3)
+    token = api.poll()["state"]["network"]["token"]
+    assert live.calls == [("start", 8000, token)]
+    live.pending = [0.2, 0.5]
+    result = api.poll()
+    assert (result["levels"], result["meter"], result["meter_error"]) == ([0.2, 0.5], "off", None)
+    assert api.poll()["levels"] == []  # drained
+
+    api.stop()
+    assert live.calls[1] == ("stop",)
+    live.pending = [0.7]
+    assert api.poll()["levels"] == []  # stopping: no more live levels
+    wait_for(lambda: api.poll()["state"]["session"] == "idle")
+
+
+def test_live_levels_connect_without_a_token_off_the_network(bridge):
+    api, _, _, session = bridge
+    assert api.start(api.init()["form"]) == {"ok": True}
+    assert session.running.wait(3)
+    assert session.live_levels.calls == [("start", 8000, None)]
+    session.finish.set()  # the session ends by itself (e.g. the server exited)
+    wait_for(lambda: api.poll()["state"]["session"] == "idle")
+    assert ("stop",) in session.live_levels.calls
 
 
 @pytest.mark.parametrize(("peak", "level"), [(0, 0), (-32768, 1), (32767, 1), (1036, 0.5)])
@@ -499,19 +791,113 @@ def test_api_exposes_only_contract_methods(bridge):
         "init",
         "poll",
         "start",
+        "check_speech",
+        "run_self_test",
+        "check_port",
         "stop",
         "refresh_devices",
         "set_microphone",
         "open_operator",
         "show_projector",
+        "identify_screens",
         "open_logs",
+        "collect_diagnostics",
         "allow_firewall",
         "set_audience_qr",
         "set_ui_language",
         "set_view",
+        "set_advanced_tab",
+        "set_console_filters",
         "fit_window",
         "copy_text",
     }
+
+
+def test_identify_screens_uses_listed_monitors_and_ignores_repeat_and_close():
+    monitors = [Monitor("Built-in", 0, 0, 1920, 1080, True)]
+    identify = Mock()
+    controller = LauncherController(load=LauncherSettings, identify=identify)
+    controller.identify_screens()
+    identify.assert_not_called()
+    controller._monitors = monitors
+    identify.side_effect = lambda _: controller.identify_screens()
+    controller.identify_screens()
+    controller.close()
+    controller.identify_screens()
+    identify.assert_called_once_with(monitors)
+
+
+@pytest.mark.parametrize(
+    ("monitor", "scale", "expected"),
+    [
+        (Monitor("DISPLAY1", 0, 0, 1920, 1080, True), 1.5, (645, 345, 630, 390)),
+        (Monitor("DISPLAY2", -1600, -900, 1600, 900, False), 1, (-1010, -580, 420, 260)),
+        (Monitor("DISPLAY3", 1920, 0, 1920, 1080, False), 1, (2670, 410, 420, 260)),
+    ],
+)
+def test_label_window_rect(monitor, scale, expected):
+    assert label_window_rect(monitor, scale) == expected
+
+
+@pytest.mark.parametrize("fail_second", [False, True])
+def test_identify_screens_closes_every_created_window(monkeypatch, fail_second):
+    monitors = [
+        Monitor("Built-in", 0, 0, 1920, 1080, True),
+        Monitor("Display 2", -1600, -900, 1600, 900, False),
+    ]
+    events = []
+
+    def create(title, **options):
+        events.append(("create", title))
+        assert options["frameless"] and options["on_top"] and not options["focus"]
+        if title == monitors[0].label:
+            assert i18n.t("screen.main") in options["html"]
+        else:
+            assert (options["x"], options["y"]) == (-1010, -580)
+            if fail_second:
+                raise RuntimeError("screen disconnected")
+        return SimpleNamespace(destroy=lambda: events.append(("destroy", title)))
+
+    monkeypatch.setattr(screen_labels, "_place_windows_label", lambda *_: None)
+    monkeypatch.setattr(
+        screen_labels.time, "sleep", lambda seconds: events.append(("wait", seconds))
+    )
+    webview = SimpleNamespace(create_window=create)
+    if fail_second:
+        with pytest.raises(RuntimeError, match="screen disconnected"):
+            screen_labels.identify_screens(webview, monitors, None)
+    else:
+        screen_labels.identify_screens(webview, monitors, None)
+    expected = [("create", monitor.label) for monitor in monitors]
+    if not fail_second:
+        expected.append(("wait", 3))
+    expected.extend(
+        ("destroy", monitor.label) for monitor in (monitors[:1] if fail_second else monitors)
+    )
+    assert events == expected
+
+
+def test_check_port_validates_and_only_checks_when_idle():
+    busy = Mock(side_effect=[False, True, True])
+    owner = Mock(side_effect=[PortOwner(1234, "obs64.exe"), None])
+    health = Mock(side_effect=[False, True])
+    api = LauncherApi(
+        LauncherController(
+            load=LauncherSettings, port_owner=owner, port_in_use=busy, health_probe=health
+        )
+    )
+    free = {"free": True, "program": None, "pid": None, "bibleLive": False}
+    assert api.check_port("65536") == {"error": "invalid_port"}
+    assert api.check_port(" 8000 ") == free
+    owner.assert_not_called()
+    health.assert_not_called()
+    assert api.check_port("8000") == {**free, "free": False, "program": "obs64.exe", "pid": 1234}
+    assert api.check_port("8000") == {**free, "free": False, "bibleLive": True}
+    api._controller._session = "live"
+    assert api.check_port("8000") == free
+    assert [call.args for call in busy.call_args_list] == [(8000,), (8000,), (8000,)]
+    assert owner.call_count == 2
+    assert health.call_count == 2
 
 
 def test_fit_window_keeps_width_clamps_height_and_skips_expanded_window(bridge, monkeypatch):
@@ -608,7 +994,9 @@ def test_webview_main_checks_dev_url_and_registers_closing_handler(
     def create_window(title, url, **options):
         observed.update(title=title, url=url, **options)
         return SimpleNamespace(
-            events=SimpleNamespace(closing=closing, before_show=Closing()),
+            events=SimpleNamespace(
+                closing=closing, before_show=Closing(), moved=Closing(), resized=Closing()
+            ),
             destroy=lambda: observed.update(destroyed=True),
         )
 
@@ -629,7 +1017,7 @@ def test_webview_main_checks_dev_url_and_registers_closing_handler(
     monkeypatch.setattr(webui, "_default_app_root", lambda: tmp_path)
     monkeypatch.setattr(webui, "models_dir", lambda: tmp_path / "models")
     monkeypatch.setenv("BIBLELIVE_LAUNCHER_URL", url)
-    monkeypatch.setattr(webui, "LauncherController", lambda: controller)
+    monkeypatch.setattr(webui, "LauncherController", lambda *, identify: controller)
     monkeypatch.setitem(
         sys.modules, "launcher.gui", SimpleNamespace(_enable_dpi_awareness=lambda: None)
     )
@@ -812,3 +1200,292 @@ def test_audience_qr_request_goes_to_this_computer_with_the_token(monkeypatch):
         "body": {"visible": True},
         "timeout": webui._AUDIENCE_QR_TIMEOUT_S,
     }
+
+
+def test_advanced_tab_and_console_filters_are_saved_and_restored(bridge):
+    api, path, _, _ = bridge
+    first = api.init()
+    assert first["tab"] == "speech"
+    assert first["console"] == {"source": "all", "level": "DEBUG"}
+    api.set_advanced_tab("network")
+    api.set_console_filters("server", "WARNING")
+    api.set_advanced_tab("bogus")
+    api.set_console_filters("bogus", "WARNING")
+    api.set_console_filters("audio", "TRACE")
+    saved = load_settings(path)
+    assert (saved.advanced_tab, saved.console_source, saved.console_level) == (
+        "network",
+        "server",
+        "WARNING",
+    )
+    again = api.init()
+    assert again["tab"] == "network"
+    assert again["console"] == {"source": "server", "level": "WARNING"}
+
+
+def test_settings_without_the_new_keys_and_with_bad_values_load(tmp_path):
+    path = tmp_path / "launcher.json"
+    path.write_text(json.dumps({"launcher_view": "advanced", "port": 8100}), encoding="utf-8")
+    old = load_settings(path)
+    assert old.launcher_view == "advanced"
+    assert (old.advanced_tab, old.console_source, old.console_level) == ("speech", "all", "DEBUG")
+    assert old.window_rect is None
+    path.write_text(
+        json.dumps(
+            {
+                "advanced_tab": "x",
+                "console_source": 3,
+                "console_level": "TRACE",
+                "window_rect": [10, 20, 1120],
+            }
+        ),
+        encoding="utf-8",
+    )
+    bad = load_settings(path)
+    assert (bad.advanced_tab, bad.console_source, bad.console_level) == ("speech", "all", "DEBUG")
+    assert bad.window_rect is None
+    for broken in ([1, 2, 0, 4], [1, 2, True, 4], [1, 2, "3", 4], {"simple": [1, 2, 3, 4]}):
+        path.write_text(json.dumps({"window_rect": broken}), encoding="utf-8")
+        assert load_settings(path).window_rect is None
+
+
+def test_window_rect_round_trips(tmp_path):
+    path = tmp_path / "launcher.json"
+    save_settings(LauncherSettings(window_rect=[-1800, 40, 1120, 600]), path)
+    assert load_settings(path).window_rect == [-1800, 40, 1120, 600]
+
+
+MAIN = Monitor("DISPLAY1", 0, 0, 1920, 1080, True)
+LEFT = Monitor("DISPLAY2", -1920, -200, 1920, 1080, False)
+
+
+@pytest.mark.parametrize(
+    ("rect", "monitors", "expected"),
+    [
+        ([100, 100, 1120, 600], [MAIN], (100, 100, 1120, 600)),
+        ([-1800, 40, 1120, 600], [MAIN, LEFT], (-1800, 40, 1120, 600)),
+        ([-1800, 40, 1120, 600], [MAIN], None),  # the second monitor is gone
+        ([3000, 100, 1120, 600], [MAIN], None),
+        ([-32000, -32000, 1120, 600], [MAIN, LEFT], None),  # a minimized window's coordinates
+        ([1500, 100, 1120, 600], [MAIN], None),  # mostly off the right edge
+        ([700, 100, 1120, 600], [MAIN], (700, 100, 1120, 600)),
+        ([100, 100, 300, 200], [MAIN], None),  # too small to be a launcher window
+        ([100, 100, 2000, 1100], [MAIN], (0, 0, 1920, 1080)),  # bigger than the screen: trimmed
+        ([100, 100, 1120, 600], [], None),  # monitors unknown
+        ([100, 100, 1120], [MAIN], None),
+    ],
+)
+def test_usable_geometry(rect, monitors, expected):
+    assert usable_geometry(rect, monitors, webui._MIN_WINDOW_SIZE) == expected
+
+
+@pytest.mark.parametrize(
+    ("frame", "top_left"),
+    [
+        # Main display 1440x900 points; AppKit's y counts up from its bottom edge.
+        ((100, 200, 1120, 600), (100, 100, 1120, 600)),
+        ((0, 300, 1120, 600), (0, 0, 1120, 600)),  # touching the top of the main display
+        ((-1800, 500, 1120, 600), (-1800, -200, 1120, 600)),  # a screen left of and above it
+        ((1440, -980, 1120, 600), (1440, 1280, 1120, 600)),  # a screen right of and below it
+        ((100.4, 199.6, 1120.2, 600.0), (100, 100, 1120, 600)),
+    ],
+)
+def test_mac_frames_flip_to_quartz_top_left_and_back(frame, top_left):
+    assert webui._appkit_to_top_left(frame, 900) == top_left
+    back = webui._appkit_to_top_left(top_left, 900)
+    assert back == tuple(round(v) for v in frame)
+
+
+class FakeNSWindow:
+    def __init__(self, x, y, width, height):
+        self.frames = []
+        self.zoomed = self.mini = False
+        self.full = 0
+        self._set(x, y, width, height)
+
+    def _set(self, x, y, width, height):
+        self.current = SimpleNamespace(
+            origin=SimpleNamespace(x=x, y=y), size=SimpleNamespace(width=width, height=height)
+        )
+
+    def frame(self):
+        return self.current
+
+    def isMiniaturized(self):  # noqa: N802 - AppKit names
+        return self.mini
+
+    def isZoomed(self):  # noqa: N802
+        return self.zoomed
+
+    def styleMask(self):  # noqa: N802
+        return self.full
+
+    def setFrame_display_(self, rect, display):  # noqa: N802
+        (x, y), (width, height) = rect
+        self.frames.append((x, y, width, height))
+        self._set(x, y, width, height)
+
+
+def test_mac_window_geometry_reads_and_places_in_quartz_points(monkeypatch):
+    monkeypatch.setattr(sys, "platform", "darwin")
+    monkeypatch.setattr(webui, "_mac_main_screen_height", lambda: 900.0)
+    native = FakeNSWindow(100, 200, 1120, 600)
+    window = SimpleNamespace(native=native, maximized=False, fullscreen=False)
+
+    assert webui._window_geometry(window) == (100, 100, 1120, 600)
+    native.zoomed = True
+    assert webui._window_geometry(window) is None  # "fill" is not a rectangle to bring back
+    native.zoomed, native.full = False, 1 << 14
+    assert webui._window_geometry(window) is None
+    native.full, native.mini = 0, True
+    assert webui._window_geometry(window) is None
+    native.mini = False
+
+    # On the main thread (before_show) the frame is set directly. Position and width come
+    # from the saved rectangle; the height stays the window's own (the page fits it).
+    webui._place_window(window, (-1800, -200, 1000, 900))
+    assert native.frames == [(-1800, 500, 1000, 600)]
+    assert webui._window_geometry(window) == (-1800, -200, 1000, 600)
+
+    native.zoomed = True
+    webui._place_window(window, (0, 0, 1120, 600))
+    assert len(native.frames) == 1  # never un-zooms the window
+
+
+def test_windows_placement_keeps_the_window_height(monkeypatch):
+    monkeypatch.setattr(sys, "platform", "win32")
+    calls = []
+    monkeypatch.setattr(
+        webui,
+        "ctypes",
+        SimpleNamespace(
+            windll=SimpleNamespace(
+                user32=SimpleNamespace(SetWindowPos=lambda *args: calls.append(args[2:6]))
+            )
+        ),
+    )
+    native = SimpleNamespace(
+        WindowState="Normal", Height=800, Handle=SimpleNamespace(ToInt32=lambda: 7)
+    )
+    window = SimpleNamespace(native=native)
+    webui._place_window(window, (-1800, 40, 1200, 600))
+    assert calls == [(-1800, 40, 1200, 800)]  # the page fits the height, not the saved one
+    native.WindowState = "Maximized"
+    webui._place_window(window, (0, 0, 1120, 600))
+    assert len(calls) == 1
+
+
+def test_mac_window_is_placed_on_the_main_thread_from_other_threads(monkeypatch):
+    monkeypatch.setattr(sys, "platform", "darwin")
+    monkeypatch.setattr(webui, "_mac_main_screen_height", lambda: 900.0)
+    queued = []
+    monkeypatch.setitem(
+        sys.modules,
+        "PyObjCTools",
+        SimpleNamespace(AppHelper=SimpleNamespace(callAfter=queued.append)),
+    )
+    native = FakeNSWindow(100, 200, 1120, 600)
+    window = SimpleNamespace(native=native, maximized=False, fullscreen=False)
+    worker = threading.Thread(target=webui._place_window, args=(window, (10, 20, 1120, 600)))
+    worker.start()
+    worker.join()
+    assert native.frames == [] and len(queued) == 1  # deferred to the Cocoa main thread
+    queued[0]()
+    assert native.frames == [(10, 280, 1120, 600)]
+
+
+class FakeTimer:
+    timers: list = []
+
+    def __init__(self, delay, action):
+        self.delay, self.action, self.cancelled, self.daemon = delay, action, False, False
+        FakeTimer.timers.append(self)
+
+    def start(self):
+        pass
+
+    def cancel(self):
+        self.cancelled = True
+
+    def fire(self):
+        if not self.cancelled:
+            self.action()
+
+
+def test_a_failed_clipboard_copy_fails_the_bridge_call(tmp_path, caplog):
+    # The page's copy buttons show "Copy failed" only when the bridge call rejects.
+    def broken(text):
+        raise subprocess.CalledProcessError(1, ["clip.exe"])
+
+    copied = []
+    path = tmp_path / "launcher.json"
+    controller = LauncherController(
+        load=lambda: load_settings(path), mic_lister=lambda settings: [], copy=copied.append
+    )
+    controller.copy_text("fine")
+    assert copied == ["fine"]
+
+    controller = LauncherController(
+        load=lambda: load_settings(path), mic_lister=lambda settings: [], copy=broken
+    )
+    with pytest.raises(RuntimeError, match="Could not copy") as raised:
+        controller.copy_text("operator log text")
+    assert "operator log text" not in str(raised.value)
+    assert "operator log text" not in caplog.text
+
+
+def geometry_controller(path, monitors=(MAIN,)):
+    FakeTimer.timers = []
+    saves = []
+
+    def save(settings):
+        saves.append(settings.window_rect)
+        return save_settings(settings, path)
+
+    controller = LauncherController(
+        load=lambda: load_settings(path),
+        save=save,
+        monitor_lister=lambda: list(monitors),
+        mic_lister=lambda settings: [],
+        timer=FakeTimer,
+    )
+    return controller, saves
+
+
+def test_geometry_is_debounced_and_shared_by_both_views(tmp_path):
+    path = tmp_path / "launcher.json"
+    controller, saves = geometry_controller(path)
+    for x in range(100, 110):  # a drag: many events, one write
+        controller.note_geometry([x, 50, 1120, 600])
+    assert saves == []
+    assert [t.cancelled for t in FakeTimer.timers] == [True] * 9 + [False]
+    FakeTimer.timers[-1].fire()
+    assert saves == [[109, 50, 1120, 600]]
+
+    # Switching views keeps the one saved position: the window does not move.
+    controller.set_view("advanced")
+    controller.note_geometry([300, 80, 1120, 800])
+    FakeTimer.timers[-1].fire()
+    controller.set_view("simple")
+    assert load_settings(path).window_rect == [300, 80, 1120, 800]
+    assert controller.saved_geometry() == (300, 80, 1120, 800)
+
+
+def test_geometry_is_flushed_on_close_and_not_saved_afterwards(tmp_path):
+    path = tmp_path / "launcher.json"
+    controller, _ = geometry_controller(path)
+    controller.note_geometry([10, 10, 1120, 600])
+    controller.request_close()
+    assert load_settings(path).window_rect == [10, 10, 1120, 600]
+    controller.note_geometry([50, 50, 1120, 600])
+    assert len(FakeTimer.timers) == 1
+    assert controller.saved_geometry() == (10, 10, 1120, 600)
+
+
+def test_off_screen_saved_geometry_is_not_restored(tmp_path):
+    path = tmp_path / "launcher.json"
+    save_settings(LauncherSettings(window_rect=[-1800, 40, 1120, 600]), path)
+    controller, _ = geometry_controller(path, monitors=(MAIN,))
+    assert controller.saved_geometry() is None
+    controller, _ = geometry_controller(path, monitors=(MAIN, LEFT))
+    assert controller.saved_geometry() == (-1800, 40, 1120, 600)

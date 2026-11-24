@@ -19,7 +19,10 @@ import {
 
 const METER_TEXT_INTERVAL_MS = 65
 
-export function useLevelEnvelope(meterOn: boolean) {
+/** Whose levels play: the launcher's own meter (idle), the pipeline's (live: wave only). */
+export type LevelSource = 'microphone' | 'pipeline' | null
+
+export function useLevelEnvelope(source: LevelSource) {
   const { t } = useI18n()
   const waveRef = useRef<HTMLDivElement>(null)
   const meterRef = useRef<HTMLDivElement>(null)
@@ -45,7 +48,7 @@ export function useLevelEnvelope(meterOn: boolean) {
     const history: LevelSample[] = []
     let lastTextUpdate = -Infinity
 
-    function paint(level: number, peak: number, time: number, ripple: boolean) {
+    function paintMeter(level: number, peak: number, time: number) {
       fill.style.clipPath = `inset(0 ${(1 - level) * 100}% 0 0)`
       tick.style.left = `${peak * 100}%`
       tick.style.opacity = peak > 0 ? '1' : '0'
@@ -63,13 +66,19 @@ export function useLevelEnvelope(meterOn: boolean) {
           t(level === 0 ? 'launcher.meterSilence' : 'launcher.meterDecibels', { db })
         )
       }
+    }
+
+    function paint(level: number, peak: number, time: number, ripple: boolean) {
+      // While live the meter shows the microphone as in use and stays at rest.
+      if (source === 'microphone') paintMeter(level, peak, time)
       bars.forEach((bar, index) => {
         const value = ripple ? rippleLevel(history, time, distances[index]) * gains[index] : level
         bar.style.setProperty('--wave-level', String(value))
       })
     }
 
-    if (!meterOn) {
+    if (source !== 'microphone') paintMeter(0, 0, 0)
+    if (!source) {
       queue.current = []
       paint(0, 0, 0, false)
       return
@@ -138,7 +147,7 @@ export function useLevelEnvelope(meterOn: boolean) {
       motion?.removeEventListener('change', configureMotion)
       onPoll.current = null
     }
-  }, [meterOn, t])
+  }, [source, t])
 
   return { waveRef, meterRef, acceptLevels }
 }

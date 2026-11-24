@@ -1,10 +1,259 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import { App } from './App'
+import type { PortCheck, SpeechCheck, State } from './bridge'
 import { createDemoBridge } from './demoBridge'
 
 describe('launcher App', () => {
   const speechTarget = 'Aim for speech peaks between -24 and -12 dB'
+
+  it('shows downloaded models and fallback for the latest Speech settings', async () => {
+    const bridge = createDemoBridge()
+    const init = bridge.init
+    vi.spyOn(bridge, 'init').mockImplementation(async () => {
+      const initial = await init()
+      return { ...initial, form: { ...initial.form, language: 'lt' } }
+    })
+    let finishFirst!: (result: SpeechCheck) => void
+    const latest: SpeechCheck = {
+      wanted: 'kmynas+canary',
+      runs: 'kmynas',
+      models: [
+        { name: 'kmynas', state: 'old' },
+        { name: 'canary', state: 'missing' },
+      ],
+    }
+    const check = vi
+      .spyOn(bridge, 'check_speech')
+      .mockImplementationOnce(() => new Promise(resolve => (finishFirst = resolve)))
+      .mockResolvedValue(latest)
+    render(<App bridge={bridge} />)
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Advanced' }))
+    expect(screen.getByText('Checking downloaded models…')).toBeVisible()
+    expect(screen.queryByText('Canary — not downloaded')).not.toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText('Processing device'), { target: { value: 'cpu' } })
+    expect(await screen.findByText('Canary — not downloaded')).toHaveClass('bl-warning')
+    expect(screen.getByText('Kmynas — older download')).toBeVisible()
+    expect(screen.getByText('Canary is missing. Kmynas alone will run.')).toBeVisible()
+    expect(screen.getByText(/--download-model --speech-engine kmynas\+canary/)).toBeVisible()
+    expect(check.mock.calls).toEqual([
+      ['auto', 'auto'],
+      ['auto', 'cpu'],
+    ])
+    await act(async () =>
+      finishFirst({
+        wanted: 'kmynas',
+        runs: 'kmynas',
+        models: [{ name: 'kmynas', state: 'ok' }],
+      })
+    )
+    expect(screen.getByText('Canary — not downloaded')).toBeVisible()
+    fireEvent.change(screen.getByLabelText('Lithuanian engine'), { target: { value: 'whisper' } })
+    expect(screen.queryByText('Canary — not downloaded')).not.toBeInTheDocument()
+  })
+
+  it('runs the self-test on demand and disables its button while testing or starting a session', async () => {
+    const bridge = createDemoBridge()
+    const run = vi.spyOn(bridge, 'run_self_test')
+    render(<App bridge={bridge} />)
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Advanced' }))
+    fireEvent.click(screen.getByText('Troubleshooting'))
+    const button = screen.getByRole('button', { name: 'Test speech models' })
+    expect(button).toBeEnabled()
+    expect(run).not.toHaveBeenCalled()
+    fireEvent.click(button)
+    expect(button).toBeDisabled()
+    expect(screen.getByText('Testing speech models…')).toBeVisible()
+    expect(run).toHaveBeenCalledWith(expect.objectContaining({ speech_engine: 'auto' }))
+    expect(
+      await screen.findByText('Speech models passed the demo test.', { selector: '[role=status]' })
+    ).toBeVisible()
+    expect(button).toBeEnabled()
+    fireEvent.click(screen.getByRole('button', { name: 'Start session' }))
+    expect(button).toBeDisabled()
+  })
+
+  it('identifies screens through the bridge when monitors are listed', async () => {
+    const bridge = createDemoBridge()
+    const identify = vi.spyOn(bridge, 'identify_screens')
+    render(<App bridge={bridge} />)
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Identify screens' }))
+    expect(identify).toHaveBeenCalledOnce()
+  })
+
+  it('checks on launch and Network, debounces port edits, and ignores stale replies', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance'] })
+    try {
+      const bridge = createDemoBridge()
+      const pending = new Map<string, (value: PortCheck) => void>()
+      const check = vi
+        .spyOn(bridge, 'check_port')
+        .mockImplementation(port => new Promise(resolve => pending.set(port, resolve)))
+      const app = render(<App bridge={bridge} />)
+      await act(async () => {})
+      expect(check.mock.calls).toEqual([['8000']])
+      fireEvent.click(screen.getByRole('button', { name: 'Advanced' }))
+      fireEvent.click(screen.getByRole('tab', { name: 'Network' }))
+      expect(check.mock.calls).toEqual([['8000'], ['8000']])
+
+      const port = screen.getByRole('spinbutton', { name: 'Server port' })
+      fireEvent.change(port, { target: { value: '8001' } })
+      await act(() => vi.advanceTimersByTimeAsync(200))
+      fireEvent.change(port, { target: { value: '8002' } })
+      await act(() => vi.advanceTimersByTimeAsync(399))
+      expect(check).toHaveBeenCalledTimes(2)
+      await act(() => vi.advanceTimersByTimeAsync(1))
+      expect(check).toHaveBeenLastCalledWith('8002')
+
+      const busy = { free: false, program: 'obs64.exe', pid: 1234, bibleLive: false }
+      await act(async () => pending.get('8002')?.(busy))
+      const warning = 'Port 8002 is in use by obs64.exe.'
+      expect(screen.getAllByText(warning)).toHaveLength(2)
+      expect(
+        screen.getAllByText(warning).filter(node => node.closest('.bl-status-strip'))
+      ).toHaveLength(1)
+      expect(port).toHaveAccessibleDescription(warning)
+      expect(screen.getByRole('button', { name: 'Start session' })).toBeEnabled()
+      await act(async () => pending.get('8000')?.(busy))
+      expect(screen.getAllByText(warning)).toHaveLength(2)
+      expect(screen.queryByText('Port 8000 is in use by obs64.exe.')).not.toBeInTheDocument()
+      fireEvent.focus(window)
+      expect(check).toHaveBeenCalledTimes(3)
+      await act(() => vi.advanceTimersByTimeAsync(3000))
+      fireEvent.focus(window)
+      fireEvent.focus(window)
+      expect(check.mock.calls).toEqual([['8000'], ['8000'], ['8002'], ['8002']])
+      app.unmount()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('shows only the Start-time error when a subsequent port check confirms the conflict', async () => {
+    const bridge = createDemoBridge()
+    const warning = 'Port 8000 is in use by obs64.exe.'
+    vi.spyOn(bridge, 'check_port').mockResolvedValue({
+      free: false,
+      program: 'obs64.exe',
+      pid: 1234,
+      bibleLive: false,
+    })
+    const poll = bridge.poll
+    let failed = false
+    vi.spyOn(bridge, 'start').mockImplementation(async () => {
+      failed = true
+      return { ok: true }
+    })
+    vi.spyOn(bridge, 'poll').mockImplementation(async () => {
+      const result = await poll()
+      return failed
+        ? { ...result, state: { ...result.state, error: { text: warning, port: 8000 } } }
+        : result
+    })
+    render(<App bridge={bridge} />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Advanced' }))
+    fireEvent.click(screen.getByRole('tab', { name: 'Network' }))
+    await waitFor(() => expect(screen.getAllByText(warning)).toHaveLength(2))
+    fireEvent.click(screen.getByRole('button', { name: 'Start session' }))
+    const changePort = await screen.findByRole('button', { name: 'Change port' })
+    expect(screen.queryByRole('button', { name: 'Show details' })).not.toBeInTheDocument()
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Start session' })).toBeEnabled())
+    expect(screen.getAllByText(warning)).toHaveLength(1)
+    const port = screen.getByRole('spinbutton', { name: 'Server port' })
+    expect(port).not.toHaveAccessibleDescription(warning)
+
+    // The hand-off goes to the field that fixes it, from any tab.
+    fireEvent.click(screen.getByRole('tab', { name: 'Speech' }))
+    fireEvent.click(changePort)
+    expect(screen.getByRole('tab', { name: 'Network' })).toHaveAttribute('aria-selected', 'true')
+    await waitFor(() =>
+      expect(screen.getByRole('spinbutton', { name: 'Server port' })).toHaveFocus()
+    )
+  })
+
+  it('keeps Show details on the console for errors that are not a port conflict', async () => {
+    const bridge = createDemoBridge()
+    const poll = bridge.poll
+    vi.spyOn(bridge, 'poll').mockImplementation(async () => {
+      const result = await poll()
+      return { ...result, state: { ...result.state, error: { text: 'Server failed to start' } } }
+    })
+    render(<App bridge={bridge} />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Show details' }))
+    expect(screen.queryByRole('button', { name: 'Change port' })).not.toBeInTheDocument()
+    await waitFor(() => expect(screen.getByRole('region', { name: 'Session log' })).toHaveFocus())
+  })
+
+  it('collects diagnostics and shows the polled progress, filename and error', async () => {
+    const bridge = createDemoBridge()
+    const poll = bridge.poll
+    let diagnostics: State['diagnostics'] = { status: 'idle', file: null, text: null }
+    const collect = vi.spyOn(bridge, 'collect_diagnostics').mockImplementation(async () => {
+      if (diagnostics.status === 'running') return { ok: false, error: 'Already collecting' }
+      diagnostics = { status: 'running', file: null, text: null }
+      return { ok: true }
+    })
+    vi.spyOn(bridge, 'poll').mockImplementation(async () => {
+      const result = await poll()
+      return { ...result, state: { ...result.state, diagnostics } }
+    })
+    render(<App bridge={bridge} />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Advanced' }))
+    const button = screen.getByRole('button', { name: 'Diagnostics' })
+    const hint =
+      'Collect logs, recent service transcripts, and settings in a ZIP. Audio and the access token are excluded.'
+    expect(button).toHaveAttribute('title', hint)
+    fireEvent.click(button)
+    fireEvent.click(button)
+    expect(collect).toHaveBeenCalledTimes(2)
+    await waitFor(() => expect(button).toBeDisabled())
+    expect(button).toHaveAttribute('aria-busy', 'true')
+    expect(button).toHaveAccessibleName('Diagnostics')
+    expect(screen.queryByText('Could not communicate with the launcher.')).not.toBeInTheDocument()
+    const file = 'BibleLive-diagnostics-20261124-120000.zip'
+    diagnostics = { status: 'done', file, text: null }
+    await waitFor(() => expect(button).toHaveAttribute('title', `${hint}\n${file}`))
+    // Only announced to screen readers; the header shows no result text (no layout jump).
+    expect(screen.getByText(file)).toHaveClass('bl-sr-only')
+    expect(button).toBeEnabled()
+    fireEvent.click(button)
+    diagnostics = { status: 'error', file: null, text: 'Could not create the diagnostics bundle.' }
+    await waitFor(() => expect(button).toHaveAttribute('title', `${hint}\n${diagnostics.text}`))
+    expect(button).toBeEnabled()
+  })
+
+  it('restores the Advanced tab and console filters and saves changes to them', async () => {
+    const bridge = createDemoBridge()
+    const init = bridge.init.bind(bridge)
+    bridge.init = async () => ({
+      ...(await init()),
+      view: 'advanced',
+      tab: 'launch',
+      console: { source: 'server', level: 'WARNING' },
+    })
+    const setTab = vi.spyOn(bridge, 'set_advanced_tab')
+    const setFilters = vi.spyOn(bridge, 'set_console_filters')
+    render(<App bridge={bridge} />)
+
+    expect(await screen.findByRole('tab', { name: 'Launch' })).toHaveAttribute(
+      'aria-selected',
+      'true'
+    )
+    expect(screen.getByRole('button', { name: 'Server' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByLabelText('Minimum level')).toHaveValue('WARNING')
+    expect(setTab).not.toHaveBeenCalled()
+    expect(setFilters).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Network' }))
+    expect(setTab).toHaveBeenCalledWith('network')
+    fireEvent.click(screen.getByRole('button', { name: 'Audio' }))
+    expect(setFilters).toHaveBeenLastCalledWith('audio', 'WARNING')
+    fireEvent.change(screen.getByLabelText('Minimum level'), { target: { value: 'ERROR' } })
+    expect(setFilters).toHaveBeenLastCalledWith('audio', 'ERROR')
+  })
 
   it('renders Simple and persists the switch to Advanced with its three tabs', async () => {
     const bridge = createDemoBridge()
@@ -83,6 +332,42 @@ describe('launcher App', () => {
       expect(status.closest('.bl-meter-label')).toBe(readout?.parentElement)
       expect(within(status).queryByText('Mic level')).not.toBeInTheDocument()
     })
+  })
+
+  it('moves the live wave with the pipeline levels, flat without them, the meter at rest', async () => {
+    const bridge = createDemoBridge()
+    const poll = bridge.poll
+    let pipeline: number[] = []
+    vi.spyOn(bridge, 'poll').mockImplementation(async () => {
+      const result = await poll()
+      return { ...result, levels: result.state.session === 'live' ? pipeline : [] }
+    })
+    const { container } = render(<App bridge={bridge} />)
+    await screen.findByRole('meter', { name: 'Mic level' })
+    const root = container.querySelector('#bl-launcher')
+    const bars = Array.from(container.querySelectorAll<HTMLElement>('.bl-wave span'))
+    const centre = bars[bars.length / 2]
+    const flat = () => bars.every(bar => bar.style.getPropertyValue('--wave-level') === '0')
+    expect(bars.every(bar => bar.style.getPropertyValue('--wave-live') === '')).toBe(true)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Start session' }))
+    await waitFor(() => expect(root).toHaveAttribute('data-status', 'live'), { timeout: 3000 })
+    const meter = screen.getByRole('meter', { name: 'In use by the session' })
+    const fill = meter.querySelector<HTMLElement>('.bl-meter-fill')
+    // Live, but the pipeline has sent nothing yet: a still, flat wave.
+    await new Promise(resolve => window.setTimeout(resolve, 300))
+    expect(flat()).toBe(true)
+
+    pipeline = [0.8]
+    await waitFor(() =>
+      expect(Number(centre.style.getPropertyValue('--wave-level'))).toBeGreaterThan(0.5)
+    )
+    // The meter says the session holds the microphone: it does not move.
+    expect(meter).toHaveAttribute('aria-valuenow', '-60')
+    expect(fill?.style.clipPath).toBe('inset(0 100% 0 0)')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Stop session' }))
+    await waitFor(() => expect(flat()).toBe(true))
   })
 
   it('replaces the meter caption with a no-sound warning and keeps the readout in the row', async () => {
@@ -242,7 +527,9 @@ describe('launcher App', () => {
       { timeout: 3000 }
     )
     const show = screen.getByRole('button', { name: 'Show on projector' })
-    expect(show.nextElementSibling).toBe(toggle)
+    const identify = screen.getByRole('button', { name: 'Identify screens' })
+    expect(show.nextElementSibling).toBe(identify)
+    expect(identify.nextElementSibling).toBe(toggle)
     expect(toggle).toHaveAttribute('aria-pressed', 'false')
     fireEvent.click(toggle)
     expect(setAudienceQr).toHaveBeenLastCalledWith(true)

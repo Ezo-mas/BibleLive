@@ -32,6 +32,8 @@ AUTO_MODES = ("off", "high", "medium_and_up", "all")
 LOG_LEVELS = ("DEBUG", "INFO", "WARNING", "ERROR")
 UI_LANGUAGES = ("auto", "en", "lt")
 LAUNCHER_VIEWS = ("simple", "advanced")
+ADVANCED_TABS = ("speech", "network", "launch")
+CONSOLE_SOURCES = ("all", "launcher", "server", "audio")
 # Lithuanian speech model (--stt): "auto" = by graphics card, see launcher/speech.py.
 SPEECH_ENGINES = ("auto", "whisper", "kmynas", "kmynas+canary")
 
@@ -44,6 +46,9 @@ _ALLOWED: dict[str, tuple[str, ...]] = {
     "log_level": LOG_LEVELS,
     "ui_language": UI_LANGUAGES,
     "launcher_view": LAUNCHER_VIEWS,
+    "advanced_tab": ADVANCED_TABS,
+    "console_source": CONSOLE_SOURCES,
+    "console_level": LOG_LEVELS,
     "speech_engine": SPEECH_ENGINES,
 }
 
@@ -86,6 +91,26 @@ class LauncherSettings:
     allow_network: bool = False
     network_token: str | None = None  # made the first time network mode is on
     launcher_view: str = "simple"
+    advanced_tab: str = "speech"  # the Advanced settings tab left open
+    console_source: str = "all"  # Advanced console filters: source and minimum level
+    console_level: str = "DEBUG"
+    # The window's last rectangle [x, y, width, height] in the monitors list's coordinates.
+    # One for both views: switching views keeps the window where it is. Only x, y and width
+    # are restored; the height always comes from fitting the page's content.
+    window_rect: list[int] | None = None
+
+
+def clean_rect(raw: Any) -> list[int] | None:
+    """A usable [x, y, width, height], or None."""
+    if (
+        isinstance(raw, list)
+        and len(raw) == 4
+        and all(isinstance(v, int) and not isinstance(v, bool) for v in raw)
+        and raw[2] > 0
+        and raw[3] > 0
+    ):
+        return list(raw)
+    return None
 
 
 def _coerce(value: Any, default: Any) -> Any:
@@ -119,6 +144,9 @@ def load_settings(path: Path | None = None) -> LauncherSettings:
     values: dict[str, Any] = {}
     for f in fields(LauncherSettings):
         if f.name not in raw:
+            continue
+        if f.name == "window_rect":
+            values[f.name] = clean_rect(raw[f.name])
             continue
         default = getattr(defaults, f.name)
         value = _coerce(raw[f.name], default)

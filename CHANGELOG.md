@@ -14,6 +14,29 @@ to the same release.
 
 ## Unreleased
 
+### Launcher
+- **Speech checks** in Advanced → Speech show whether the Lithuanian speech models
+  are actually on this computer (a missing file used to fall back to Whisper
+  silently), and a **Run GPU self-test** button checks the graphics card before a
+  service.
+- **Identify screens** beside the projector picker briefly shows a large number
+  on every monitor, so the right one is picked for the audience.
+- **Port check:** before Start the launcher warns when the server port is already
+  taken and names the program using it (for example OBS or another BibleLive).
+  If Start fails on it, **Change port** takes you straight to the port field.
+- **Diagnostics** in the console collects the logs, recent service transcripts
+  and settings into one ZIP for support. The access token and session audio are
+  never included.
+- The live wave now moves with the real microphone during a session, and stays
+  flat when no sound arrives.
+- The launcher reopens where it was left: window position and width, the
+  Advanced tab and the console filters. Switching between Simple and Advanced no
+  longer moves the window. A position on a screen that is no longer connected
+  is ignored.
+- Console: **Copy logs** copies the lines shown, and a "Paused — jump to latest"
+  button appears when the log is scrolled up. A failed copy now says so instead
+  of "Copied". The console buttons fit on one row in Lithuanian too.
+
 ### Operator console
 - **Auto-clear timer** in Settings → Display clears a passage after 5–600 seconds
   on air. It starts Off. The console shows the selected duration beside Clear

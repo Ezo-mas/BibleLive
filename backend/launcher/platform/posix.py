@@ -8,7 +8,7 @@ import sys
 from collections.abc import Callable, Sequence
 from pathlib import Path
 
-from . import Browser, Monitor, RunFn, ShellExecuteFn
+from . import Browser, Monitor, PortOwner, RunFn, ShellExecuteFn
 from .chromium import build_command
 
 
@@ -67,6 +67,34 @@ def kill_tree(proc: subprocess.Popen[bytes], *, grace: float = 5.0) -> None:
 
 def child_process_options() -> dict[str, int]:
     return {"start_new_session": True}
+
+
+def parse_lsof_owner(output: str) -> PortOwner | None:
+    pid = 0
+    for line in output.splitlines():
+        value = line[1:]
+        if line.startswith("p"):
+            try:
+                pid = int(value)
+            except ValueError:
+                pid = 0
+        elif line.startswith("c") and pid > 0 and value:
+            return PortOwner(pid, Path(value).name)
+    return None
+
+
+def port_owner(port: int) -> PortOwner | None:
+    run: RunFn = subprocess.run
+    try:
+        result = run(
+            ["lsof", "-nP", f"-iTCP:{port}", "-sTCP:LISTEN", "-Fpc"],
+            capture_output=True,
+            timeout=0.75,
+            **child_process_options(),
+        )
+        return parse_lsof_owner(result.stdout.decode(errors="replace"))
+    except (OSError, subprocess.SubprocessError):
+        return None
 
 
 def log_dir(data_dir: Path) -> Path:

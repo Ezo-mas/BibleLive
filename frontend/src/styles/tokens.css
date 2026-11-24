@@ -239,6 +239,95 @@
   --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.4), 0 10px 10px -5px rgba(0, 0, 0, 0.3);
 }
 
+/* Launcher palette
+
+   The launcher is its own page (<html class="bl-launcher-page">) in the same warm
+   palette as the console. Its colours are these tokens, so launcher.css holds none;
+   the page follows the OS theme (prefers-color-scheme), not data-theme. The values
+   the console shares with it are the same hexes; the launcher's own are the canvas,
+   the "band" (the always-dark hero), the live console pane, the level meter and the
+   waveform. */
+:root.bl-launcher-page {
+  --color-canvas: #faf8f4;
+  --color-surface: #fffdfa;
+  --color-surface-muted: #f0ede6;
+  --color-text: #231f19;
+  --color-text-secondary: #625b50;
+  --color-border: #ded8ce;
+  --color-border-focus: #7d510a;
+  --color-primary: #f7bc62;
+  --color-primary-hover: #ffce81;
+  --color-danger: #9e362d;
+  --color-signal: #23734d;
+  --accent-text: #8b5915;
+  --color-on-primary: #2d200e;
+  --color-mark-text: #30200c;
+  --color-shadow-soft: #160e0a12;
+  --color-shadow-overlay: #0006;
+
+  /* The hero band: dark in both themes */
+  --color-band: #221e1a;
+  --color-band-text: #fbf2e3;
+  --color-band-muted: #d0c1ae;
+  --color-band-glow: #4b3522;
+  --color-band-warning: #ffda9f;
+  --color-band-warning-bg: #553a26;
+  --color-band-success: #8bdfac;
+  --color-band-danger: #ffb4a6;
+  --color-band-control: #fff4dc13;
+  --color-band-control-border: #f8dfb54a;
+  --color-band-control-hover: #fff4dc24;
+  --color-band-grid: #ffd69c14;
+  --color-band-axis: #ffd69c36;
+
+  /* Waveform */
+  --color-wave-light: #ffe5b7;
+  --color-wave-dark: #d0873c;
+  --color-wave-live-light: #e1ffda;
+  --color-wave-live-dark: #71cba0;
+
+  /* Microphone level meter */
+  --color-meter-green: #237347;
+  --color-meter-yellow: #866000;
+  --color-meter-red: #b2302b;
+  --color-meter-green-idle: #c9e0cd;
+  --color-meter-yellow-idle: #eddfa9;
+  --color-meter-red-idle: #efcdca;
+
+  /* The console pane: dark in both themes */
+  --color-console: #221f1b;
+  --color-console-canvas: #1b1815;
+  --color-console-muted: #302921;
+  --color-console-border: #42382f;
+  --color-console-text: #f8eddb;
+  --color-console-secondary: #cebea9;
+  --color-console-focus: #ffc879;
+  --color-log-info: #9ddab2;
+  --color-log-warning: #ffcf80;
+  --color-log-debug: #d4bef4;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root.bl-launcher-page {
+    --color-canvas: #1c1b19;
+    --color-surface: #24221f;
+    --color-surface-muted: #2e2b26;
+    --color-text: #faf2e4;
+    --color-text-secondary: #bdb2a1;
+    --color-border: #403a32;
+    --color-border-focus: #ffc879;
+    --color-danger: #ff9f92;
+    --color-signal: #81d8a6;
+    --accent-text: #f7bc62;
+    --color-meter-green: #60cf85;
+    --color-meter-yellow: #f2cc52;
+    --color-meter-red: #ff7670;
+    --color-meter-green-idle: #284e35;
+    --color-meter-yellow-idle: #51441f;
+    --color-meter-red-idle: #572e2a;
+  }
+}
+
 /* Operator console palette
 
    The console has its own palette: the launcher's warm palette, set by overriding the

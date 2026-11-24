@@ -105,7 +105,11 @@ only this PC can reach it. With **Allow other devices on this network** turned o
 the launcher starts the server on all interfaces (`BIBLELIVE_HOST=0.0.0.0`) with
 `BIBLELIVE_REQUIRE_AUTH=true`, and gives the audio pipeline it starts the same token
 (`BIBLELIVE_OPERATOR_TOKEN`), so its reference posts stay authorized. The launcher's
-own connections still use `127.0.0.1`.
+own connections still use `127.0.0.1`. While live, the launcher holds the operator
+WebSocket open on `127.0.0.1` to read the microphone levels for its wave
+(`launcher/livelevels.py`): the token goes only in the first `authenticate` message,
+never in the URL, over a socket that bypasses any system proxy, and the reader stops
+for good if the server refuses the token.
 
 - **Token.** The launcher generates a random 12-character token the first time the
   option is turned on, and keeps it in `%APPDATA%\BibleLive\launcher.json` as
@@ -279,7 +283,8 @@ A change to any of these needs a security review before it is called done:
 - **Authentication and tokens:** `backend/core/server/auth.py`, the WebSocket
   `authenticate` handshake (`core/server/ws.py`, `connections.py`), and token
   handling in the clients (`frontend/src/shared/operatorToken.ts`,
-  `useWebSocket.ts`, the `#token=` link, `audio/sender.py`, `audio/level_sender.py`).
+  `useWebSocket.ts`, the `#token=` link, `audio/sender.py`, `audio/level_sender.py`,
+  `launcher/livelevels.py`).
 - **Which endpoints are public or protected:** the lists under "Security
   Architecture" above, and any new route in `core/server/routes/` or `core/server/ws.py`.
 - **Who can reach the server:** `HOST`, `REQUIRE_AUTH` and `CORS_ORIGINS` in

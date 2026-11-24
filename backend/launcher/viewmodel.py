@@ -11,7 +11,13 @@ from dataclasses import dataclass, replace
 from .i18n import t
 from .monitors import Monitor, choose_projector
 from .network import operator_url_with_token, qr_png
-from .process import MSG_STARTING_AUDIO, MSG_STARTING_SERVER_PREFIX, RestartMessage, build_plan
+from .process import (
+    MSG_STARTING_AUDIO,
+    MSG_STARTING_SERVER_PREFIX,
+    PortInUseMessage,
+    RestartMessage,
+    build_plan,
+)
 from .settings import (
     AUTO_MODES,
     COMPUTE_TYPES,
@@ -77,16 +83,21 @@ def form_from_settings(s: LauncherSettings) -> FormValues:
     )
 
 
-def settings_from_form(
-    base: LauncherSettings, form: FormValues, *, include_session_audio: bool = False
-) -> LauncherSettings:
-    """Settings with the form laid over ``base`` (keeps fields the form doesn't show)."""
+def validate_port(value: str) -> int:
     try:
-        port = int(form.port.strip())
+        port = int(value.strip())
     except ValueError:
         raise FormError("invalid_port") from None
     if not 1 <= port <= 65535:
         raise FormError("invalid_port")
+    return port
+
+
+def settings_from_form(
+    base: LauncherSettings, form: FormValues, *, include_session_audio: bool = False
+) -> LauncherSettings:
+    """Settings with the form laid over ``base`` (keeps fields the form doesn't show)."""
+    port = validate_port(form.port)
     try:
         extra = shlex.split(form.extra_args) if form.extra_args.strip() else []
     except ValueError as exc:
@@ -351,6 +362,8 @@ def describe_event(
     if kind == "stopped":
         return "info", t("log.stopped")
     if kind == "error":
+        if isinstance(message, PortInUseMessage):
+            return "error", t(message.key, **message.values)
         return "error", describe_error(error_code, error_detail, message)
     if kind == "warning":
         return "warning", message

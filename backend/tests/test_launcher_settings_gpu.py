@@ -255,12 +255,18 @@ def test_gpu_self_test_ok_and_failures(tmp_path):
         seen["args"] = (model, device, ct)
         return lambda pcm: SimpleNamespace(failed=False, n=len(pcm))
 
+    def ok(_model, _dir):
+        return True
+
     out = io.StringIO()
     s = LauncherSettings(
         speech_engine="whisper"
     )  # the Whisper path; GGUF is in test_launcher_speech
     assert (
-        gpu_self_test_command(s, tmp_path, probe=lambda: ["float16"], loader=loader, out=out) == 0
+        gpu_self_test_command(
+            s, tmp_path, probe=lambda: ["float16"], loader=loader, out=out, whisper_cached=ok
+        )
+        == 0
     )
     assert seen["args"] == ("large-v3-turbo", "cuda", "float16")
     assert "SELFTEST OK" in out.getvalue() and "float16" in out.getvalue()
@@ -275,12 +281,20 @@ def test_gpu_self_test_ok_and_failures(tmp_path):
         raise RuntimeError("cublas64_12.dll not found")
 
     out = io.StringIO()
-    assert gpu_self_test_command(s, tmp_path, probe=lambda: ["float16"], loader=bad, out=out) == 1
+    assert (
+        gpu_self_test_command(
+            s, tmp_path, probe=lambda: ["float16"], loader=bad, out=out, whisper_cached=ok
+        )
+        == 1
+    )
     assert "cublas" in out.getvalue()
 
     # transcription reported as failed
     out = io.StringIO()
     failing = lambda *a: lambda pcm: SimpleNamespace(failed=True)  # noqa: E731
     assert (
-        gpu_self_test_command(s, tmp_path, probe=lambda: ["float16"], loader=failing, out=out) == 1
+        gpu_self_test_command(
+            s, tmp_path, probe=lambda: ["float16"], loader=failing, out=out, whisper_cached=ok
+        )
+        == 1
     )

@@ -5,6 +5,7 @@ so a CLI (or a later GUI) can sit on top.
 """
 
 import contextlib
+import json
 import logging
 import os
 import signal as signal
@@ -56,6 +57,34 @@ class RestartMessage(str):
         return message
 
 
+class PortInUseMessage(str):
+    """CLI guidance and the translation key for the launcher windows."""
+
+    key: str
+    values: dict[str, object]
+
+    def __new__(
+        cls, port: int, owner: platform.PortOwner | None, bible_live: bool
+    ) -> "PortInUseMessage":
+        values: dict[str, object] = {"detail": port}
+        if bible_live:
+            key = "err.port_in_use_biblelive"
+            reason = f"Another BibleLive is already running on port {port}."
+        elif owner:
+            key = "err.port_in_use_program"
+            values["program"] = owner.program
+            reason = f"Port {port} is in use by {owner.program} (PID {owner.pid})."
+        else:
+            key = "err.port_in_use"
+            reason = f"Port {port} is already in use."
+        action = (
+            "Close it" if owner or bible_live else "Close the other BibleLive (or whatever uses it)"
+        )
+        message = super().__new__(cls, f"{reason} {action} or choose another port with --port.")
+        message.key, message.values = key, values
+        return message
+
+
 def _ignore_event(_kind: str, _message: str) -> None:
     pass
 
@@ -81,6 +110,7 @@ class LaunchPlan:
     speech_engine: str = "whisper"  # the Lithuanian engine actually run (after fallbacks)
     network_token: str | None = None  # set only in network mode (see network.py)
     user_bible_dir: Path | None = None  # created at launch, so the user can find it
+    speech_fallback: bool = False
 
     @property
     def base_url(self) -> str:
@@ -92,6 +122,16 @@ class LaunchPlan:
 
 
 LITHUANIAN_VERSION = "ltb"
+
+
+def python_child_env(app_root: Path, env: dict[str, str]) -> dict[str, str]:
+    backend = str(app_root / "backend")
+    existing = [p for p in env.get("PYTHONPATH", "").split(os.pathsep) if p and p != backend]
+    env["PYTHONPATH"] = os.pathsep.join([backend, *existing])
+    env["PYTHONUNBUFFERED"] = "1"
+    # Windows' default pipe encoding cannot hold all Lithuanian letters.
+    env["PYTHONIOENCODING"] = "utf-8"
+    return env
 
 
 def user_bible_dir(data_dir: Path) -> Path:
@@ -116,7 +156,7 @@ def build_plan(
     """Resolve settings into concrete commands and environment (no side effects)."""
     app_root = app_root or _default_app_root()
     data_dir = data_dir or app_data_dir()
-    env = dict(base_env if base_env is not None else os.environ)
+    env = python_child_env(app_root, dict(base_env if base_env is not None else os.environ))
     python = python or sys.executable
 
     device, device_warnings = resolve_device(settings.device, probe)
@@ -130,9 +170,6 @@ def build_plan(
         warnings.append("Kmynas + Canary on the processor will be slow; use an NVIDIA GPU for it.")
     warnings += speech.warnings
 
-    backend = str(app_root / "backend")
-    existing = [p for p in env.get("PYTHONPATH", "").split(os.pathsep) if p and p != backend]
-    env["PYTHONPATH"] = os.pathsep.join([backend, *existing])
     network_token = settings.network_token if settings.allow_network else None
     if settings.allow_network and not network_token:
         raise ValueError("network mode needs a token; see network.ensure_network_token")
@@ -155,10 +192,6 @@ def build_plan(
     env["BIBLELIVE_LOG_LEVEL"] = settings.log_level
     # The server opens this language's Bible at startup (the pipeline gets --language).
     env["BIBLELIVE_START_LANGUAGE"] = settings.language
-    env["PYTHONUNBUFFERED"] = "1"
-    # Output goes to log files; Windows would otherwise write them in cp1252, which
-    # cannot hold Lithuanian letters ("ų"), and every such log line would fail.
-    env["PYTHONIOENCODING"] = "utf-8"
     # faster-whisper (huggingface_hub) caches models under HF_HOME/hub: keep them in the
     # machine-local models dir, not the user profile's ~/.cache.
     env["HF_HOME"] = str(hf_models)
@@ -225,6 +258,7 @@ def build_plan(
         compute_type=compute_type,
         warnings=warnings,
         speech_engine=speech.engine,
+        speech_fallback=speech.fallback,
         network_token=network_token,
         user_bible_dir=bibles,
     )
@@ -235,6 +269,26 @@ def port_in_use(port: int, host: str = LOOPBACK) -> bool:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
         sock.settimeout(0.5)
         return sock.connect_ex((host, port)) == 0
+
+
+class _NoHealthRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, *_args: object, **_kwargs: object) -> None:
+        return None
+
+
+def bible_live_on_port(port: int) -> bool:
+    """Identify the local listener from its own health response."""
+    try:
+        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), _NoHealthRedirect())
+        with opener.open(f"http://{LOOPBACK}:{port}/healthz", timeout=1) as response:
+            payload = response.read(4097)
+        if len(payload) > 4096:
+            return False
+        data = json.loads(payload)
+        return isinstance(data, dict) and data.get("status") == "healthy" and "version" in data
+    except Exception:
+        # An unrelated listener may time out, close mid-response, or send arbitrary bytes.
+        return False
 
 
 def http_ready(url: str, timeout: float = 2.0) -> bool:
@@ -291,6 +345,7 @@ class Launcher:
         ready_timeout: float = READY_TIMEOUT_S,
         poll_interval: float = 0.5,
         clock: Callable[[], float] = time.monotonic,
+        health_probe: Callable[[int], bool] = bible_live_on_port,
     ) -> None:
         self.plan = plan
         self._on_event = on_event or _ignore_event
@@ -298,6 +353,7 @@ class Launcher:
         self._ready_timeout = ready_timeout
         self._poll_interval = poll_interval
         self._clock = clock
+        self._health_probe = health_probe
         self._stop = threading.Event()
         self._server: subprocess.Popen[bytes] | None = None
         self._audio: subprocess.Popen[bytes] | None = None
@@ -383,10 +439,10 @@ class Launcher:
         for warning in self.plan.warnings:
             self._emit("warning", warning)
         if port_in_use(self.plan.port):
+            owner = platform.port_owner(self.plan.port)
             self._fail(
                 "port_in_use",
-                f"Port {self.plan.port} is already in use. Close the other BibleLive "
-                "(or whatever uses it) or choose another port with --port.",
+                PortInUseMessage(self.plan.port, owner, self._health_probe(self.plan.port)),
                 str(self.plan.port),
             )
             return 2
