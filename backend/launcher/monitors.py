@@ -19,7 +19,7 @@ def choose_projector(monitors: Sequence[Monitor], saved: str | None = None) -> M
 
 
 def enumerate_monitors() -> list[Monitor]:
-    """All attached monitors (primary first); empty off Windows or if the query fails."""
+    """All attached monitors (primary first); empty on Linux or if the query fails."""
     return platform.current().enumerate_monitors()
 
 

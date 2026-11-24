@@ -1027,8 +1027,11 @@ class LauncherController:
     def copy_text(self, text: str) -> None:
         try:
             self._copy(text)
-        except (OSError, subprocess.SubprocessError):
+        except (OSError, subprocess.SubprocessError) as exc:
             logger.warning("Could not copy text to the clipboard", exc_info=True)
+            # Fail the page's bridge call so its copy buttons say "Copy failed", not "Copied".
+            # The message carries no clipboard text.
+            raise RuntimeError("Could not copy to the clipboard") from exc
 
     def stop(self) -> None:
         with self._lock:
@@ -1195,18 +1198,30 @@ def _fit_window(window: Any, content: float, viewport: float, max_height: int | 
         window.resize(window.width, height)
 
 
-def _window_geometry(window: Any) -> tuple[int, int, int, int] | None:
-    """The window's rectangle in physical screen pixels, like the monitors list.
+_GEOMETRY_PLATFORMS = ("win32", "darwin")
 
-    Only Windows has the monitor list the saved position is checked against (elsewhere it is
-    empty), so other platforms save and restore nothing. None while the window is minimized,
-    maximized or fullscreen: its rectangle then is not the one to bring back.
+
+def _window_geometry(window: Any) -> tuple[int, int, int, int] | None:
+    """The window's rectangle in the monitors list's coordinates.
+
+    Windows: physical pixels. macOS: global points with the main display's top-left at 0,0
+    (Quartz, like ``platform/macos.py``). Other platforms have no monitor list to check a saved
+    position against, so they save and restore nothing. None while the window is minimized,
+    maximized/zoomed or fullscreen: its rectangle then is not the one to bring back.
     """
-    if sys.platform != "win32":
-        return None
     native = window.native
-    if native is None or window.maximized or window.fullscreen:
+    if sys.platform not in _GEOMETRY_PLATFORMS or native is None:
         return None
+    if window.maximized or window.fullscreen:
+        return None
+    if sys.platform == "darwin":
+        if native.isMiniaturized() or _mac_expanded(native):
+            return None
+        frame = native.frame()
+        return _appkit_to_top_left(
+            (frame.origin.x, frame.origin.y, frame.size.width, frame.size.height),
+            _mac_main_screen_height(),
+        )
     if native.is_fullscreen or str(native.WindowState) != "Normal":
         return None
     # The native form's Left/Top/Width/Height are physical pixels (pywebview's own x, width
@@ -1217,19 +1232,73 @@ def _window_geometry(window: Any) -> tuple[int, int, int, int] | None:
 def _place_window(
     window: Any, rect: tuple[int, int, int, int], *, keep_height: bool = False
 ) -> None:
-    """Put the window at a physical-pixel rectangle (Windows only; see _window_geometry).
+    """Put the window at a rectangle from _window_geometry (Windows and macOS).
 
     ``keep_height`` on a view switch: the page refits the height to the new view's content
     right after (fit_window), so restoring the saved height too would fight that fit.
     """
     native = window.native
-    if sys.platform != "win32" or native is None or str(native.WindowState) != "Normal":
+    if sys.platform not in _GEOMETRY_PLATFORMS or native is None:
+        return
+    if sys.platform == "darwin":
+        _place_mac_window(native, rect, keep_height=keep_height)
+        return
+    if str(native.WindowState) != "Normal":
         return
     x, y, width, height = rect
     if keep_height:
         height = native.Height
     # SWP_NOZORDER | SWP_NOACTIVATE
     ctypes.windll.user32.SetWindowPos(native.Handle.ToInt32(), None, x, y, width, height, 0x0014)
+
+
+def _appkit_to_top_left(
+    frame: tuple[float, float, float, float], main_height: float
+) -> tuple[int, int, int, int]:
+    """An AppKit frame (bottom-left origin, y up) as a Quartz rectangle (top-left, y down).
+
+    Both are global points anchored on the main display; only the y axis flips, around
+    the main display's height. Its own inverse, so it converts back as well.
+    """
+    x, y, width, height = frame
+    return round(x), round(main_height - y - height), round(width), round(height)
+
+
+def _mac_main_screen_height() -> float:
+    import AppKit  # type: ignore[import-not-found,unused-ignore]  # pyobjc, pywebview's Cocoa backend
+
+    screens = AppKit.NSScreen.screens()
+    if not screens:
+        raise RuntimeError("No screens")
+    # screens()[0] is the main display (the menu bar's), the origin of both coordinate systems.
+    return float(screens[0].frame().size.height)
+
+
+def _mac_expanded(native: Any) -> bool:
+    # isZoomed: the green button's "fill"; style bit 14: NSWindowStyleMaskFullScreen.
+    return bool(native.isZoomed() or native.styleMask() & (1 << 14))
+
+
+def _place_mac_window(native: Any, rect: tuple[int, int, int, int], *, keep_height: bool) -> None:
+    def place() -> None:
+        if native.isMiniaturized() or _mac_expanded(native):
+            return
+        x, y, width, height = rect
+        if keep_height:
+            height = round(native.frame().size.height)
+        left, bottom, width, height = _appkit_to_top_left(
+            (x, y, width, height), _mac_main_screen_height()
+        )
+        native.setFrame_display_(((left, bottom), (width, height)), True)
+
+    # AppKit windows may only be changed on the main thread: before_show already runs there,
+    # a view switch comes from a page-call thread.
+    if threading.current_thread() is threading.main_thread():
+        place()
+    else:
+        from PyObjCTools import AppHelper  # type: ignore[import-not-found,unused-ignore]
+
+        AppHelper.callAfter(place)
 
 
 def _colorref(color: str) -> int:
@@ -1433,7 +1502,7 @@ def main(*, smoke: bool = False) -> int:
             lambda rect: _place_window(window, rect, keep_height=True),
         )
         window.events.before_show += _solid_title_bar
-        if sys.platform == "win32":
+        if sys.platform in _GEOMETRY_PLATFORMS:
 
             def restore_window() -> None:
                 try:

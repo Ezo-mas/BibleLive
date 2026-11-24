@@ -1283,6 +1283,102 @@ def test_usable_geometry(rect, monitors, expected):
     assert usable_geometry(rect, monitors, webui._MIN_WINDOW_SIZE) == expected
 
 
+@pytest.mark.parametrize(
+    ("frame", "top_left"),
+    [
+        # Main display 1440x900 points; AppKit's y counts up from its bottom edge.
+        ((100, 200, 1120, 600), (100, 100, 1120, 600)),
+        ((0, 300, 1120, 600), (0, 0, 1120, 600)),  # touching the top of the main display
+        ((-1800, 500, 1120, 600), (-1800, -200, 1120, 600)),  # a screen left of and above it
+        ((1440, -980, 1120, 600), (1440, 1280, 1120, 600)),  # a screen right of and below it
+        ((100.4, 199.6, 1120.2, 600.0), (100, 100, 1120, 600)),
+    ],
+)
+def test_mac_frames_flip_to_quartz_top_left_and_back(frame, top_left):
+    assert webui._appkit_to_top_left(frame, 900) == top_left
+    back = webui._appkit_to_top_left(top_left, 900)
+    assert back == tuple(round(v) for v in frame)
+
+
+class FakeNSWindow:
+    def __init__(self, x, y, width, height):
+        self.frames = []
+        self.zoomed = self.mini = False
+        self.full = 0
+        self._set(x, y, width, height)
+
+    def _set(self, x, y, width, height):
+        self.current = SimpleNamespace(
+            origin=SimpleNamespace(x=x, y=y), size=SimpleNamespace(width=width, height=height)
+        )
+
+    def frame(self):
+        return self.current
+
+    def isMiniaturized(self):  # noqa: N802 - AppKit names
+        return self.mini
+
+    def isZoomed(self):  # noqa: N802
+        return self.zoomed
+
+    def styleMask(self):  # noqa: N802
+        return self.full
+
+    def setFrame_display_(self, rect, display):  # noqa: N802
+        (x, y), (width, height) = rect
+        self.frames.append((x, y, width, height))
+        self._set(x, y, width, height)
+
+
+def test_mac_window_geometry_reads_and_places_in_quartz_points(monkeypatch):
+    monkeypatch.setattr(sys, "platform", "darwin")
+    monkeypatch.setattr(webui, "_mac_main_screen_height", lambda: 900.0)
+    native = FakeNSWindow(100, 200, 1120, 600)
+    window = SimpleNamespace(native=native, maximized=False, fullscreen=False)
+
+    assert webui._window_geometry(window) == (100, 100, 1120, 600)
+    native.zoomed = True
+    assert webui._window_geometry(window) is None  # "fill" is not a rectangle to bring back
+    native.zoomed, native.full = False, 1 << 14
+    assert webui._window_geometry(window) is None
+    native.full, native.mini = 0, True
+    assert webui._window_geometry(window) is None
+    native.mini = False
+
+    # On the main thread (before_show) the frame is set directly.
+    webui._place_window(window, (-1800, -200, 1000, 700))
+    assert native.frames == [(-1800, 400, 1000, 700)]
+    assert webui._window_geometry(window) == (-1800, -200, 1000, 700)
+
+    # A view switch keeps the current height (fit_window owns it): the top edge stays put.
+    webui._place_window(window, (50, 60, 1120, 900), keep_height=True)
+    assert native.frames[-1] == (50, 140, 1120, 700)
+    assert webui._window_geometry(window) == (50, 60, 1120, 700)
+
+    native.zoomed = True
+    webui._place_window(window, (0, 0, 1120, 600))
+    assert len(native.frames) == 2  # never un-zooms the window
+
+
+def test_mac_window_is_placed_on_the_main_thread_from_other_threads(monkeypatch):
+    monkeypatch.setattr(sys, "platform", "darwin")
+    monkeypatch.setattr(webui, "_mac_main_screen_height", lambda: 900.0)
+    queued = []
+    monkeypatch.setitem(
+        sys.modules,
+        "PyObjCTools",
+        SimpleNamespace(AppHelper=SimpleNamespace(callAfter=queued.append)),
+    )
+    native = FakeNSWindow(100, 200, 1120, 600)
+    window = SimpleNamespace(native=native, maximized=False, fullscreen=False)
+    worker = threading.Thread(target=webui._place_window, args=(window, (10, 20, 1120, 600)))
+    worker.start()
+    worker.join()
+    assert native.frames == [] and len(queued) == 1  # deferred to the Cocoa main thread
+    queued[0]()
+    assert native.frames == [(10, 280, 1120, 600)]
+
+
 class FakeTimer:
     timers: list = []
 
@@ -1299,6 +1395,28 @@ class FakeTimer:
     def fire(self):
         if not self.cancelled:
             self.action()
+
+
+def test_a_failed_clipboard_copy_fails_the_bridge_call(tmp_path, caplog):
+    # The page's copy buttons show "Copy failed" only when the bridge call rejects.
+    def broken(text):
+        raise subprocess.CalledProcessError(1, ["clip.exe"])
+
+    copied = []
+    path = tmp_path / "launcher.json"
+    controller = LauncherController(
+        load=lambda: load_settings(path), mic_lister=lambda settings: [], copy=copied.append
+    )
+    controller.copy_text("fine")
+    assert copied == ["fine"]
+
+    controller = LauncherController(
+        load=lambda: load_settings(path), mic_lister=lambda settings: [], copy=broken
+    )
+    with pytest.raises(RuntimeError, match="Could not copy") as raised:
+        controller.copy_text("operator log text")
+    assert "operator log text" not in str(raised.value)
+    assert "operator log text" not in caplog.text
 
 
 def geometry_controller(path, monitors=(MAIN,)):
