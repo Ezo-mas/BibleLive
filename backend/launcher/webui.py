@@ -1217,7 +1217,9 @@ def _place_window(window: Any, rect: tuple[int, int, int, int]) -> None:
     if sys.platform == "darwin":
         _place_mac_window(native, rect)
         return
-    if str(native.WindowState) != "Normal":
+    # A literal platform check, so type checkers on other systems skip the Windows-only
+    # ctypes.windll below (``not in _GEOMETRY_PLATFORMS`` does not narrow).
+    if sys.platform != "win32" or str(native.WindowState) != "Normal":
         return
     x, y, width, _ = rect
     height = native.Height
