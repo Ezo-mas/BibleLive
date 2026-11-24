@@ -106,7 +106,8 @@ export function Hero({
             <span className="bl-warning">
               <span role="status">{warning}</span>
               <button type="button" onClick={onDetails}>
-                {t('launcher.showDetails')}
+                {/* A port conflict is fixed in the port field, not by reading the log. */}
+                {t(state.error?.port != null ? 'launcher.changePort' : 'launcher.showDetails')}
               </button>
             </span>
           ) : portConflict ? (

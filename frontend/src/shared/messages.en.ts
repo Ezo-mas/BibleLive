@@ -384,6 +384,7 @@ export const en = {
   'launcher.audioError': 'Audio error',
   'launcher.audioRestarting': 'Audio is restarting',
   'launcher.showDetails': 'Show details',
+  'launcher.changePort': 'Change port',
   'launcher.sessionRunning': 'Session running',
   'launcher.sessionStarting': 'Starting a session',
   'launcher.sessionTitle': 'Start a session',

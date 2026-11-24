@@ -395,6 +395,7 @@ export const lt: Record<MessageKey, MessageEntry> = {
   'launcher.audioError': 'Garso apdorojimo klaida',
   'launcher.audioRestarting': 'Garso apdorojimas paleidžiamas iš naujo',
   'launcher.showDetails': 'Peržiūrėti žurnalą',
+  'launcher.changePort': 'Keisti prievadą',
   'launcher.sessionRunning': 'Sesija vyksta',
   'launcher.sessionStarting': 'Pradedama sesija',
   'launcher.sessionTitle': 'Pradėkite sesiją',

@@ -332,7 +332,12 @@ function Launcher({ bridge, initial }: Connection) {
           onOperator={() => void runAction(() => bridge.open_operator())}
           onDetails={() => {
             chooseView('advanced')
-            setFocus('console')
+            if (state.error?.port != null) {
+              setTab('network')
+              setFocus('port')
+            } else {
+              setFocus('console')
+            }
           }}
         />
         <Setup

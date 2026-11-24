@@ -158,12 +158,33 @@ describe('launcher App', () => {
     fireEvent.click(screen.getByRole('tab', { name: 'Network' }))
     await waitFor(() => expect(screen.getAllByText(warning)).toHaveLength(2))
     fireEvent.click(screen.getByRole('button', { name: 'Start session' }))
-    await screen.findByRole('button', { name: 'Show details' })
+    const changePort = await screen.findByRole('button', { name: 'Change port' })
+    expect(screen.queryByRole('button', { name: 'Show details' })).not.toBeInTheDocument()
     await waitFor(() => expect(screen.getByRole('button', { name: 'Start session' })).toBeEnabled())
     expect(screen.getAllByText(warning)).toHaveLength(1)
-    expect(screen.getByRole('spinbutton', { name: 'Server port' })).not.toHaveAccessibleDescription(
-      warning
+    const port = screen.getByRole('spinbutton', { name: 'Server port' })
+    expect(port).not.toHaveAccessibleDescription(warning)
+
+    // The hand-off goes to the field that fixes it, from any tab.
+    fireEvent.click(screen.getByRole('tab', { name: 'Speech' }))
+    fireEvent.click(changePort)
+    expect(screen.getByRole('tab', { name: 'Network' })).toHaveAttribute('aria-selected', 'true')
+    await waitFor(() =>
+      expect(screen.getByRole('spinbutton', { name: 'Server port' })).toHaveFocus()
     )
+  })
+
+  it('keeps Show details on the console for errors that are not a port conflict', async () => {
+    const bridge = createDemoBridge()
+    const poll = bridge.poll
+    vi.spyOn(bridge, 'poll').mockImplementation(async () => {
+      const result = await poll()
+      return { ...result, state: { ...result.state, error: { text: 'Server failed to start' } } }
+    })
+    render(<App bridge={bridge} />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Show details' }))
+    expect(screen.queryByRole('button', { name: 'Change port' })).not.toBeInTheDocument()
+    await waitFor(() => expect(screen.getByRole('region', { name: 'Session log' })).toHaveFocus())
   })
 
   it('renders Simple and persists the switch to Advanced with its three tabs', async () => {
