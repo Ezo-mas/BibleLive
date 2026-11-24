@@ -9,7 +9,8 @@ defects are tracked in [`TECH_DEBT.md`](TECH_DEBT.md).
 From the first Mac test (M1, 2026-11-17, PR #94). The display opening full
 screen on an extended display is untested (no USB-C adapter on hand); check it
 with the projector set to "Extended display", including a screen placed left of
-or above the main one (negative coordinates). The network prompt names
+or above the main one (negative coordinates), and that the launcher reopens
+where it was left on that screen (PR #137, only tried on the built-in one). The network prompt names
 `python3.13`, not BibleLive (the server is the bundled Python, and the firewall
 asks per binary); the launcher and `docs/macos-install.md` now explain it.
 Running the server under a BibleLive-named binary would remove it. Also
@@ -18,31 +19,8 @@ update.
 
 ## Launcher follow-ups
 
-- **Live wave from real levels.** The launcher's live-state wave (`--wave-live`)
-  is a canned animation. Feed it the pipeline's real input levels, as the
-  console's meter does since [PR #116](https://github.com/Ezo-mas/BibleLive/pull/116).
-- **Identify screens.** A button by Projector that briefly shows a large number
-  on every monitor, so the operator picks the right one.
-- **Speech checks in Advanced.** Show whether the Lithuanian GGUF models are
-  actually present (today a missing file silently falls back to Whisper), and a
-  "Run GPU self-test" button reusing `--gpu-self-test`.
-- **Diagnostics bundle.** One click zips the logs and settings, with the
-  operator token removed, for support.
 - **Regenerate the operator token.** Revokes access for devices it was shared
   with. Needs a security review.
-- **Port check before Start.** When the port is taken, name the program using it.
-- **Console quick actions.** A one-click Copy logs button beside Log files, and a
-  "Paused — jump to latest" indicator when the operator scrolls the console up
-  (auto-scroll already stops then, but nothing says so).
-- **Remember the window between launches.** Save the window's position and size
-  per view, the Advanced tab (Speech / Network / Launch) and the console filters
-  (source, minimum level) in `launcher.json`, beside the Simple/Advanced choice that
-  is already saved, so a repeat Sunday setup opens as it was left.
-- **Launcher on the shared tokens.** [PR #115](https://github.com/Ezo-mas/BibleLive/pull/115)
-  moved the console to the launcher's warm palette, but
-  `frontend/src/launcher/launcher.css` still holds its own copy of the colours as
-  raw hex values. Point it at `frontend/src/styles/tokens.css` so there is one set
-  of tokens.
 
 ## Maintenance
 
