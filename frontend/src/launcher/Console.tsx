@@ -115,7 +115,7 @@ export function Console({
             className="bl-button bl-quiet"
             onClick={onLogs}
             aria-label={t('launcher.logFiles')}
-            title={t('launcher.logFiles')}
+            title={t('launcher.logFilesHint')}
           >
             <Icon name="folder" />{' '}
             <span className="bl-log-files-label">{t('launcher.logFiles')}</span>
@@ -126,17 +126,30 @@ export function Console({
             data-state={copy}
             onClick={() => void copyLogs()}
             aria-label={t('launcher.copyLogs')}
-            title={t('launcher.copyLogs')}
+            title={t('launcher.copyLogsHint')}
           >
             <Icon name={copy === 'done' ? 'check' : copy === 'failed' ? 'warning' : 'copy'} />{' '}
-            <span className="bl-log-files-label">
-              {t(
-                copy === 'done'
-                  ? 'launcher.copyLogsDone'
-                  : copy === 'failed'
-                    ? 'launcher.copyLogsFailed'
-                    : 'launcher.copyLogs'
-              )}
+            <span
+              className="bl-log-files-label bl-copy-label"
+              data-failed={t('launcher.copyLogsFailed')}
+            >
+              <span>
+                {t(
+                  copy === 'done'
+                    ? 'launcher.copyLogsDone'
+                    : copy === 'failed'
+                      ? 'launcher.copyLogsFailed'
+                      : 'launcher.copyLogs'
+                )}
+              </span>
+              {/* Sized to the longest of the three labels in this language, so the button
+                  never changes width when its label swaps. */}
+              <span
+                className="bl-copy-sizer"
+                aria-hidden="true"
+                data-idle={t('launcher.copyLogs')}
+                data-done={t('launcher.copyLogsDone')}
+              />
             </span>
           </button>
           <button
@@ -145,9 +158,11 @@ export function Console({
             onClick={onDiagnostics}
             disabled={collecting}
             aria-busy={collecting}
+            aria-label={t('launcher.diagnostics')}
             title={detail ? `${hint}\n${detail}` : hint}
           >
-            <Icon name={collecting ? 'refresh' : 'archive'} /> {t('launcher.diagnostics')}
+            <Icon name={collecting ? 'refresh' : 'archive'} />{' '}
+            <span className="bl-log-files-label">{t('launcher.diagnostics')}</span>
           </button>
           {/* Announces progress and the result; the visible place for them is the console log. */}
           <span className="bl-sr-only" role="status">

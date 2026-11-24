@@ -551,11 +551,33 @@
   clip-path: inset(50%);
   white-space: nowrap;
 }
-#bl-launcher .bl-diagnostics {
-  width: 108px;
+/* Copy logs: the shown label and the three possible ones share one grid cell, so the
+   button is as wide as the longest label in this language and never jumps. */
+#bl-launcher .bl-copy-label {
+  display: inline-grid;
 }
-#bl-launcher .bl-copy-logs {
-  width: 132px;
+#bl-launcher .bl-copy-label > *,
+#bl-launcher .bl-copy-label::after,
+#bl-launcher .bl-copy-sizer::before,
+#bl-launcher .bl-copy-sizer::after {
+  grid-area: 1 / 1;
+}
+#bl-launcher .bl-copy-sizer {
+  display: grid;
+}
+#bl-launcher .bl-copy-label::after,
+#bl-launcher .bl-copy-sizer::before,
+#bl-launcher .bl-copy-sizer::after {
+  visibility: hidden;
+}
+#bl-launcher .bl-copy-sizer::before {
+  content: attr(data-idle);
+}
+#bl-launcher .bl-copy-sizer::after {
+  content: attr(data-done);
+}
+#bl-launcher .bl-copy-label::after {
+  content: attr(data-failed);
 }
 #bl-launcher .bl-copy-logs[data-state='failed'] {
   color: var(--hero-danger);
@@ -605,22 +627,11 @@
     transform: rotate(360deg);
   }
 }
-/* Hide the Log files / Copy logs labels before the header's buttons would wrap
-   onto a second row; the Lithuanian labels are longer, so they go sooner. */
-@container (max-width: 560px) {
+/* All three header buttons go icon-only together before they would wrap onto a second
+   row; the labels are kept short in both languages so one width fits both. */
+@container (max-width: 520px) {
   #bl-launcher .bl-log-files-label {
     display: none;
-  }
-  #bl-launcher .bl-copy-logs {
-    width: auto;
-  }
-}
-@container (max-width: 680px) {
-  :root[lang='lt'] #bl-launcher .bl-log-files-label {
-    display: none;
-  }
-  :root[lang='lt'] #bl-launcher .bl-copy-logs {
-    width: auto;
   }
 }
 #bl-launcher .bl-console-head h2,

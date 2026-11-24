@@ -91,11 +91,11 @@ describe('console copy logs', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Copy logs' }))
     await act(async () => {})
     expect(copy).toHaveBeenCalledTimes(1)
-    expect(screen.getByText('Copy failed', { selector: '.bl-log-files-label' })).toBeVisible()
+    expect(screen.getByText('Copy failed', { selector: '.bl-copy-label > span' })).toBeVisible()
     await act(async () => {
       vi.advanceTimersByTime(2100)
     })
-    expect(screen.getByText('Copy logs', { selector: '.bl-log-files-label' })).toBeVisible()
+    expect(screen.getByText('Copy logs', { selector: '.bl-copy-label > span' })).toBeVisible()
   })
 })
 
