@@ -347,7 +347,7 @@ class RunningServer:
 
 
 @pytest.fixture
-def live_server(kjv_db, tmp_path, monkeypatch):
+def live_server(kjv_db, tmp_path, monkeypatch, uvicorn_logging):  # noqa: ARG001 - restores loggers
     """The real FastAPI app on a real socket (uvicorn in a background thread)."""
     if config.REQUIRE_AUTH:
         pytest.fail("these tests run unauthenticated; config.REQUIRE_AUTH must be False")

@@ -23,11 +23,25 @@ def test_level_sender_batch_limit_matches_api():
     assert schema["properties"]["levels"]["maxItems"] == level_sender.MAX_BATCH
 
 
-def test_access_log_omits_only_successful_meter_posts(app, monkeypatch, caplog):
+class _Records(logging.Handler):
+    def __init__(self) -> None:
+        super().__init__()
+        self.records: list[logging.LogRecord] = []
+
+    def emit(self, record: logging.LogRecord) -> None:
+        self.records.append(record)
+
+
+def test_access_log_omits_only_successful_meter_posts(app, monkeypatch):
     monkeypatch.setattr(config, "REQUIRE_AUTH", True)
     monkeypatch.setattr(config, "OPERATOR_TOKEN", "meter-token")
     logger = logging.getLogger("uvicorn.access")
-    monkeypatch.setattr(logger, "propagate", True)
+    # A handler of its own on the logger sees each record once, however earlier tests
+    # left uvicorn's logging (caplog via propagation saw records twice after
+    # uvicorn's dictConfig had turned propagation off).
+    access = _Records()
+    monkeypatch.setattr(logger, "level", logging.INFO)
+    logger.addHandler(access)
     heartbeat = "/api/pipeline/heartbeat"
 
     async def scenario():
@@ -67,10 +81,12 @@ def test_access_log_omits_only_successful_meter_posts(app, monkeypatch, caplog):
             server.should_exit = True
             await asyncio.wait_for(task, timeout=5)
 
-    with caplog.at_level(logging.INFO, logger=logger.name):
+    try:
         asyncio.run(scenario())
+    finally:
+        logger.removeHandler(access)
 
-    assert [record.args[1:] for record in caplog.records if record.name == logger.name] == [
+    assert [record.args[1:] for record in access.records] == [
         ("POST", LEVELS_URL, "1.1", 401),
         ("POST", LEVELS_URL, "1.1", 422),
         ("GET", LEVELS_URL, "1.1", 405),
