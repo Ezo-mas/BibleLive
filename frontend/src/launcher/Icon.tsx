@@ -16,6 +16,7 @@ const paths = {
   copy: 'M8 8h12v13H8zM4 16V3h12',
   arrowDown: 'M12 4v15m-6-6 6 6 6-6',
   check: 'm4 12 5 5 11-11',
+  key: 'M10.7 12.3 21 2m-4 4 3 3m-5-1 2 2M7.5 20a4.5 4.5 0 1 1 0-9 4.5 4.5 0 0 1 0 9Z',
   qr: 'M4 4h6v6H4zm10 0h6v6h-6zM4 14h6v6H4zm10 0h2v2h-2zm4 0h2v2h-2zm-4 4h2v2h-2zm4 0h2v2h-2zM7 7h0m10 0h0M7 17h0',
 } as const
 

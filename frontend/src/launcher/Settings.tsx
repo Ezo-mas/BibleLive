@@ -80,32 +80,40 @@ function TokenRenewal({ bridge, locked }: Pick<Props, 'bridge' | 'locked'>) {
             : t('launcher.newTokenHint')
 
   return (
-    <div className="bl-token-renewal">
-      {step === 'confirm' ? (
-        <>
+    <div className="bl-field bl-token-field">
+      <span id="bl-token-label">{t('launcher.operatorToken')}</span>
+      <div className="bl-token-renewal">
+        {step === 'confirm' ? (
+          <>
+            <button
+              type="button"
+              className="bl-button"
+              disabled={locked}
+              onClick={() => void regenerate()}
+            >
+              <Icon name="key" /> {t('launcher.newTokenYes')}
+            </button>
+            <button type="button" className="bl-button bl-quiet" onClick={() => setStep('idle')}>
+              {t('launcher.cancel')}
+            </button>
+          </>
+        ) : (
           <button
             type="button"
             className="bl-button"
-            disabled={locked}
-            onClick={() => void regenerate()}
+            aria-describedby="bl-token-label bl-token-status"
+            disabled={locked || step === 'busy'}
+            onClick={() => setStep('confirm')}
           >
-            {t('launcher.newTokenYes')}
+            <Icon name="key" /> {t('launcher.newToken')}
           </button>
-          <button type="button" className="bl-button" onClick={() => setStep('idle')}>
-            {t('launcher.cancel')}
-          </button>
-        </>
-      ) : (
-        <button
-          type="button"
-          className="bl-button"
-          disabled={locked || step === 'busy'}
-          onClick={() => setStep('confirm')}
-        >
-          {t('launcher.newToken')}
-        </button>
-      )}
-      <span className={step === 'failed' ? 'bl-error' : 'bl-muted'} role="status">
+        )}
+      </div>
+      <span
+        id="bl-token-status"
+        className={step === 'failed' ? 'bl-error bl-token-status' : 'bl-muted bl-token-status'}
+        role="status"
+      >
         {message}
       </span>
     </div>
@@ -444,7 +452,7 @@ export function Settings({
               <option value="true">{t('launcher.networkAccess')}</option>
             </select>
           </label>
-          <div className="bl-field">
+          <div className="bl-field bl-port-field">
             <label className="bl-field">
               <span>{t('launcher.port')}</span>
               <input
@@ -466,6 +474,7 @@ export function Settings({
               {portConflict && <PortWarning conflict={portConflict} id="bl-port-warning" />}
             </div>
           </div>
+          {form.allow_network && <TokenRenewal bridge={bridge} locked={locked} />}
         </div>
         {portError && (
           <p id="bl-port-error" className="bl-error" role="alert">
@@ -478,7 +487,6 @@ export function Settings({
             <p>{t('launcher.macNote')}</p>
           </div>
         )}
-        {form.allow_network && <TokenRenewal bridge={bridge} locked={locked} />}
         {tab === 'network' && network && (
           <NetworkDetails network={network} bridge={bridge} onFirewall={onFirewall} />
         )}

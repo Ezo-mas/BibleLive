@@ -499,14 +499,25 @@
   padding: 0;
   list-style: none;
 }
-#bl-launcher .bl-self-test,
-#bl-launcher .bl-token-renewal {
+#bl-launcher .bl-self-test {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
   gap: var(--space-2);
   margin-top: var(--space-2);
   overflow-wrap: anywhere;
+}
+/* The port field's reserved warning line sits beside the token field, not above it. */
+#bl-launcher .bl-fields:has(.bl-token-field) > .bl-port-field {
+  grid-row: span 2;
+}
+#bl-launcher .bl-token-renewal {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+#bl-launcher .bl-token-status {
+  font-size: 12px;
 }
 #bl-launcher .bl-details {
   border: 1px solid var(--line);
