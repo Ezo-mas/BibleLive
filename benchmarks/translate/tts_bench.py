@@ -3,8 +3,9 @@
 Runs in its own scratch venv (~/.venvs/tts-p0: torch cu128, qwen-tts pins
 transformers 4.57 which the translation venv cannot share), not the project venv.
 
-    # 1. freeze the sentences (fixed rule, below)
+    # 1. freeze the sentences (fixed rule, below); --lang en for English (default ru)
     python benchmarks/translate/tts_bench.py pick --mt results/translate/mt/<run>/D.ru.jsonl
+    python benchmarks/translate/tts_bench.py --lang en pick --mt results/translate/mt/<run>/D.en.jsonl
     # 2. synthesize them; one run per engine / voice / device
     python benchmarks/translate/tts_bench.py run --engine supertonic --voice M1 --device cpu --threads 4
     # 3. one sentence in every voice, to choose voices by ear
@@ -23,6 +24,10 @@ Engines and licences (read 2026-11-18):
   supertonic  Supertone/supertonic-3, ONNX, CPU    code MIT, weights OpenRAIL-M
   silero      v5_cis_base + silero-stress         MIT (LICENSE_CIS), stress MIT
   qwen        Qwen3-TTS-12Hz-0.6B-CustomVoice     Apache-2.0
+  kokoro      hexgrad/Kokoro-82M (English)        Apache-2.0 (read 2026-11-25)
+
+English uses the same rule with English number words, and names are capitalized
+words other than the first and God/Lord/Jesus/Christ/I.
 
 Output: results/translate/tts/<run>/{NN.wav, results.jsonl, run.json}.
 """
@@ -44,7 +49,7 @@ from pathlib import Path
 from typing import Any
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-OUT = REPO_ROOT / "results" / "translate" / "tts"
+OUT = Path(os.environ.get("BL_RESULTS", REPO_ROOT / "results")) / "translate" / "tts"
 MODELS = Path(os.environ.get("BL_TTS_MODELS", Path.home() / ".venvs" / "models" / "tts"))
 SENTENCES = OUT / "sentences.ru.jsonl"
 NUMBER = re.compile(
@@ -55,7 +60,15 @@ NUMBER = re.compile(
 NOT_NAMES = {"Бог", "Бога", "Богу", "Богом", "Боже", "Господь", "Господа", "Господу", "Господом"}
 # Same light normalization for every engine (Supertonic rejects „).
 QUOTES = str.maketrans({"„": "«", "“": "«", "”": "»"})
-DEFAULT_VOICE = {"supertonic": "M1", "silero": "ru_dmitriy", "qwen": "ryan"}
+NUMBER_EN = re.compile(
+    r"\b(first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|one|two|three|four"
+    r"|five|six|seven|eight|nine|ten|eleven\w*|twelve|twelfth|twent\w*|thirt\w*|forty"
+    r"|fortieth|fift\w*|sixt\w*|sevent\w*|eight\w*|ninet\w*|hundred\w*|thousand\w*)\b|\d",
+    re.IGNORECASE,
+)
+NOT_NAMES_EN = {"God", "God's", "Lord", "Lord's", "Jesus", "Christ", "I", "I'm", "I'll"}
+DEFAULT_VOICE = {"supertonic": "M1", "silero": "ru_dmitriy", "qwen": "ryan", "kokoro": "af_heart"}
+LANG = "ru"  # set from --lang in main()
 PROBE_WORDS = 12
 
 
@@ -64,12 +77,18 @@ PROBE_WORDS = 12
 
 def has_name(text: str) -> bool:
     words = [w.strip("«»„“”\"'.,:;!?()–-") for w in text.split()]
+    if LANG == "en":
+        return any(re.match(r"[A-Z][a-z]", w) and w not in NOT_NAMES_EN for w in words[1:])
     return any(re.match(r"[А-ЯЁ][а-яё]", w) and w not in NOT_NAMES for w in words[1:])
+
+
+def has_number(text: str) -> bool:
+    return bool((NUMBER_EN if LANG == "en" else NUMBER).search(text))
 
 
 def pick(records: list[dict], n: int = 30) -> list[dict]:
     ok = [r for r in records if 5 <= len(r["translation"].split()) <= 30]
-    first = [r for r in ok if NUMBER.search(r["translation"]) or has_name(r["translation"])]
+    first = [r for r in ok if has_number(r["translation"]) or has_name(r["translation"])]
     rest = [r for r in ok if r not in first]
     windows = list(dict.fromkeys(r["id"].rsplit("-", 1)[0] for r in records))
     per_window = -(-n // len(windows))  # spread over the windows, not the first three
@@ -117,7 +136,7 @@ class Supertonic:
         self.style = self.tts.get_voice_style(voice)
 
     def __call__(self, text: str):
-        wav, _ = self.tts.synthesize(text, voice_style=self.style, lang="ru")
+        wav, _ = self.tts.synthesize(text, voice_style=self.style, lang=LANG)
         return wav.squeeze()
 
 
@@ -175,12 +194,51 @@ class Qwen:
 
     def __call__(self, text: str):
         wavs, self.sr = self.model.generate_custom_voice(
-            text=text, speaker=self.voice, language="Russian"
+            text=text, speaker=self.voice, language="English" if LANG == "en" else "Russian"
         )
         return wavs[0]
 
 
-ENGINES: dict[str, Any] = {"supertonic": Supertonic, "silero": Silero, "qwen": Qwen}
+class Kokoro:
+    """Kokoro-82M; American (a*) or British (b*) English voices."""
+
+    SR = 24000
+    REPO = "hexgrad/Kokoro-82M"
+
+    def __init__(self, voice: str, device: str, threads: int):
+        import torch
+        from kokoro import KModel, KPipeline
+
+        if LANG != "en":
+            sys.exit("kokoro: English only here")
+        if threads:
+            torch.set_num_threads(threads)
+        self.model = KModel(repo_id=self.REPO).to(device).eval()
+        self.pipes = {
+            code: KPipeline(lang_code=code, repo_id=self.REPO, model=self.model) for code in "ab"
+        }
+        self.voice = voice
+        self.sr = self.SR
+
+    def voices(self) -> list[str]:
+        from huggingface_hub import list_repo_files
+
+        files = list_repo_files(self.REPO)
+        return sorted(Path(f).stem for f in files if f.startswith("voices/") and f[7] in "ab")
+
+    def set_voice(self, voice: str) -> None:
+        self.voice = voice
+
+    def __call__(self, text: str):
+        import numpy as np
+
+        parts = [r.audio.cpu().numpy() for r in self.pipes[self.voice[0]](text, voice=self.voice)]
+        return np.concatenate(parts)
+
+
+ENGINES: dict[str, Any] = {
+    "supertonic": Supertonic, "silero": Silero, "qwen": Qwen, "kokoro": Kokoro,
+}  # fmt: skip
 
 
 # --------------------------------------------------------------------------- measuring
@@ -242,7 +300,9 @@ def cmd_pick(args: argparse.Namespace) -> int:
     chosen = pick(records)
     OUT.mkdir(parents=True, exist_ok=True)
     SENTENCES.write_text(
-        "".join(json.dumps({**c, "source": args.mt}, ensure_ascii=False) + "\n" for c in chosen),
+        "".join(
+            json.dumps({**c, "source": str(args.mt)}, ensure_ascii=False) + "\n" for c in chosen
+        ),
         encoding="utf-8",
     )
     print(f"{len(chosen)} sentences -> {SENTENCES}")
@@ -368,6 +428,7 @@ def cmd_sheet(args: argparse.Namespace) -> int:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.add_argument("--lang", choices=["ru", "en"], default="ru")
     sub = ap.add_subparsers(dest="cmd", required=True)
     p = sub.add_parser("pick")
     p.add_argument("--mt", required=True, help="translation output JSONL (id, translation)")
@@ -385,6 +446,11 @@ def main() -> int:
     s.add_argument("--runs", nargs="+", required=True)
     s.add_argument("--name", default="listen-ru")
     args = ap.parse_args()
+    global LANG, SENTENCES
+    LANG = args.lang
+    SENTENCES = OUT / f"sentences.{LANG}.jsonl"
+    if LANG == "en" and args.cmd == "sheet" and args.name == "listen-ru":
+        args.name = "listen-en"
     return {"pick": cmd_pick, "run": cmd_run, "sampler": cmd_sampler, "sheet": cmd_sheet}[args.cmd](
         args
     )
