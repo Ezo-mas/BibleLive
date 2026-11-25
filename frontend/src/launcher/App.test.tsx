@@ -342,32 +342,40 @@ describe('launcher App', () => {
       const result = await poll()
       return { ...result, levels: result.state.session === 'live' ? pipeline : [] }
     })
-    const { container } = render(<App bridge={bridge} />)
-    await screen.findByRole('meter', { name: 'Mic level' })
-    const root = container.querySelector('#bl-launcher')
-    const bars = Array.from(container.querySelectorAll<HTMLElement>('.bl-wave span'))
-    const centre = bars[bars.length / 2]
-    const flat = () => bars.every(bar => bar.style.getPropertyValue('--wave-level') === '0')
-    expect(bars.every(bar => bar.style.getPropertyValue('--wave-live') === '')).toBe(true)
+    vi.useFakeTimers()
+    const app = render(<App bridge={bridge} />)
+    try {
+      await act(() => vi.advanceTimersByTimeAsync(100))
+      expect(screen.getByRole('meter', { name: 'Mic level' })).toBeInTheDocument()
+      const root = app.container.querySelector('#bl-launcher')
+      const bars = Array.from(app.container.querySelectorAll<HTMLElement>('.bl-wave span'))
+      const centre = bars[bars.length / 2]
+      const flat = () => bars.every(bar => bar.style.getPropertyValue('--wave-level') === '0')
+      expect(bars.every(bar => bar.style.getPropertyValue('--wave-live') === '')).toBe(true)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Start session' }))
-    await waitFor(() => expect(root).toHaveAttribute('data-status', 'live'), { timeout: 3000 })
-    const meter = screen.getByRole('meter', { name: 'In use by the session' })
-    const fill = meter.querySelector<HTMLElement>('.bl-meter-fill')
-    // Live, but the pipeline has sent nothing yet: a still, flat wave.
-    await new Promise(resolve => window.setTimeout(resolve, 300))
-    expect(flat()).toBe(true)
+      fireEvent.click(screen.getByRole('button', { name: 'Start session' }))
+      await act(() => vi.advanceTimersByTimeAsync(1_500))
+      expect(root).toHaveAttribute('data-status', 'live')
+      const meter = screen.getByRole('meter', { name: 'In use by the session' })
+      const fill = meter.querySelector<HTMLElement>('.bl-meter-fill')
+      // Live, but the pipeline has sent nothing yet: a still, flat wave.
+      await act(() => vi.advanceTimersByTimeAsync(300))
+      expect(flat()).toBe(true)
 
-    pipeline = [0.8]
-    await waitFor(() =>
+      pipeline = [0.8]
+      await act(() => vi.advanceTimersByTimeAsync(500))
       expect(Number(centre.style.getPropertyValue('--wave-level'))).toBeGreaterThan(0.5)
-    )
-    // The meter says the session holds the microphone: it does not move.
-    expect(meter).toHaveAttribute('aria-valuenow', '-60')
-    expect(fill?.style.clipPath).toBe('inset(0 100% 0 0)')
+      // The meter says the session holds the microphone: it does not move.
+      expect(meter).toHaveAttribute('aria-valuenow', '-60')
+      expect(fill?.style.clipPath).toBe('inset(0 100% 0 0)')
 
-    fireEvent.click(screen.getByRole('button', { name: 'Stop session' }))
-    await waitFor(() => expect(flat()).toBe(true))
+      fireEvent.click(screen.getByRole('button', { name: 'Stop session' }))
+      await act(() => vi.advanceTimersByTimeAsync(1_000))
+      expect(flat()).toBe(true)
+    } finally {
+      app.unmount()
+      vi.useRealTimers()
+    }
   })
 
   it('replaces the meter caption with a no-sound warning and keeps the readout in the row', async () => {
@@ -480,30 +488,38 @@ describe('launcher App', () => {
       return result
     })
     const showProjector = vi.spyOn(bridge, 'show_projector')
-    render(<App bridge={bridge} />)
-    const projector = await screen.findByRole('combobox', { name: 'Projector' })
-    const show = screen.getByRole('button', { name: 'Show on projector' })
-    expect(projector).toHaveAttribute('title', automatic)
-    expect(show).toBeDisabled()
-    expect(show).toHaveAttribute('title', 'Start a session first to show the projector.')
-    const open = screen.getByRole('button', { name: 'Open operator' })
-    expect(open).toBeDisabled()
-    expect(open).toHaveAttribute('title')
-    expect(projector.closest('label')?.nextElementSibling).toBe(show)
+    vi.useFakeTimers()
+    const app = render(<App bridge={bridge} />)
+    try {
+      await act(() => vi.advanceTimersByTimeAsync(100))
+      const projector = screen.getByRole('combobox', { name: 'Projector' })
+      const show = screen.getByRole('button', { name: 'Show on projector' })
+      expect(projector).toHaveAttribute('title', automatic)
+      expect(show).toBeDisabled()
+      expect(show).toHaveAttribute('title', 'Start a session first to show the projector.')
+      const open = screen.getByRole('button', { name: 'Open operator' })
+      expect(open).toBeDisabled()
+      expect(open).toHaveAttribute('title')
+      expect(projector.closest('label')?.nextElementSibling).toBe(show)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Advanced' }))
-    expect(
-      screen.getByRole('combobox', { name: 'Projector' }).closest('label')?.nextElementSibling
-    ).toBe(show)
-    fireEvent.click(screen.getByRole('button', { name: 'Start session' }))
-    await waitFor(() => expect(show).toBeEnabled(), { timeout: 3000 })
-    expect(open).toBeEnabled()
-    expect(show).toHaveAttribute(
-      'title',
-      'Opens the audience display full-screen on the projector, or brings it back to the front if it is already open'
-    )
-    fireEvent.click(show)
-    expect(showProjector).toHaveBeenCalledOnce()
+      fireEvent.click(screen.getByRole('button', { name: 'Advanced' }))
+      expect(
+        screen.getByRole('combobox', { name: 'Projector' }).closest('label')?.nextElementSibling
+      ).toBe(show)
+      fireEvent.click(screen.getByRole('button', { name: 'Start session' }))
+      await act(() => vi.advanceTimersByTimeAsync(1_500))
+      expect(show).toBeEnabled()
+      expect(open).toBeEnabled()
+      expect(show).toHaveAttribute(
+        'title',
+        'Opens the audience display full-screen on the projector, or brings it back to the front if it is already open'
+      )
+      fireEvent.click(show)
+      expect(showProjector).toHaveBeenCalledOnce()
+    } finally {
+      app.unmount()
+      vi.useRealTimers()
+    }
   })
 
   it('toggles the audience QR code beside the projector and shows the operator code in Network', async () => {
@@ -515,39 +531,44 @@ describe('launcher App', () => {
       return result
     })
     const setAudienceQr = vi.spyOn(bridge, 'set_audience_qr')
-    render(<App bridge={bridge} />)
-    await screen.findByRole('combobox', { name: 'Projector' })
-    // No session, no address: no toggle.
-    expect(screen.queryByRole('button', { name: 'QR code on the projector' })).toBeNull()
-
-    fireEvent.click(screen.getByRole('button', { name: 'Start session' }))
-    const toggle = await screen.findByRole(
-      'button',
-      { name: 'QR code on the projector' },
-      { timeout: 3000 }
-    )
-    const show = screen.getByRole('button', { name: 'Show on projector' })
-    const identify = screen.getByRole('button', { name: 'Identify screens' })
-    expect(show.nextElementSibling).toBe(identify)
-    expect(identify.nextElementSibling).toBe(toggle)
-    expect(toggle).toHaveAttribute('aria-pressed', 'false')
-    fireEvent.click(toggle)
-    expect(setAudienceQr).toHaveBeenLastCalledWith(true)
-    await waitFor(() => expect(toggle).toHaveAttribute('aria-pressed', 'true'), { timeout: 3000 })
-    fireEvent.click(toggle)
-    expect(setAudienceQr).toHaveBeenLastCalledWith(false)
-    await waitFor(() => expect(toggle).toHaveAttribute('aria-pressed', 'false'), { timeout: 3000 })
-
-    fireEvent.click(screen.getByRole('button', { name: 'Advanced' }))
-    fireEvent.click(screen.getByRole('tab', { name: 'Network' }))
-    const code = screen.getByRole('img', { name: 'Operator page QR code (signs in)' })
-    expect(code.getAttribute('src')).toMatch(/^data:image\//)
-    expect(screen.getByText(/Never show it on the projector or the stream/)).toBeVisible()
-
-    fireEvent.click(screen.getByRole('button', { name: 'Stop session' }))
-    await waitFor(() =>
+    vi.useFakeTimers()
+    const app = render(<App bridge={bridge} />)
+    try {
+      await act(() => vi.advanceTimersByTimeAsync(100))
+      expect(screen.getByRole('combobox', { name: 'Projector' })).toBeInTheDocument()
+      // No session, no address: no toggle.
       expect(screen.queryByRole('button', { name: 'QR code on the projector' })).toBeNull()
-    )
+
+      fireEvent.click(screen.getByRole('button', { name: 'Start session' }))
+      await act(() => vi.advanceTimersByTimeAsync(1_500))
+      const toggle = screen.getByRole('button', { name: 'QR code on the projector' })
+      const show = screen.getByRole('button', { name: 'Show on projector' })
+      const identify = screen.getByRole('button', { name: 'Identify screens' })
+      expect(show.nextElementSibling).toBe(identify)
+      expect(identify.nextElementSibling).toBe(toggle)
+      expect(toggle).toHaveAttribute('aria-pressed', 'false')
+      fireEvent.click(toggle)
+      expect(setAudienceQr).toHaveBeenLastCalledWith(true)
+      await act(() => vi.advanceTimersByTimeAsync(500))
+      expect(toggle).toHaveAttribute('aria-pressed', 'true')
+      fireEvent.click(toggle)
+      expect(setAudienceQr).toHaveBeenLastCalledWith(false)
+      await act(() => vi.advanceTimersByTimeAsync(500))
+      expect(toggle).toHaveAttribute('aria-pressed', 'false')
+
+      fireEvent.click(screen.getByRole('button', { name: 'Advanced' }))
+      fireEvent.click(screen.getByRole('tab', { name: 'Network' }))
+      const code = screen.getByRole('img', { name: 'Operator page QR code (signs in)' })
+      expect(code.getAttribute('src')).toMatch(/^data:image\//)
+      expect(screen.getByText(/Never show it on the projector or the stream/)).toBeVisible()
+
+      fireEvent.click(screen.getByRole('button', { name: 'Stop session' }))
+      await act(() => vi.advanceTimersByTimeAsync(500))
+      expect(screen.queryByRole('button', { name: 'QR code on the projector' })).toBeNull()
+    } finally {
+      app.unmount()
+      vi.useRealTimers()
+    }
   })
 
   it('makes a new operator token only after confirming, and only while stopped', async () => {
@@ -633,19 +654,32 @@ describe('launcher App', () => {
   })
 
   it('uses the same elapsed status in both views and restores the idle microphone meter on stop', async () => {
-    render(<App bridge={createDemoBridge()} />)
-    expect(await screen.findByRole('meter', { name: 'Mic level' })).toBeVisible()
-    fireEvent.click(screen.getByRole('button', { name: 'Start session' }))
-    expect(screen.getByRole('meter', { name: 'In use by the session' })).toBeVisible()
-    const elapsed = /^Live · \d{2}:\d{2}:\d{2}$/
-    expect(await screen.findByText(elapsed, {}, { timeout: 3000 })).toBeVisible()
+    vi.useFakeTimers()
+    const app = render(<App bridge={createDemoBridge()} />)
+    try {
+      await act(() => vi.advanceTimersByTimeAsync(100))
+      expect(screen.getByRole('meter', { name: 'Mic level' })).toBeVisible()
+      fireEvent.click(screen.getByRole('button', { name: 'Start session' }))
+      expect(screen.getByRole('meter', { name: 'In use by the session' })).toBeVisible()
+      // The demo goes live 1 s after Start; once live the launcher polls every 400 ms.
+      await act(() => vi.advanceTimersByTimeAsync(1_500))
+      expect(screen.getByText('Live · 00:00:00')).toBeVisible()
+      await act(() => vi.advanceTimersByTimeAsync(6_000))
+      expect(screen.getByText('Live · 00:00:06')).toBeVisible()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Advanced' }))
-    expect(screen.getByText(elapsed)).toBeVisible()
-    expect(screen.getByRole('meter', { name: 'In use by the session' })).toBeVisible()
+      fireEvent.click(screen.getByRole('button', { name: 'Advanced' }))
+      expect(screen.getByText('Live · 00:00:06')).toBeVisible()
+      expect(screen.getByRole('meter', { name: 'In use by the session' })).toBeVisible()
+      await act(() => vi.advanceTimersByTimeAsync(3_000))
+      expect(screen.getByText('Live · 00:00:09')).toBeVisible()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Stop session' }))
-    expect(await screen.findByRole('meter', { name: 'Mic level' })).toBeVisible()
+      fireEvent.click(screen.getByRole('button', { name: 'Stop session' }))
+      await act(() => vi.advanceTimersByTimeAsync(1_000))
+      expect(screen.getByRole('meter', { name: 'Mic level' })).toBeVisible()
+    } finally {
+      app.unmount()
+      vi.useRealTimers()
+    }
   })
 
   it('can stop while the session is starting and disables Stop while it is stopping', async () => {

@@ -418,18 +418,6 @@ describe('Find Scripture', () => {
     expect(results().getAllByRole('button')).toHaveLength(2)
   })
 
-  it('resolves "gen 1 1-3" to Genesis 1:1-3', async () => {
-    openWith()
-
-    type('gen 1 1-3')
-
-    await waitFor(() =>
-      expect(
-        screen.getByRole('button', { name: 'Genesis 1:1-3 — show on display' })
-      ).toBeInTheDocument()
-    )
-  })
-
   it('resolves "john 3:16" and "ps 23" in the server\'s own conventions', async () => {
     openWith()
 

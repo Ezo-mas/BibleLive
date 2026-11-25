@@ -271,6 +271,10 @@ describe('the plan card', () => {
 
     expect(planTitles()).toEqual(['John 3:16', 'Romans 8:28', 'Psalms 23:1-6'])
     expect(planNumbers()).toEqual(['1', '2', '3'])
+    const region = screen.getByRole('region', { name: 'Plan' })
+    expect(region.querySelector('.operator-card-head .operator-section-count')).toHaveTextContent(
+      '3'
+    )
     // Plan is not a tab any more; the side panel has Pending and History only.
     expect(screen.getAllByRole('tab').map(tab => tab.textContent)).toEqual([
       expect.stringMatching(/^Pending/),
@@ -279,16 +283,6 @@ describe('the plan card', () => {
     // Still in view with the History tab open.
     fireEvent.click(screen.getByRole('tab', { name: 'History' }))
     expect(planTitles()).toHaveLength(3)
-  })
-
-  it('counts its passages in its head', () => {
-    seedPlan(seeded)
-    openWith()
-
-    const region = screen.getByRole('region', { name: 'Plan' })
-    expect(region.querySelector('.operator-card-head .operator-section-count')).toHaveTextContent(
-      '3'
-    )
   })
 
   it('says so when nothing is planned, and offers no Clear', () => {
