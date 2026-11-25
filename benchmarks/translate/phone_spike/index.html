@@ -1,0 +1,396 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Phone audio test</title>
+<style>
+  :root { color-scheme: light dark; --bg: #fff; --fg: #111; --muted: #666; --line: #ccc; --ok: #1a7f37; --bad: #c62828; --accent: #2457c5; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #121212; --fg: #eee; --muted: #9a9a9a; --line: #333; --ok: #4caf50; --bad: #ef5350; --accent: #7aa2ff; } }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 16px; font: 16px/1.4 system-ui, sans-serif; background: var(--bg); color: var(--fg); max-width: 560px; }
+  h1 { font-size: 20px; margin: 0 0 12px; }
+  fieldset { border: 1px solid var(--line); border-radius: 8px; margin: 0 0 12px; padding: 8px 12px; }
+  legend { color: var(--muted); font-size: 14px; }
+  label { display: block; padding: 6px 0; }
+  input[type=text] { width: 100%; padding: 8px; font: inherit; border: 1px solid var(--line); border-radius: 6px; background: transparent; color: inherit; }
+  button { width: 100%; padding: 14px; font: inherit; font-weight: 600; border: 0; border-radius: 8px; background: var(--accent); color: #fff; }
+  #status { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; margin: 12px 0; }
+  #status dt { color: var(--muted); }
+  #status dd { margin: 0; font-variant-numeric: tabular-nums; }
+  #text { font-size: 20px; min-height: 3em; padding: 12px 0; border-top: 1px solid var(--line); }
+  .ok { color: var(--ok); } .bad { color: var(--bad); }
+  #log { font: 12px/1.3 ui-monospace, monospace; color: var(--muted); white-space: pre-wrap; max-height: 30vh; overflow: auto; }
+  .hidden { display: none; }
+</style>
+</head>
+<body>
+<h1>Phone audio test</h1>
+
+<form id="setup">
+  <fieldset>
+    <legend>Phone</legend>
+    <label>Name for the log <input type="text" id="label" placeholder="iphone or android"></label>
+  </fieldset>
+  <fieldset>
+    <legend>Player</legend>
+    <label><input type="radio" name="player" value="element" checked> Audio element, one clip after another</label>
+    <label><input type="radio" name="player" value="mse"> Audio element fed by MediaSource</label>
+    <label><input type="radio" name="player" value="webaudio"> Web Audio queue</label>
+  </fieldset>
+  <fieldset>
+    <legend>Codec</legend>
+    <label><input type="radio" name="codec" value="mp3" checked> MP3</label>
+    <label><input type="radio" name="codec" value="aac"> AAC</label>
+  </fieldset>
+  <fieldset>
+    <legend>Options</legend>
+    <label><input type="checkbox" id="session" checked> Ask for "playback" audio session (iPhone: ignore the silent switch)</label>
+    <label><input type="checkbox" id="fill" checked> MediaSource: fill gaps with silence</label>
+    <label><input type="checkbox" id="inline" checked> MediaSource: audio inside the socket (no separate download)</label>
+  </fieldset>
+  <button type="submit">Start listening</button>
+</form>
+
+<div id="running" class="hidden">
+  <dl id="status">
+    <dt>Setup</dt><dd id="s-setup"></dd>
+    <dt>Connection</dt><dd id="s-conn"></dd>
+    <dt>Received</dt><dd id="s-rx">0</dd>
+    <dt>Played</dt><dd id="s-played">0</dd>
+    <dt>Missed</dt><dd id="s-missed">0</dd>
+    <dt>Player</dt><dd id="s-player"></dd>
+  </dl>
+  <button type="button" id="resume" class="hidden">Resume audio</button>
+  <div id="text"></div>
+  <div id="log"></div>
+</div>
+
+<audio id="audio" preload="auto" playsinline></audio>
+
+<script>
+"use strict";
+const KEY = new URLSearchParams(location.search).get("k") || "";
+const $ = (id) => document.getElementById(id);
+const audio = $("audio");
+audio.disableRemotePlayback = true;
+
+let client = "";
+let setup = null;
+let ws = null;
+let backoff = 1000;
+const outbox = [];
+const counts = { rx: 0, played: 0, missed: 0, lastSeq: 0 };
+const texts = new Map();
+
+function log(line) {
+  const el = $("log");
+  el.textContent = new Date().toLocaleTimeString() + " " + line + "\n" + el.textContent.slice(0, 4000);
+}
+
+function send(ev, data = {}) {
+  const msg = { type: "event", ev, ct: Date.now() / 1000, hidden: document.hidden, ...data };
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify(msg));
+  } else {
+    outbox.push(msg);
+    if (outbox.length > 500) outbox.shift();
+  }
+}
+
+function render() {
+  $("s-rx").textContent = counts.rx;
+  $("s-played").textContent = counts.played;
+  $("s-missed").textContent = counts.missed;
+  $("s-missed").className = counts.missed ? "bad" : "";
+}
+
+function clipUrl(kind, name) {
+  return `clips/${kind}/${name}?k=${encodeURIComponent(KEY)}`;
+}
+
+function markPlayed(seq) {
+  counts.played += 1;
+  $("text").textContent = texts.get(seq) || "";
+  texts.delete(seq);
+  render();
+  send("play_start", { seq });
+}
+
+// ---------------------------------------------------------------- players
+
+function elementPlayer(kind) {
+  const queue = [];
+  let current = null;
+  function next() {
+    current = queue.shift() || null;
+    if (!current) { $("s-player").textContent = "idle"; return; }
+    audio.src = clipUrl(kind, current.name);
+    audio.play().catch((e) => send("play_rejected", { seq: current && current.seq, err: String(e) }));
+  }
+  audio.addEventListener("playing", () => {
+    $("s-player").textContent = "playing";
+    if (current && !current.started) { current.started = true; markPlayed(current.seq); }
+  });
+  audio.addEventListener("ended", () => { send("ended", { seq: current && current.seq }); next(); });
+  audio.addEventListener("error", () => { send("media_error", { seq: current && current.seq, code: audio.error && audio.error.code }); next(); });
+  return {
+    start() { audio.play().catch(() => {}); },  // unlock the element inside the tap
+    add(clip) { queue.push(clip); if (!current) next(); },
+  };
+}
+
+function b64ToBuffer(b64) {
+  const bin = atob(b64);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out.buffer;
+}
+
+function msePlayer(kind, opts) {
+  const MS = window.ManagedMediaSource || window.MediaSource;
+  const type = kind === "mp3" ? "audio/mpeg" : 'audio/mp4; codecs="mp4a.40.2"';
+  const fileKind = kind === "mp3" ? "mp3" : "m4a";
+  if (!MS || !MS.isTypeSupported(type)) {
+    send("unsupported", { player: "mse", type, managed: !!window.ManagedMediaSource });
+    log("MediaSource can't play " + type + " here");
+    $("s-player").textContent = "not supported";
+    $("s-player").className = "bad";
+    return { start() {}, add() {}, diag() { return {}; } };
+  }
+  const ms = new MS();
+  let sb = null;
+  let silence = null;          // ArrayBuffer of ~1 s of silence (clip "00")
+  let streaming = null;        // ManagedMediaSource: false after "endstreaming"
+  const pending = [];          // {seq, data} waiting to be appended (seq null = silence)
+  const spans = [];            // {seq, start, end, started}
+  let appending = null;
+  let lastTime = -1, stuckTicks = 0, fills = 0, nudges = 0;
+  audio.src = URL.createObjectURL(ms);
+  for (const ev of ["sourceended", "sourceclose"]) ms.addEventListener(ev, () => send("ms_" + ev));
+  for (const ev of ["startstreaming", "endstreaming"]) {
+    ms.addEventListener(ev, () => { streaming = ev === "startstreaming"; send("ms_" + ev); });
+  }
+  ms.addEventListener("sourceopen", () => {
+    sb = ms.addSourceBuffer(type);
+    sb.mode = "sequence";
+    sb.addEventListener("error", () => send("sb_error"));
+    sb.addEventListener("updateend", () => {
+      if (appending) {
+        const end = bufEnd();
+        if (appending.seq !== null) spans.push({ seq: appending.seq, start: appending.start, end, started: false });
+        appending = null;
+      }
+      pump();
+    });
+    pump();
+  });
+  function bufEnd() { return sb && sb.buffered.length ? sb.buffered.end(sb.buffered.length - 1) : 0; }
+  function pump() {
+    if (!sb || sb.updating || appending || !pending.length) return;
+    const item = pending.shift();
+    appending = { seq: item.seq, start: bufEnd() };
+    try { sb.appendBuffer(item.data); } catch (e) { send("append_error", { seq: item.seq, err: String(e) }); appending = null; }
+  }
+  function trim() {   // keep the buffer small: drop audio more than 30 s behind
+    if (sb && !sb.updating && !appending && audio.currentTime > 40 && sb.buffered.length && sb.buffered.start(0) < audio.currentTime - 35) {
+      try { sb.remove(0, audio.currentTime - 30); } catch (e) { send("remove_error", { err: String(e) }); }
+    }
+  }
+  // Every 250 ms (iOS may run it less often while locked): fill gaps with silence so the
+  // element never runs dry, and nudge it if the clock stops while audio is buffered.
+  setInterval(() => {
+    if (!sb) return;
+    const ahead = bufEnd() - audio.currentTime;
+    if (opts.fill && silence && !appending && !pending.length && !sb.updating && ahead < 1.2) {
+      pending.push({ seq: null, data: silence.slice(0) }); fills++; pump();
+    }
+    if (!audio.paused && ahead > 0.3 && audio.currentTime === lastTime) {
+      stuckTicks++;
+      if (stuckTicks === 8) {   // ~2 s frozen with audio buffered
+        nudges++;
+        send("stuck", diag());
+        audio.play().catch((e) => send("play_rejected", { err: String(e) }));
+      }
+    } else stuckTicks = 0;
+    lastTime = audio.currentTime;
+    trim();
+  }, 250);
+  function diag() {
+    return {
+      t: Math.round(audio.currentTime * 10) / 10, ahead: Math.round((bufEnd() - audio.currentTime) * 10) / 10,
+      rs: audio.readyState, ms: ms.readyState, upd: !!(sb && sb.updating), appending: !!appending,
+      pending: pending.length, streaming, fills, nudges,
+    };
+  }
+  audio.addEventListener("timeupdate", () => {
+    for (const s of spans) {
+      if (!s.started && audio.currentTime >= s.start) { s.started = true; markPlayed(s.seq); }
+    }
+    while (spans.length && spans[0].started && audio.currentTime > spans[0].end) {
+      send("ended", { seq: spans.shift().seq });
+    }
+  });
+  audio.addEventListener("waiting", () => { $("s-player").textContent = "waiting"; send("waiting", diag()); });
+  audio.addEventListener("stalled", () => send("stalled", diag()));
+  audio.addEventListener("playing", () => { $("s-player").textContent = "playing"; });
+  audio.addEventListener("error", () => send("media_error", { code: audio.error && audio.error.code }));
+  return {
+    diag,
+    start() {
+      audio.play().catch((e) => send("play_rejected", { err: String(e) }));
+      if (opts.fill) {
+        fetch(clipUrl(fileKind, "00")).then((r) => r.arrayBuffer()).then((b) => { silence = b; })
+          .catch((e) => send("fetch_error", { seq: "silence", err: String(e) }));
+      }
+    },
+    add(clip) {
+      if (clip.data) { pending.push({ seq: clip.seq, data: b64ToBuffer(clip.data) }); pump(); return; }
+      fetch(clipUrl(fileKind, clip.name))
+        .then((r) => r.arrayBuffer())
+        .then((data) => { pending.push({ seq: clip.seq, data }); pump(); })
+        .catch((e) => send("fetch_error", { seq: clip.seq, err: String(e) }));
+    },
+  };
+}
+
+function webAudioPlayer(kind) {
+  const Ctx = window.AudioContext || window.webkitAudioContext;
+  const ctx = new Ctx();
+  let nextAt = 0;
+  ctx.addEventListener("statechange", () => {
+    $("s-player").textContent = ctx.state;
+    send("ctx_state", { state: ctx.state });
+  });
+  return {
+    ctx,
+    start() { ctx.resume(); },
+    add(clip) {
+      fetch(clipUrl(kind, clip.name))
+        .then((r) => r.arrayBuffer())
+        .then((data) => ctx.decodeAudioData(data))
+        .then((buf) => {
+          const src = ctx.createBufferSource();
+          src.buffer = buf;
+          src.connect(ctx.destination);
+          const at = Math.max(ctx.currentTime + 0.05, nextAt);
+          nextAt = at + buf.duration;
+          src.start(at);
+          const lead = at - ctx.currentTime;
+          setTimeout(() => markPlayed(clip.seq), lead * 1000);
+          src.onended = () => send("ended", { seq: clip.seq, ctx: ctx.state });
+          send("scheduled", { seq: clip.seq, lead: Math.round(lead * 1000) / 1000, ctx: ctx.state });
+        })
+        .catch((e) => send("decode_error", { seq: clip.seq, err: String(e) }));
+    },
+  };
+}
+
+// ---------------------------------------------------------------- connection
+
+let player = null;
+
+function connect() {
+  const url = (location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/ws";
+  ws = new WebSocket(url);
+  $("s-conn").textContent = "connecting";
+  ws.onopen = () => {
+    backoff = 1000;
+    ws.send(JSON.stringify({ k: KEY, client, setup }));
+    $("s-conn").textContent = "connected";
+    $("s-conn").className = "ok";
+    send("ws_open", { pending: outbox.length });
+    while (outbox.length) ws.send(JSON.stringify(outbox.shift()));
+  };
+  ws.onmessage = (m) => {
+    const msg = JSON.parse(m.data);
+    if (msg.type !== "clip") return;
+    if (counts.lastSeq && msg.seq > counts.lastSeq + 1) {
+      const gap = msg.seq - counts.lastSeq - 1;
+      counts.missed += gap;
+      send("missed", { from: counts.lastSeq + 1, to: msg.seq - 1, n: gap });
+    }
+    counts.lastSeq = msg.seq;
+    counts.rx += 1;
+    texts.set(msg.seq, msg.text);
+    render();
+    send("rx", { seq: msg.seq });
+    player.add(msg);
+  };
+  ws.onclose = (e) => {
+    $("s-conn").textContent = "disconnected (" + e.code + "), retrying";
+    $("s-conn").className = "bad";
+    log("socket closed " + e.code);
+    if (e.code === 4401) { $("s-conn").textContent = "wrong key in the link"; return; }
+    setTimeout(connect, backoff);
+    backoff = Math.min(backoff * 2, 5000);
+  };
+}
+
+$("setup").addEventListener("submit", (e) => {
+  e.preventDefault();
+  const label = ($("label").value || "phone").trim().replace(/[^\w-]/g, "").slice(0, 20) || "phone";
+  const playerName = document.querySelector("input[name=player]:checked").value;
+  const codec = document.querySelector("input[name=codec]:checked").value;
+  const sessionWanted = $("session").checked;
+  let session = "n/a";
+  if (sessionWanted && navigator.audioSession) {
+    try { navigator.audioSession.type = "playback"; session = navigator.audioSession.type; } catch (err) { session = "error"; }
+  }
+  const mseOpts = { fill: $("fill").checked, inline: $("inline").checked };
+  setup = { label, player: playerName, codec, audioSession: session,
+            ...(playerName === "mse" ? mseOpts : {}),
+            inline: playerName === "mse" && mseOpts.inline ? (codec === "mp3" ? "mp3" : "m4a") : null };
+  client = `${label}-${playerName}-${codec}-${Math.random().toString(36).slice(2, 6)}`;
+  $("s-setup").textContent = `${playerName} · ${codec} · session ${session}` +
+    (playerName === "mse" ? ` · fill ${mseOpts.fill ? "on" : "off"} · inline ${mseOpts.inline ? "on" : "off"}` : "");
+
+  player = playerName === "webaudio" ? webAudioPlayer(codec) : playerName === "mse" ? msePlayer(codec, mseOpts) : elementPlayer(codec);
+  player.start();
+
+  if ("mediaSession" in navigator) {
+    navigator.mediaSession.metadata = new MediaMetadata({ title: "Phone audio test", artist: "BibleLive Translate" });
+    navigator.mediaSession.playbackState = "playing";
+    navigator.mediaSession.setActionHandler("play", () => {
+      send("session_play");
+      if (player.ctx) player.ctx.resume(); else audio.play();
+    });
+    navigator.mediaSession.setActionHandler("pause", () => { audio.pause(); send("session_pause"); });
+  }
+  $("setup").classList.add("hidden");
+  $("running").classList.remove("hidden");
+  connect();
+  send("start", { ua: navigator.userAgent });
+
+  document.addEventListener("visibilitychange", () => send("visibility", { state: document.visibilityState }));
+  // Another app took the audio (call, Spotify): the OS pauses us. Show a Resume button;
+  // the lock-screen play control (Media Session) does the same.
+  const resumeBtn = $("resume");
+  const showResume = (why) => { resumeBtn.classList.remove("hidden"); send("interrupted", { why }); };
+  audio.addEventListener("pause", () => {
+    if (audio.ended) return;
+    send("paused");
+    if (playerName !== "webaudio") showResume("paused");
+  });
+  audio.addEventListener("play", () => resumeBtn.classList.add("hidden"));
+  audio.addEventListener("playing", () => resumeBtn.classList.add("hidden"));
+  if (player.ctx) {
+    player.ctx.addEventListener("statechange", () => {
+      if (player.ctx.state === "running") resumeBtn.classList.add("hidden");
+      else showResume(player.ctx.state);
+    });
+  }
+  resumeBtn.addEventListener("click", () => {
+    send("resume_tap");
+    resumeBtn.classList.add("hidden");
+    if (player.ctx) player.ctx.resume();
+    else audio.play().catch((err) => send("play_rejected", { err: String(err) }));
+  });
+  window.addEventListener("online", () => send("online"));
+  window.addEventListener("offline", () => send("offline"));
+  setInterval(() => send("hb", { rx: counts.rx, played: counts.played, missed: counts.missed, paused: audio.paused,
+                                  ...(player.diag ? player.diag() : {}) }), 10000);
+});
+</script>
+</body>
+</html>
