@@ -8,6 +8,7 @@ import json
 from pathlib import Path
 
 import pytest
+from uvicorn_logging_state import restored_uvicorn_logging
 
 from core.book_names import BookNames
 from core.config import config
@@ -44,6 +45,17 @@ def disable_service_logging():
         yield
     finally:
         config.SERVICE_LOG_DIR = previous
+
+
+@pytest.fixture
+def uvicorn_logging():
+    """Restore uvicorn's loggers after a test that builds a ``uvicorn.Config``.
+
+    Use it wherever a Config is built without ``log_config=None``; see
+    ``uvicorn_logging_state`` for what leaks otherwise.
+    """
+    with restored_uvicorn_logging():
+        yield
 
 
 @pytest.fixture

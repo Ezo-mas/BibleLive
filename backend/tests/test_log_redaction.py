@@ -47,23 +47,6 @@ class _Collect(logging.Handler):
         self.lines.append(self.format(record))
 
 
-@pytest.fixture
-def uvicorn_logging():
-    """Run uvicorn's own logging setup, then restore the loggers afterwards."""
-    saved = {
-        name: (logger.handlers[:], logger.filters[:], logger.level, logger.propagate)
-        for name in ("uvicorn", *UVICORN_LOGGERS)
-        for logger in [logging.getLogger(name)]
-    }
-    yield
-    for name, (handlers, filters, level, propagate) in saved.items():
-        logger = logging.getLogger(name)
-        logger.handlers[:] = handlers
-        logger.filters[:] = filters
-        logger.setLevel(level)
-        logger.propagate = propagate
-
-
 def test_websocket_handshake_line_is_redacted_after_uvicorn_configures_logging(uvicorn_logging):
     install_token_redaction()
     # Building a Config applies uvicorn's dictConfig, as `python -m core.server` does.
