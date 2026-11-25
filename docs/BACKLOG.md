@@ -17,15 +17,10 @@ Running the server under a BibleLive-named binary would remove it. Also
 unchecked: whether macOS asks for the microphone again after a re-downloaded
 update.
 
-## Maintenance
+## Launcher follow-ups
 
-### npm 10.9 cannot install vitest 4.1.11 or later
-Size: small. The frontend dev tools moved to vite 6 and vitest 5 to clear
-`npm audit` (2026-10-24). npm 10.9.9 crashes installing vitest 4.1.11 and later
-(`Cannot read properties of null (reading 'edgesOut')` in its peer loader,
-reproduced in an empty project); 5.0.5 installs. `package.json` allows
-`^5.0.5`, so only `package-lock.json` holds it at 5.0.5: before an
-`npm update` that moves vitest, check that it installs, or upgrade npm first.
+- **Regenerate the operator token.** Revokes access for devices it was shared
+  with. Needs a security review.
 
 ## Experiments
 
