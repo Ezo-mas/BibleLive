@@ -314,11 +314,20 @@ describe('auto-approve in settings', () => {
 
     // With the settings closed the console still says what the server is doing.
     expect(screen.getByText('Auto-approve · Medium and high')).toBeInTheDocument()
+    // The Pending menu's Off / On item reports the same mode as checked.
+    expect(autoQuick()).toHaveAttribute('aria-checked', 'true')
   })
 
-  it('follows the mode the server confirms, in both places', () => {
-    openWith()
+  it('shows the mode the snapshot reported, then follows the mode the server confirms, in both places', () => {
+    openWith('high')
+
+    expect(screen.getByText('Auto-approve · High only')).toBeInTheDocument()
+
     openSettings()
+    expect(autoOptions().getByRole('button', { name: 'High' })).toHaveAttribute(
+      'aria-pressed',
+      'true'
+    )
 
     push(socket, { type: 'auto_mode_confirmed', data: { auto_mode: 'all' } })
 
@@ -332,18 +341,6 @@ describe('auto-approve in settings', () => {
     })
 
     expect(screen.getByText('Auto-approve · All')).toBeInTheDocument()
-  })
-
-  it('shows the mode the snapshot reported, before anything is touched', () => {
-    openWith('high')
-
-    expect(screen.getByText('Auto-approve · High only')).toBeInTheDocument()
-
-    openSettings()
-    expect(autoOptions().getByRole('button', { name: 'High' })).toHaveAttribute(
-      'aria-pressed',
-      'true'
-    )
   })
 })
 

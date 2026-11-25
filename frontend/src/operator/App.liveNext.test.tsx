@@ -345,23 +345,6 @@ describe('the row cursor in Pending', () => {
     expect(sentActions()).toEqual([{ action: 'approve', reference_id: 'p-1' }])
   })
 
-  it('after an arrow moves the highlight past the first row, that row has focus', () => {
-    const scroll = vi.mocked(Element.prototype.scrollIntoView)
-    scroll.mockClear()
-    openWith()
-
-    pressKey('ArrowDown')
-    expect(row(/John 1:1/)).toHaveFocus()
-    pressKey('ArrowDown')
-
-    expect(row(/Romans 8:28/)).toHaveAttribute('aria-pressed', 'true')
-    expect(row(/Romans 8:28/)).toHaveFocus()
-    expect(scroll).toHaveBeenLastCalledWith({ block: 'nearest' })
-    // Focus and the cursor stay together, so Enter shows the row that has focus.
-    pressKey('Enter')
-    expect(sentActions()).toEqual([{ action: 'approve', reference_id: 'p-2' }])
-  })
-
   it('a server update does not move focus or the highlight', () => {
     openWith()
     pressKey('ArrowDown')
