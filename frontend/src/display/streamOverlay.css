@@ -108,12 +108,6 @@ html.stream-overlay-page #root {
   color: #e0a63a;
 }
 
-.stream-more {
-  font-weight: 500;
-  letter-spacing: 0.06em;
-  color: rgba(255, 255, 255, 0.7);
-}
-
 /* The verse block takes the rest of the band; its font is fitted to it. */
 .stream-verses {
   flex: 1 1 auto;

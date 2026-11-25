@@ -206,6 +206,19 @@ describe('display verses', () => {
     await waitFor(() => expect(screen.getByText('Jono evangelija 1:1-3')).toBeInTheDocument())
     expect(screen.queryByText('John 1:1-3')).not.toBeInTheDocument()
   })
+
+  it('cites only the verses the limit lets on screen, with no "more verses" note', async () => {
+    render(<App />)
+    push(socket, { type: 'display_settings', data: { verse_limit: 3, theme: 'dark' } })
+    const passage = reference()
+    passage.verse_end = 4
+    passage.verses.push({ verse: 4, text: 'In him was life.' })
+    push(socket, { type: 'reference', data: passage })
+
+    await waitFor(() => expect(screen.getByText('John 1:1-3')).toBeInTheDocument())
+    expect(screen.queryByText('In him was life.')).not.toBeInTheDocument()
+    expect(document.body.textContent).not.toMatch(/more verse/)
+  })
 })
 
 /**

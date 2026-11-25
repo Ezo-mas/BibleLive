@@ -157,16 +157,6 @@ body {
   opacity: 0.8;
 }
 
-/* "+N more verses" note when a passage is longer than the chosen limit */
-.display-range-note {
-  font-family: var(--font-sans);
-  font-size: clamp(0.75rem, 1.2vw, 1rem);
-  color: var(--color-text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.12em;
-  opacity: 0.7;
-}
-
 /* Idle state: the themed background, and the operator's picture when one is set.
    Covers the whole screen, so the picture is not bound by the stage padding. */
 .display-idle {
