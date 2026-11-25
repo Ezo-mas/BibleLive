@@ -45,6 +45,81 @@ interface Props {
   onFirewall: () => void
 }
 
+/**
+ * Replace the operator token, which locks out every device that has the old one. Only while
+ * stopped: the server reads the token when it starts. Asks once before it goes ahead.
+ */
+function TokenRenewal({ bridge, locked }: Pick<Props, 'bridge' | 'locked'>) {
+  const { t } = useI18n()
+  const [step, setStep] = useState<'idle' | 'confirm' | 'busy' | 'done' | 'failed'>('idle')
+
+  // Starting a session ends the question; the new token then shows in the details below.
+  useEffect(() => {
+    if (locked) setStep(current => (current === 'busy' ? current : 'idle'))
+  }, [locked])
+
+  async function regenerate() {
+    setStep('busy')
+    try {
+      const result = await bridge.regenerate_token()
+      setStep(result.ok ? 'done' : 'failed')
+    } catch {
+      setStep('failed')
+    }
+  }
+
+  const message =
+    step === 'confirm'
+      ? t('launcher.newTokenConfirm')
+      : step === 'done'
+        ? t('launcher.newTokenDone')
+        : step === 'failed'
+          ? t('launcher.newTokenFailed')
+          : locked
+            ? t('launcher.newTokenStopFirst')
+            : t('launcher.newTokenHint')
+
+  return (
+    <div className="bl-field bl-token-field">
+      <span id="bl-token-label">{t('launcher.operatorToken')}</span>
+      <div className="bl-token-renewal">
+        {step === 'confirm' ? (
+          <>
+            <button
+              type="button"
+              className="bl-button"
+              disabled={locked}
+              onClick={() => void regenerate()}
+            >
+              <Icon name="key" /> {t('launcher.newTokenYes')}
+            </button>
+            <button type="button" className="bl-button bl-quiet" onClick={() => setStep('idle')}>
+              {t('launcher.cancel')}
+            </button>
+          </>
+        ) : (
+          <button
+            type="button"
+            className="bl-button"
+            aria-describedby="bl-token-label bl-token-status"
+            disabled={locked || step === 'busy'}
+            onClick={() => setStep('confirm')}
+          >
+            <Icon name="key" /> {t('launcher.newToken')}
+          </button>
+        )}
+      </div>
+      <span
+        id="bl-token-status"
+        className={step === 'failed' ? 'bl-error bl-token-status' : 'bl-muted bl-token-status'}
+        role="status"
+      >
+        {message}
+      </span>
+    </div>
+  )
+}
+
 function NetworkDetails({
   network,
   bridge,
@@ -377,7 +452,7 @@ export function Settings({
               <option value="true">{t('launcher.networkAccess')}</option>
             </select>
           </label>
-          <div className="bl-field">
+          <div className="bl-field bl-port-field">
             <label className="bl-field">
               <span>{t('launcher.port')}</span>
               <input
@@ -399,6 +474,7 @@ export function Settings({
               {portConflict && <PortWarning conflict={portConflict} id="bl-port-warning" />}
             </div>
           </div>
+          {form.allow_network && <TokenRenewal bridge={bridge} locked={locked} />}
         </div>
         {portError && (
           <p id="bl-port-error" className="bl-error" role="alert">

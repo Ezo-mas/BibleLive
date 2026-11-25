@@ -40,6 +40,7 @@ from .network import (
     firewall_programs,
     firewall_rule_exists,
     lan_ip,
+    new_token,
     operator_url_with_token,
     qr_png,
 )
@@ -596,6 +597,28 @@ class LauncherController:
             self._worker.start()
             return {"ok": True}
 
+    def regenerate_token(self) -> dict[str, Any]:
+        """Replace the saved operator token, which revokes it for every device that has it.
+
+        Only while stopped: the server and pipeline read the token when they start, so a new
+        one made while live would not take effect until a restart, and the window would show
+        a token that does not work yet.
+        """
+        with self._lock:
+            if self._closed or self._session != "idle":
+                return {"ok": False}
+            settings = replace(self._settings, network_token=new_token())
+            try:
+                self._save(settings)
+            except OSError:
+                logger.warning("Could not save the new operator token", exc_info=True)
+                self._log.append("launcher", "ERROR", t("log.token_save_failed"))
+                return {"ok": False}
+            self._settings = settings
+            # The token itself is never logged: the console can be copied for support.
+            self._log.append("launcher", "INFO", t("log.token_regenerated"))
+            return {"ok": True}
+
     def check_speech(self, engine: str, device: str) -> dict[str, Any]:  # noqa: ARG002
         # build_plan looks at hardware for Auto even with an explicitly selected CPU device.
         requested = engine if engine in SPEECH_ENGINES else "auto"
@@ -1073,6 +1096,9 @@ class LauncherApi:
 
     def check_speech(self, engine: str, device: str) -> dict[str, Any]:
         return self._controller.check_speech(engine, device)
+
+    def regenerate_token(self) -> dict[str, Any]:
+        return self._controller.regenerate_token()
 
     def run_self_test(self, form: dict[str, Any]) -> dict[str, Any]:
         return self._controller.run_self_test(FormValues(**form))

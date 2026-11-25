@@ -15,6 +15,9 @@ to the same release.
 ## Unreleased
 
 ### Launcher
+- **New operator token** in Advanced → Network replaces the network-mode token,
+  which locks out every phone or tablet it was shared with. It works while
+  BibleLive is stopped and takes effect at the next Start.
 - **Speech checks** in Advanced → Speech show whether the Lithuanian speech models
   are actually on this computer (a missing file used to fall back to Whisper
   silently), and a **Run GPU self-test** button checks the graphics card before a
