@@ -13,6 +13,7 @@ import {
   readStoredDisplayTheme,
   readStoredVerseLimit,
   selectVerses,
+  shownReference,
   writeStoredDisplayTheme,
   writeStoredVerseLimit,
 } from './verseText'
@@ -191,5 +192,29 @@ describe('display theme', () => {
     expect(coerceDisplayTheme('system')).toBe('dark')
     expect(coerceDisplayTheme(null)).toBe('dark')
     expect(coerceDisplayTheme(undefined)).toBe('dark')
+  })
+})
+
+describe('shownReference', () => {
+  it('cuts the range to the verses shown', () => {
+    const passage = ref({ verses: verses(8) })
+    const cited = shownReference(passage, selectVerses(passage, 3))
+    expect([cited.verse_start, cited.verse_end]).toEqual([1, 3])
+  })
+
+  it('keeps the reference when every verse is shown', () => {
+    const passage = ref({ verses: verses(3), verse_end: 3 })
+    expect(shownReference(passage, selectVerses(passage, 5))).toBe(passage)
+  })
+
+  it('narrows a whole-chapter reference to the verses shown', () => {
+    const chapter = ref({ verse_start: null, verse_end: null, verses: verses(6) })
+    const cited = shownReference(chapter, selectVerses(chapter, 3))
+    expect([cited.verse_start, cited.verse_end]).toEqual([1, 3])
+  })
+
+  it('keeps the reference for the joined-text fallback', () => {
+    const passage = ref({ text: 'In the beginning.' })
+    expect(shownReference(passage, selectVerses(passage, 3))).toBe(passage)
   })
 })

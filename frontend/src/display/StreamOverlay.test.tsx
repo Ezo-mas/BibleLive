@@ -61,7 +61,7 @@ describe('stream overlay', () => {
     try {
       push(socket, { type: 'reference', data: reference() })
       act(() => vi.advanceTimersByTime(400))
-      expect(screen.getByText('John 1:1-4')).toBeInTheDocument()
+      expect(screen.getByText('John 1:1-3')).toBeInTheDocument()
 
       if (state === 'swapping') {
         push(socket, { type: 'reference', data: { ...reference(), id: 'ref-2', book: 'Luke' } })
@@ -73,11 +73,11 @@ describe('stream overlay', () => {
         push(socket, { type: 'ping', data: {} } as unknown as DisplayMessage)
       ).not.toThrow()
       expect(screen.getByTestId('stream-band').className).toBe(bandClass)
-      expect(screen.getByText('John 1:1-4')).toBeInTheDocument()
+      expect(screen.getByText('John 1:1-3')).toBeInTheDocument()
 
       act(() => vi.advanceTimersByTime(state === 'swapping' ? 50 : 400))
       expect(
-        screen.getByText(state === 'swapping' ? 'Luke 1:1-4' : 'John 1:1-4')
+        screen.getByText(state === 'swapping' ? 'Luke 1:1-3' : 'John 1:1-3')
       ).toBeInTheDocument()
       expect(screen.getByTestId('stream-band')).toHaveClass('stream-band--visible')
       expect(errors).not.toHaveBeenCalled()
@@ -147,14 +147,15 @@ describe('stream overlay', () => {
     expect(screen.getByText('In him was life.')).toBeInTheDocument()
   })
 
-  it("follows the projector's verse limit and says how many are left out", async () => {
+  it("follows the projector's verse limit and cites only the verses shown", async () => {
     render(<StreamOverlay />)
     push(socket, { type: 'display_settings', data: { verse_limit: 3, theme: 'dark' } })
     push(socket, { type: 'reference', data: reference() })
 
     await screen.findByText('All things were made by him.')
     expect(screen.queryByText('In him was life.')).toBeNull()
-    expect(screen.getByText(/\+1 more verse$/)).toBeInTheDocument()
+    expect(screen.getByText('John 1:1-3')).toBeInTheDocument()
+    expect(screen.getByTestId('stream-band').textContent).not.toMatch(/more verse/)
   })
 
   it('fades out and removes the band when the projector is cleared', async () => {
@@ -166,7 +167,7 @@ describe('stream overlay', () => {
     await waitFor(() => expect(screen.queryByTestId('stream-band')).toBeNull())
   })
 
-  it('translates the hidden-verse note into Lithuanian', async () => {
+  it('adds no console-language text to the band (a Lithuanian console here)', async () => {
     window.localStorage.setItem(LANGUAGE_STORAGE_KEY, 'lt')
     render(
       <I18nProvider>
@@ -176,9 +177,9 @@ describe('stream overlay', () => {
     push(socket, { type: 'display_settings', data: { verse_limit: 3, theme: 'dark' } })
     push(socket, { type: 'reference', data: reference() })
 
-    const note = await screen.findByText('dar 1 eilutė')
-    expect(note.textContent).toBe(' dar 1 eilutė')
-    expect(screen.queryByText('In him was life.')).toBeNull()
+    await screen.findByText('All things were made by him.')
+    expect(screen.getByText('John 1:1-3')).toBeInTheDocument()
+    expect(screen.getByTestId('stream-band').textContent).not.toMatch(/eilut/)
   })
 
   it('never shows the idle picture, even when the server sends one (it sits over a camera)', async () => {

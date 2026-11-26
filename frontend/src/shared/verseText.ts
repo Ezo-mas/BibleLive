@@ -57,6 +57,18 @@ export function hiddenVerseCount(ref: BibleReference | null, limit: VerseLimit):
   return Math.max(0, total - shown.length)
 }
 
+/**
+ * The reference for the verses actually on screen. When only part of a passage is
+ * shown (the verse limit, or a band too small for all of it), the range is cut to
+ * the first and last shown verse, so the citation never names a verse the audience
+ * cannot see.
+ */
+export function shownReference(ref: BibleReference, shown: VerseText[]): BibleReference {
+  const total = ref.verses?.length ?? 0
+  if (shown.length === 0 || shown.length >= total) return ref
+  return { ...ref, verse_start: shown[0].verse, verse_end: shown[shown.length - 1].verse }
+}
+
 /** Read a stored verse limit, ignoring unknown or malformed values. */
 export function readStoredVerseLimit(storage?: Storage): VerseLimit {
   try {

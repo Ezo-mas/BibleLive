@@ -1,7 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { formatReference } from '../shared/reference'
-import { useI18n } from '../shared/i18nContext'
-import { hiddenVerseCount, selectVerses } from '../shared/verseText'
+import { selectVerses, shownReference } from '../shared/verseText'
 import type { VerseLimit } from '../shared/verseText'
 import type { BibleReference, StreamOverlaySettings } from '../shared/types'
 import { computeFitFontSize, fitFontSizeByMeasurement } from './fitText'
@@ -35,7 +34,6 @@ export function StreamBand({
   verseLimit,
   options,
 }: StreamBandProps) {
-  const { t } = useI18n()
   const [shownCount, setShownCount] = useState(0)
   const versesRef = useRef<HTMLDivElement>(null)
 
@@ -55,7 +53,6 @@ export function StreamBand({
   }, [])
 
   const verses = selectVerses(reference, verseLimit)
-  const limitHidden = hiddenVerseCount(reference, verseLimit)
 
   // Fit the verses into the band: shrink the text down to a size a stream viewer
   // can still read, and past that drop verses from the end rather than overflow.
@@ -109,7 +106,8 @@ export function StreamBand({
     // The font and alignment change how much text fits, so they refit too.
   }, [verses, options.font, options.align])
 
-  const droppedCount = limitHidden + Math.max(0, verses.length - (shownCount || verses.length))
+  // Before the first fit every verse counts as shown.
+  const onScreen = verses.slice(0, shownCount || verses.length)
   const bandClass = [
     'stream-band',
     `stream-band--${options.position}`,
@@ -128,10 +126,7 @@ export function StreamBand({
           data-testid="stream-band"
         >
           <div className="stream-reference">
-            {formatReference(reference)}
-            {droppedCount > 0 && (
-              <span className="stream-more"> {t('stage.moreVerses', { count: droppedCount })}</span>
-            )}
+            {formatReference(shownReference(reference, onScreen))}
           </div>
           <div className="stream-verses" ref={versesRef} data-testid="stream-verses">
             <div className="stream-verses-inner">

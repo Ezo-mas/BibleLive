@@ -6,9 +6,9 @@ import { formatReference } from '../shared/reference'
 import {
   coerceDisplayTheme,
   coerceVerseLimit,
-  hiddenVerseCount,
   readStoredVerseLimit,
   selectVerses,
+  shownReference,
   writeStoredDisplayTheme,
 } from '../shared/verseText'
 import type { DisplayTheme, VerseLimit } from '../shared/verseText'
@@ -260,7 +260,6 @@ export default function App() {
   }, [])
 
   const visibleVerses = selectVerses(reference, verseLimit)
-  const hiddenCount = hiddenVerseCount(reference, verseLimit)
 
   // Shrink the font until the visible verses fit the viewport, and re-fit on
   // resize. Projectors have no scrollbar, so overflow is never acceptable.
@@ -320,7 +319,6 @@ export default function App() {
             <PassageBody
               reference={reference}
               verses={visibleVerses}
-              hiddenCount={hiddenCount}
               fontSize={fontSize}
               versesRef={versesRef}
             />
@@ -370,14 +368,12 @@ export default function App() {
 interface PassageBodyProps {
   reference: BibleReference
   verses: VerseText[]
-  hiddenCount: number
   fontSize: number
   versesRef: RefObject<HTMLDivElement>
 }
 
-/** The verses, the citation and the "+N more" note of one passage. */
-function PassageBody({ reference, verses, hiddenCount, fontSize, versesRef }: PassageBodyProps) {
-  const { t } = useI18n()
+/** The verses and the citation of one passage; the citation names only the verses shown. */
+function PassageBody({ reference, verses, fontSize, versesRef }: PassageBodyProps) {
   return (
     <>
       {/* Verse text - primary focus, bounded to the chosen limit */}
@@ -400,12 +396,7 @@ function PassageBody({ reference, verses, hiddenCount, fontSize, versesRef }: Pa
       </div>
 
       {/* Reference - secondary, elegant label below */}
-      <div className="display-reference">{formatReference(reference)}</div>
-
-      {/* Tell the audience when a range was only partly shown */}
-      {hiddenCount > 0 && (
-        <div className="display-range-note">{t('stage.moreVerses', { count: hiddenCount })}</div>
-      )}
+      <div className="display-reference">{formatReference(shownReference(reference, verses))}</div>
     </>
   )
 }
