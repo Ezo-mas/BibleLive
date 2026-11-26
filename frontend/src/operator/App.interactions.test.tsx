@@ -127,16 +127,29 @@ afterEach(() => {
 })
 
 describe('pending highlight and approval', () => {
-  it('moves the highlight down/up the queue and approves the highlighted item by ID', () => {
+  it('ArrowDown moves the highlight and focus row by row, scrolls that row into view, and Enter approves it by ID', () => {
+    const scroll = vi.mocked(Element.prototype.scrollIntoView)
+    scroll.mockClear()
     openWith()
     expect(highlighted()).toBeNull()
 
     press('ArrowDown')
+    expect(card('John 1:1')).toHaveFocus()
     press('ArrowDown')
-    expect(highlighted()).toBe('Romans 8:28')
 
+    // Three rows, so a jump to the last row cannot pass for the second.
+    const second = card('Romans 8:28')
+    expect(highlighted()).toBe('Romans 8:28')
+    expect(second).toHaveAttribute('aria-pressed', 'true')
+    expect(second).toHaveFocus()
+    expect(scroll).toHaveBeenLastCalledWith({ block: 'nearest' })
+    const secondRow = second.closest('[data-cursor-row="p-2"]')
+    expect(secondRow).not.toBeNull()
+    expect(scroll.mock.contexts.at(-1)).toBe(secondRow)
+
+    // Focus and the cursor stay together, so Enter shows the row that has focus.
     press('Enter')
-    expect(lastSent(socket)).toEqual({ action: 'approve', reference_id: 'p-2' })
+    expect(sentActions()).toEqual([{ action: 'approve', reference_id: 'p-2' }])
   })
 
   it('highlights the first item when arrowing up or down from no highlight', () => {
@@ -185,25 +198,19 @@ describe('pending highlight and approval', () => {
     expect(lastSent(socket)).toEqual({ action: 'approve', reference_id: 'p-1' })
   })
 
-  it('drops the highlight when the queue update no longer holds it', () => {
+  it('a pending_update that replaces the whole queue drops the highlight, and Enter sends nothing', () => {
     openWith()
     press('ArrowDown')
+    press('ArrowDown')
+    expect(highlighted()).toBe('Romans 8:28')
 
     push(socket, {
       type: 'pending_update',
       data: { pending: [reference('p-9', 'Acts', 2, 1)], count: 1 },
     })
-    expect(highlighted()).toBeNull()
-  })
+    expect(document.querySelector('.ref-item.is-selected')).toBeNull()
+    expect(card('Acts 2:1')).toHaveAttribute('aria-pressed', 'false')
 
-  it('approves nothing when a resumed queue no longer holds the highlighted ID', () => {
-    openWith()
-    press('ArrowDown')
-    press('ArrowDown')
-    push(socket, {
-      type: 'pending_update',
-      data: { pending: [reference('p-9', 'Acts', 2, 1)], count: 1 },
-    })
     press('Enter')
     expect(sentActions()).toEqual([])
   })
