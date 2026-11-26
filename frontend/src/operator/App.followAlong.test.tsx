@@ -337,11 +337,8 @@ describe('+1 verse button', () => {
 
   const expandButton = () => screen.getByRole('button', { name: '+1 verse' })
 
-  it('shows the optional control only when enabled and sends the rolling range', () => {
+  it('shows the control by default and sends the rolling range', () => {
     openWith(onScreen)
-    expect(screen.queryByRole('button', { name: '+1 verse' })).not.toBeInTheDocument()
-
-    setExpandButton('On')
     fireEvent.click(expandButton())
 
     expect(sentActions()).toEqual([
@@ -358,6 +355,13 @@ describe('+1 verse button', () => {
     push(socket, { type: 'display_confirmed', data: { reference: reference('d-2', [11, 12, 13]) } })
     expect(expandButton()).toBeEnabled()
     setExpandButton('Off')
+    expect(screen.queryByRole('button', { name: '+1 verse' })).not.toBeInTheDocument()
+    expect(window.localStorage.getItem('biblelive.expandPassage')).toBe('false')
+  })
+
+  it('stays hidden on a console that turned it off', () => {
+    window.localStorage.setItem('biblelive.expandPassage', 'false')
+    openWith(onScreen)
     expect(screen.queryByRole('button', { name: '+1 verse' })).not.toBeInTheDocument()
   })
 
@@ -380,7 +384,6 @@ describe('+1 verse button', () => {
 
   it('shows the usual error notice when the server rejects a verse past the chapter end', () => {
     openWith(reference('last', [29, 30, 31]))
-    setExpandButton('On')
     fireEvent.click(expandButton())
     vi.spyOn(console, 'error').mockImplementation(() => {})
 

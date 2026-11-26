@@ -37,11 +37,12 @@ import './styles/responsive.css'
 
 const EXPAND_PASSAGE_STORAGE_KEY = 'biblelive.expandPassage'
 
+/** On unless this console turned it off: it is how the operator shows verses the limit cut. */
 function readExpandPassagePreference() {
   try {
-    return window.localStorage.getItem(EXPAND_PASSAGE_STORAGE_KEY) === 'true'
+    return window.localStorage.getItem(EXPAND_PASSAGE_STORAGE_KEY) !== 'false'
   } catch {
-    return false
+    return true
   }
 }
 

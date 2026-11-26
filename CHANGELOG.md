@@ -41,6 +41,12 @@ to the same release.
   of "Copied". The console buttons fit on one row in Lithuanian too.
 
 ### Operator console
+- **Projector and OBS show only the verses on screen:** when a passage is longer
+  than the verse limit, the citation names just the verses shown (John 3:16-18)
+  and the “+N more verses” note is gone from audience screens. The operator's
+  On display preview still shows it.
+- **“+1 verse” button is on by default**, so the verses a limit cut are one press
+  away. A console that turned it off keeps it off.
 - **Auto-clear timer** in Settings → Display clears a passage after 5–600 seconds
   on air. It starts Off. The console shows the selected duration beside Clear
   while an on-air passage is timed. Showing a passage, including through
