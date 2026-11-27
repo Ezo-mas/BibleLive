@@ -16,7 +16,7 @@ to fix small things on the first run and note what you changed.
 ## 1. Get the code and the audio onto the laptop
 
 ```bash
-git clone https://github.com/Ezo-mas/BibleLive.git && cd BibleLive
+git clone https://github.com/SundayStackHQ/BibleLive.git && cd BibleLive
 git switch feat/linux-bench-bootstrap      # until it is merged
 mkdir -p bench_audio
 # from the desktop (or use a USB stick):
